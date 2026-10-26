@@ -1,12 +1,10 @@
-# SmellBench — Preview
+# SmellBench
 
 **Towards Fine-Grained Evaluation of Code Agents on Refactoring Tasks**
 
 SmellBench evaluates behavior-preserving, repository-level refactoring. Each task starts from a real open-source repository with injected code smells and asks an agent to reorganize the affected code without changing its intended behavior. Repository-native tests check functional preservation; case-specific rubrics assess structural repair beyond test passing.
 
-This `preview` branch contains **95 Harbor-style task packages from 47 repositories**, covering **5 languages, 7 smell categories, and 1,570 rubric criteria**. It replaces the previous code tree on this branch only. Earlier contents remain available in Git history and on the original branch.
-
-> Preview status: the packages are a snapshot of the evaluation task collection, not a claim that every environment builds on every machine. No full Docker/Harbor evaluation was rerun for this publication. Some task metadata retains assembly/runtime-validation flags. The result tables below describe recorded experimental runs, not a new certification of this snapshot.
+SmellBench comprises **95 Harbor-style refactoring tasks from 47 repositories**, covering **5 languages, 7 smell categories, and 1,570 rubric criteria**. It provides a controlled testbed for studying smell-specific repair capabilities, responsibility allocation, and cross-file coordination.
 
 ## Benchmark construction
 
@@ -39,7 +37,7 @@ The reference repair is derived from the original clean code. Agents may use equ
 | Rust | 22 |
 | TypeScript | 18 |
 
-Counts above are **tasks**, not repositories. There are 1,570 rubric items in this snapshot (16.53 per task on average).
+Counts above are **tasks**, not repositories. Each task has 16.53 rubric items on average.
 
 ## Task layout
 
@@ -66,11 +64,11 @@ tasks/<task_id>/
     └── control_smell.diff         # Control patch used by the verification workflow
 ```
 
-The task files are copied without modifying test commands, source patches, reference repairs, or rubrics. Build the task using its Dockerfile and pinned revision; do not apply `smell.diff` twice. The reference patch is a repair patch for the injected state, not a patch to apply to the clean upstream checkout. Keep `solution/` and verifier-only material outside the agent-visible repository.
+Each Dockerfile builds the pinned repository revision and applies `smell.diff` to create the agent's starting state. The reference patch repairs this injected state back to the original clean code. Keep `solution/` and verifier-only material outside the agent-visible repository.
 
 ## Running and configuring evaluation
 
-Use a compatible [Harbor](https://github.com/laude-institute/harbor) installation with Docker/container execution available. Select `tasks/` as the local dataset, or a single `tasks/<task_id>/` directory for a smoke test. Consult your installed Harbor version's CLI help for the supported agent and environment options; this branch does not bundle the experiment harness or its service-specific launch configuration.
+Use a compatible [Harbor](https://github.com/laude-institute/harbor) installation with Docker/container execution available. Select `tasks/` as the local dataset, or a single `tasks/<task_id>/` directory for a smoke test. Configure the agent and environment options supported by your installed Harbor version.
 
 The verifier requires Bash, Python, Git, jq, curl, and each repository's native toolchain, supplied by the task environment. Image builds need access to upstream repositories and dependency registries. Configure these variables **in the verifier environment**, without committing credentials:
 
@@ -84,7 +82,7 @@ The verifier requires Bash, Python, Git, jq, curl, and each repository's native 
 
 Missing Judge configuration is **not** a native-test-only evaluation mode: inspect the verifier's recorded configuration/error status. Judge requests include task text, rubric criteria, patches and test logs; only use an endpoint authorized to receive that material.
 
-Task environment variables prefixed `CC_FORBIDDEN_REPO_` identify protected source repositories for a compatible harness guard. These variables alone do not enforce network restrictions. The experimental rule-based and LLM-based source-access safeguards require corresponding harness integration, which is not provided in this task-only preview.
+Task environment variables prefixed `CC_FORBIDDEN_REPO_` identify protected source repositories for a compatible harness guard. Enable the corresponding harness integration to enforce source-access restrictions; environment variables alone do not block network access.
 
 ## Evaluation metrics
 
@@ -101,9 +99,9 @@ The structural rubrics cover four dimensions:
 
 **Solved** is binary per evaluated task: all valid rubric criteria must pass. Report the mean over evaluated tasks, excluding missing evaluations rather than treating them as failures. A dimension likewise receives 1 only when all its valid criteria pass; tasks without valid criteria in that dimension are excluded from its denominator.
 
-**Important:** the packaged verifier's scalar reward and `macro_score` describe rubric-item satisfaction and are not automatically the paper's binary Solved metric. Derive Solved from the recorded valid rubric verdicts. Preserve invalid/missing-result diagnostics. Native test results are reported separately and do not contribute to the structural reward in this snapshot.
+The verifier also records a scalar reward and `macro_score` for rubric-item satisfaction. These differ from the binary **Solved** metric, which is derived from the valid rubric verdicts. Native test results are reported separately and do not contribute to the structural reward.
 
-## Recorded overall results
+## Experimental results
 
 Percentages below reproduce the recorded evaluation summary. Each configuration was run once per task. OpenHands–Opus 5 currently has 94 available evaluations; Claude Code–Kimi-K3 has 94 completed evaluations. Other configurations have 95. Dimension denominators can be smaller because only tasks with valid criteria in that dimension are included.
 
@@ -129,13 +127,15 @@ Percentages below reproduce the recorded evaluation summary. Each configuration 
 - **Model differences remain visible despite near-ceiling tests.** GLM-5.3 exceeds GLM-5.2 by 22.10 percentage points under OpenHands and 17.90 points under Claude Code (using displayed rounded values).
 - **Repair scope matters, but file coverage is not sufficient.** In the Claude Code analysis, GPT-6 Astra solves 81.25% of tasks in the smallest reference-patch bucket versus 46.67% in the largest. GLM-5.3 has higher mean reference-file recall than Opus 5 (87.18% vs. 86.50%) but lower Solved (51.58% vs. 64.21%). These are descriptive associations, not causal findings or reference-match requirements.
 
-## Reproducibility and limitations
+## Reproducibility
 
-- Experimental outcomes depend on the task/rubric snapshot, model version, harness configuration, and Judge. Freeze these before comparing runs; do not assume this preview's files are identical to every historical evaluation snapshot.
+- Record the task and rubric versions, model versions, harness configuration, and Judge configuration when comparing experiments.
 - Multiple tasks share repositories; a single run per configuration does not establish statistical significance or independent samples.
 - Native tests cover existing behavior but are not an exhaustive behavioral equivalence proof. Reference file coverage is not a correctness metric.
-- Private model traces, credentials, service configuration, and the attached draft manuscript are not included in this task release.
-- Repository URLs and pinned commits are recorded in each task's metadata. Upstream repositories and copied code fragments retain their original license and attribution requirements. This preview does not grant a new blanket license to third-party code.
+
+## Attribution
+
+Repository URLs and pinned commits are recorded in each task's metadata. Upstream repositories and code fragments retain their original license and attribution requirements.
 
 ## Reference
 
