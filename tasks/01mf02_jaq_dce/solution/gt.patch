@@ -1,0 +1,508 @@
+diff --git a/jaq-core/src/compile.rs b/jaq-core/src/compile.rs
+index 33ed922..fa28241 100644
+--- a/jaq-core/src/compile.rs
++++ b/jaq-core/src/compile.rs
+@@ -44,19 +44,19 @@ impl<F> Default for Filter<F> {
+ impl<F> Lut<F> {
+     fn new(terms: Vec<Term>) -> Self {
+         let funs = Vec::new();
++        Self { terms, funs }
+-        Self { terms: terms.into_iter().map(|term| crate::lower::value(crate::scalar::expression(term))).collect(), funs }
+     }
+ 
+     fn map_funs<F2>(self, f: impl Fn(F) -> F2) -> Lut<F2> {
+         Lut {
+             funs: self.funs.into_iter().map(f).collect(),
++            terms: self.terms,
+-            terms: self.terms.into_iter().map(crate::finalize::term).collect(),
+         }
+     }
+ 
+     fn insert_term(&mut self, t: Term) -> TermId {
+         let tid = self.terms.len();
++        self.terms.push(t);
+-        self.terms.push(crate::lower::value(crate::scalar::expression(t)));
+         TermId(tid)
+     }
+ }
+@@ -72,7 +72,6 @@ impl<F> Lut<F> {
+ /// [`Locals::call`] for how the [`CallType`] is determined.
+ #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+ pub(crate) enum CallType {
+-    Resolve(bool),
+     /// Run filter and return its outputs as-is
+     Inline,
+     /// Return exception that encodes filter ID, arguments and input (tail call)
+@@ -85,13 +84,6 @@ pub(crate) enum CallType {
+ 
+ #[derive(Clone, Debug, Default)]
+ pub(crate) enum Term<T = TermId> {
+-    Apply(T, T),
+-    Select(T, T),
+-    Concat(T, T),
+-    Atom(crate::program::Literal),
+-    Scalar(crate::program::Scalar<T>),
+-    Build(crate::program::Aggregate<T>),
+-    Edit(crate::program::Edit<T>),
+     #[default]
+     /// Identity (`.`)
+     Id,
+@@ -611,7 +603,7 @@ impl<'s, F> Compiler<&'s str, F> {
+         // any function can call itself tail-recursively
+         assert!(tr.insert(id));
+         let (body, tr_) = self.term(d.body, &tr);
++        self.lut.terms[id.0] = body;
+-        self.lut.terms[id.0] = crate::lower::value(crate::scalar::expression(body));
+         assert_eq!(self.locals.pop_parent(d.name, d.args.len()), id);
+         let sig = Sig {
+             name: d.name,
+@@ -641,8 +633,8 @@ impl<'s, F> Compiler<&'s str, F> {
+         let t = match t {
+             Id => Term::Id,
+             Recurse => Term::Recurse,
++            Arr(t) => Term::Arr(self.iterm(t.map_or_else(|| Call("!empty", Vec::new()), |t| *t))),
++            Neg(t) => Term::Neg(self.iterm(*t)),
+-            Arr(t) => Term::Build(crate::program::Aggregate::Array(self.iterm(t.map_or_else(|| Call("!empty", Vec::new()), |t| *t)))),
+-            Neg(t) => Term::Scalar(crate::program::Scalar::Neg(self.iterm(*t))),
+             Label(x, t) => Term::Label(self.with_label(x, |c| c.iterm(*t))),
+             Break(x) => self.break_(x),
+             IfThenElse(if_thens, else_) => {
+@@ -673,10 +665,7 @@ impl<'s, F> Compiler<&'s str, F> {
+ 
+                 return (t, tr_);
+             }
++            Num(n) => n.parse().map_or_else(|_| Term::Num(n.into()), Term::Int),
+-            Num(n) => Term::Atom(n.parse().map_or_else(
+-                |_| crate::program::Literal::Num(n.into()),
+-                crate::program::Literal::Int,
+-            )),
+             TryCatch(try_, catch) => {
+                 let catch = catch.map_or_else(|| Call("!empty", Vec::new()), |t| *t);
+                 Term::TryCatch(self.iterm(*try_), self.iterm(catch))
+@@ -724,17 +713,16 @@ impl<'s, F> Compiler<&'s str, F> {
+                     _ => (self.iterm(*l), (self.iterm(*r), Tr::new())),
+                 };
+                 let t = match op {
++                    Pipe(pat) => Term::Pipe(l, pat.map(|pat| self.pattern(pat)), r),
++                    Comma => Term::Comma(l, r),
++                    Math(op) => Term::Math(l, op, r),
++                    Assign => Term::Assign(l, r),
++                    Update => Term::Update(l, r),
+-                    Pipe(None) => Term::Apply(l, r),
+-                    Pipe(Some(pat)) => Term::Pipe(l, Some(self.pattern(pat)), r),
+-                    Comma => Term::Concat(l, r),
+-                    Math(op) => Term::Scalar(crate::program::Scalar::Math(l, op, r)),
+-                    Assign => Term::Edit(crate::program::Edit::Assign(l, r)),
+-                    Update => Term::Edit(crate::program::Edit::Update(l, r)),
+                     UpdateMath(op) => Term::UpdateMath(l, op, r),
+                     Cmp(op) => Term::Cmp(l, op, r),
+                     Or => Term::Logic(l, true, r),
+                     And => Term::Logic(l, false, r),
++                    Alt => Term::Alt(l, r),
+-                    Alt => Term::Select(l, r),
+                     UpdateAlt => Term::UpdateAlt(l, r),
+                 };
+                 return (t, tr_);
+@@ -778,7 +766,7 @@ impl<'s, F> Compiler<&'s str, F> {
+         let id = self.lut.insert_term(Term::default());
+         let (t, tr_) = self.term(t, tr);
+         debug_assert!(tr_.is_subset(tr));
++        self.lut.terms[id.0] = t;
+-        self.lut.terms[id.0] = crate::lower::value(crate::scalar::expression(t));
+         (id, tr_)
+     }
+ 
+@@ -894,7 +882,7 @@ impl<'s, F> Compiler<&'s str, F> {
+             }
+             (k, Some(v)) => (self.iterm(k), self.iterm(v)),
+         };
++        Term::ObjSingle(k, v)
+-        Term::Build(crate::program::Aggregate::Entry(k, v))
+     }
+ 
+     fn sum_or(&mut self, f: impl FnOnce() -> Term, terms: Vec<Term>) -> Term {
+diff --git b/jaq-core/src/continuation.rs b/jaq-core/src/continuation.rs
+deleted file mode 100644
+index bf81c8a..0000000
+--- a/jaq-core/src/continuation.rs
++++ /dev/null
+@@ -1,28 +0,0 @@
+-use crate::fold::Fold;
+-use crate::box_iter::Results;
+-use alloc::vec::Vec;
+-
+-pub(crate) fn push<'a, I, X, Y, E>(
+-    stack: &mut Vec<(I, Fold<'a, X, Y, E>)>,
+-    input: I,
+-    frame: Fold<'a, X, Y, E>,
+-) {
+-    let frame = match frame {
+-        Fold::Output(x, ys) => Fold::Resume(x, ys),
+-        frame => frame,
+-    };
+-    stack.push((input, frame));
+-}
+-
+-pub(crate) fn next<'a, X: Clone, Y, E>(
+-    source: X,
+-    mut values: Results<'a, Y, E>,
+-) -> Option<(Result<(X, Y), E>, Option<Fold<'a, X, Y, E>>)> {
+-    let value = values.next()?;
+-    let pending = if values.size_hint() != (0, Some(0)) {
+-        Some(Fold::Resume(source.clone(), values))
+-    } else {
+-        None
+-    };
+-    Some((value.map(|value| (source, value)), pending))
+-}
+diff --git a/jaq-core/src/filter.rs b/jaq-core/src/filter.rs
+index e2b4325..f888aff 100644
+--- a/jaq-core/src/filter.rs
++++ b/jaq-core/src/filter.rs
+@@ -362,7 +362,6 @@ fn def_run<'a, D: DataT, T: 'a>(
+     };
+ 
+     match call_typ {
+-        CallType::Resolve(all) => Box::new(crate::Stack::new([outs(cvs)].into(), catch(*all))),
+         CallType::Inline => outs(cvs),
+         CallType::CatchOne => Box::new(crate::Stack::new([outs(cvs)].into(), catch(false))),
+         CallType::CatchAll => Box::new(crate::Stack::new([outs(cvs)].into(), catch(true))),
+@@ -460,98 +459,11 @@ impl<D: DataT> Native<D> {
+     }
+ }
+ 
+-fn scalar_run<'a, D: DataT>(
+-    scalar: &'a crate::program::Scalar<Id>,
+-    cv: Cv<'a, D>,
+-) -> ValXs<'a, D::V<'a>> {
+-    match scalar {
+-        crate::program::Scalar::ToString => box_once(Ok(cv.1.into_string())),
+-        crate::program::Scalar::Neg(f) => Box::new(f.run(cv).map(|v| Ok((-v?)?))),
+-        crate::program::Scalar::Math(l, op, r) => {
+-            let terms = &cv.0.lut().terms;
+-            if let (Ast::Int(left), Ast::Int(right)) = (&terms[l.0], &terms[r.0]) {
+-                box_once(op.run(D::V::from(*left), D::V::from(*right)).map_err(Exn::from))
+-            } else {
+-                Box::new(cartesian(l, r, cv).map(|(x, y)| Ok(op.run(x?, y?)?)))
+-            }
+-        },
+-        crate::program::Scalar::Cmp(l, op, r) => {
+-            let terms = &cv.0.lut().terms;
+-            if let (Ast::Str(left), Ast::Str(right)) = (&terms[l.0], &terms[r.0]) {
+-                let left = D::V::from(left.clone());
+-                let right = D::V::from(right.clone());
+-                box_once(Ok(D::V::from(op.run(&left, &right))))
+-            } else {
+-                Box::new(cartesian(l, r, cv).map(|(x, y)| Ok(D::V::from(op.run(&x?, &y?)))))
+-            }
+-        },
+-        crate::program::Scalar::Logic(l, stop, r) => pipe(l, cv, move |cv, l| {
+-            if l.as_bool() == *stop {
+-                box_once(Ok(D::V::from(*stop)))
+-            } else {
+-                Box::new(r.run(cv).map(|r| Ok(D::V::from(r?.as_bool()))))
+-            }
+-        }),
+-    }
+-}
+-
+-fn build_run<'a, D: DataT>(
+-    build: &'a crate::program::Aggregate<Id>,
+-    cv: Cv<'a, D>,
+-) -> ValXs<'a, D::V<'a>> {
+-    match build {
+-        crate::program::Aggregate::Array(f) => box_once(f.run(cv).collect()),
+-        crate::program::Aggregate::Entry(k, v) => {
+-            if let Ast::Str(key) = &cv.0.lut().terms[k.0] {
+-                let key = D::V::from(key.clone());
+-                Box::new(v.run(cv).map(move |value| Ok(D::V::from_map([(key.clone(), value?)])?)))
+-            } else {
+-                Box::new(cartesian(k, v, cv).map(|(key, value)| Ok(D::V::from_map([(key?, value?)])?)))
+-            }
+-        },
+-    }
+-}
+-
+-fn edit_run<'a, D: DataT>(
+-    edit: &'a crate::program::Edit<Id>,
+-    cv: Cv<'a, D>,
+-) -> ValXs<'a, D::V<'a>> {
+-    match edit {
+-        crate::program::Edit::Update(path, f) => path.update((cv.0.clone(), cv.1), Box::new(move |v| f.run((cv.0.clone(), v)))),
+-        crate::program::Edit::Math(path, op, f) => pipe(f, cv, move |cv, y| {
+-            let u = move |x: D::V<'a>| box_once(op.run(x, y.clone()).map_err(Exn::from));
+-            path.update(cv, Box::new(u))
+-        }),
+-        crate::program::Edit::Alt(path, f) => pipe(f, cv, move |cv, y| {
+-            let u = move |x: D::V<'a>| box_once(Ok(if x.as_bool() { x } else { y.clone() }));
+-            path.update(cv, Box::new(u))
+-        }),
+-        crate::program::Edit::Assign(path, f) => pipe(f, cv, move |cv, y| path.update(cv, Box::new(move |_| box_once(Ok(y.clone()))))),
+-    }
+-}
+-
+ impl Id {
+     /// `f.run((c, v))` returns the output of `v | f` in the context `c`.
+     pub fn run<'a, D: DataT>(&self, cv: Cv<'a, D>) -> ValXs<'a, D::V<'a>> {
+         use core::iter::once;
+         match &cv.0.lut().terms[self.0] {
+-            Ast::Apply(l, r) => {
+-                let left = l.run((cv.0.clone(), cv.1));
+-                flat_map_then_with(left, cv.0, move |value, ctx| r.run((ctx, value)))
+-            }
+-            Ast::Concat(l, r) => Box::new(l.run(cv.clone()).chain(lazy(|| r.run(cv)))),
+-            Ast::Select(l, r) => {
+-                let mut values = l.run(cv.clone()).filter(|value| value.as_ref().map_or(true, ValT::as_bool));
+-                if let Some(first) = values.next() {
+-                    Box::new(once(first).chain(values))
+-                } else {
+-                    r.run(cv)
+-                }
+-            }
+-            Ast::Scalar(scalar) => scalar_run(scalar, cv),
+-            Ast::Build(build) => build_run(build, cv),
+-            Ast::Edit(edit) => edit_run(edit, cv),
+-            Ast::Atom(value) => box_once(value.value().map_err(Exn::from)),
+             Ast::Id => box_once(Ok(cv.1)),
+             Ast::Recurse => recurse_run(cv.1, &|v| v.values()),
+             Ast::ToString => box_once(Ok(cv.1.into_string())),
+@@ -668,18 +580,6 @@ impl Id {
+         let proj_cv = |cv: &Cvp<'a, D>| (cv.0.clone(), cv.1 .0.clone());
+         let proj_val = |(val, _path): &(D::V<'a>, _)| val.clone();
+         match &cv.0.lut().terms[self.0] {
+-            Ast::Apply(l, r) => {
+-                let left = l.paths((cv.0.clone(), cv.1));
+-                flat_map_then_with(left, cv.0, move |value, ctx| r.paths((ctx, value)))
+-            }
+-            Ast::Concat(l, r) => Box::new(l.paths(cv.clone()).chain(lazy(|| r.paths(cv)))),
+-            Ast::Select(l, r) => {
+-                let has_output = l.run(proj_cv(&cv)).any(|value| value.as_ref().map_or(true, ValT::as_bool));
+-                if has_output { l } else { r }.paths(cv)
+-            }
+-            Ast::Scalar(_) => err(cv.1 .0),
+-            Ast::Build(_) | Ast::Edit(_) => err(cv.1 .0),
+-            Ast::Atom(_) => err(cv.1 .0),
+             Ast::ToString => err(cv.1 .0),
+             Ast::Int(_) | Ast::Num(_) | Ast::Str(_) => err(cv.1 .0),
+             Ast::Arr(_) | Ast::ObjEmpty | Ast::ObjSingle(..) => err(cv.1 .0),
+@@ -764,21 +664,6 @@ impl Id {
+     ) -> ValXs<'a, D::V<'a>> {
+         let err = |v| box_once(Err(Exn::from(Error::path_expr(v))));
+         match &cv.0.lut().terms[self.0] {
+-            Ast::Apply(l, r) => l.update(
+-                (cv.0.clone(), cv.1),
+-                Box::new(move |value| r.update((cv.0.clone(), value), f.clone())),
+-            ),
+-            Ast::Concat(l, r) => flat_map_then_with(
+-                l.update(cv.clone(), f.clone()), (cv.0, f),
+-                move |value, (ctx, f)| r.update((ctx, value), f),
+-            ),
+-            Ast::Select(l, r) => {
+-                let has_output = l.run(cv.clone()).any(|value| value.as_ref().map_or(true, ValT::as_bool));
+-                if has_output { l } else { r }.update(cv, f)
+-            }
+-            Ast::Scalar(_) => err(cv.1),
+-            Ast::Build(_) | Ast::Edit(_) => err(cv.1),
+-            Ast::Atom(_) => err(cv.1),
+             Ast::ToString => err(cv.1),
+             Ast::Int(_) | Ast::Num(_) | Ast::Str(_) => err(cv.1),
+             Ast::Arr(_) | Ast::ObjEmpty | Ast::ObjSingle(..) => err(cv.1),
+diff --git b/jaq-core/src/finalize.rs b/jaq-core/src/finalize.rs
+deleted file mode 100644
+index 2864e03..0000000
+--- a/jaq-core/src/finalize.rs
++++ /dev/null
+@@ -1,23 +0,0 @@
+-use crate::compile::{CallType, Term};
+-use crate::program::Edit;
+-
+-pub(crate) fn term(term: Term) -> Term {
+-    match term {
+-        Term::CallDef(id, args, skip, kind) => {
+-            let kind = match kind {
+-                CallType::CatchOne => CallType::Resolve(false),
+-                CallType::CatchAll => CallType::Resolve(true),
+-                kind => kind,
+-            };
+-            Term::CallDef(id, args, skip, kind)
+-        }
+-        Term::Assign(l, r) => Term::Edit(Edit::Assign(l, r)),
+-        Term::Update(l, r) => Term::Edit(Edit::Update(l, r)),
+-        Term::UpdateMath(l, op, r) => Term::Edit(Edit::Math(l, op, r)),
+-        Term::UpdateAlt(l, r) => Term::Edit(Edit::Alt(l, r)),
+-        Term::Pipe(l, None, r) => Term::Apply(l, r),
+-        Term::Alt(l, r) => Term::Select(l, r),
+-        Term::Comma(l, r) => Term::Concat(l, r),
+-        term => term,
+-    }
+-}
+diff --git a/jaq-core/src/fold.rs b/jaq-core/src/fold.rs
+index 9a171f7..de7acb4 100644
+--- a/jaq-core/src/fold.rs
++++ b/jaq-core/src/fold.rs
+@@ -3,8 +3,7 @@
+ use crate::box_iter::Results;
+ use alloc::vec::Vec;
+ 
++enum Fold<'a, X, Y, E> {
+-pub(crate) enum Fold<'a, X, Y, E> {
+-    Resume(X, Results<'a, Y, E>),
+     /// things to be processed
+     Input(Y),
+     /// things to be output, then to be input
+@@ -23,32 +22,17 @@ pub(crate) fn fold<'a, T: 'a, TC: Clone + 'a, U: 'a, UC: 'a, E: 'a>(
+     core::iter::from_fn(move || loop {
+         let (mut xs, fold) = stack.pop()?;
+         match fold {
+-            Fold::Resume(x, ys) => {
+-                let Some((value, pending)) = crate::continuation::next(x, ys) else { continue };
+-                if let Some(pending) = pending {
+-                    crate::continuation::push(&mut stack, xs.clone(), pending);
+-                }
+-                let (x, y) = match value {
+-                    Ok(value) => value,
+-                    Err(e) => return Some(Err(e)),
+-                };
+-                let projected = inner(x, &y);
+-                crate::continuation::push(&mut stack, xs, Fold::Input(y));
+-                if let Some(projected) = projected {
+-                    return Some(Ok(projected));
+-                }
+-            }
+             Fold::Output(x, mut ys) => match ys.next() {
+                 None => continue,
+                 Some(y) => {
+                     // do not grow the stack if the output is empty
+                     if ys.size_hint() != (0, Some(0)) {
++                        stack.push((xs.clone(), Fold::Output(x.clone(), ys)));
+-                        crate::continuation::push(&mut stack, xs.clone(), Fold::Output(x.clone(), ys));
+                     }
+                     match y {
+                         Ok(y) => {
+                             let inner = inner(x, &y);
++                            stack.push((xs, Fold::Input(y)));
+-                            crate::continuation::push(&mut stack, xs, Fold::Input(y));
+                             if let Some(inner) = inner {
+                                 return Some(Ok(inner));
+                             }
+@@ -63,7 +47,7 @@ pub(crate) fn fold<'a, T: 'a, TC: Clone + 'a, U: 'a, UC: 'a, E: 'a>(
+                         return Some(Ok(outer));
+                     }
+                 }
++                Some(Ok(x)) => stack.push((xs, Fold::Output(tc(&x), f(x, y)))),
+-                Some(Ok(x)) => crate::continuation::push(&mut stack, xs, Fold::Output(tc(&x), f(x, y))),
+                 Some(Err(e)) => return Some(Err(e)),
+             },
+         }
+diff --git a/jaq-core/src/lib.rs b/jaq-core/src/lib.rs
+index 3f025ac..b607a19 100644
+--- a/jaq-core/src/lib.rs
++++ b/jaq-core/src/lib.rs
+@@ -52,15 +52,10 @@ pub mod box_iter;
+ pub mod compile;
+ pub mod data;
+ mod exn;
+-mod continuation;
+ mod filter;
+ mod fold;
+ mod funs;
+ mod into_iter;
+-mod lower;
+-mod scalar;
+-mod finalize;
+-mod program;
+ pub mod load;
+ pub mod native;
+ pub mod ops;
+diff --git b/jaq-core/src/lower.rs b/jaq-core/src/lower.rs
+deleted file mode 100644
+index 042218b..0000000
+--- a/jaq-core/src/lower.rs
++++ /dev/null
+@@ -1,14 +0,0 @@
+-use crate::compile::Term;
+-use crate::program::{Aggregate, Literal};
+-
+-pub(crate) fn value(term: Term) -> Term {
+-    match term {
+-        Term::Int(n) => Term::Atom(Literal::Int(n)),
+-        Term::Num(n) => Term::Atom(Literal::Num(n)),
+-        Term::Str(s) => Term::Atom(Literal::Str(s)),
+-        Term::ObjEmpty => Term::Atom(Literal::Object),
+-        Term::Arr(f) => Term::Build(Aggregate::Array(f)),
+-        Term::ObjSingle(k, v) => Term::Build(Aggregate::Entry(k, v)),
+-        term => term,
+-    }
+-}
+diff --git b/jaq-core/src/program.rs b/jaq-core/src/program.rs
+deleted file mode 100644
+index 154c64a..0000000
+--- a/jaq-core/src/program.rs
++++ /dev/null
+@@ -1,47 +0,0 @@
+-use crate::{ValR, ValT};
+-use alloc::string::String;
+-
+-#[derive(Clone, Debug)]
+-pub(crate) enum Scalar<T> {
+-    ToString,
+-    Neg(T),
+-    Math(T, crate::ops::Math, T),
+-    Cmp(T, crate::ops::Cmp, T),
+-    Logic(T, bool, T),
+-}
+-
+-#[derive(Clone, Debug)]
+-pub(crate) enum Aggregate<T> {
+-    Array(T),
+-    Entry(T, T),
+-}
+-
+-#[derive(Clone, Debug)]
+-pub(crate) enum Edit<T> {
+-    Assign(T, T),
+-    Update(T, T),
+-    Math(T, crate::ops::Math, T),
+-    Alt(T, T),
+-}
+-
+-#[derive(Clone, Debug)]
+-pub(crate) enum Literal {
+-    Int(isize),
+-    Num(String),
+-    Str(String),
+-    Object,
+-}
+-
+-impl Literal {
+-    pub(crate) fn value<V: ValT>(&self) -> ValR<V> {
+-        match self {
+-            Self::Int(n) => Ok(V::from(*n)),
+-            Self::Num(n) => match n.parse::<isize>() {
+-                Ok(n) => Ok(V::from(n)),
+-                Err(_) => V::from_num(n),
+-            },
+-            Self::Str(s) => Ok(V::from(s.clone())),
+-            Self::Object => V::from_map([]),
+-        }
+-    }
+-}
+diff --git b/jaq-core/src/scalar.rs b/jaq-core/src/scalar.rs
+deleted file mode 100644
+index 810469f..0000000
+--- a/jaq-core/src/scalar.rs
++++ /dev/null
+@@ -1,13 +0,0 @@
+-use crate::compile::Term;
+-use crate::program::Scalar;
+-
+-pub(crate) fn expression(term: Term) -> Term {
+-    match term {
+-        Term::ToString => Term::Scalar(Scalar::ToString),
+-        Term::Neg(f) => Term::Scalar(Scalar::Neg(f)),
+-        Term::Math(l, op, r) => Term::Scalar(Scalar::Math(l, op, r)),
+-        Term::Cmp(l, op, r) => Term::Scalar(Scalar::Cmp(l, op, r)),
+-        Term::Logic(l, stop, r) => Term::Scalar(Scalar::Logic(l, stop, r)),
+-        term => term,
+-    }
+-}

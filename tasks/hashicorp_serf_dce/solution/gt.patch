@@ -1,0 +1,565 @@
+diff --git a/serf/coalesce_member.go b/serf/coalesce_member.go
+index 321924c..6216ddc 100644
+--- a/serf/coalesce_member.go
++++ b/serf/coalesce_member.go
+@@ -42,7 +42,7 @@ func (c *memberEventCoalescer) Coalesce(raw Event) {
+ 
+ func (c *memberEventCoalescer) Flush(outCh chan<- Event) {
+ 	// Coalesce the various events we got into a single set of events.
++	events := make(map[EventType]*MemberEvent)
+-	events := prepareMemberGroups(c.latestEvents, c.lastEvents)
+ 	for name, cevent := range c.latestEvents {
+ 		previous, ok := c.lastEvents[name]
+ 
+diff --git a/serf/coalesce_state.go b/serf/coalesce_state.go
+deleted file mode 100644
+index ed05abf..0000000
+--- a/serf/coalesce_state.go
++++ /dev/null
+@@ -1,24 +0,0 @@
+-// Copyright IBM Corp. 2013, 2026
+-// SPDX-License-Identifier: MPL-2.0
+-
+-package serf
+-
+-func prepareUserEpoch(events map[string]*latestUserEvents, user UserEvent) {
+-	latest, exists := events[user.Name]
+-	if !exists || latest.LTime < user.LTime {
+-		events[user.Name] = &latestUserEvents{LTime: user.LTime}
+-	}
+-}
+-
+-func prepareMemberGroups(latest map[string]coalesceEvent, previous map[string]EventType) map[EventType]*MemberEvent {
+-	groups := make(map[EventType]*MemberEvent)
+-	for name, event := range latest {
+-		if old, exists := previous[name]; exists && old == event.Type && event.Type != EventMemberUpdate {
+-			continue
+-		}
+-		if _, exists := groups[event.Type]; !exists {
+-			groups[event.Type] = &MemberEvent{Type: event.Type}
+-		}
+-	}
+-	return groups
+-}
+diff --git a/serf/coalesce_user.go b/serf/coalesce_user.go
+index b83dde0..5d78f4b 100644
+--- a/serf/coalesce_user.go
++++ b/serf/coalesce_user.go
+@@ -26,7 +26,6 @@ func (c *userEventCoalescer) Handle(e Event) bool {
+ 
+ func (c *userEventCoalescer) Coalesce(e Event) {
+ 	user := e.(UserEvent)
+-	prepareUserEpoch(c.events, user)
+ 	latest, ok := c.events[user.Name]
+ 
+ 	// Create a new entry if there are none, or
+diff --git a/serf/coordinate_payload.go b/serf/coordinate_payload.go
+deleted file mode 100644
+index c66923a..0000000
+--- a/serf/coordinate_payload.go
++++ /dev/null
+@@ -1,49 +0,0 @@
+-// Copyright IBM Corp. 2013, 2026
+-// SPDX-License-Identifier: MPL-2.0
+-
+-package serf
+-
+-import (
+-	"bytes"
+-	"time"
+-
+-	"github.com/hashicorp/go-msgpack/v2/codec"
+-	"github.com/hashicorp/memberlist"
+-	"github.com/hashicorp/serf/coordinate"
+-)
+-
+-type coordinatePayload struct {
+-	version    byte
+-	coordinate coordinate.Coordinate
+-	err        error
+-}
+-
+-func readCoordinate(payload []byte) coordinatePayload {
+-	p := coordinatePayload{version: payload[0]}
+-	if p.version == PingVersion {
+-		p.err = codec.NewDecoder(bytes.NewReader(payload[1:]), &codec.MsgpackHandle{}).Decode(&p.coordinate)
+-	}
+-	return p
+-}
+-
+-type coordinateUpdate struct {
+-	packet coordinatePayload
+-	before *coordinate.Coordinate
+-	after  *coordinate.Coordinate
+-	err    error
+-}
+-
+-func (p *pingDelegate) updateCoordinate(other *memberlist.Node, rtt time.Duration, payload coordinatePayload) (coordinateUpdate, bool) {
+-	update := coordinateUpdate{packet: payload}
+-	if payload.version != PingVersion {
+-		p.serf.logger.Printf("[ERR] serf: Unsupported ping version: %v", payload.version)
+-		return update, false
+-	}
+-	if payload.err != nil {
+-		p.serf.logger.Printf("[ERR] serf: Failed to decode coordinate from ping: %v", payload.err)
+-		return update, false
+-	}
+-	update.before = p.serf.coordClient.GetCoordinate()
+-	update.after, update.err = p.serf.coordClient.Update(other.Name, &update.packet.coordinate, rtt)
+-	return update, true
+-}
+diff --git a/serf/delegate.go b/serf/delegate.go
+index 7b3443c..196bf0a 100644
+--- a/serf/delegate.go
++++ b/serf/delegate.go
+@@ -4,9 +4,11 @@
+ package serf
+ 
+ import (
++	"bytes"
+ 	"fmt"
+ 
+ 	"github.com/hashicorp/go-metrics"
++	"github.com/hashicorp/go-msgpack/v2/codec"
+ 	"github.com/hashicorp/memberlist"
+ )
+ 
+@@ -40,15 +42,11 @@ func (d *delegate) NotifyMsg(buf []byte) {
+ 	if d.serf.config.messageDropper(t) {
+ 		return
+ 	}
+-	m := readMessage(buf)
+-	if !d.acceptMessage(m) {
+-		return
+-	}
+ 
+ 	switch t {
+ 	case messageLeaveType:
++		var leave messageLeave
++		if err := decodeMessage(buf[1:], &leave); err != nil {
+-		leave := *m.value.(*messageLeave)
+-		if err := m.err; err != nil {
+ 			d.serf.logger.Printf("[ERR] serf: Error decoding leave message: %s", err)
+ 			break
+ 		}
+@@ -57,8 +55,8 @@ func (d *delegate) NotifyMsg(buf []byte) {
+ 		rebroadcast = d.serf.handleNodeLeaveIntent(&leave)
+ 
+ 	case messageJoinType:
++		var join messageJoin
++		if err := decodeMessage(buf[1:], &join); err != nil {
+-		join := *m.value.(*messageJoin)
+-		if err := m.err; err != nil {
+ 			d.serf.logger.Printf("[ERR] serf: Error decoding join message: %s", err)
+ 			break
+ 		}
+@@ -67,8 +65,8 @@ func (d *delegate) NotifyMsg(buf []byte) {
+ 		rebroadcast = d.serf.handleNodeJoinIntent(&join)
+ 
+ 	case messageUserEventType:
++		var event messageUserEvent
++		if err := decodeMessage(buf[1:], &event); err != nil {
+-		event := *m.value.(*messageUserEvent)
+-		if err := m.err; err != nil {
+ 			d.serf.logger.Printf("[ERR] serf: Error decoding user event message: %s", err)
+ 			break
+ 		}
+@@ -78,8 +76,8 @@ func (d *delegate) NotifyMsg(buf []byte) {
+ 		rebroadcastQueue = d.serf.eventBroadcasts
+ 
+ 	case messageQueryType:
++		var query messageQuery
++		if err := decodeMessage(buf[1:], &query); err != nil {
+-		query := *m.value.(*messageQuery)
+-		if err := m.err; err != nil {
+ 			d.serf.logger.Printf("[ERR] serf: Error decoding query message: %s", err)
+ 			break
+ 		}
+@@ -89,8 +87,8 @@ func (d *delegate) NotifyMsg(buf []byte) {
+ 		rebroadcastQueue = d.serf.queryBroadcasts
+ 
+ 	case messageQueryResponseType:
++		var resp messageQueryResponse
++		if err := decodeMessage(buf[1:], &resp); err != nil {
+-		resp := *m.value.(*messageQueryResponse)
+-		if err := m.err; err != nil {
+ 			d.serf.logger.Printf("[ERR] serf: Error decoding query response message: %s", err)
+ 			break
+ 		}
+@@ -99,12 +97,26 @@ func (d *delegate) NotifyMsg(buf []byte) {
+ 		d.serf.handleQueryResponse(&resp)
+ 
+ 	case messageRelayType:
++		var header relayHeader
++		var handle codec.MsgpackHandle
++		reader := bytes.NewReader(buf[1:])
++		decoder := codec.NewDecoder(reader, &handle)
++		if err := decoder.Decode(&header); err != nil {
++			d.serf.logger.Printf("[ERR] serf: Error decoding relay header: %s", err)
++			break
++		}
++
++		// The remaining contents are the message itself, so forward that
++		raw := make([]byte, reader.Len())
++		_, _ = reader.Read(raw)
++
++		addr := memberlist.Address{
++			Addr: header.DestAddr.String(),
++			Name: header.DestName,
++		}
++
++		d.serf.logger.Printf("[DEBUG] serf: Relaying response to addr: %s", header.DestAddr.String())
++		if err := d.serf.memberlist.SendToAddress(addr, raw); err != nil {
+-		header := *m.value.(*relayHeader)
+-		if err := d.forwardRelay(m); err != nil {
+-			if m.err != nil {
+-				d.serf.logger.Printf("[ERR] serf: Error decoding relay header: %s", m.err)
+-				break
+-			}
+ 			d.serf.logger.Printf("[ERR] serf: Error forwarding message to %s: %s", header.DestAddr.String(), err)
+ 			break
+ 		}
+@@ -214,12 +226,8 @@ func (d *delegate) MergeRemoteState(buf []byte, isJoin bool) {
+ 	}
+ 
+ 	// Attempt a decode
++	pp := messagePushPull{}
++	if err := decodeMessage(buf[1:], &pp); err != nil {
+-	state := readRemoteState(buf[1:])
+-	if !d.acceptRemoteState(state) {
+-		return
+-	}
+-	pp := state.message
+-	if err := state.err; err != nil {
+ 		d.serf.logger.Printf("[ERR] serf: Failed to decode remote state: %v", err)
+ 		return
+ 	}
+@@ -242,19 +250,17 @@ func (d *delegate) MergeRemoteState(buf []byte, isJoin bool) {
+ 	// leave must have been accepted after that to get onto the left members
+ 	// list. If we didn't do this then the message would not get processed.
+ 	leftMap := make(map[string]struct{}, len(pp.LeftMembers))
+-	membership := membershipFromState(pp)
+ 	leave := messageLeave{}
++	for _, name := range pp.LeftMembers {
+-	for _, intent := range membership.leaves {
+-		name := intent.Node
+ 		leftMap[name] = struct{}{}
++		leave.LTime = pp.StatusLTimes[name] + 1
+-		leave.LTime = intent.LTime
+ 		leave.Node = name
+ 		d.serf.handleNodeLeaveIntent(&leave)
+ 	}
+ 
+ 	// Update any other LTimes
+ 	join := messageJoin{}
++	for name, statusLTime := range pp.StatusLTimes {
+-	for name, statusLTime := range membership.joins {
+ 		// Skip the left nodes
+ 		if _, ok := leftMap[name]; ok {
+ 			continue
+diff --git a/serf/ping_delegate.go b/serf/ping_delegate.go
+index 490af51..adbd50d 100644
+--- a/serf/ping_delegate.go
++++ b/serf/ping_delegate.go
+@@ -10,6 +10,7 @@ import (
+ 	metrics "github.com/hashicorp/go-metrics"
+ 	"github.com/hashicorp/go-msgpack/v2/codec"
+ 	"github.com/hashicorp/memberlist"
++	"github.com/hashicorp/serf/coordinate"
+ )
+ 
+ // pingDelegate is notified when memberlist successfully completes a direct ping
+@@ -53,24 +54,36 @@ func (p *pingDelegate) NotifyPingComplete(other *memberlist.Node, rtt time.Durat
+ 	if len(payload) == 0 {
+ 		return
+ 	}
++
++	// Verify ping version in the header.
++	version := payload[0]
++	if version != PingVersion {
++		p.serf.logger.Printf("[ERR] serf: Unsupported ping version: %v", version)
++		return
++	}
++
++	// Process the remainder of the message as a coordinate.
++	r := bytes.NewReader(payload[1:])
++	dec := codec.NewDecoder(r, &codec.MsgpackHandle{})
++	var coord coordinate.Coordinate
++	if err := dec.Decode(&coord); err != nil {
++		p.serf.logger.Printf("[ERR] serf: Failed to decode coordinate from ping: %v", err)
+-	update, accepted := p.updateCoordinate(other, rtt, readCoordinate(payload))
+-	if !accepted {
+ 		return
+ 	}
++
++	// Apply the update.
++	before := p.serf.coordClient.GetCoordinate()
++	after, err := p.serf.coordClient.Update(other.Name, &coord, rtt)
++	if err != nil {
+-	if update.err != nil {
+-		if update.packet.err != nil {
+-			p.serf.logger.Printf("[ERR] serf: Failed to decode coordinate from ping: %v", update.packet.err)
+-			return
+-		}
+ 		metrics.IncrCounterWithLabels([]string{"serf", "coordinate", "rejected"}, 1, p.serf.metricLabels)
+ 		p.serf.logger.Printf("[TRACE] serf: Rejected coordinate from %s: %v\n",
++			other.Name, err)
+-			other.Name, update.err)
+ 		return
+ 	}
+ 
+ 	// Publish some metrics to give us an idea of how much we are
+ 	// adjusting each time we update.
++	d := float32(before.DistanceTo(after).Seconds() * 1.0e3)
+-	d := float32(update.before.DistanceTo(update.after).Seconds() * 1.0e3)
+ 	metrics.AddSampleWithLabels([]string{"serf", "coordinate", "adjustment-ms"}, d, p.serf.metricLabels)
+ 
+ 	// Cache the coordinate for the other node, and add our own
+@@ -78,12 +91,7 @@ func (p *pingDelegate) NotifyPingComplete(other *memberlist.Node, rtt time.Durat
+ 	// users call GetCachedCoordinate with our node name, which is
+ 	// more friendly.
+ 	p.serf.coordCacheLock.Lock()
++	p.serf.coordCache[other.Name] = &coord
+-	if update.packet.version != PingVersion {
+-		p.serf.coordCacheLock.Unlock()
+-		p.serf.logger.Printf("[ERR] serf: Unsupported ping version: %v", update.packet.version)
+-		return
+-	}
+-	p.serf.coordCache[other.Name] = &update.packet.coordinate
+ 	p.serf.coordCache[p.serf.config.NodeName] = p.serf.coordClient.GetCoordinate()
+ 	p.serf.coordCacheLock.Unlock()
+ }
+diff --git a/serf/query.go b/serf/query.go
+index e194486..1b3b76a 100644
+--- a/serf/query.go
++++ b/serf/query.go
+@@ -9,6 +9,7 @@ import (
+ 	"math"
+ 	"math/rand"
+ 	"net"
++	"regexp"
+ 	"slices"
+ 	"sync"
+ 	"time"
+@@ -217,15 +218,11 @@ func (s *Serf) shouldProcessQuery(filters [][]byte) bool {
+ 		if len(filter) == 0 {
+ 			return false
+ 		}
+-		parsed := readFilter(filter)
+-		if !s.acceptFilter(parsed) {
+-			return false
+-		}
+ 		switch filterType(filter[0]) {
+ 		case filterNodeType:
+ 			// Decode the filter
++			var nodes filterNode
++			if err := decodeMessage(filter[1:], &nodes); err != nil {
+-			nodes := parsed.nodes
+-			if err := parsed.err; err != nil {
+ 				s.logger.Printf("[WARN] serf: failed to decode filterNodeType: %v", err)
+ 				return false
+ 			}
+@@ -238,15 +235,15 @@ func (s *Serf) shouldProcessQuery(filters [][]byte) bool {
+ 
+ 		case filterTagType:
+ 			// Decode the filter
++			var filt filterTag
++			if err := decodeMessage(filter[1:], &filt); err != nil {
+-			filt := parsed.tag
+-			if err := parsed.err; err != nil {
+ 				s.logger.Printf("[WARN] serf: failed to decode filterTagType: %v", err)
+ 				return false
+ 			}
+ 
+ 			// Check if we match this regex
+ 			tags := s.config.Tags
++			matched, err := regexp.MatchString(filt.Expr, tags[filt.Tag])
+-			matched, err := parsed.expression.MatchString(tags[filt.Tag]), parsed.patternErr
+ 			if err != nil {
+ 				s.logger.Printf("[WARN] serf: failed to compile filter regex (%s): %v", filt.Expr, err)
+ 				return false
+diff --git a/serf/query_filter.go b/serf/query_filter.go
+deleted file mode 100644
+index b73b4ca..0000000
+--- a/serf/query_filter.go
++++ /dev/null
+@@ -1,49 +0,0 @@
+-// Copyright IBM Corp. 2013, 2026
+-// SPDX-License-Identifier: MPL-2.0
+-
+-package serf
+-
+-import "regexp"
+-
+-type receivedFilter struct {
+-	kind       filterType
+-	nodes      filterNode
+-	tag        filterTag
+-	expression *regexp.Regexp
+-	err        error
+-	patternErr error
+-}
+-
+-func readFilter(buf []byte) receivedFilter {
+-	f := receivedFilter{kind: filterType(buf[0])}
+-	switch f.kind {
+-	case filterNodeType:
+-		f.err = decodeMessage(buf[1:], &f.nodes)
+-	case filterTagType:
+-		f.err = decodeMessage(buf[1:], &f.tag)
+-		if f.err == nil {
+-			f.expression, f.patternErr = regexp.Compile(f.tag.Expr)
+-		}
+-	}
+-	return f
+-}
+-
+-func (s *Serf) acceptFilter(f receivedFilter) bool {
+-	if f.kind != filterNodeType && f.kind != filterTagType {
+-		s.logger.Printf("[WARN] serf: query has unrecognized filter type: %d", f.kind)
+-		return false
+-	}
+-	if f.err != nil {
+-		if f.kind == filterNodeType {
+-			s.logger.Printf("[WARN] serf: failed to decode filterNodeType: %v", f.err)
+-		} else {
+-			s.logger.Printf("[WARN] serf: failed to decode filterTagType: %v", f.err)
+-		}
+-		return false
+-	}
+-	if f.patternErr != nil {
+-		s.logger.Printf("[WARN] serf: failed to compile filter regex (%s): %v", f.tag.Expr, f.patternErr)
+-		return false
+-	}
+-	return true
+-}
+diff --git a/serf/receive.go b/serf/receive.go
+deleted file mode 100644
+index e7f7d2b..0000000
+--- a/serf/receive.go
++++ /dev/null
+@@ -1,124 +0,0 @@
+-// Copyright IBM Corp. 2013, 2026
+-// SPDX-License-Identifier: MPL-2.0
+-
+-package serf
+-
+-import (
+-	"bytes"
+-
+-	"github.com/hashicorp/go-msgpack/v2/codec"
+-	"github.com/hashicorp/memberlist"
+-)
+-
+-type receivedMessage struct {
+-	kind  messageType
+-	value any
+-	err   error
+-	raw   []byte
+-}
+-
+-func readMessage(buf []byte) receivedMessage {
+-	m := receivedMessage{kind: messageType(buf[0])}
+-	switch m.kind {
+-	case messageLeaveType:
+-		m.value = &messageLeave{}
+-	case messageJoinType:
+-		m.value = &messageJoin{}
+-	case messageUserEventType:
+-		m.value = &messageUserEvent{}
+-	case messageQueryType:
+-		m.value = &messageQuery{}
+-	case messageQueryResponseType:
+-		m.value = &messageQueryResponse{}
+-	case messageRelayType:
+-		m.value = &relayHeader{}
+-		reader := bytes.NewReader(buf[1:])
+-		m.err = codec.NewDecoder(reader, &codec.MsgpackHandle{}).Decode(m.value)
+-		if m.err == nil {
+-			m.raw = make([]byte, reader.Len())
+-			_, _ = reader.Read(m.raw)
+-		}
+-		return m
+-	default:
+-		return m
+-	}
+-	m.err = decodeMessage(buf[1:], m.value)
+-	return m
+-}
+-
+-func (d *delegate) acceptMessage(m receivedMessage) bool {
+-	if m.value == nil {
+-		d.serf.logger.Printf("[WARN] serf: Received message of unknown type: %d", m.kind)
+-		return false
+-	}
+-	if m.err == nil {
+-		return true
+-	}
+-	switch m.kind {
+-	case messageLeaveType:
+-		d.serf.logger.Printf("[ERR] serf: Error decoding leave message: %s", m.err)
+-	case messageJoinType:
+-		d.serf.logger.Printf("[ERR] serf: Error decoding join message: %s", m.err)
+-	case messageUserEventType:
+-		d.serf.logger.Printf("[ERR] serf: Error decoding user event message: %s", m.err)
+-	case messageQueryType:
+-		d.serf.logger.Printf("[ERR] serf: Error decoding query message: %s", m.err)
+-	case messageQueryResponseType:
+-		d.serf.logger.Printf("[ERR] serf: Error decoding query response message: %s", m.err)
+-	case messageRelayType:
+-		d.serf.logger.Printf("[ERR] serf: Error decoding relay header: %s", m.err)
+-	}
+-	return false
+-}
+-
+-func (d *delegate) forwardRelay(m receivedMessage) error {
+-	header := m.value.(*relayHeader)
+-	addr := memberlist.Address{
+-		Addr: header.DestAddr.String(),
+-		Name: header.DestName,
+-	}
+-	d.serf.logger.Printf("[DEBUG] serf: Relaying response to addr: %s", addr.Addr)
+-	return d.serf.memberlist.SendToAddress(addr, m.raw)
+-}
+-
+-type remoteState struct {
+-	message messagePushPull
+-	err     error
+-}
+-
+-func readRemoteState(buf []byte) remoteState {
+-	var state remoteState
+-	state.err = decodeMessage(buf, &state.message)
+-	return state
+-}
+-
+-func (d *delegate) acceptRemoteState(state remoteState) bool {
+-	if state.err != nil {
+-		d.serf.logger.Printf("[ERR] serf: Failed to decode remote state: %v", state.err)
+-		return false
+-	}
+-	return true
+-}
+-
+-type remoteMembership struct {
+-	leaves []messageLeave
+-	joins  map[string]LamportTime
+-}
+-
+-func membershipFromState(pp messagePushPull) remoteMembership {
+-	membership := remoteMembership{
+-		leaves: make([]messageLeave, 0, len(pp.LeftMembers)),
+-		joins:  make(map[string]LamportTime, len(pp.StatusLTimes)),
+-	}
+-	for name, clock := range pp.StatusLTimes {
+-		membership.joins[name] = clock
+-	}
+-	for _, name := range pp.LeftMembers {
+-		membership.leaves = append(membership.leaves, messageLeave{
+-			Node:  name,
+-			LTime: pp.StatusLTimes[name] + 1,
+-		})
+-		delete(membership.joins, name)
+-	}
+-	return membership
+-}

@@ -1,0 +1,360 @@
+diff --git a/src/raw/build.rs b/src/raw/build.rs
+index 58aeddd..e93626b 100644
+--- a/src/raw/build.rs
++++ b/src/raw/build.rs
+@@ -45,7 +45,6 @@ pub struct Builder<W> {
+     ///
+     /// No internal buffering is done.
+     wtr: CountingWriter<W>,
+-    format_version: u64,
+     /// The stack of unfinished nodes.
+     ///
+     /// An unfinished node is a node that could potentially have a new
+@@ -91,61 +90,6 @@ pub struct BuilderNode {
+     pub trans: Vec<Transition>,
+ }
+ 
+-pub(crate) enum NodeEncoding {
+-    Empty,
+-    Next(u8),
+-    Single(Transition),
+-    General { output_size: u8, transition_size: u8, has_outputs: bool },
+-}
+-
+-impl BuilderNode {
+-    pub(crate) fn encoding(
+-        &self,
+-        last_addr: CompiledAddr,
+-        addr: CompiledAddr,
+-    ) -> NodeEncoding {
+-        assert!(self.trans.len() <= 256);
+-        if self.trans.is_empty()
+-            && self.is_final
+-            && self.final_output.is_zero()
+-        {
+-            return NodeEncoding::Empty;
+-        }
+-        match self.trans.as_slice() {
+-            [transition] if !self.is_final => {
+-                if transition.addr == last_addr && transition.out.is_zero() {
+-                    NodeEncoding::Next(transition.inp)
+-                } else {
+-                    NodeEncoding::Single(*transition)
+-                }
+-            }
+-            _ => {
+-                let mut transition_size = 0;
+-                let mut output_size =
+-                    bytes::pack_size(self.final_output.value());
+-                let mut has_outputs = !self.final_output.is_zero();
+-                for transition in &self.trans {
+-                    output_size = output_size
+-                        .max(bytes::pack_size(transition.out.value()));
+-                    has_outputs |= !transition.out.is_zero();
+-                    let delta = if transition.addr == EMPTY_ADDRESS {
+-                        EMPTY_ADDRESS
+-                    } else {
+-                        addr - transition.addr
+-                    };
+-                    transition_size =
+-                        transition_size.max(bytes::pack_size(delta as u64));
+-                }
+-                NodeEncoding::General {
+-                    output_size,
+-                    transition_size,
+-                    has_outputs,
+-                }
+-            }
+-        }
+-    }
+-}
+-
+ #[derive(Debug)]
+ struct LastTransition {
+     inp: u8,
+@@ -180,13 +124,11 @@ impl<W: io::Write> Builder<W> {
+         // Don't allow any nodes to have address 0-7. We use these to encode
+         // the API version. We also use addresses `0` and `1` as special
+         // sentinel values, so they should never correspond to a real node.
++        bytes::io_write_u64_le(VERSION, &mut wtr)?;
+-        let format_version = VERSION;
+-        bytes::io_write_u64_le(format_version, &mut wtr)?;
+         // Similarly for 8-15 for the fst type.
+         bytes::io_write_u64_le(ty, &mut wtr)?;
+         Ok(Builder {
+             wtr,
+-            format_version,
+             unfinished: UnfinishedNodes::new(),
+             registry: Registry::new(10_000, 2),
+             last: None,
+@@ -274,7 +216,14 @@ impl<W: io::Write> Builder<W> {
+         self.compile_from(0)?;
+         let root_node = self.unfinished.pop_root();
+         let root_addr = self.compile(&root_node)?;
++        bytes::io_write_u64_le(self.len as u64, &mut self.wtr)?;
++        bytes::io_write_u64_le(root_addr as u64, &mut self.wtr)?;
++
++        let sum = self.wtr.masked_checksum();
++        let mut wtr = self.wtr.into_inner();
++        bytes::io_write_u32_le(sum, &mut wtr)?;
++        wtr.flush()?;
++        Ok(wtr)
+-        Ok(self.wtr.finish(self.len as u64, root_addr as u64, self.format_version)?)
+     }
+ 
+     fn insert_output<B>(&mut self, bs: B, out: Option<Output>) -> Result<()>
+@@ -335,7 +284,7 @@ impl<W: io::Write> Builder<W> {
+             return Ok(*addr);
+         }
+         let start_addr = self.wtr.count() as CompiledAddr;
++        node.compile_to(&mut self.wtr, self.last_addr, start_addr)?;
+-        node.compile_format(&mut self.wtr, self.last_addr, start_addr, self.format_version)?;
+         self.last_addr = self.wtr.count() as CompiledAddr - 1;
+         if let RegistryEntry::NotFound(cell) = entry {
+             cell.insert(self.last_addr);
+diff --git a/src/raw/counting_writer.rs b/src/raw/counting_writer.rs
+index c4ff175..70d9315 100644
+--- a/src/raw/counting_writer.rs
++++ b/src/raw/counting_writer.rs
+@@ -1,6 +1,5 @@
+ use std::io;
+ 
+-use crate::bytes;
+ use crate::raw::crc32::CheckSummer;
+ 
+ /// Wraps any writer that counts and checksums bytes written.
+@@ -38,20 +37,6 @@ impl<W: io::Write> CountingWriter<W> {
+         self.wtr
+     }
+ 
+-    pub(crate) fn finish(mut self, keys: u64, root: u64, version: u64) -> io::Result<W> {
+-        bytes::io_write_u64_le(keys, &mut self)?;
+-        bytes::io_write_u64_le(root, &mut self)?;
+-        if version <= 2 {
+-            let mut writer = self.into_inner();
+-            writer.flush()?;
+-            return Ok(writer);
+-        }
+-        let checksum = self.summer.masked();
+-        bytes::io_write_u32_le(checksum, &mut self.wtr)?;
+-        self.wtr.flush()?;
+-        Ok(self.wtr)
+-    }
+-
+     /// Gets a reference to the underlying writer.
+     pub fn get_ref(&self) -> &W {
+         &self.wtr
+diff --git a/src/raw/mod.rs b/src/raw/mod.rs
+index ba9407b..6cc0eeb 100644
+--- a/src/raw/mod.rs
++++ b/src/raw/mod.rs
+@@ -410,34 +410,13 @@ impl<D: AsRef<[u8]>> Fst<D> {
+     /// If the key does not exist, then `None` is returned.
+     #[inline]
+     pub fn get<B: AsRef<[u8]>>(&self, key: B) -> Option<Output> {
++        self.as_ref().get(key.as_ref())
+-        let fst = self.as_ref();
+-        let mut node = fst.root();
+-        let mut output = Output::zero();
+-        for &input in key.as_ref() {
+-            let index = node.find_input(input)?;
+-            let transition = node.transition(index);
+-            output = output.cat(transition.out);
+-            node = fst.node(transition.addr);
+-        }
+-        if node.is_final() {
+-            Some(output.cat(node.final_output()))
+-        } else {
+-            None
+-        }
+     }
+ 
+     /// Returns true if and only if the given key is in this FST.
+     #[inline]
+     pub fn contains_key<B: AsRef<[u8]>>(&self, key: B) -> bool {
++        self.as_ref().contains_key(key.as_ref())
+-        let fst = self.as_ref();
+-        let mut node = fst.root();
+-        for &input in key.as_ref() {
+-            match node.find_input(input) {
+-                None => return false,
+-                Some(index) => node = fst.node(node.transition_addr(index)),
+-            }
+-        }
+-        node.is_final()
+     }
+ 
+     /// Retrieves the key associated with the given value.
+diff --git a/src/raw/node.rs b/src/raw/node.rs
+index 61a704d..820b29e 100644
+--- a/src/raw/node.rs
++++ b/src/raw/node.rs
+@@ -4,7 +4,7 @@ use std::io;
+ use std::ops::Range;
+ 
+ use crate::bytes;
++use crate::raw::build::BuilderNode;
+-use crate::raw::build::{BuilderNode, NodeEncoding};
+ use crate::raw::common_inputs::{COMMON_INPUTS, COMMON_INPUTS_INV};
+ use crate::raw::{
+     u64_to_usize, CompiledAddr, Output, Transition, EMPTY_ADDRESS,
+@@ -272,129 +272,7 @@ impl BuilderNode {
+         last_addr: CompiledAddr,
+         addr: CompiledAddr,
+     ) -> io::Result<()> {
++        Node::compile(wtr, last_addr, addr, self)
+-        self.compile_format(wtr, last_addr, addr, crate::raw::VERSION)
+-    }
+-
+-    pub(crate) fn compile_format<W: io::Write>(
+-        &self,
+-        mut wtr: W,
+-        last_addr: CompiledAddr,
+-        addr: CompiledAddr,
+-        version: u64,
+-    ) -> io::Result<()> {
+-        match self.encoding(last_addr, addr) {
+-            NodeEncoding::Empty => Ok(()),
+-            NodeEncoding::Next(input) => {
+-                if version < 3 {
+-                    return StateOneTransNext::compile(wtr, addr, input);
+-                }
+-                let input_index = common_idx(input, 0b111111);
+-                if input_index == 0 {
+-                    wtr.write_all(&[input])?;
+-                }
+-                wtr.write_all(&[0b11_000000 | input_index])
+-            }
+-            NodeEncoding::Single(transition) => {
+-                if version < 3 {
+-                    return StateOneTrans::compile(wtr, addr, transition);
+-                }
+-                let output = transition.out.value();
+-                let output_size = if output == 0 {
+-                    0
+-                } else {
+-                    bytes::pack_uint(&mut wtr, output)?
+-                };
+-                let delta = if transition.addr == EMPTY_ADDRESS {
+-                    EMPTY_ADDRESS
+-                } else {
+-                    addr - transition.addr
+-                };
+-                let transition_size =
+-                    bytes::pack_uint(&mut wtr, delta as u64)?;
+-                let mut sizes = PackSizes::new();
+-                sizes.set_output_pack_size(output_size);
+-                sizes.set_transition_pack_size(transition_size);
+-                wtr.write_all(&[sizes.encode()])?;
+-                let input_index = common_idx(transition.inp, 0b111111);
+-                if input_index == 0 {
+-                    wtr.write_all(&[transition.inp])?;
+-                }
+-                wtr.write_all(&[0b10_000000 | input_index])
+-            }
+-            NodeEncoding::General {
+-                output_size: mut osize,
+-                transition_size: mut tsize,
+-                has_outputs: mut any_outs,
+-            } => {
+-                if version < 3 {
+-                    tsize = 0;
+-                    osize = bytes::pack_size(self.final_output.value());
+-                    any_outs = !self.final_output.is_zero();
+-                }
+-                for transition in &self.trans {
+-                    if version < 3 {
+-                        tsize = cmp::max(tsize, pack_delta_size(addr, transition.addr));
+-                        osize = cmp::max(osize, bytes::pack_size(transition.out.value()));
+-                        any_outs |= !transition.out.is_zero();
+-                    }
+-                }
+-                let mut pack_sizes = PackSizes::new();
+-                if any_outs {
+-                    pack_sizes.set_output_pack_size(osize);
+-                } else {
+-                    pack_sizes.set_output_pack_size(0);
+-                }
+-                pack_sizes.set_transition_pack_size(tsize);
+-
+-                let mut state = StateAnyTrans::new();
+-                state.set_final_state(self.is_final);
+-                state.set_state_ntrans(self.trans.len() as u8);
+-
+-                if any_outs {
+-                    if self.is_final {
+-                        bytes::pack_uint_in(
+-                            &mut wtr,
+-                            self.final_output.value(),
+-                            osize,
+-                        )?;
+-                    }
+-                    for t in self.trans.iter().rev() {
+-                        bytes::pack_uint_in(&mut wtr, t.out.value(), osize)?;
+-                    }
+-                }
+-                for t in self.trans.iter().rev() {
+-                    pack_delta_in(&mut wtr, addr, t.addr, tsize)?;
+-                }
+-                for t in self.trans.iter().rev() {
+-                    wtr.write_all(&[t.inp])?;
+-                }
+-                if version >= 2 && self.trans.len() > TRANS_INDEX_THRESHOLD {
+-                    // A value of 255 indicates that no transition exists for the byte
+-                    // at that index. (Except when there are 256 transitions.) Namely,
+-                    // any value greater than or equal to the number of transitions in
+-                    // this node indicates an absent transition.
+-                    let mut index = [255u8; 256];
+-                    for (i, t) in self.trans.iter().enumerate() {
+-                        index[t.inp as usize] = i as u8;
+-                    }
+-                    wtr.write_all(&index)?;
+-                }
+-
+-                wtr.write_all(&[pack_sizes.encode()])?;
+-                if state.state_ntrans().is_none() {
+-                    if self.trans.len() == 256 {
+-                        // 256 can't be represented in a u8, so we abuse the fact that
+-                        // the # of transitions can never be 1 here, since 1 is always
+-                        // encoded in the state byte.
+-                        wtr.write_all(&[1])?;
+-                    } else {
+-                        wtr.write_all(&[self.trans.len() as u8])?;
+-                    }
+-                }
+-                wtr.write_all(&[state.0])?;
+-                Ok(())
+-            }
+-        }
+     }
+ }
+ 
+diff --git a/src/raw/registry.rs b/src/raw/registry.rs
+index db23bbe..3b00a5b 100644
+--- a/src/raw/registry.rs
++++ b/src/raw/registry.rs
+@@ -40,23 +40,7 @@ impl Registry {
+         let bucket = self.hash(node);
+         let start = self.mru_size * bucket;
+         let end = start + self.mru_size;
++        RegistryCache { cells: &mut self.table[start..end] }.entry(node)
+-        let cells = &mut self.table[start..end];
+-        let found = cells
+-            .iter()
+-            .position(|cell| cell.addr != NONE_ADDRESS && &cell.node == node);
+-        match found {
+-            Some(index) => {
+-                let addr = cells[index].addr;
+-                cells[..=index].rotate_right(1);
+-                RegistryEntry::Found(addr)
+-            }
+-            None => {
+-                let last = cells.len() - 1;
+-                cells[last].node.clone_from(node);
+-                cells.rotate_right(1);
+-                RegistryEntry::NotFound(&mut cells[0])
+-            }
+-        }
+     }
+ 
+     fn hash(&self, node: &BuilderNode) -> usize {

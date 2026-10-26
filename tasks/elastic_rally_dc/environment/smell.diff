@@ -1,0 +1,745 @@
+diff --git a/esrally/driver/driver.py b/esrally/driver/driver.py
+index 735faec..d7eacec 100644
+--- a/esrally/driver/driver.py
++++ b/esrally/driver/driver.py
+@@ -1072,16 +1072,32 @@ class SamplePostprocessor:
+         self.downsample_factor = downsample_factor
+ 
+     def put_sample(self, sample, name, unit, meta_data):
++        self._put_sample_values(
++            getattr(sample, name),
++            sample.task.name,
++            sample.operation_name,
++            sample.operation_type,
++            sample.sample_type,
++            sample.absolute_time,
++            sample.relative_time,
++            name,
++            unit,
++            meta_data,
++        )
++
++    def _put_sample_values(
++        self, elapsed, task_name, operation_name, operation_type, sample_type, absolute_time, relative_time, name, unit, meta_data
++    ):
+         self.metrics_store.put_value_cluster_level(
+             name=name,
+-            value=convert.seconds_to_ms(getattr(sample, name)),
++            value=convert.seconds_to_ms(elapsed),
+             unit=unit,
+-            task=sample.task.name,
+-            operation=sample.operation_name,
+-            operation_type=sample.operation_type,
+-            sample_type=sample.sample_type,
+-            absolute_time=sample.absolute_time,
+-            relative_time=sample.relative_time,
++            task=task_name,
++            operation=operation_name,
++            operation_type=operation_type,
++            sample_type=sample_type,
++            absolute_time=absolute_time,
++            relative_time=relative_time,
+             meta_data=meta_data,
+         )
+ 
+@@ -1696,6 +1712,13 @@ class ThroughputCalculator:
+ 
+     def __init__(self):
+         self.task_stats = {}
++        self.task_counts = {}
++        self.task_intervals = {}
++        self.task_buckets = {}
++        self.task_bucket_intervals = {}
++        self.task_sample_types = {}
++        self.task_sample_presence = {}
++        self.task_start_times = {}
+ 
+     def calculate(self, samples, bucket_interval_secs=1):
+         """
+@@ -1724,7 +1747,7 @@ class ThroughputCalculator:
+                 global_throughput[k] = []
+             # sort all samples by time
+             if k in self.task_stats:
+-                samples = itertools.chain(v, self.task_stats[k].unprocessed)
++                samples = itertools.chain(v, self.task_stats[k])
+             else:
+                 samples = v
+             current_samples = sorted(samples, key=lambda s: s.absolute_time)
+@@ -1745,60 +1768,58 @@ class ThroughputCalculator:
+ 
+         if task_key not in self.task_stats:
+             first_sample = current_samples[0]
+-            self.task_stats[task_key] = ThroughputCalculator.TaskStats(
+-                bucket_interval=bucket_interval_secs,
+-                sample_type=first_sample.sample_type,
+-                start_time=first_sample.absolute_time - first_sample.time_period,
+-            )
+-        current = self.task_stats[task_key]
+-        count = current.total_count
++            self.task_stats[task_key] = []
++            self.task_counts[task_key] = 0
++            self.task_intervals[task_key] = 0
++            self.task_bucket_intervals[task_key] = bucket_interval_secs
++            self.task_buckets[task_key] = bucket_interval_secs
++            self.task_sample_types[task_key] = first_sample.sample_type
++            self.task_sample_presence[task_key] = False
++            self.task_start_times[task_key] = first_sample.absolute_time - first_sample.time_period
++        count = self.task_counts[task_key]
+         last_sample = None
+-        for sample in current_samples:
++        for sample, count, interval, sample_type in self._task_progress(task_key, current_samples, count):
+             last_sample = sample
+             # print("%d,%f,%f,%s,%s,%d,%f" %
+             #       (sample.client_id, sample.absolute_time, sample.relative_time, sample.operation, sample.sample_type,
+             #        sample.total_ops, sample.time_period), file=sample_log)
+ 
+-            # once we have seen a new sample type, we stick to it.
+-            current.maybe_update_sample_type(sample.sample_type)
+-
+             # we need to store the total count separately and cannot update `current.total_count` immediately here
+             # because we would count all raw samples in `unprocessed` twice. Hence, we'll only update
+             # `current.total_count` when we have calculated a new throughput sample.
+-            count += sample.total_ops
+-            current.update_interval(sample.absolute_time)
+-
+-            if current.can_calculate_throughput():
+-                current.finish_bucket(count)
+-                task_throughput.append(
+-                    (
+-                        sample.absolute_time,
+-                        sample.relative_time,
+-                        current.sample_type,
+-                        current.throughput,
+-                        # we calculate throughput per second
+-                        f"{sample.total_ops_unit}/s",
+-                    )
+-                )
++            if interval > 0 and interval >= self.task_buckets[task_key]:
++                self.task_stats[task_key] = []
++                self.task_counts[task_key] = count
++                self._append_task_throughput(task_throughput, task_key, sample, count, interval, sample_type)
+             else:
+-                current.unprocessed.append(sample)
++                self.task_stats[task_key].append(sample)
+ 
+         # also include the last sample if we don't have one for the current sample type, even if it is below the bucket
+         # interval (mainly needed to ensure we show throughput data in test mode)
+-        if last_sample is not None and current.can_add_final_throughput_sample():
+-            current.finish_bucket(count)
+-            task_throughput.append(
+-                (
+-                    last_sample.absolute_time,
+-                    last_sample.relative_time,
+-                    current.sample_type,
+-                    current.throughput,
+-                    f"{last_sample.total_ops_unit}/s",
+-                )
++        if last_sample is not None and self.task_intervals[task_key] > 0 and not self.task_sample_presence[task_key]:
++            self.task_stats[task_key] = []
++            self.task_counts[task_key] = count
++            self._append_task_throughput(
++                task_throughput, task_key, last_sample, count, self.task_intervals[task_key], self.task_sample_types[task_key]
+             )
+ 
+         return task_throughput
+ 
++    def _task_progress(self, task_key, samples, count):
++        for sample in samples:
++            if self.task_sample_types[task_key] < sample.sample_type:
++                self.task_sample_types[task_key] = sample.sample_type
++                self.task_sample_presence[task_key] = False
++            count += sample.total_ops
++            interval = max(sample.absolute_time - self.task_start_times[task_key], self.task_intervals[task_key])
++            self.task_intervals[task_key] = interval
++            yield sample, count, interval, self.task_sample_types[task_key]
++
++    def _append_task_throughput(self, result, task_key, sample, count, interval, sample_type):
++        self.task_sample_presence[task_key] = True
++        self.task_buckets[task_key] = int(interval) + self.task_bucket_intervals[task_key]
++        result.append((sample.absolute_time, sample.relative_time, sample_type, count / interval, f"{sample.total_ops_unit}/s"))
++
+     def map_task_throughput(self, current_samples):
+         throughput = []
+         for sample in current_samples:
+diff --git a/esrally/metrics.py b/esrally/metrics.py
+index 3e7212c..4d7efb0 100644
+--- a/esrally/metrics.py
++++ b/esrally/metrics.py
+@@ -988,16 +988,55 @@ class MetricsStore:  # pylint: disable=too-many-public-methods
+         if relative_time is None:
+             relative_time = self._stop_watch.split_time()
+ 
+-        timestamp = time.to_epoch_millis(absolute_time)
++        self._publish_metric(
++            name,
++            value,
++            unit,
++            task,
++            operation,
++            operation_type,
++            sample_type,
++            time.to_epoch_millis(absolute_time),
++            convert.seconds_to_ms(relative_time),
++            meta,
++            self._race_id,
++            self._race_timestamp,
++            self._environment_name,
++            self._track,
++            self._challenge,
++            self._car_name,
++            self._track_params,
++        )
++
++    def _publish_metric(
++        self,
++        name,
++        value,
++        unit,
++        task,
++        operation,
++        operation_type,
++        sample_type,
++        timestamp,
++        relative_millis,
++        meta,
++        race_id,
++        race_timestamp,
++        environment_name,
++        track,
++        challenge,
++        car_name,
++        track_params,
++    ):
+         doc = {
+             "@timestamp": timestamp,
+-            "relative-time": convert.seconds_to_ms(relative_time),
+-            "race-id": self._race_id,
+-            "race-timestamp": self._race_timestamp,
+-            "environment": self._environment_name,
+-            "track": self._track,
+-            "challenge": self._challenge,
+-            "car": self._car_name,
++            "relative-time": relative_millis,
++            "race-id": race_id,
++            "race-timestamp": race_timestamp,
++            "environment": environment_name,
++            "track": track,
++            "challenge": challenge,
++            "car": car_name,
+             "name": name,
+             "value": value,
+             "unit": unit,
+@@ -1012,8 +1051,8 @@ class MetricsStore:  # pylint: disable=too-many-public-methods
+             doc["operation"] = operation
+         if operation_type:
+             doc["operation-type"] = operation_type
+-        if self._track_params:
+-            doc["track-params"] = self._track_params
++        if track_params:
++            doc["track-params"] = track_params
+         self._add(doc)
+ 
+     def put_doc(self, doc, level=None, node_name=None, meta_data=None, absolute_time=None, relative_time=None):
+@@ -1048,22 +1087,50 @@ class MetricsStore:  # pylint: disable=too-many-public-methods
+         if relative_time is None:
+             relative_time = self._stop_watch.split_time()
+ 
++        self._publish_document(
++            doc,
++            meta,
++            absolute_time,
++            relative_time,
++            self._race_id,
++            self._race_timestamp,
++            self._environment_name,
++            self._track,
++            self._challenge,
++            self._car_name,
++            self._track_params,
++        )
++
++    def _publish_document(
++        self,
++        doc,
++        meta,
++        absolute_time,
++        relative_time,
++        race_id,
++        race_timestamp,
++        environment_name,
++        track,
++        challenge,
++        car_name,
++        track_params,
++    ):
+         doc.update(
+             {
+                 "@timestamp": time.to_epoch_millis(absolute_time),
+                 "relative-time": convert.seconds_to_ms(relative_time),
+-                "race-id": self._race_id,
+-                "race-timestamp": self._race_timestamp,
+-                "environment": self._environment_name,
+-                "track": self._track,
+-                "challenge": self._challenge,
+-                "car": self._car_name,
++                "race-id": race_id,
++                "race-timestamp": race_timestamp,
++                "environment": environment_name,
++                "track": track,
++                "challenge": challenge,
++                "car": car_name,
+             }
+         )
+         if meta:
+             doc["meta"] = meta
+-        if self._track_params:
+-            doc["track-params"] = self._track_params
++        if track_params:
++            doc["track-params"] = track_params
+ 
+         self._add(doc)
+ 
+@@ -2008,28 +2075,22 @@ class Race:
+         self.results = results
+ 
+     def as_dict(self):
+-        """
+-        :return: A dict representation suitable for persisting this race instance as JSON.
+-        """
+-        d = {
+-            "@timestamp": time.to_epoch_millis(self.race_timestamp.timestamp()),
+-            "rally-version": self.rally_version,
+-            "rally-revision": self.rally_revision,
+-            "environment": self.environment_name,
+-            "race-id": self.race_id,
+-            "race-timestamp": time.to_iso8601(self.race_timestamp),
+-            "pipeline": self.pipeline,
+-            "multi-cluster": self.multi_cluster,
+-            "user-tags": self.user_tags,
+-            "track": self.track_name,
+-            "car": self.car,
+-            "cluster": {
+-                "revision": self.revision,
+-                "distribution-version": self.distribution_version,
+-                "distribution-flavor": self.distribution_flavor,
+-                "team-revision": self.team_revision,
+-            },
+-        }
++        d = self._race_doc_values(
++            self.race_timestamp,
++            self.rally_version,
++            self.rally_revision,
++            self.environment_name,
++            self.race_id,
++            self.pipeline,
++            self.multi_cluster,
++            self.user_tags,
++            self.track_name,
++            self.car,
++            self.revision,
++            self.distribution_version,
++            self.distribution_flavor,
++            self.team_revision,
++        )
+         if self.results:
+             if isinstance(self.results, list):
+                 d["results"] = [r.as_dict() if hasattr(r, "as_dict") else r for r in self.results]
+@@ -2051,47 +2112,130 @@ class Race:
+             d["plugin-params"] = self.plugin_params
+         return d
+ 
++    def _race_doc_values(
++        self,
++        race_timestamp,
++        rally_version,
++        rally_revision,
++        environment_name,
++        race_id,
++        pipeline,
++        multi_cluster,
++        user_tags,
++        track_name,
++        car,
++        revision,
++        distribution_version,
++        distribution_flavor,
++        team_revision,
++    ):
++        d = {
++            "@timestamp": time.to_epoch_millis(race_timestamp.timestamp()),
++            "rally-version": rally_version,
++            "rally-revision": rally_revision,
++            "environment": environment_name,
++            "race-id": race_id,
++            "race-timestamp": time.to_iso8601(race_timestamp),
++            "pipeline": pipeline,
++            "multi-cluster": multi_cluster,
++            "user-tags": user_tags,
++            "track": track_name,
++            "car": car,
++            "cluster": {
++                "revision": revision,
++                "distribution-version": distribution_version,
++                "distribution-flavor": distribution_flavor,
++                "team-revision": team_revision,
++            },
++        }
++        return d
++
+     def result_doc_base(self):
+-        """
+-        :return: Metadata shared by every ``rally-results-*`` document for this race.
+-        """
++        return self._result_doc_values(
++            self.race_timestamp,
++            self.rally_version,
++            self.rally_revision,
++            self.environment_name,
++            self.race_id,
++            self.distribution_version,
++            self.distribution_flavor,
++            self.user_tags,
++            self.track_name,
++            self.challenge_name,
++            self.car_name,
++            self.team_revision,
++            self.track_revision,
++            self.track_params,
++            self.car_params,
++            self.plugin_params,
++            self.target_id,
++            self.target_platform,
++            self.target_auth_type,
++            self.meta_data,
++            versions.is_version_identifier(self.distribution_version),
++        )
++
++    def _result_doc_values(
++        self,
++        race_timestamp,
++        rally_version,
++        rally_revision,
++        environment_name,
++        race_id,
++        distribution_version,
++        distribution_flavor,
++        user_tags,
++        track_name,
++        challenge_name,
++        car_name,
++        team_revision,
++        track_revision,
++        track_params,
++        car_params,
++        plugin_params,
++        target_id,
++        target_platform,
++        target_auth_type,
++        meta_data,
++        has_distribution_version,
++    ):
+         result_template = {
+-            "@timestamp": time.to_epoch_millis(self.race_timestamp.timestamp()),
+-            "rally-version": self.rally_version,
+-            "rally-revision": self.rally_revision,
+-            "environment": self.environment_name,
+-            "race-id": self.race_id,
+-            "race-timestamp": time.to_iso8601(self.race_timestamp),
+-            "distribution-version": self.distribution_version,
+-            "distribution-flavor": self.distribution_flavor,
+-            "user-tags": self.user_tags,
+-            "track": self.track_name,
+-            "challenge": self.challenge_name,
+-            "car": self.car_name,
++            "@timestamp": time.to_epoch_millis(race_timestamp.timestamp()),
++            "rally-version": rally_version,
++            "rally-revision": rally_revision,
++            "environment": environment_name,
++            "race-id": race_id,
++            "race-timestamp": time.to_iso8601(race_timestamp),
++            "distribution-version": distribution_version,
++            "distribution-flavor": distribution_flavor,
++            "user-tags": user_tags,
++            "track": track_name,
++            "challenge": challenge_name,
++            "car": car_name,
+             # allow to logically delete records, e.g. for UI purposes when we only want to show the latest result
+             "active": True,
+         }
+-        if versions.is_version_identifier(self.distribution_version):
+-            result_template["distribution-major-version"] = versions.major_version(self.distribution_version)
+-        if self.team_revision:
+-            result_template["team-revision"] = self.team_revision
+-        if self.track_revision:
+-            result_template["track-revision"] = self.track_revision
+-        reporting_params = track_params_for_reporting(self.track_params)
++        if has_distribution_version:
++            result_template["distribution-major-version"] = versions.major_version(distribution_version)
++        if team_revision:
++            result_template["team-revision"] = team_revision
++        if track_revision:
++            result_template["track-revision"] = track_revision
++        reporting_params = track_params_for_reporting(track_params)
+         if reporting_params:
+             result_template["track-params"] = reporting_params
+-        if self.car_params:
+-            result_template["car-params"] = self.car_params
+-        if self.plugin_params:
+-            result_template["plugin-params"] = self.plugin_params
+-        if self.target_id:
+-            result_template["target-id"] = self.target_id
+-        if self.target_platform:
+-            result_template["target-platform"] = self.target_platform
+-        if self.target_auth_type:
+-            result_template["target-auth-type"] = self.target_auth_type
+-        if self.meta_data:
+-            result_template["meta"] = self.meta_data
++        if car_params:
++            result_template["car-params"] = car_params
++        if plugin_params:
++            result_template["plugin-params"] = plugin_params
++        if target_id:
++            result_template["target-id"] = target_id
++        if target_platform:
++            result_template["target-platform"] = target_platform
++        if target_auth_type:
++            result_template["target-auth-type"] = target_auth_type
++        if meta_data:
++            result_template["meta"] = meta_data
+         return result_template
+ 
+     def time_window_result_doc(self, task, operation, window):
+@@ -2861,6 +3005,9 @@ class GlobalStatsCalculator:
+     def duration(self, time_window):
+         start = time_window.get("start_timestamp")
+         end = time_window.get("end_timestamp")
++        return self._duration_between(start, end)
++
++    def _duration_between(self, start, end):
+         if start is None or end is None:
+             return None
+         return end - start
+@@ -2870,20 +3017,34 @@ class GlobalStatsCalculator:
+             "warmup": self.store.get_op_window(task_name, sample_type=SampleType.Warmup, cluster_name=cluster_name),
+             "normal": self.store.get_op_window(task_name, sample_type=SampleType.Normal, cluster_name=cluster_name),
+         }
++        warmup = phases["warmup"]
++        normal = phases["normal"]
++        starts = [phase[0] for phase in phases.values() if phase]
++        ends = [phase[1] for phase in phases.values() if phase]
++        return self._phase_window(
++            bool(warmup),
++            warmup[0] if warmup else None,
++            warmup[1] if warmup else None,
++            bool(normal),
++            normal[0] if normal else None,
++            normal[1] if normal else None,
++            min(starts) if starts else None,
++            max(ends) if ends else None,
++        )
++
++    def _phase_window(self, has_warmup, warmup_start, warmup_end, has_normal, normal_start, normal_end, overall_start, overall_end):
+         window = {}
+-        for phase, op_window in phases.items():
+-            # a phase window is None when that phase produced no samples
+-            if op_window:
+-                window[f"{phase}_start_timestamp"] = int(op_window[0])
+-                window[f"{phase}_end_timestamp"] = int(op_window[1])
+-        starts = [op_window[0] for op_window in phases.values() if op_window]
+-        ends = [op_window[1] for op_window in phases.values() if op_window]
+-        if starts:
++        if has_warmup:
++            window["warmup_start_timestamp"] = int(warmup_start)
++            window["warmup_end_timestamp"] = int(warmup_end)
++        if has_normal:
++            window["normal_start_timestamp"] = int(normal_start)
++            window["normal_end_timestamp"] = int(normal_end)
++        if has_warmup or has_normal:
+             # start_timestamp is the earliest op start across phases (the first issued operation)
+-            window["start_timestamp"] = int(min(starts))
+-        if ends:
++            window["start_timestamp"] = int(overall_start)
+             # end_timestamp is the timestamp of last response across phases (the last operation to complete)
+-            window["end_timestamp"] = int(max(ends))
++            window["end_timestamp"] = int(overall_end)
+         return window
+ 
+     def median(self, metric_name, task_name=None, operation_type=None, sample_type=None, cluster_name=None):
+@@ -2995,14 +3156,11 @@ class GlobalStats:
+         return self.__dict__
+ 
+     def as_flat_list(self):
+-        def op_metrics(op_item, key, single_value=False):
+-            doc = {"task": op_item["task"], "operation": op_item["operation"], "name": key}
+-            if single_value:
+-                doc["value"] = {"single": op_item[key]}
+-            else:
+-                doc["value"] = op_item[key]
+-            if "meta" in op_item:
+-                doc["meta"] = op_item["meta"]
++        def op_metrics(task, operation, value, has_meta, meta, key):
++            doc = {"task": task, "operation": operation, "name": key}
++            doc["value"] = value
++            if has_meta:
++                doc["meta"] = meta
+             if self.cluster_name is not None:
+                 doc["cluster"] = self.cluster_name
+             return doc
+@@ -3014,17 +3172,52 @@ class GlobalStats:
+             elif metric == "op_metrics":
+                 for item in value:
+                     if "throughput" in item:
+-                        all_results.append(op_metrics(item, "throughput"))
++                        all_results.append(
++                            op_metrics(item["task"], item["operation"], item["throughput"], "meta" in item, item.get("meta"), "throughput")
++                        )
+                     if "latency" in item:
+-                        all_results.append(op_metrics(item, "latency"))
++                        all_results.append(
++                            op_metrics(item["task"], item["operation"], item["latency"], "meta" in item, item.get("meta"), "latency")
++                        )
+                     if "service_time" in item:
+-                        all_results.append(op_metrics(item, "service_time"))
++                        all_results.append(
++                            op_metrics(
++                                item["task"], item["operation"], item["service_time"], "meta" in item, item.get("meta"), "service_time"
++                            )
++                        )
+                     if "processing_time" in item:
+-                        all_results.append(op_metrics(item, "processing_time"))
++                        all_results.append(
++                            op_metrics(
++                                item["task"],
++                                item["operation"],
++                                item["processing_time"],
++                                "meta" in item,
++                                item.get("meta"),
++                                "processing_time",
++                            )
++                        )
+                     if "error_rate" in item:
+-                        all_results.append(op_metrics(item, "error_rate", single_value=True))
++                        all_results.append(
++                            op_metrics(
++                                item["task"],
++                                item["operation"],
++                                {"single": item["error_rate"]},
++                                "meta" in item,
++                                item.get("meta"),
++                                "error_rate",
++                            )
++                        )
+                     if "duration" in item:
+-                        all_results.append(op_metrics(item, "duration", single_value=True))
++                        all_results.append(
++                            op_metrics(
++                                item["task"],
++                                item["operation"],
++                                {"single": item["duration"]},
++                                "meta" in item,
++                                item.get("meta"),
++                                "duration",
++                            )
++                        )
+             elif metric == "ml_processing_time":
+                 for item in value:
+                     all_results.append(
+diff --git a/esrally/reporter.py b/esrally/reporter.py
+index 556a2fc..a6b65a4 100644
+--- a/esrally/reporter.py
++++ b/esrally/reporter.py
+@@ -205,12 +205,30 @@ class SummaryReporter:
+         """Build op_metrics table rows with one column per cluster."""
+         # Collect task -> list of records (one per cluster, same index)
+         task_to_records = {}
++        throughput_columns = {}
++        latency_columns = {}
++        service_columns = {}
++        error_columns = {}
++        throughput_units = {}
+         for cn in cluster_names:
+             for record in op_metrics_by_cluster.get(cn, []):
+                 task = record["task"]
+                 if task not in task_to_records:
+                     task_to_records[task] = {c: None for c in cluster_names}
+                 task_to_records[task][cn] = record
++                throughput = record.get("throughput")
++                latency = record.get("latency")
++                service_time = record.get("service_time")
++                for key in ("min", "mean", "median", "max"):
++                    column = throughput_columns.setdefault((task, key), {})
++                    column[cn] = throughput
++                for p in metrics.percentiles_for_sample_size(sys.maxsize):
++                    key = metrics.encode_float_key(p)
++                    latency_columns.setdefault((task, key), {})[cn] = latency
++                    service_columns.setdefault((task, key), {})[cn] = service_time
++                error_columns.setdefault(task, {})[cn] = record.get("error_rate")
++                if cn == cluster_names[0]:
++                    throughput_units[task] = throughput
+         lines = []
+         for task, by_cluster in task_to_records.items():
+             # Throughput
+@@ -221,14 +239,12 @@ class SummaryReporter:
+                 ("Max Throughput", "max"),
+             ]:
+ 
+-                def _throughput(rec, k):
+-                    return (rec.get("throughput") or {}).get(k) if rec else None
+-
++                column = throughput_columns[(task, key)]
+                 row = self._line_multi(
+                     label,
+                     task,
+-                    [_throughput(by_cluster.get(cn), key) for cn in cluster_names],
+-                    _throughput(by_cluster.get(cluster_names[0]), "unit") or "",
++                    [(column.get(cn) or {}).get(key) for cn in cluster_names],
++                    (throughput_units.get(task) or {}).get("unit") or "",
+                     lambda v: "%.2f" % v if v is not None else None,
+                 )
+                 if row:
+@@ -239,7 +255,7 @@ class SummaryReporter:
+                 row = self._line_multi(
+                     "%sth percentile latency" % p,
+                     task,
+-                    [(rec.get("latency") or {}).get(pk) if rec else None for rec in [by_cluster.get(cn) for cn in cluster_names]],
++                    [(latency_columns[(task, pk)].get(cn) or {}).get(pk) for cn in cluster_names],
+                     "ms",
+                     lambda v: "%.2f" % v if v is not None else None,
+                 )
+@@ -251,7 +267,7 @@ class SummaryReporter:
+                 row = self._line_multi(
+                     "%sth percentile service time" % p,
+                     task,
+-                    [(rec.get("service_time") or {}).get(pk) if rec else None for rec in [by_cluster.get(cn) for cn in cluster_names]],
++                    [(service_columns[(task, pk)].get(cn) or {}).get(pk) for cn in cluster_names],
+                     "ms",
+                     lambda v: "%.2f" % v if v is not None else None,
+                 )
+@@ -261,7 +277,7 @@ class SummaryReporter:
+             row = self._line_multi(
+                 "error rate",
+                 task,
+-                [rec.get("error_rate") if rec else None for rec in [by_cluster.get(cn) for cn in cluster_names]],
++                [error_columns[task].get(cn) for cn in cluster_names],
+                 "%",
+                 lambda v: "%.2f" % (v * 100.0) if v is not None else None,
+             )
+@@ -283,12 +299,14 @@ class SummaryReporter:
+     def _report_throughput(self, values, task):
+         throughput = values["throughput"]
+         unit = throughput["unit"]
++        return self._throughput_lines(task, throughput["min"], throughput["mean"], throughput["median"], throughput["max"], unit)
+ 
++    def _throughput_lines(self, task, minimum, mean, median, maximum, unit):
+         return self._join(
+-            self._line("Min Throughput", task, throughput["min"], unit, lambda v: "%.2f" % v),
+-            self._line("Mean Throughput", task, throughput["mean"], unit, lambda v: "%.2f" % v),
+-            self._line("Median Throughput", task, throughput["median"], unit, lambda v: "%.2f" % v),
+-            self._line("Max Throughput", task, throughput["max"], unit, lambda v: "%.2f" % v),
++            self._line("Min Throughput", task, minimum, unit, lambda v: "%.2f" % v),
++            self._line("Mean Throughput", task, mean, unit, lambda v: "%.2f" % v),
++            self._line("Median Throughput", task, median, unit, lambda v: "%.2f" % v),
++            self._line("Max Throughput", task, maximum, unit, lambda v: "%.2f" % v),
+         )
+ 
+     def _report_latency(self, values, task):

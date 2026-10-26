@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/imazen_imageflow_gc"
+version = "1.0.0"
+description = "Refactor an injected god_classes smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "interface_segregation", "rust"]
+
+[metadata]
+repo_name = "imageflow"
+repo_url = "https://github.com/imazen/imageflow"
+git_commit = "f49ec638d60d06911c7232309bba85578a0812ea"
+language = "Rust"
+smell_type = "god_classes"
+prompt_mode = "natural"
+apt_packages = ["build-essential","nasm","pkg-config","libssl-dev"]
+smell_checker_match_count = 26
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 4
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"  # baseline; agent defaults to public networking
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/imazen/imageflow", CC_FORBIDDEN_REPO_URL = "imageflow", CC_FORBIDDEN_REPO_NAME = "imageflow" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

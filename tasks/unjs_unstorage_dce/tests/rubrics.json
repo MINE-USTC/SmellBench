@@ -1,0 +1,441 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "unjs_unstorage_dce",
+  "rubric_status": "limited",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "R01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Mount lookup should use the ordered registry created for storage.",
+      "baseline_defect": "createMountRegistry always installs the empty root mount, forgetMount does not delete it, and locateMount therefore always resolves a normalized key; getMount nevertheless performs a second sorted scan.",
+      "criterion": "Use the maintained mount registry as the single lookup path and remove the unreachable second search while preserving longest matching mount selection.",
+      "acceptance": "The normal lookup reaches the selected driver and relative key through the registry with no fallback traversal after a root match. Root initialized once, nonroot unique registration sorted longest first, root replacement never appends and unmount cannot remove root. Both recovery dictionary loop and final root fallback are unreachable, but registration/watch/disposal remain live. Equivalent source-grounded control-flow redesign is valid; no mandatory producer/helper arrangement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming the fallback or changing its sort order while retaining an unreachable traversal."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "getMount; createMountRegistry; locateMount; forgetMount",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_mounts.ts",
+          "symbol": "getMount; createMountRegistry; locateMount; forgetMount",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "getMount; createMountRegistry; locateMount; forgetMount",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_mounts.ts",
+          "symbol": "getMount; createMountRegistry; locateMount; forgetMount",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R02",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Key normalization feeds storage operations, prefixed storage, and HTTP requests.",
+      "baseline_defect": "normalizeKey removes slash, backslash and query suffixes through keyPath and compactKey, but downstream storage methods, prefixStorage, and handleRequest retain recursive branches testing those removed characters.",
+      "criterion": "Keep normalization at the relevant entry boundaries and eliminate downstream recursive re-normalization guards that cannot be entered.",
+      "acceptance": "Storage item operations, prefixed storage, and HTTP handling use normalized keys without the impossible delimiter-triggered recursion. keyPath removes query and both slashes before compacting; mount slicing cannot introduce separators. Covers seven storage operations plus prefix base and HTTP normalization. Public custom Storage batch results need not be normalized: do not remove unrelated prefix result handling. Equivalent source-grounded control-flow redesign is valid; no mandatory producer/helper arrangement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting only one copied guard or removing live normalization so the recursion becomes reachable."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/utils.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_key.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/server.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/utils.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_key.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/server.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/utils.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_key.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/server.ts",
+          "symbol": "normalizeKey; keyPath; compactKey; prefixStorage; handleRequest; hasItem/getItem/getItemRaw/setItem/setItemRaw/removeItem/getMeta",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "runBatch owns creation and population of driver batches before invoking operation callbacks.",
+      "baseline_defect": "runBatch creates a batch only for an item and pushes that item before callback execution, yet both getItems and setItems callbacks contain branches for a zero-item batch.",
+      "criterion": "Make batch callbacks depend on the populated-batch invariant and remove the unreachable empty-batch driver calls and notification work.",
+      "acceptance": "An empty overall input produces no callback; every invoked callback handles its populated batch without an empty-batch arm. Batch entry allocated only immediately before push, private items populated before callbacks; empty input invokes none. Preserve mount order, per-item merged options and async boundaries; write selector must remain inside original async callback so throwing capability getters reject without changing later-batch execution. Equivalent source-grounded control-flow redesign is valid; no mandatory producer/helper arrangement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Adding an outer empty-input check while retaining the dead per-batch branches."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_batch.ts",
+          "symbol": "runBatch; getItems; setItems",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "runBatch; getItems; setItems",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_batch.ts",
+          "symbol": "runBatch; getItems; setItems",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "runBatch; getItems; setItems",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R04",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Read-batch capability selection has exhaustive getItems/getItem outcomes.",
+      "baseline_defect": "selectOperation returns getItems when present and getItem otherwise for a read batch, but getItems still tests an impossible undefined operation and enters the empty getItems call.",
+      "criterion": "Remove the impossible missing-read-operation route while retaining the valid read fallback and the distinct readonly write behavior.",
+      "acceptance": "Read batches dispatch to the available batch or per-item read operation without an undefined read branch. Read selection always getItems or getItem, even absent scalar method; write selection may be undefined for readonly and its return stays live. Native getter is observed again at actual invocation; do not cache methods or eagerly select all capabilities. Equivalent source-grounded control-flow redesign is valid; no mandatory producer/helper arrangement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting the write-side undefined case, which is reachable for a readonly driver, or keeping the read branch behind a cast."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_batch.ts",
+          "symbol": "selectOperation; getItems; setItems",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "selectOperation; getItems; setItems",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R05",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Raw writes either use a driver's raw method or serialize a string/binary value for setItem.",
+      "baseline_defect": "setItemRaw builds payload from either a string or BASE64_PREFIX plus base64Encode, both strings; its later non-string branch cannot execute.",
+      "criterion": "Remove the impossible post-encoding type branch and keep the live raw-driver and setItem serialization paths.",
+      "acceptance": "Binary and string values reach their real supported driver path without a dead call to setItemRaw inside the setItem fallback. Fallback entered without raw writer but with setItem; payload primitive string or BASE64_PREFIX+encoded bytes. Native raw path, string/binary encoding primitives and watcher behavior remain live; do not remove Buffer/browser branches. Equivalent source-grounded control-flow redesign is valid; no mandatory producer/helper arrangement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Replacing the branch with a type assertion or deleting binary serialization."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "setItemRaw; BASE64_PREFIX; base64Encode",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_utils.ts",
+          "symbol": "setItemRaw; BASE64_PREFIX; base64Encode",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "setItemRaw; BASE64_PREFIX; base64Encode",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_utils.ts",
+          "symbol": "setItemRaw; BASE64_PREFIX; base64Encode",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "setItemRaw; BASE64_PREFIX; base64Encode",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_utils.ts",
+          "symbol": "setItemRaw; BASE64_PREFIX; base64Encode",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R06",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Tracing route definitions feed the channel registry and wrapper dispatch.",
+      "baseline_defect": "tracingRoutes assigns every route a channel from TracedOperation, and withTracing creates a channel for every operation key, yet tracePromise retains a second channel factory and direct-execution fallback for an absent registry entry.",
+      "criterion": "Use the route-to-channel registry consistently and eliminate fallback channel construction that cannot occur for a configured route.",
+      "acceptance": "Wrapped operations, including getMeta's getItem channel mapping, trace through their registered channel without a second construction path. Private route registry creates every channel before wrappers, getMeta aliases existing getItem. Preserve late storage method lookup at invocation, meta/base key behavior and aliases; no caching dynamic storage operations to manufacture deadness. Equivalent source-grounded control-flow redesign is valid; no mandatory producer/helper arrangement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Dropping getMeta channel mapping or leaving the second factory behind an optional lookup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_tracing.ts",
+          "symbol": "tracingOperations; tracingRoutes; channels; tracePromise",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/tracing.ts",
+          "symbol": "tracingOperations; tracingRoutes; channels; tracePromise",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_tracing.ts",
+          "symbol": "tracingOperations; tracingRoutes; channels; tracePromise",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/tracing.ts",
+          "symbol": "tracingOperations; tracingRoutes; channels; tracePromise",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_tracing.ts",
+          "symbol": "tracingOperations; tracingRoutes; channels; tracePromise",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/tracing.ts",
+          "symbol": "tracingOperations; tracingRoutes; channels; tracePromise",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R07",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Mounted-key listing processes longest mountpoints first so child keys can mask parent results.",
+      "baseline_defect": "collector.covers(\"\") can become true only after mask(\"\") at the root mount, which is last in ordered mount processing; the loop's early continue cannot skip a later mount.",
+      "criterion": "Remove the unreachable root-mask loop guard while retaining live child-prefix masking during key collection.",
+      "acceptance": "getKeys processes mounts in precedence order without the impossible continue and still suppresses keys shadowed by child mounts. Snapshot ordered mount list before any await; only empty prefix covers empty string, unique root is last, so no following iteration sees root mask even when drivers mutate live mounts. Keep masking child keys, normalization, maxDepth capability tracking and final base/depth filtering. Equivalent source-grounded control-flow redesign is valid; no mandatory producer/helper arrangement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting collector.add's masking test, which changes real shadowing behavior."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "getKeys; createKeyCollector; registerMount",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_listing.ts",
+          "symbol": "getKeys; createKeyCollector; registerMount",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_mounts.ts",
+          "symbol": "getKeys; createKeyCollector; registerMount",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R08",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "HTTPError construction establishes valid status and reason text before an error response is built.",
+      "baseline_defect": "errorResponse converts unknown errors to HTTPError and existing HTTPError fields were sanitized at construction, yet it rechecks and reapplies statusFields to the payload.",
+      "criterion": "Use the established HTTPError invariant and remove redundant payload sanitization from response construction.",
+      "acceptance": "Error responses retain safe fields through construction and unknown-error conversion without a second impossible repair branch. Private HTTPError statusFields validates100..599 and printable ASCII; unknown errors converted before projection, no user callback/await intervenes. Preserve fractional in-range semantics and response constructor errors, not extra integer coercion. Equivalent source-grounded control-flow redesign is valid; no mandatory producer/helper arrangement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting constructor sanitization or allowing arbitrary caught objects to bypass HTTPError conversion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/server.ts",
+          "symbol": "HTTPError; errorResponse; statusFields; errorPayload",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_http.ts",
+          "symbol": "HTTPError; errorResponse; statusFields; errorPayload",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R09",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The existing string/binary raw-value variation should have one live encoding boundary.",
+      "baseline_defect": "The interaction patch replaces the serializeRaw call with inline string/binary dispatch in setItemRaw while leaving serializeRaw defined in _utils.ts as an orphaned duplicate encoding implementation.",
+      "criterion": "Consolidate string and binary fallback encoding at one live boundary, removing the unused duplicate implementation or making it the actual encoding path.",
+      "acceptance": "A change to the current string/binary encoding choice has one production boundary; no unused serializeRaw copy remains beside the live dispatch. serializeRaw has no production caller/package export after inline fallback; remove orphan or reconnect it as sole live encoding path. Base64 primitive remains used; no mandatory helper deletion if legitimately reused. Equivalent source-grounded control-flow redesign is valid; no mandatory producer/helper arrangement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting only the impossible payload type test, or adding a meaningless reference to serializeRaw while keeping duplicate dispatch."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "setItemRaw; serializeRaw; base64Encode",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_utils.ts",
+          "symbol": "setItemRaw; serializeRaw; base64Encode",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "setItemRaw; serializeRaw; base64Encode",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_utils.ts",
+          "symbol": "setItemRaw; serializeRaw; base64Encode",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "unjs_unstorage_dce",
+    "rubric_status": "limited",
+    "aggregation": "equal_weight_per_item",
+    "limitation": "Nine independent production dead-code obligations are supported. The seven repeated storage key guards share one normalization invariant, and the getItems/setItems empty-batch guards share one construction invariant; splitting them would duplicate credit."
+  }
+}

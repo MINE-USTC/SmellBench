@@ -1,0 +1,215 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "jmperez_spotify_web_api_js_dce",
+  "rubric_status": "limited",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "get_send_fallback",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 GET path then prepared payload migration.",
+      "baseline_defect": "Only caller passes prepare result with own payload; early send/return dominates the complete old type/body block.",
+      "criterion": "Remove the complete legacy read-sender fallback.",
+      "acceptance": "Keep GET send(null), no JSON serialization and open/auth/onreadystatechange before preparation/send; both old GET and non-GET fallback arms are dead, not just non-GET. Both CommonJS imported producers and browser closure producers satisfy the same reachability proof. Direct dispatch, merged handlers or other equivalent cleanup qualify; existing record shapes and helper names are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable fallback, or deleting live sender/merger/settlement effects, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "_sendRead",
+          "detail": "Only caller passes prepare result with own payload; early send/return dominates the complete old type/body block.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/request-plan.js",
+          "symbol": "prepare/options/read",
+          "detail": "Only caller passes prepare result with own payload; early send/return dominates the complete old type/body block.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_value_fallback",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 image route migrated to prepared headers/payload.",
+      "baseline_defect": "Prepared body always owns headers/payload and never owns value; image value branch has no production caller shape.",
+      "criterion": "Remove the retired value-based image encoder branch.",
+      "acceptance": "Retain live header application and final send with unchanged JPEG payload. Removing whole helper is valid only if effects are preserved elsewhere. Both CommonJS imported producers and browser closure producers satisfy the same reachability proof. Direct dispatch, merged handlers or other equivalent cleanup qualify; existing record shapes and helper names are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable fallback, or deleting live sender/merger/settlement effects, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "_sendImage",
+          "detail": "Prepared body always owns headers/payload and never owns value; image value branch has no production caller shape.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/request-plan.js",
+          "symbol": "prepare/options/read",
+          "detail": "Prepared body always owns headers/payload and never owns value; image value branch has no production caller shape.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "structured_value_fallback",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 structured/empty route then deferred encoder migration.",
+      "baseline_defect": "Same prepared record cannot satisfy own value guard, making both legacy JPEG/JSON arms dead.",
+      "criterion": "Remove the retired value-based structured encoder branch.",
+      "acceptance": "Keep JSON stringify after XHR setup, Content-Type even when serialization yields undefined; empty payload still sends null without body header. No truthiness gate on prepared payload/header. Both CommonJS imported producers and browser closure producers satisfy the same reachability proof. Direct dispatch, merged handlers or other equivalent cleanup qualify; existing record shapes and helper names are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable fallback, or deleting live sender/merger/settlement effects, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "_sendStructured",
+          "detail": "Same prepared record cannot satisfy own value guard, making both legacy JPEG/JSON arms dead.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/request-plan.js",
+          "symbol": "prepare/options/read",
+          "detail": "Same prepared record cannot satisfy own value guard, making both legacy JPEG/JSON arms dead.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "body_option_fallback",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 postData destination then owner/key/value handoff.",
+      "baseline_defect": "options receives private request object synchronously and returns truthy owner; first branch returns before direct-request fallback.",
+      "criterion": "Eliminate the dead direct-request routing in body option merging.",
+      "acceptance": "Preserve own-property _extend copying, in-place target mutation/writeback, options application before request creation. Can simplify descriptor away if semantics unchanged; no forced owner/key/value design. Both CommonJS imported producers and browser closure producers satisfy the same reachability proof. Direct dispatch, merged handlers or other equivalent cleanup qualify; existing record shapes and helper names are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable fallback, or deleting live sender/merger/settlement effects, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "_mergeBodyOptions",
+          "detail": "options receives private request object synchronously and returns truthy owner; first branch returns before direct-request fallback.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/request-plan.js",
+          "symbol": "prepare/options/read",
+          "detail": "options receives private request object synchronously and returns truthy owner; first branch returns before direct-request fallback.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "query_option_fallback",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 query destination and forced-query cases.",
+      "baseline_defect": "Same truthy-owner descriptor dominates query merge, both old direct body/query arms dead.",
+      "criterion": "Remove obsolete direct-request fallback while retaining the existing query-selection variations.",
+      "acceptance": "GET, absent/falsy body and forced-query options target params; nonGET truthy body without forced flag targets postData. Preserve own-property copy/mutation and callback option normalization. Selection may be expressed by any equivalent flow. Both CommonJS imported producers and browser closure producers satisfy the same reachability proof. Direct dispatch, merged handlers or other equivalent cleanup qualify; existing record shapes and helper names are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable fallback, or deleting live sender/merger/settlement effects, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "_mergeQueryOptions",
+          "detail": "Same truthy-owner descriptor dominates query merge, both old direct body/query arms dead.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/request-plan.js",
+          "symbol": "prepare/options/read",
+          "detail": "Same truthy-owner descriptor dominates query merge, both old direct body/query arms dead.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "accepted_response_fallback",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 response envelope replacing status handoff.",
+      "baseline_defect": "read always returns own value, including null/empty/undefined; accept always takes value branch and returns.",
+      "criterion": "Eliminate the legacy status classifier in acceptance using the actual response handoff.",
+      "acceptance": "Keep readyState4 gate, parse/report before captured status classification, malformed successful JSON\u2192null, empty response\u2192empty string and parsed values unchanged; callback/promise success effects remain live. No mandated envelope representation. Both CommonJS imported producers and browser closure producers satisfy the same reachability proof. Direct dispatch, merged handlers or other equivalent cleanup qualify; existing record shapes and helper names are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable fallback, or deleting live sender/merger/settlement effects, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "accept,_performRequest",
+          "detail": "read always returns own value, including null/empty/undefined; accept always takes value branch and returns.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/response-plan.js",
+          "symbol": "prepare/options/read",
+          "detail": "read always returns own value, including null/empty/undefined; accept always takes value branch and returns.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rejected_response_fallback",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 failure envelope dispatch.",
+      "baseline_defect": "Failure dispatcher passes truthy error XHR; rejectResponse calls failure and returns before both status fallback arms.",
+      "criterion": "Remove unreachable rejection status reclassification.",
+      "acceptance": "Keep original XHR identity for callback/promise rejection, non2xx behavior, resolve/reject optional providers and abort handling. Completion gate is live and not removable for lack of traces. Both CommonJS imported producers and browser closure producers satisfy the same reachability proof. Direct dispatch, merged handlers or other equivalent cleanup qualify; existing record shapes and helper names are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable fallback, or deleting live sender/merger/settlement effects, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "rejectResponse,_performRequest",
+          "detail": "Failure dispatcher passes truthy error XHR; rejectResponse calls failure and returns before both status fallback arms.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/response-plan.js",
+          "symbol": "prepare/options/read",
+          "detail": "Failure dispatcher passes truthy error XHR; rejectResponse calls failure and returns before both status fallback arms.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "jmperez_spotify_web_api_js_dce",
+    "rubric_status": "limited",
+    "weighting": "Each item has equal weight; score is satisfied items divided by seven.",
+    "limitation": "The matching final patch supports seven distinct unreachable statement groups in one shared request pipeline. Further points would duplicate these groups or score pre-existing behavior, so the ten-item target is not met.",
+    "excluded_from_scoring": [
+      "The empty post.diff has no effect.",
+      "Passing the existing tests, restoring behavior, browser/CommonJS loading equivalence, and keeping public APIs are constraints rather than independent dead-code removal credits.",
+      "The unchanged promise/abort lifecycle and endpoint methods do not create additional repair obligations."
+    ]
+  }
+}

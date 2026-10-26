@@ -1,0 +1,3 @@
+Remove permanently unreachable implementation paths from SQL parsing, margin-comment processing, query binding substitution, and SQL value encoding. Preserve supported public behavior, extension callbacks, error handling, tokenizer positions and buffer refill behavior. Keep the original tests unchanged. Base removal on effective dataflow and supported entry points; an unexercised optional path is not sufficient evidence of deadness.
+
+The dead-path proof crosses margin-comment handling, query binding, tokenizer refill and SQL value encoding. Retain live callback and error behavior while deleting implementations whose required input state cannot be produced by supported entrypoints.

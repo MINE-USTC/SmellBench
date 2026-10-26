@@ -1,0 +1,515 @@
+diff --git a/deepl/deepl_client.py b/deepl/deepl_client.py
+index a5de714..62d4d79 100644
+--- a/deepl/deepl_client.py
++++ b/deepl/deepl_client.py
+@@ -21,6 +21,9 @@ from deepl.exceptions import DeepLException
+ from deepl.translator import Translator
+ from deepl import util
+ import os
++import csv
++import io
++import itertools
+ import pathlib
+ import requests  # type: ignore
+ import time
+@@ -230,6 +233,26 @@ class DeepLClient(Translator):
+ 
+         return self._create_multilingual_glossary(name, glossary_dicts)
+ 
++    @staticmethod
++    def _glossary_csv_rows(csv_data, entries):
++        csv_string = csv_data if isinstance(csv_data, (str, bytes)) else csv_data.read()
++        if not isinstance(csv_string, (bytes, str)):
++            raise ValueError("Entries of the glossary are invalid")
++        if isinstance(csv_string, bytes):
++            csv_string = csv_string.decode("utf-8")
++        for index, line in enumerate(csv.reader(io.StringIO(csv_string)), 1):
++            if not line:
++                continue
++            source, target = line[0].strip(), line[1].strip()
++            if source in entries:
++                raise ValueError(f'Entry {index} duplicates source term "{source}"')
++            if not source:
++                raise ValueError(f'Term "{source}" is not a valid string')
++            for char in source:
++                if ord(char) < 32 or 128 <= ord(char) <= 159 or char in "\u2028\u2029":
++                    raise ValueError(f'Term "{source}" contains invalid character')
++            yield source, target
++
+     def create_multilingual_glossary_from_csv(
+         self,
+         name: str,
+@@ -265,7 +288,19 @@ class DeepLClient(Translator):
+         :raises DeepLException: If source and target language pair are not
+             supported for glossaries.
+         """
+-        entries = util.convert_csv_to_dict(csv_data)
++        entries_dict = {}
++        for source, target in self._glossary_csv_rows(csv_data, entries_dict):
++            if len(target) == 0:
++                raise ValueError(f'Term "{target}" is not a valid string')
++            if any(
++                0 <= ord(char) <= 31
++                or 128 <= ord(char) <= 159
++                or char in "\u2028\u2029"
++                for char in target
++            ):
++                raise ValueError(f'Term "{target}" contains invalid character')
++            entries_dict[source] = target
++        entries = entries_dict
+ 
+         dictionaries = [
+             MultilingualGlossaryDictionaryEntries(
+@@ -285,6 +320,19 @@ class DeepLClient(Translator):
+         req_glossary_dicts = []
+         # glossaries are only supported for base language types
+         for glossary_dict in glossary_dicts:
++            encoded_terms = []
++            for source, target in self._glossary_source_terms(glossary_dict.entries):
++                target = target.strip()
++                if not target:
++                    raise ValueError(f'Term "{target}" is not a valid string')
++                encoded_terms.append(source)
++                encoded_terms.append("\t")
++                for char in target:
++                    if ord(char) < 32 or 128 <= ord(char) <= 159 or char in "\u2028\u2029":
++                        raise ValueError(f'Term "{target}" contains invalid character')
++                    encoded_terms.append(char)
++                encoded_terms.append("\n")
++            entries_tsv = "".join(encoded_terms[:-1])
+             req_glossary_dict = {
+                 "source_lang": Language.remove_regional_variant(
+                     glossary_dict.source_lang
+@@ -292,7 +340,7 @@ class DeepLClient(Translator):
+                 "target_lang": Language.remove_regional_variant(
+                     glossary_dict.target_lang
+                 ),
+-                "entries": util.convert_dict_to_tsv(glossary_dict.entries),
++                "entries": entries_tsv,
+                 "entries_format": "tsv",
+             }
+             req_glossary_dicts.append(req_glossary_dict)
+@@ -409,7 +457,19 @@ class DeepLClient(Translator):
+         :raises DeepLException: If source and target language pair are not
+             supported for glossaries.
+         """
+-        entries = util.convert_csv_to_dict(csv_data)
++        entries_dict = {}
++        for source, target in self._glossary_csv_rows(csv_data, entries_dict):
++            if len(target) == 0:
++                raise ValueError(f'Term "{target}" is not a valid string')
++            if any(
++                0 <= ord(char) <= 31
++                or 128 <= ord(char) <= 159
++                or char in "\u2028\u2029"
++                for char in target
++            ):
++                raise ValueError(f'Term "{target}" contains invalid character')
++            entries_dict[source] = target
++        entries = entries_dict
+ 
+         if isinstance(glossary, MultilingualGlossaryInfo):
+             glossary = glossary.glossary_id
+@@ -432,6 +492,19 @@ class DeepLClient(Translator):
+         req_glossary_dicts = []
+         # glossaries are only supported for base language types
+         for glossary_dict in dictionaries:
++            encoded_terms = []
++            for source, target in self._glossary_source_terms(glossary_dict.entries):
++                target = target.strip()
++                if not target:
++                    raise ValueError(f'Term "{target}" is not a valid string')
++                encoded_terms.append(source)
++                encoded_terms.append("\t")
++                for char in target:
++                    if ord(char) < 32 or 128 <= ord(char) <= 159 or char in "\u2028\u2029":
++                        raise ValueError(f'Term "{target}" contains invalid character')
++                    encoded_terms.append(char)
++                encoded_terms.append("\n")
++            entries_tsv = "".join(encoded_terms[:-1])
+             req_glossary_dict = {
+                 "source_lang": Language.remove_regional_variant(
+                     glossary_dict.source_lang
+@@ -439,7 +512,7 @@ class DeepLClient(Translator):
+                 "target_lang": Language.remove_regional_variant(
+                     glossary_dict.target_lang
+                 ),
+-                "entries": util.convert_dict_to_tsv(glossary_dict.entries),
++                "entries": entries_tsv,
+                 "entries_format": "tsv",
+             }
+             req_glossary_dicts.append(req_glossary_dict)
+@@ -530,7 +603,19 @@ class DeepLClient(Translator):
+         :raises DeepLException: If source and target language pair are not
+             supported for glossaries.
+         """
+-        entries = util.convert_csv_to_dict(csv_data)
++        entries_dict = {}
++        for source, target in self._glossary_csv_rows(csv_data, entries_dict):
++            if len(target) == 0:
++                raise ValueError(f'Term "{target}" is not a valid string')
++            if any(
++                0 <= ord(char) <= 31
++                or 128 <= ord(char) <= 159
++                or char in "\u2028\u2029"
++                for char in target
++            ):
++                raise ValueError(f'Term "{target}" contains invalid character')
++            entries_dict[source] = target
++        entries = entries_dict
+ 
+         if isinstance(glossary, MultilingualGlossaryInfo):
+             glossary = glossary.glossary_id
+@@ -553,10 +638,23 @@ class DeepLClient(Translator):
+         source_lang = Language.remove_regional_variant(source_lang)
+         target_lang = Language.remove_regional_variant(target_lang)
+ 
++        encoded_terms = []
++        for source, target in self._glossary_source_terms(entries):
++            target = target.strip()
++            if not target:
++                raise ValueError(f'Term "{target}" is not a valid string')
++            encoded_terms.append(source)
++            encoded_terms.append("\t")
++            for char in target:
++                if ord(char) < 32 or 128 <= ord(char) <= 159 or char in "\u2028\u2029":
++                    raise ValueError(f'Term "{target}" contains invalid character')
++                encoded_terms.append(char)
++            encoded_terms.append("\n")
++        entries_tsv = "".join(encoded_terms[:-1])
+         request_data = {
+             "source_lang": source_lang,
+             "target_lang": target_lang,
+-            "entries": util.convert_dict_to_tsv(entries),
++            "entries": entries_tsv,
+             "entries_format": "tsv",
+         }
+ 
+diff --git a/deepl/translator.py b/deepl/translator.py
+index c6d2b32..a900f98 100644
+--- a/deepl/translator.py
++++ b/deepl/translator.py
+@@ -31,6 +31,7 @@ import http
+ import http.client
+ import json as json_module
+ import os
++import itertools
+ import pathlib
+ import requests  # type: ignore
+ import time
+@@ -524,16 +525,104 @@ class Translator:
+                 "text parameter must be a string or an iterable of strings"
+             )
+ 
+-        request_data = self._check_language_and_formality(
+-            source_lang,
+-            target_lang,
+-            formality,
+-            glossary,
+-            style_rule,
+-            translation_memory,
+-            translation_memory_threshold,
+-            glossary_ids,
+-        )
++        target_lang = str(target_lang).upper()
++        if source_lang is not None:
++            source_lang = str(source_lang).upper()
++
++        if glossary is not None and source_lang is None:
++            raise ValueError("source_lang is required if using a glossary")
++
++        if glossary_ids is not None:
++            if glossary is not None:
++                raise ValueError(
++                    "glossary_ids cannot be used together with the glossary "
++                    "parameter"
++                )
++            if source_lang is None:
++                raise ValueError(
++                    "source_lang is required if using glossary_ids"
++                )
++            if len(glossary_ids) > 5:
++                raise ValueError(
++                    "glossary_ids must not contain more than 5 glossary IDs"
++                )
++
++        if isinstance(glossary, GlossaryInfo):
++            if (
++                Language.remove_regional_variant(target_lang)
++                != glossary.target_lang
++                or source_lang != glossary.source_lang
++            ):
++                raise ValueError(
++                    "source_lang and target_lang must match glossary"
++                )
++
++        if isinstance(glossary, MultilingualGlossaryInfo):
++            target_lang_code = Language.remove_regional_variant(target_lang)
++            if not any(
++                glossary_dict.target_lang == target_lang_code
++                and glossary_dict.source_lang == source_lang
++                for glossary_dict in glossary.dictionaries
++            ):
++                raise ValueError(
++                    "must have a glossary with a dictionary for the given "
++                    "source_lang and target_lang"
++                )
++
++        if isinstance(style_rule, StyleRuleInfo):
++            if (
++                Language.remove_regional_variant(target_lang)
++                != style_rule.language.upper()
++            ):
++                raise ValueError("target_lang must match style rule language")
++
++        self._check_valid_languages(source_lang, target_lang)
++
++        request_data: dict = {"target_lang": target_lang}
++        if source_lang is not None:
++            request_data["source_lang"] = source_lang
++        if formality is not None:
++            request_data["formality"] = str(formality).lower()
++        if glossary is not None:
++            if isinstance(glossary, (GlossaryInfo, MultilingualGlossaryInfo)):
++                request_data["glossary_id"] = glossary.glossary_id
++            else:
++                request_data["glossary_id"] = glossary
++        if glossary_ids is not None:
++            resolved_ids = [
++                (
++                    entry.glossary_id
++                    if isinstance(
++                        entry, (GlossaryInfo, MultilingualGlossaryInfo)
++                    )
++                    else entry
++                )
++                for entry in glossary_ids
++            ]
++            request_data["glossary_ids"] = resolved_ids
++        if isinstance(style_rule, StyleRuleInfo):
++            request_data["style_id"] = style_rule.style_id
++        elif style_rule is not None:
++            request_data["style_id"] = style_rule
++        if isinstance(translation_memory, TranslationMemoryInfo):
++            request_data["translation_memory_id"] = (
++                translation_memory.translation_memory_id
++            )
++        elif translation_memory is not None:
++            request_data["translation_memory_id"] = translation_memory
++        if translation_memory_threshold is not None:
++            if "translation_memory_id" not in request_data:
++                raise ValueError(
++                    "translation_memory_threshold requires"
++                    " translation_memory"
++                )
++            if not (0 <= translation_memory_threshold <= 100):
++                raise ValueError(
++                    "translation_memory_threshold must be between 0 and 100"
++                )
++            request_data["translation_memory_threshold"] = (
++                translation_memory_threshold
++            )
+         request_data["text"] = text
+ 
+         # Always send show_billed_characters=true, remove when the API default
+@@ -899,16 +993,104 @@ class Translator:
+         :return: DocumentHandle with ID and key identifying document.
+         """
+ 
+-        request_data = self._check_language_and_formality(
+-            source_lang,
+-            target_lang,
+-            formality,
+-            glossary,
+-            style_rule,
+-            translation_memory,
+-            translation_memory_threshold,
+-            glossary_ids=glossary_ids,
+-        )
++        target_lang = str(target_lang).upper()
++        if source_lang is not None:
++            source_lang = str(source_lang).upper()
++
++        if glossary is not None and source_lang is None:
++            raise ValueError("source_lang is required if using a glossary")
++
++        if glossary_ids is not None:
++            if glossary is not None:
++                raise ValueError(
++                    "glossary_ids cannot be used together with the glossary "
++                    "parameter"
++                )
++            if source_lang is None:
++                raise ValueError(
++                    "source_lang is required if using glossary_ids"
++                )
++            if len(glossary_ids) > 5:
++                raise ValueError(
++                    "glossary_ids must not contain more than 5 glossary IDs"
++                )
++
++        if isinstance(glossary, GlossaryInfo):
++            if (
++                Language.remove_regional_variant(target_lang)
++                != glossary.target_lang
++                or source_lang != glossary.source_lang
++            ):
++                raise ValueError(
++                    "source_lang and target_lang must match glossary"
++                )
++
++        if isinstance(glossary, MultilingualGlossaryInfo):
++            target_lang_code = Language.remove_regional_variant(target_lang)
++            if not any(
++                glossary_dict.target_lang == target_lang_code
++                and glossary_dict.source_lang == source_lang
++                for glossary_dict in glossary.dictionaries
++            ):
++                raise ValueError(
++                    "must have a glossary with a dictionary for the given "
++                    "source_lang and target_lang"
++                )
++
++        if isinstance(style_rule, StyleRuleInfo):
++            if (
++                Language.remove_regional_variant(target_lang)
++                != style_rule.language.upper()
++            ):
++                raise ValueError("target_lang must match style rule language")
++
++        self._check_valid_languages(source_lang, target_lang)
++
++        request_data: dict = {"target_lang": target_lang}
++        if source_lang is not None:
++            request_data["source_lang"] = source_lang
++        if formality is not None:
++            request_data["formality"] = str(formality).lower()
++        if glossary is not None:
++            if isinstance(glossary, (GlossaryInfo, MultilingualGlossaryInfo)):
++                request_data["glossary_id"] = glossary.glossary_id
++            else:
++                request_data["glossary_id"] = glossary
++        if glossary_ids is not None:
++            resolved_ids = [
++                (
++                    entry.glossary_id
++                    if isinstance(
++                        entry, (GlossaryInfo, MultilingualGlossaryInfo)
++                    )
++                    else entry
++                )
++                for entry in glossary_ids
++            ]
++            request_data["glossary_ids"] = resolved_ids
++        if isinstance(style_rule, StyleRuleInfo):
++            request_data["style_id"] = style_rule.style_id
++        elif style_rule is not None:
++            request_data["style_id"] = style_rule
++        if isinstance(translation_memory, TranslationMemoryInfo):
++            request_data["translation_memory_id"] = (
++                translation_memory.translation_memory_id
++            )
++        elif translation_memory is not None:
++            request_data["translation_memory_id"] = translation_memory
++        if translation_memory_threshold is not None:
++            if "translation_memory_id" not in request_data:
++                raise ValueError(
++                    "translation_memory_threshold requires"
++                    " translation_memory"
++                )
++            if not (0 <= translation_memory_threshold <= 100):
++                raise ValueError(
++                    "translation_memory_threshold must be between 0 and 100"
++                )
++            request_data["translation_memory_threshold"] = (
++                translation_memory_threshold
++            )
+         if output_format:
+             request_data["output_format"] = output_format
+ 
+@@ -1153,6 +1340,37 @@ class Translator:
+             json = {}
+         return Usage(json)
+ 
++    @staticmethod
++    def _glossary_source_terms(entries):
++        for source, target in entries.items():
++            source = source.strip()
++            if not source:
++                raise ValueError(f'Term "{source}" is not a valid string')
++            for char in source:
++                if ord(char) < 32 or 128 <= ord(char) <= 159 or char in "\u2028\u2029":
++                    raise ValueError(f'Term "{source}" contains invalid character')
++            yield source, target
++
++    @staticmethod
++    def _glossary_response_rows(content, entries):
++        for index, line in enumerate(content.splitlines(), 1):
++            if not line:
++                continue
++            if "\t" not in line:
++                raise ValueError(f"Entry {index} does not contain separator: {line}")
++            source, target = line.split("\t", 1)
++            source, target = source.strip(), target.strip()
++            if source in entries:
++                raise ValueError(f'Entry {index} duplicates source term "{source}"')
++            if "\t" in target:
++                raise ValueError(f"Entry {index} contains more than one term separator: {line}")
++            if not source:
++                raise ValueError(f'Term "{source}" is not a valid string')
++            for char in source:
++                if ord(char) < 32 or 128 <= ord(char) <= 159 or char in "\u2028\u2029":
++                    raise ValueError(f'Term "{source}" contains invalid character')
++            yield source, target
++
+     def create_glossary(
+         self,
+         name: str,
+@@ -1188,12 +1406,25 @@ class Translator:
+         if not entries:
+             raise ValueError("glossary entries must not be empty")
+ 
++        encoded_terms = []
++        for source, target in self._glossary_source_terms(entries):
++            target = target.strip()
++            if not target:
++                raise ValueError(f'Term "{target}" is not a valid string')
++            encoded_terms.append(source)
++            encoded_terms.append("\t")
++            for char in target:
++                if ord(char) < 32 or 128 <= ord(char) <= 159 or char in "\u2028\u2029":
++                    raise ValueError(f'Term "{target}" contains invalid character')
++                encoded_terms.append(char)
++            encoded_terms.append("\n")
++        entries_tsv = "".join(encoded_terms[:-1])
+         return self._create_glossary(
+             name,
+             source_lang,
+             target_lang,
+             "tsv",
+-            util.convert_dict_to_tsv(entries),
++            entries_tsv,
+         )
+ 
+     def create_glossary_from_csv(
+@@ -1296,7 +1527,19 @@ class Translator:
+                 "Could not get the glossary content as a string",
+                 http_status_code=status,
+             )
+-        return util.convert_tsv_to_dict(content)
++        entries_dict = {}
++        for source, target in self._glossary_response_rows(content, entries_dict):
++            if len(target) == 0:
++                raise ValueError(f'Term "{target}" is not a valid string')
++            if any(
++                0 <= ord(char) <= 31
++                or 128 <= ord(char) <= 159
++                or char in "\u2028\u2029"
++                for char in target
++            ):
++                raise ValueError(f'Term "{target}" contains invalid character')
++            entries_dict[source] = target
++        return entries_dict
+ 
+     def delete_glossary(self, glossary: Union[str, GlossaryInfo]) -> None:
+         """Deletes specified glossary.

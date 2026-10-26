@@ -1,0 +1,7 @@
+Refactor Sceptre's plugin infrastructure to follow the Interface Segregation Principle. Configuration registration, YAML tag lifecycle, resolver descriptors, hook execution and template handling currently depend on broad default contracts that expose operations and state outside each client's needs. Recover coherent capability boundaries across those production paths while retaining useful shared implementation where appropriate.
+
+The broad plugin contract connects registration, YAML tag construction, resolver descriptors, hooks and template handlers. Separate the capabilities demanded by each client, including lazy resolution and cloning, while allowing minimal third-party implementations to remain valid.
+
+Preserve supported public constructors, entry points, subclass overrides and minimal third-party Hook, Resolver and TemplateHandler implementations. Preserve lazy nested resolution, per-stack cloning/setup, placeholder and recursive-resolution behavior, hook timing, handler validation, local/HTTP/S3 rendering and temporary-file ownership. Keep template body formatting, caching, upload and inline behavior unchanged.
+
+Use any coherent decomposition that reduces unrelated capability dependencies; no particular class layout is required. Do not alter the existing tests or configuration to accommodate the refactor. Run the original test suite and explain the boundaries and dispatch/lifecycle behavior your changes preserve.

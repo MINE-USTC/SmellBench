@@ -1,0 +1,2908 @@
+diff --git a/analyze/analyses/diff.rs b/analyze/analyses/diff.rs
+index 26e6834..d7613f7 100644
+--- a/analyze/analyses/diff.rs
++++ b/analyze/analyses/diff.rs
+@@ -1,19 +1,25 @@
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
++use anyhow::anyhow;
++use csv;
++use regex;
+ use serde::{self, ser::SerializeStruct};
+ use std::cmp;
++use std::collections::{HashMap, HashSet};
+ use std::io;
+ use twiggy_ir as ir;
+ use twiggy_opt as opt;
+ use twiggy_traits as traits;
+ 
+ #[derive(Debug)]
++struct Diff {
++    deltas: Vec<DiffEntry>,
+-pub(crate) struct Diff {
+-    pub(crate) engine: crate::engine::AnalysisEngine,
+ }
+ 
+ #[derive(Clone, Debug, PartialEq, Eq)]
++struct DiffEntry {
++    name: String,
++    delta: i64,
+-pub(crate) struct DiffEntry {
+-    pub(crate) name: String,
+-    pub(crate) delta: i64,
+ }
+ 
+ impl PartialOrd for DiffEntry {
+@@ -46,17 +52,43 @@ impl serde::Serialize for DiffEntry {
+ impl traits::Emit for Diff {
+     #[cfg(feature = "emit_text")]
+     fn emit_text(&self, _items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut table = Table::with_header(vec![
++            (Align::Right, "Delta Bytes".into()),
++            (Align::Left, "Item".to_string()),
++        ]);
++
++        self.deltas
++            .iter()
++            .map(|entry| vec![format!("{:+}", entry.delta), entry.name.clone()])
++            .for_each(|row| table.add_row(row));
++
++        write!(dest, "{}", &table)?;
++        Ok(())
+-        crate::engine::AnalysisEngine::diff_emit_text(&self.engine, _items, dest)
+     }
+ 
+     #[cfg(feature = "emit_json")]
+     fn emit_json(&self, _items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut arr = json::array(dest)?;
++
++        for entry in &self.deltas {
++            let mut obj = arr.object()?;
++            obj.field("delta_bytes", entry.delta as f64)?;
++            obj.field("name", entry.name.as_str())?;
++        }
++
++        Ok(())
+-        crate::engine::AnalysisEngine::diff_emit_json(&self.engine, _items, dest)
+     }
+ 
+     #[cfg(feature = "emit_csv")]
+     fn emit_csv(&self, _items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut wtr = csv::Writer::from_writer(dest);
++
++        for entry in &self.deltas {
++            wtr.serialize(entry)?;
++            wtr.flush()?;
++        }
++
++        Ok(())
+-        crate::engine::AnalysisEngine::diff_emit_csv(&self.engine, _items, dest)
+     }
+ }
+ 
+@@ -66,5 +98,118 @@ pub fn diff(
+     new_items: &mut ir::Items,
+     opts: &opt::Diff,
+ ) -> anyhow::Result<Box<dyn traits::Emit>> {
++    let max_items = opts.max_items() as usize;
++
++    // Given a set of items, create a HashMap of the items' names and sizes.
++    fn get_names_and_sizes(items: &ir::Items) -> HashMap<&str, i64> {
++        items
++            .iter()
++            .map(|item| (item.name(), i64::from(item.size())))
++            .collect()
++    }
++
++    // Collect the names and sizes of the items in the old and new collections.
++    let old_sizes = get_names_and_sizes(old_items);
++    let new_sizes = get_names_and_sizes(new_items);
++
++    // Given an item name, create a `DiffEntry` object representing the
++    // change in size, or an error if the name could not be found in
++    // either of the item collections.
++    let get_item_delta = |name: String| -> anyhow::Result<DiffEntry> {
++        let old_size = old_sizes.get::<str>(&name);
++        let new_size = new_sizes.get::<str>(&name);
++        let delta: i64 = match (old_size, new_size) {
++            (Some(old_size), Some(new_size)) => new_size - old_size,
++            (Some(old_size), None) => -old_size,
++            (None, Some(new_size)) => *new_size,
++            (None, None) => {
++                return Err(anyhow!("Could not find item with name `{}`", name));
++            }
++        };
++        Ok(DiffEntry { name, delta })
++    };
++
++    // Given a result returned by `get_item_delta`, return false if the result
++    // represents an unchanged item. Ignore errors, these are handled separately.
++    let unchanged_items_filter = |res: &anyhow::Result<DiffEntry>| -> bool {
++        if let Ok(DiffEntry { delta: 0, .. }) = res {
++            false
++        } else {
++            true
++        }
++    };
++
++    // Create a set of item names from the new and old item collections.
++    let names = old_sizes
++        .keys()
++        .chain(new_sizes.keys())
++        .map(|k| k.to_string());
++
++    // If arguments were given to the command, we should filter out items that
++    // do not match any of the given names or expressions.
++    let names: HashSet<String> = if !opts.items().is_empty() {
++        if opts.using_regexps() {
++            let regexps = regex::RegexSet::new(opts.items())?;
++            names.filter(|name| regexps.is_match(name)).collect()
++        } else {
++            let item_names = opts.items().iter().collect::<HashSet<_>>();
++            names.filter(|name| item_names.contains(&name)).collect()
++        }
++    } else {
++        names.collect()
++    };
++
++    // Iterate through the set of item names, and use the closure above to map
++    // each item into a `DiffEntry` object. Then, sort the collection.
++    let mut deltas = names
++        .into_iter()
++        .map(get_item_delta)
++        .filter(unchanged_items_filter)
++        .collect::<anyhow::Result<Vec<_>>>()?;
++    deltas.sort();
++
++    // Create an entry to summarize the diff rows that will be truncated.
++    let (rem_cnt, rem_delta): (u32, i64) = deltas
++        .iter()
++        .skip(max_items)
++        .fold((0, 0), |(cnt, rem_delta), DiffEntry { delta, .. }| {
++            (cnt + 1, rem_delta + delta)
++        });
++    let remaining = DiffEntry {
++        name: format!("... and {} more.", rem_cnt),
++        delta: rem_delta,
++    };
++
++    // Create a `DiffEntry` representing the net change, and total row count.
++    // If specifying arguments were not given, calculate the total net changes,
++    // otherwise find the total values only for items in the the deltas collection.
++    let (total_cnt, total_delta) = if opts.items().is_empty() {
++        (
++            deltas.len(),
++            i64::from(new_items.size()) - i64::from(old_items.size()),
++        )
++    } else {
++        deltas
++            .iter()
++            .fold((0, 0), |(cnt, rem_delta), DiffEntry { delta, .. }| {
++                (cnt + 1, rem_delta + delta)
++            })
++    };
++    let total = DiffEntry {
++        name: format!("Σ [{} Total Rows]", total_cnt),
++        delta: total_delta,
++    };
++
++    // Now that the 'remaining' and 'total' summary entries have been created,
++    // truncate the vector of deltas before we box up the result, and push
++    // the remaining and total rows to the deltas vector.
++    deltas.truncate(max_items);
++    if rem_cnt > 0 {
++        deltas.push(remaining);
++    }
++    deltas.push(total);
++
++    // Return the results so that they can be emitted.
++    let diff = Diff { deltas };
++    Ok(Box::new(diff) as Box<_>)
+-    crate::engine::AnalysisEngine::diff(old_items, new_items, opts)
+ }
+diff --git a/analyze/analyses/dominators/emit.rs b/analyze/analyses/dominators/emit.rs
+index 201dcf6..28b53d5 100644
+--- a/analyze/analyses/dominators/emit.rs
++++ b/analyze/analyses/dominators/emit.rs
+@@ -1,37 +1,240 @@
++use std::collections::BTreeMap;
+ use std::io;
+ 
++use csv;
+ use serde_derive::Serialize;
+ 
+ use twiggy_ir as ir;
++use twiggy_opt as opt;
+ use twiggy_traits as traits;
+ 
++use super::UnreachableItemsSummary;
+ use crate::analyses::dominators::DominatorTree;
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+ 
+ impl traits::Emit for DominatorTree {
+     #[cfg(feature = "emit_text")]
+     fn emit_text(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut table = Table::with_header(vec![
++            (Align::Right, "Retained Bytes".to_string()),
++            (Align::Right, "Retained %".to_string()),
++            (Align::Left, "Dominator Tree".to_string()),
++        ]);
++
++        let opts = &self.opts;
++        let mut row = 0 as u32;
++
++        fn recursive_add_rows(
++            table: &mut Table,
++            items: &ir::Items,
++            dominator_tree: &BTreeMap<ir::Id, Vec<ir::Id>>,
++            depth: u32,
++            mut row: &mut u32,
++            opts: &opt::Dominators,
++            id: ir::Id,
++        ) {
++            assert_eq!(id == items.meta_root(), depth == 0);
++
++            if *row > opts.max_rows() || depth > opts.max_depth() {
++                return;
++            }
++
++            if depth > 0 {
++                add_text_item(items, depth, id, table);
++            }
++
++            if let Some(children) = dominator_tree.get(&id) {
++                let mut children = children.to_vec();
++                children.sort_by(|a, b| items.retained_size(*b).cmp(&items.retained_size(*a)));
++                for child in children {
++                    *row += 1;
++                    recursive_add_rows(
++                        table,
++                        items,
++                        dominator_tree,
++                        depth + 1,
++                        &mut row,
++                        &opts,
++                        child,
++                    );
++                }
++            }
++        }
++
++        for id in &self.items {
++            let start_depth = if *id == items.meta_root() { 0 } else { 1 };
++            recursive_add_rows(
++                &mut table,
++                items,
++                &self.tree,
++                start_depth,
++                &mut row,
++                &opts,
++                *id,
++            );
++        }
++
++        if let Some(UnreachableItemsSummary {
++            count,
++            size,
++            size_percent,
++        }) = self.unreachable_items_summary
++        {
++            table.add_row(vec![
++                size.to_string(),
++                format!("{:.2}%", size_percent),
++                format!("[{} Unreachable Items]", count),
++            ]);
++        }
++
++        write!(dest, "{}", &table)?;
++        Ok(())
+-        crate::engine::AnalysisEngine::dominators_emit_text(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_json")]
+     fn emit_json(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        fn recursive_add_children(
++            items: &ir::Items,
++            opts: &opt::Dominators,
++            dominator_tree: &BTreeMap<ir::Id, Vec<ir::Id>>,
++            id: ir::Id,
++            obj: &mut json::Object,
++        ) -> anyhow::Result<()> {
++            add_json_item(items, id, obj)?;
++
++            if let Some(children) = dominator_tree.get(&id) {
++                let mut children = children.to_vec();
++                children.sort_by(|a, b| items.retained_size(*b).cmp(&items.retained_size(*a)));
++
++                let mut arr = obj.array("children")?;
++                for child in children {
++                    let mut obj = arr.object()?;
++                    recursive_add_children(items, opts, dominator_tree, child, &mut obj)?;
++                }
++            }
++
++            Ok(())
++        }
++
++        // Scoping the borrow of `arr` so we can get another object in the next block
++        let mut obj = json::object(dest)?;
++        {
++            let mut arr = obj.array("items")?;
++            for curr_id in &self.items {
++                let mut item = arr.object()?;
++                recursive_add_children(items, &self.opts, &self.tree, *curr_id, &mut item)?;
++            }
++        }
++
++        if let Some(UnreachableItemsSummary {
++            count,
++            size,
++            size_percent,
++        }) = self.unreachable_items_summary
++        {
++            let mut summary_obj = obj.array("summary")?;
++            let mut unreachable_items_obj = summary_obj.object()?;
++            unreachable_items_obj
++                .field("name", format!("[{} Unreachable Items]", count).as_ref())?;
++            unreachable_items_obj.field("retained_size", size)?;
++            unreachable_items_obj.field("retained_size_percent", size_percent)?;
++        }
++
++        Ok(())
+-        crate::engine::AnalysisEngine::dominators_emit_json(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_csv")]
+     fn emit_csv(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        fn recursive_add_children(
++            items: &ir::Items,
++            opts: &opt::Dominators,
++            dominator_tree: &BTreeMap<ir::Id, Vec<ir::Id>>,
++            id: ir::Id,
++            wtr: &mut csv::Writer<&mut dyn io::Write>,
++        ) -> anyhow::Result<()> {
++            add_csv_item(items, id, wtr)?;
++            if let Some(children) = dominator_tree.get(&id) {
++                let mut children = children.to_vec();
++                children.sort_by(|a, b| items.retained_size(*b).cmp(&items.retained_size(*a)));
++                for child in children {
++                    recursive_add_children(items, opts, dominator_tree, child, wtr)?;
++                }
++            }
++            Ok(())
++        }
++
++        let mut wtr = csv::Writer::from_writer(dest);
++        recursive_add_children(items, &self.opts, &self.tree, items.meta_root(), &mut wtr)?;
++
++        if let Some(UnreachableItemsSummary {
++            count,
++            size,
++            size_percent,
++        }) = self.unreachable_items_summary
++        {
++            let rc = CsvRecord {
++                id: None,
++                name: format!("[{} Unreachable Items]", count),
++                shallow_size: size,
++                shallow_size_percent: size_percent,
++                retained_size: size,
++                retained_size_percent: size_percent,
++                immediate_dominator: None,
++            };
++            wtr.serialize(rc)?;
++            wtr.flush()?;
++        }
++
++        Ok(())
++    }
++}
++
++#[cfg(feature = "emit_text")]
++fn add_text_item(items: &ir::Items, depth: u32, id: ir::Id, table: &mut Table) {
++    let item = &items[id];
++
++    let size = items.retained_size(id);
++    let size_percent = (f64::from(size)) / (f64::from(items.size())) * 100.0;
++
++    let mut label = String::with_capacity(depth as usize * 4 + item.name().len() + "⤷ ".len());
++    for _ in 2..depth {
++        label.push_str("    ");
++    }
++    if depth != 1 {
++        label.push_str("  ⤷ ");
+-        crate::engine::AnalysisEngine::dominators_emit_csv(&self.engine, items, dest)
+     }
++    label.push_str(item.name());
++
++    table.add_row(vec![
++        size.to_string(),
++        format!("{:.2}%", size_percent),
++        label,
++    ]);
+ }
+ 
++#[cfg(feature = "emit_json")]
++fn add_json_item(items: &ir::Items, id: ir::Id, obj: &mut json::Object) -> anyhow::Result<()> {
++    let item = &items[id];
+ 
++    obj.field("name", item.name())?;
+ 
++    let shallow_size = item.size();
++    let shallow_size_percent = f64::from(shallow_size) / f64::from(items.size()) * 100.0;
++    obj.field("shallow_size", shallow_size)?;
++    obj.field("shallow_size_percent", shallow_size_percent)?;
+ 
++    let retained_size = items.retained_size(id);
++    let retained_size_percent = f64::from(retained_size) / f64::from(items.size()) * 100.0;
++    obj.field("retained_size", retained_size)?;
++    obj.field("retained_size_percent", retained_size_percent)?;
++    Ok(())
++}
+ 
+ #[cfg(feature = "emit_csv")]
+ #[derive(Serialize, Debug)]
+ #[serde(rename_all = "PascalCase")]
++struct CsvRecord {
+-pub(crate) struct CsvRecord {
+     pub id: Option<u64>,
+     pub name: String,
+     pub shallow_size: u32,
+@@ -41,4 +244,38 @@ struct CsvRecord {
+     pub immediate_dominator: Option<u64>,
+ }
+ 
++#[cfg(feature = "emit_csv")]
++fn add_csv_item(
++    items: &ir::Items,
++    id: ir::Id,
++    wtr: &mut csv::Writer<&mut dyn io::Write>,
++) -> anyhow::Result<()> {
++    let item = &items[id];
++    let (shallow_size, shallow_size_percent) = (
++        item.size(),
++        f64::from(item.size()) / f64::from(items.size()) * 100.0,
++    );
++    let (retained_size, retained_size_percent) = (
++        items.retained_size(id),
++        f64::from(items.retained_size(id)) / f64::from(items.size()) * 100.0,
++    );
++    let idom = if let Some(idom) = items.immediate_dominators().get(&id) {
++        idom.serializable()
++    } else {
++        id.serializable()
++    };
++
++    let rc = CsvRecord {
++        id: Some(item.id().serializable()),
++        name: item.name().to_string(),
++        shallow_size,
++        shallow_size_percent,
++        retained_size,
++        retained_size_percent,
++        immediate_dominator: Some(idom),
++    };
+ 
++    wtr.serialize(rc)?;
++    wtr.flush()?;
++    Ok(())
++}
+diff --git a/analyze/analyses/dominators/mod.rs b/analyze/analyses/dominators/mod.rs
+index e98315c..79d99e1 100644
+--- a/analyze/analyses/dominators/mod.rs
++++ b/analyze/analyses/dominators/mod.rs
+@@ -1,20 +1,26 @@
++use std::collections::BTreeMap;
+ 
++use regex;
+ 
+ use twiggy_ir as ir;
+ use twiggy_opt as opt;
+ use twiggy_traits as traits;
+ 
++use crate::analyses::garbage;
+ 
++mod emit;
+-pub(crate) mod emit;
+ 
++struct DominatorTree {
++    tree: BTreeMap<ir::Id, Vec<ir::Id>>,
++    items: Vec<ir::Id>,
++    opts: opt::Dominators,
++    unreachable_items_summary: Option<UnreachableItemsSummary>,
+-pub(crate) struct DominatorTree {
+-    pub(crate) engine: crate::engine::AnalysisEngine,
+ }
+ 
++struct UnreachableItemsSummary {
++    count: usize,
++    size: u32,
++    size_percent: f64,
+-pub(crate) struct UnreachableItemsSummary {
+-    pub(crate) count: usize,
+-    pub(crate) size: u32,
+-    pub(crate) size_percent: f64,
+ }
+ 
+ /// Compute the dominator tree for the given IR graph.
+@@ -22,7 +28,55 @@ pub fn dominators(
+     items: &mut ir::Items,
+     opts: &opt::Dominators,
+ ) -> anyhow::Result<Box<dyn traits::Emit>> {
++    items.compute_dominator_tree();
++    items.compute_dominators();
++    items.compute_retained_sizes();
++    items.compute_predecessors();
++
++    let arguments = opts.items();
++    let dominator_items = if arguments.is_empty() {
++        vec![items.meta_root()]
++    } else if opts.using_regexps() {
++        let regexps = regex::RegexSet::new(arguments)?;
++        let mut sorted_items: Vec<_> = items
++            .iter()
++            .filter(|item| regexps.is_match(&item.name()))
++            .map(|item| item.id())
++            .collect();
++        sorted_items.sort_by_key(|id| -i64::from(items.retained_size(*id)));
++        sorted_items
++    } else {
++        arguments
++            .iter()
++            .filter_map(|name| items.get_item_by_name(name))
++            .map(|item| item.id())
++            .collect()
++    };
++
++    let tree = DominatorTree {
++        tree: items.dominator_tree().clone(),
++        items: dominator_items,
++        opts: opts.clone(),
++        unreachable_items_summary: summarize_unreachable_items(items, opts),
++    };
++
++    Ok(Box::new(tree) as Box<_>)
+-    crate::engine::AnalysisEngine::dominators(items, opts)
+ }
+ 
++fn summarize_unreachable_items(
++    items: &mut ir::Items,
++    opts: &opt::Dominators,
++) -> Option<UnreachableItemsSummary> {
++    let (size, count) = garbage::get_unreachable_items(&items)
++        .map(|item| item.size())
++        .fold((0, 0), |(s, c), curr| (s + curr, c + 1));
++    if opts.items().is_empty() && size > 0 {
++        Some(UnreachableItemsSummary {
++            count,
++            size,
++            size_percent: (f64::from(size)) / (f64::from(items.size())) * 100.0,
++        })
++    } else {
++        None
++    }
++}
+-
+diff --git a/analyze/analyses/garbage.rs b/analyze/analyses/garbage.rs
+index 4c6830d..77fce23 100644
+--- a/analyze/analyses/garbage.rs
++++ b/analyze/analyses/garbage.rs
+@@ -3,35 +3,178 @@ use std::io;
+ 
+ use petgraph::visit::Walker;
+ 
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+ use twiggy_ir as ir;
+ use twiggy_opt as opt;
+ use twiggy_traits as traits;
+ 
+ #[derive(Debug)]
++struct Garbage {
++    items: Vec<ir::Id>,
++    data_segments: Vec<ir::Id>,
++    limit: usize,
+-pub(crate) struct Garbage {
+-    pub(crate) engine: crate::engine::AnalysisEngine,
+ }
+ 
+ impl traits::Emit for Garbage {
+     #[cfg(feature = "emit_text")]
+     fn emit_text(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut table = Table::with_header(vec![
++            (Align::Right, "Bytes".to_string()),
++            (Align::Right, "Size %".to_string()),
++            (Align::Left, "Garbage Item".to_string()),
++        ]);
++        let items_iter = self.items.iter().map(|id| &items[*id]);
++
++        for item in items_iter.clone().take(self.limit) {
++            let size = item.size();
++            let size_percent = (f64::from(size)) / (f64::from(items.size())) * 100.0;
++            table.add_row(vec![
++                size.to_string(),
++                format!("{:.2}%", size_percent),
++                item.name().to_string(),
++            ]);
++        }
++
++        match items_iter
++            .clone()
++            .skip(self.limit)
++            .fold((0, 0), |(size, cnt), item| (size + item.size(), cnt + 1))
++        {
++            (size, cnt) if cnt > 0 => {
++                let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
++                table.add_row(vec![
++                    size.to_string(),
++                    format!("{:.2}%", size_percent),
++                    format!("... and {} more", cnt),
++                ]);
++            }
++            _ => {}
++        }
++
++        let total_size: u32 = items_iter.map(|item| item.size()).sum();
++        let total_percent = (f64::from(total_size)) / (f64::from(items.size())) * 100.0;
++        table.add_row(vec![
++            total_size.to_string(),
++            format!("{:.2}%", total_percent),
++            format!("Σ [{} Total Rows]", self.items.len()),
++        ]);
++
++        if !self.data_segments.is_empty() {
++            let total_size: u32 = self.data_segments.iter().map(|&id| items[id].size()).sum();
++            let size_percent = f64::from(total_size) / f64::from(items.size()) * 100.0;
++            table.add_row(vec![
++                total_size.to_string(),
++                format!("{:.2}%", size_percent),
++                format!(
++                    "{} potential false-positive data segments",
++                    self.data_segments.len()
++                ),
++            ]);
++        }
++
++        write!(dest, "{}", &table)?;
++        Ok(())
+-        crate::engine::AnalysisEngine::garbage_emit_text(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_json")]
+     fn emit_json(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut arr = json::array(dest)?;
++
++        for &id in self.items.iter().take(self.limit) {
++            let item = &items[id];
++
++            let mut obj = arr.object()?;
++            obj.field("name", item.name())?;
++
++            let size = item.size();
++            let size_percent = (f64::from(size)) / (f64::from(items.size())) * 100.0;
++            obj.field("bytes", size)?;
++            obj.field("size_percent", size_percent)?;
++        }
++
++        let (total_size, total_cnt) = self
++            .items
++            .iter()
++            .skip(self.limit)
++            .map(|id| &items[*id])
++            .fold((0, 0), |(size, cnt), item| (size + item.size(), cnt + 1));
++        if total_cnt > 0 {
++            let name = format!("... and {} more", total_cnt);
++            let total_size_percent = (f64::from(total_size)) / (f64::from(items.size())) * 100.0;
++            let mut obj = arr.object()?;
++            obj.field("name", name.as_str())?;
++            obj.field("bytes", total_size)?;
++            obj.field("size_percent", total_size_percent)?;
++        }
++
++        // Scoping the borrow of `arr` so we can get another object in the next block
++        {
++            let total_name = format!("Σ [{} Total Rows]", self.items.len());
++            let total_size: u32 = self.items.iter().map(|&id| items[id].size()).sum();
++            let total_size_percent = (f64::from(total_size)) / (f64::from(items.size())) * 100.0;
++            let mut obj = arr.object()?;
++            obj.field("name", total_name.as_str())?;
++            obj.field("bytes", total_size)?;
++            obj.field("size_percent", total_size_percent)?;
++        }
++
++        if !self.data_segments.is_empty() {
++            let name = format!(
++                "{} potential false-positive data segments",
++                self.data_segments.len()
++            );
++            let size: u32 = self.data_segments.iter().map(|&id| items[id].size()).sum();
++            let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
++
++            let mut obj = arr.object()?;
++            obj.field("name", name.as_str())?;
++            obj.field("bytes", size)?;
++            obj.field("size_percent", size_percent)?;
++        }
++
++        Ok(())
+-        crate::engine::AnalysisEngine::garbage_emit_json(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_csv")]
+     fn emit_csv(&self, _items: &ir::Items, _dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        unimplemented!();
+-        crate::engine::AnalysisEngine::garbage_emit_csv(&self.engine, _items, _dest)
+     }
+ }
+ 
+ /// Find items that are not transitively referenced by any exports or public functions.
+ pub fn garbage(items: &ir::Items, opts: &opt::Garbage) -> anyhow::Result<Box<dyn traits::Emit>> {
++    let mut unreachable_items = get_unreachable_items(&items).collect::<Vec<_>>();
++    unreachable_items.sort_by(|a, b| b.size().cmp(&a.size()));
++
++    // Split the items into two categories if necessary
++    let (data_segments, items_non_data) = if opts.show_data_segments() {
++        (
++            vec![],
++            unreachable_items.iter().map(|item| item.id()).collect(),
++        )
++    } else {
++        (
++            unreachable_items
++                .iter()
++                .filter(|item| item.kind().is_data())
++                .map(|item| item.id())
++                .collect(),
++            unreachable_items
++                .iter()
++                .filter(|item| !item.kind().is_data())
++                .map(|item| item.id())
++                .collect(),
++        )
++    };
++
++    let garbage_items = Garbage {
++        items: items_non_data,
++        data_segments,
++        limit: opts.max_items() as usize,
++    };
++
++    Ok(Box::new(garbage_items) as Box<_>)
+-    crate::engine::AnalysisEngine::garbage(items, opts)
+ }
+ 
+ pub(crate) fn get_unreachable_items(items: &ir::Items) -> impl Iterator<Item = &ir::Item> {
+diff --git a/analyze/analyses/monos/emit.rs b/analyze/analyses/monos/emit.rs
+index 8dfac52..2449ad4 100644
+--- a/analyze/analyses/monos/emit.rs
++++ b/analyze/analyses/monos/emit.rs
+@@ -1,24 +1,182 @@
+ use std::io;
++use std::iter;
+ 
++use csv;
++use serde_derive::Serialize;
+ 
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+ use twiggy_ir as ir;
+ use twiggy_traits as traits;
+ 
++use super::entry::MonosEntry;
+ use super::Monos;
+ 
+ impl traits::Emit for Monos {
+     #[cfg(feature = "emit_text")]
+     fn emit_text(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        struct TableRow {
++            bloat: Option<u32>,
++            bloat_percent: Option<f64>,
++            size: u32,
++            size_percent: f64,
++            name: String,
++        }
++
++        // Given an entry representing a generic function and its various
++        // monomorphizations, return a vector of table rows.
++        fn process_entry<'a>(
++            entry: &'a MonosEntry,
++            total_size: f64,
++        ) -> impl Iterator<Item = TableRow> + 'a {
++            let MonosEntry {
++                name,
++                insts,
++                size,
++                bloat,
++            } = entry;
++
++            let get_size_percent = move |x: u32| f64::from(x) / total_size * 100.0;
++
++            iter::once(TableRow {
++                bloat: Some(*bloat),
++                bloat_percent: Some(get_size_percent(*bloat)),
++                size: *size,
++                size_percent: get_size_percent(*size),
++                name: name.to_string(),
++            })
++            .chain(insts.iter().map(move |(name, size)| TableRow {
++                bloat: None,
++                bloat_percent: None,
++                size: *size,
++                size_percent: get_size_percent(*size),
++                name: format!("    {}", name),
++            }))
++        }
++
++        let mut table = Table::with_header(vec![
++            (Align::Right, "Apprx. Bloat Bytes".into()),
++            (Align::Right, "Apprx. Bloat %".into()),
++            (Align::Right, "Bytes".into()),
++            (Align::Right, "%".into()),
++            (Align::Left, "Monomorphizations".to_string()),
++        ]);
++
++        for TableRow {
++            bloat,
++            bloat_percent,
++            size,
++            size_percent,
++            name,
++        } in self
++            .monos
++            .iter()
++            .flat_map(|mono| process_entry(mono, f64::from(items.size())))
++        {
++            table.add_row(vec![
++                bloat.map(|b| b.to_string()).unwrap_or_default(),
++                bloat_percent
++                    .map(|b| format!("{:.2}%", b))
++                    .unwrap_or_default(),
++                size.to_string(),
++                format!("{:.2}%", size_percent),
++                name.clone(),
++            ]);
++        }
++        write!(dest, "{}", &table)?;
++        Ok(())
+-        crate::engine::AnalysisEngine::monos_emit_text(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_json")]
+     fn emit_json(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        // Given an entry representing a generic function and its various
++        // monomorphizations, add its information to the given JSON object.
++        fn process_entry(
++            entry: &MonosEntry,
++            obj: &mut json::Object,
++            total_size: f64,
++        ) -> anyhow::Result<()> {
++            let get_size_percent = |size: u32| (f64::from(size)) / total_size * 100.0;
++            let MonosEntry {
++                name,
++                insts,
++                size,
++                bloat,
++            } = entry;
++            obj.field("generic", name.as_str())?;
++            obj.field("approximate_monomorphization_bloat_bytes", *bloat)?;
++            obj.field(
++                "approximate_monomorphization_bloat_percent",
++                get_size_percent(*bloat),
++            )?;
++            obj.field("total_size", *size)?;
++            obj.field("total_size_percent", get_size_percent(*size))?;
++            let mut monos = obj.array("monomorphizations")?;
++            for (name, size, size_percent) in insts
++                .iter()
++                .map(|(name, size)| (name, size, get_size_percent(*size)))
++            {
++                let mut obj = monos.object()?;
++                obj.field("name", name.as_str())?;
++                obj.field("shallow_size", *size)?;
++                obj.field("shallow_size_percent", size_percent)?;
++            }
++            Ok(())
++        }
++
++        let items_size = f64::from(items.size());
++        let mut arr = json::array(dest)?;
++        for entry in &self.monos {
++            let mut obj = arr.object()?;
++            process_entry(entry, &mut obj, items_size)?;
++        }
++
++        Ok(())
+-        crate::engine::AnalysisEngine::monos_emit_json(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_csv")]
+     fn emit_csv(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        // Calculate the total size of the collection of items, and define a
++        // helper closure to calculate a percent value for a given u32 size.
++        let items_size = f64::from(items.size());
++        let get_size_percent = |size: u32| (f64::from(size)) / items_size * 100.0;
++
++        #[derive(Debug, Default, Serialize)]
++        #[serde(rename_all = "PascalCase")]
++        struct Record {
++            generic: Option<String>,
++            approximate_monomorphization_bloat_bytes: Option<u32>,
++            approximate_monomorphization_bloat_percent: Option<f64>,
++            total_size: Option<u32>,
++            total_size_percent: Option<f64>,
++            monomorphizations: Option<String>,
++        }
++
++        // Given a single `MonosEntry` object, create a record object.
++        let process_entry = |entry: &MonosEntry| -> Record {
++            let monos = entry
++                .insts
++                .iter()
++                .map(|(name, _)| name.as_str())
++                .collect::<Vec<_>>();
++            Record {
++                generic: Some(entry.name.clone()),
++                approximate_monomorphization_bloat_bytes: Some(entry.bloat),
++                approximate_monomorphization_bloat_percent: Some(get_size_percent(entry.bloat)),
++                total_size: Some(entry.size),
++                total_size_percent: Some(get_size_percent(entry.size)),
++                monomorphizations: Some(monos.join(", ")),
++            }
++        };
++
++        // Create a CSV writer and iterate through the monomorphization entries.
++        // Process each record and pass it to the destination to be serialized.
++        let mut wtr = csv::Writer::from_writer(dest);
++        for entry in &self.monos {
++            let record = process_entry(entry);
++            wtr.serialize(record)?;
++            wtr.flush()?;
++        }
++        Ok(())
+-        crate::engine::AnalysisEngine::monos_emit_csv(&self.engine, items, dest)
+     }
+ }
+diff --git a/analyze/analyses/monos/entry.rs b/analyze/analyses/monos/entry.rs
+index 6c09137..d19cd47 100644
+--- a/analyze/analyses/monos/entry.rs
++++ b/analyze/analyses/monos/entry.rs
+@@ -1,5 +1,5 @@
+ #[derive(Debug, PartialEq, Eq)]
++pub(super) struct MonosEntry {
+-pub(crate) struct MonosEntry {
+     pub name: String,
+     pub insts: Vec<(String, u32)>,
+     pub size: u32,
+diff --git a/analyze/analyses/monos/mod.rs b/analyze/analyses/monos/mod.rs
+index b659223..b6c1a3a 100644
+--- a/analyze/analyses/monos/mod.rs
++++ b/analyze/analyses/monos/mod.rs
+@@ -1,3 +1,7 @@
++use std::cmp;
++use std::collections::{BTreeMap, BTreeSet};
++
++use regex;
+ use twiggy_ir as ir;
+ use twiggy_opt as opt;
+ use twiggy_traits as traits;
+@@ -5,14 +9,184 @@ use twiggy_traits as traits;
+ mod emit;
+ mod entry;
+ 
++use self::entry::MonosEntry;
+-pub(crate) use self::entry::MonosEntry;
+ 
+ #[derive(Debug)]
++struct Monos {
++    monos: Vec<MonosEntry>,
++}
++
++/// Type alias used to represent a map of generic function names and instantiations.
++type MonosMap<'a> = BTreeMap<&'a str, Vec<(String, u32)>>;
++
++/// Collect the monomorphizations of generic functions into a map, then
++/// process the entries and sort the resulting vector.
++fn collect_monomorphizations<'a>(
++    items: &'a ir::Items,
++    opts: &opt::Monos,
++) -> anyhow::Result<MonosMap<'a>> {
++    let args_given = !opts.functions().is_empty();
++    let using_regexps = opts.using_regexps();
++    let regexps = regex::RegexSet::new(opts.functions())?;
++
++    let unsorted_monos: BTreeMap<&'a str, BTreeSet<(String, u32)>> = items
++        .iter()
++        .filter_map(|item| {
++            if let Some(generic) = item.monomorphization_of() {
++                Some((generic, item))
++            } else {
++                None
++            }
++        })
++        .filter(|(generic, _)| match (args_given, using_regexps) {
++            (true, true) => regexps.is_match(generic),
++            (true, false) => opts.functions().iter().any(|name| name == generic),
++            (false, _) => true,
++        })
++        .fold(BTreeMap::new(), |mut monos, (generic, inst)| {
++            monos
++                .entry(generic)
++                .or_insert_with(BTreeSet::new)
++                .insert((inst.name().to_string(), inst.size()));
++            monos
++        });
++
++    Ok(unsorted_monos
++        .into_iter()
++        .map(|(generic, inst_set)| {
++            let mut insts = inst_set.into_iter().collect::<Vec<_>>();
++            insts.sort_by(|(a_name, a_size), (b_name, b_size)| {
++                b_size.cmp(a_size).then(a_name.cmp(b_name))
++            });
++            (generic, insts)
++        })
++        .collect())
++}
++
++/// Helper function usedd to summarize a sequence of `MonosEntry` objects.
++/// Returns a tuple representing the number of items summarized, the total
++/// size of the items, and the total approximate potential savings.
++fn summarize_entries<'a>(entries: impl Iterator<Item = &'a MonosEntry>) -> (usize, u32, u32) {
++    entries.fold(
++        (0, 0, 0),
++        |(total_cnt, total_size, total_savings),
++         MonosEntry {
++             insts, size, bloat, ..
++         }| {
++            (
++                total_cnt + 1 + insts.len(),
++                total_size + size,
++                total_savings + bloat,
++            )
++        },
++    )
++}
++
++/// Helper function used to summarize a sequence of tuples representing
++/// instantiations of a generic function. Returns a tuple representing the
++/// number of instantiations found, and the total size.
++fn summarize_insts<'a>(entries: impl Iterator<Item = &'a (String, u32)>) -> (u32, u32) {
++    entries.fold((0, 0), |(total_cnt, total_size), (_, size)| {
++        (total_cnt + 1, total_size + size)
++    })
++}
++
++/// Find the approximate potential savings by calculating the benefits of
++/// removing the largest instantiation, and the benefits of removing an
++/// average instantiation. Returns a tuple containing total size, and bloat.
++fn calculate_total_and_bloat(insts: &[(String, u32)]) -> Option<(u32, u32)> {
++    if let Some(max) = insts.iter().map(|(_, size)| size).max() {
++        let total_size = insts.iter().map(|(_, size)| size).sum::<u32>();
++        let inst_cnt = insts.len() as u32;
++        let size_per_inst = total_size / inst_cnt;
++        let avg_savings = size_per_inst * (inst_cnt - 1);
++        let removing_largest_savings = total_size - max;
++        let approx_potential_savings = cmp::min(avg_savings, removing_largest_savings);
++        Some((total_size, approx_potential_savings))
++    } else {
++        None
++    }
++}
++
++/// Process all of the monorphizations, into a vector of `MonosEntry` objects.
++fn process_monomorphizations(monos_map: MonosMap, opts: &opt::Monos) -> Vec<MonosEntry> {
++    let mut monos = monos_map
++        .into_iter()
++        .filter_map(|(g, insts)| {
++            calculate_total_and_bloat(&insts).map(|(total, bloat)| (g, insts, total, bloat))
++        })
++        .map(|(g, mut insts, t, b)| {
++            // Truncate `insts` according to the relevant options before
++            // we map these values into `MonosEntry` objects.
++            if opts.only_generics() {
++                insts.truncate(0);
++            } else {
++                let max_monos = opts.max_monos() as usize;
++                let (rem_cnt, rem_size) = summarize_insts(insts.iter().skip(max_monos));
++                insts.truncate(max_monos);
++                if rem_cnt > 0 {
++                    insts.push((format!("... and {} more.", rem_cnt), rem_size));
++                }
++            };
++            (g, insts, t, b)
++        })
++        .map(|(name, insts, size, bloat)| MonosEntry {
++            name: name.to_string(),
++            insts,
++            size,
++            bloat,
++        })
++        .collect::<Vec<_>>();
++    monos.sort();
++    monos
++}
++
++/// Adds entries to summarize remaining rows that will be truncated, and
++/// totals for the entire set of monomorphizations.
++fn add_stats(mut monos: Vec<MonosEntry>, opts: &opt::Monos) -> Vec<MonosEntry> {
++    let max_generics = opts.max_generics() as usize;
++
++    // Create an entry to represent the remaining rows that will be truncated,
++    // only if there are more generics than we will display.
++    let remaining: Option<MonosEntry> = {
++        if monos.len() > max_generics {
++            let (rem_cnt, rem_size, rem_savings) =
++                summarize_entries(monos.iter().skip(max_generics));
++            Some(MonosEntry {
++                name: format!("... and {} more.", rem_cnt),
++                size: rem_size,
++                insts: vec![],
++                bloat: rem_savings,
++            })
++        } else {
++            None
++        }
++    };
++
++    // Create an entry to represent the 'total' summary.
++    let total = {
++        let (total_cnt, total_size, total_savings) = summarize_entries(monos.iter());
++        MonosEntry {
++            name: format!("Σ [{} Total Rows]", total_cnt),
++            size: total_size,
++            insts: vec![],
++            bloat: total_savings,
++        }
++    };
++
++    // Truncate the vector, and add the 'remaining' and 'total' summary entries.
++    monos.truncate(max_generics);
++    if let Some(remaining) = remaining {
++        monos.push(remaining);
++    }
++    monos.push(total);
++    monos
+-pub(crate) struct Monos {
+-    pub(crate) engine: crate::engine::AnalysisEngine,
+ }
+ 
+ /// Find bloaty monomorphizations of generic functions.
+ pub fn monos(items: &mut ir::Items, opts: &opt::Monos) -> anyhow::Result<Box<dyn traits::Emit>> {
++    let monos_map = collect_monomorphizations(items, opts)?;
++    let mut monos = process_monomorphizations(monos_map, opts);
++    monos = add_stats(monos, opts);
++    Ok(Box::new(Monos { monos }) as Box<_>)
+-    crate::engine::AnalysisEngine::monos(items, opts)
+ }
+diff --git a/analyze/analyses/paths/mod.rs b/analyze/analyses/paths/mod.rs
+index 8f15ed8..70b84e0 100644
+--- a/analyze/analyses/paths/mod.rs
++++ b/analyze/analyses/paths/mod.rs
+@@ -1,24 +1,144 @@
++use std::collections::BTreeSet;
+ 
++use regex;
+ 
+ use twiggy_ir as ir;
+ use twiggy_opt as opt;
+ use twiggy_traits as traits;
+ 
++mod paths_emit;
+-pub(crate) mod paths_emit;
+ mod paths_entry;
+ 
++use self::paths_entry::PathsEntry;
+-pub(crate) use self::paths_entry::PathsEntry;
+ 
+ #[derive(Debug)]
++struct Paths {
++    opts: opt::Paths,
++    entries: Vec<PathsEntry>,
+-pub(crate) struct Paths {
+-    pub(crate) engine: crate::engine::AnalysisEngine,
+ }
+ 
+ /// Find all retaining paths for the given items.
+ pub fn paths(items: &mut ir::Items, opts: &opt::Paths) -> anyhow::Result<Box<dyn traits::Emit>> {
++    // The predecessor tree only needs to be computed if we are ascending
++    // through the retaining paths.
++    if !opts.descending() {
++        items.compute_predecessors();
++    }
++
++    // Initialize the collection of Id values whose retaining paths we will emit.
++    let opts = opts.clone();
++    let entries = get_starting_positions(items, &opts)?
++        .iter()
++        .map(|id| create_entry(*id, items, &opts, &mut BTreeSet::new()))
++        .collect();
++
++    let paths = Paths { opts, entries };
++
++    Ok(Box::new(paths) as Box<_>)
+-    crate::engine::AnalysisEngine::paths(items, opts)
+ }
+ 
++/// This helper function is used to collect the `ir::Id` values for the top-most
++/// path entries for the `Paths` object, based on the given options.
++fn get_starting_positions(items: &ir::Items, opts: &opt::Paths) -> anyhow::Result<Vec<ir::Id>> {
++    // Collect Id's if no arguments are given and we are ascending the retaining paths.
++    let get_functions_default = || -> Vec<ir::Id> {
++        let mut sorted_items = items
++            .iter()
++            .filter(|item| item.id() != items.meta_root())
++            .collect::<Vec<_>>();
++        sorted_items.sort_by(|a, b| b.size().cmp(&a.size()));
++        sorted_items.iter().map(|item| item.id()).collect()
++    };
+ 
++    // Collect Id's if no arguments are given and we are descending the retaining paths.
++    let get_functions_default_desc = || -> Vec<ir::Id> {
++        let mut roots = items
++            .neighbors(items.meta_root())
++            .map(|id| &items[id])
++            .collect::<Vec<_>>();
++        roots.sort_by(|a, b| b.size().cmp(&a.size()));
++        roots.into_iter().map(|item| item.id()).collect()
++    };
+ 
++    // Collect Id's if arguments were given that should be used as regular expressions.
++    let get_regexp_matches = || -> anyhow::Result<Vec<ir::Id>> {
++        let regexps = regex::RegexSet::new(opts.functions())?;
++        let matches = items
++            .iter()
++            .filter(|item| regexps.is_match(item.name()))
++            .map(|item| item.id())
++            .collect();
++        Ok(matches)
++    };
+ 
++    // Collect Id's if arguments were given that should be used as exact names.
++    let get_exact_matches = || -> Vec<ir::Id> {
++        opts.functions()
++            .iter()
++            .filter_map(|s| items.get_item_by_name(s))
++            .map(|item| item.id())
++            .collect()
++    };
++
++    // Collect the starting positions based on the relevant options given.
++    // If arguments were given, search for matches depending on whether or
++    // not these should be treated as regular expressions. Otherwise, collect
++    // the starting positions based on the direction we will be traversing.
++    let args_given = !opts.functions().is_empty();
++    let using_regexps = opts.using_regexps();
++    let descending = opts.descending();
++    let res = match (args_given, using_regexps, descending) {
++        (true, true, _) => get_regexp_matches()?,
++        (true, false, _) => get_exact_matches(),
++        (false, _, true) => get_functions_default_desc(),
++        (false, _, false) => get_functions_default(),
++    };
++
++    Ok(res)
++}
++
++/// Create a `PathsEntry` object for the given item.
++fn create_entry(
++    id: ir::Id,
++    items: &ir::Items,
++    opts: &opt::Paths,
++    seen: &mut BTreeSet<ir::Id>,
++) -> PathsEntry {
++    // Determine the item's name and size.
++    let item = &items[id];
++    let name = item.name().to_string();
++    let size = item.size();
++
++    // Collect the `ir::Id` values of this entry's children, depending on
++    // whether we are ascending or descending the IR-tree.
++    let children_ids: Vec<ir::Id> = if opts.descending() {
++        items
++            .neighbors(id)
++            .map(|id| id as ir::Id)
++            .filter(|id| !seen.contains(id))
++            .filter(|&id| id != items.meta_root())
++            .collect()
++    } else {
++        items
++            .predecessors(id)
++            .map(|id| id as ir::Id)
++            .filter(|id| !seen.contains(id))
++            .filter(|&id| id != items.meta_root())
++            .collect()
++    };
++
++    // Temporarily add the current item to the set of discovered nodes, and
++    // create an entry for each child. Collect these into a `children` vector.
++    seen.insert(id);
++    let children = children_ids
++        .into_iter()
++        .map(|id| create_entry(id, items, opts, seen))
++        .collect();
++    seen.remove(&id);
++
++    PathsEntry {
++        name,
++        size,
++        children,
++    }
++}
+diff --git a/analyze/analyses/paths/paths_emit.rs b/analyze/analyses/paths/paths_emit.rs
+index 0c794e1..4d4b378 100644
+--- a/analyze/analyses/paths/paths_emit.rs
++++ b/analyze/analyses/paths/paths_emit.rs
+@@ -1,41 +1,241 @@
+ use std::io;
+ 
++use csv;
+ 
+ use crate::analyses::paths::Paths;
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+ use twiggy_ir as ir;
+ use twiggy_traits as traits;
+ 
+ impl traits::Emit for Paths {
+     #[cfg(feature = "emit_text")]
+     fn emit_text(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        use self::emit_text_helpers::{process_entry, TableRow};
++
++        // Flat map each entry and its children into a sequence of table rows.
++        // Convert these `TableRow` objects into vectors of strings, and add
++        // each of these to the table before writing the table to `dest`.
++        let table = self
++            .entries
++            .iter()
++            .flat_map(|entry| {
++                process_entry(entry, 0, self.opts.max_paths() as usize, items, &self.opts)
++            })
++            .map(
++                |TableRow {
++                     size,
++                     size_percent,
++                     name,
++                 }| {
++                    vec![
++                        size.map(|size| size.to_string())
++                            .unwrap_or_else(String::new),
++                        size_percent
++                            .map(|size_percent| format!("{:.2}%", size_percent))
++                            .unwrap_or_else(String::new),
++                        name,
++                    ]
++                },
++            )
++            .fold(
++                Table::with_header(vec![
++                    (Align::Right, "Shallow Bytes".to_string()),
++                    (Align::Right, "Shallow %".to_string()),
++                    (Align::Left, "Retaining Paths".to_string()),
++                ]),
++                |mut table, row| {
++                    table.add_row(row);
++                    table
++                },
++            );
++
++        write!(dest, "{}", table)?;
++        Ok(())
+-        crate::engine::AnalysisEngine::paths_emit_text(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_json")]
+     fn emit_json(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        use self::emit_json_helpers::process_entry;
++
++        // Initialize a JSON array. For each path entry, add a object to the
++        // array, and add that entry's information to the new JSON object.
++        let mut arr = json::array(dest)?;
++        for entry in &self.entries {
++            let mut obj = arr.object()?;
++            process_entry(
++                entry,
++                &mut obj,
++                0,
++                self.opts.max_paths() as usize,
++                items,
++                &self.opts,
++            )?;
++        }
++
++        Ok(())
+-        crate::engine::AnalysisEngine::paths_emit_json(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_csv")]
+     fn emit_csv(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        use self::emit_csv_helpers::process_entry;
++
++        // First, initialize a CSV writer. Then, flat map each entry and its
++        // children into a sequence of `CsvRecord` objects. Send each record
++        // to the CSV writer to be serialized.
++        let mut wtr = csv::Writer::from_writer(dest);
++        for record in self.entries.iter().flat_map(|entry| {
++            process_entry(entry, 0, self.opts.max_paths() as usize, items, &self.opts)
++        }) {
++            wtr.serialize(record)?;
++            wtr.flush()?;
++        }
++
++        Ok(())
++    }
++}
++
++/// This module contains helper functions and structs used by the `emit_text`
++/// method in Path's implementation of the `traits::Emit` trait.
++#[cfg(feature = "emit_text")]
++mod emit_text_helpers {
++    use crate::analyses::paths::paths_entry::PathsEntry;
++    use std::iter;
++    use twiggy_ir::Items;
++    use twiggy_opt::Paths;
++
++    /// This structure represents a row in the emitted text table. Size, and size
++    /// percentage are only shown for the top-most rows.
++    pub(super) struct TableRow {
++        pub size: Option<u32>,
++        pub size_percent: Option<f64>,
++        pub name: String,
++    }
++
++    /// Process a given path entry, and return an iterator of table rows,
++    /// representing its related call paths, according to the given options.
++    pub(super) fn process_entry<'a>(
++        entry: &'a PathsEntry,
++        depth: u32,
++        paths: usize,
++        items: &'a Items,
++        opts: &'a Paths,
++    ) -> Box<dyn Iterator<Item = TableRow> + 'a> {
++        // Get the row's name and size columns using the current depth.
++        let name = get_indented_name(&entry.name, depth, opts.descending());
++        let (size, size_percent) = if depth == 0 {
++            (
++                Some(entry.size),
++                Some(f64::from(entry.size) / f64::from(items.size()) * 100.0),
++            )
++        } else {
++            (None, None)
++        };
++
++        // Create an iterator containing the current entry's table row.
++        let row_iter = iter::once(TableRow {
++            size,
++            size_percent,
++            name,
++        });
++
++        if depth < opts.max_depth() {
++            // Process each child entry, and chain together the resulting iterators.
++            let children_iter = entry
++                .children
++                .iter()
++                .take(paths)
++                .flat_map(move |child_entry| {
++                    process_entry(child_entry, depth + 1, paths, items, opts)
++                });
++            Box::new(row_iter.chain(children_iter))
++        } else if depth == opts.max_depth() {
++            // TODO: Create a summary row, and chain it to the row iterator.
++            Box::new(row_iter)
++        } else {
++            // If we are beyond the maximum depth, return an empty iterator.
++            Box::new(iter::empty())
++        }
++    }
++
++    /// Given the name of an item, its depth, and the traversal direction,
++    /// return an indented version of the name for its corresponding table row.
++    fn get_indented_name(name: &str, depth: u32, descending: bool) -> String {
++        (1..depth)
++            .map(|_| "    ")
++            .chain(iter::once(if depth > 0 && descending {
++                "  ↳ "
++            } else if depth > 0 {
++                "  ⬑ "
++            } else {
++                ""
++            }))
++            .chain(iter::once(name))
++            .fold(
++                String::with_capacity(depth as usize * 4 + name.len()),
++                |mut res, s| {
++                    res.push_str(s);
++                    res
++                },
++            )
+-        crate::engine::AnalysisEngine::paths_emit_csv(&self.engine, items, dest)
+     }
+ }
+ 
+ /// This module contains helper functions and structs used by the `emit_json`
+ /// method in Path's implementation of the `traits::Emit` trait.
++#[cfg(feature = "emit_json")]
++mod emit_json_helpers {
++    use crate::analyses::paths::paths_entry::PathsEntry;
++    use crate::formats::json::Object;
++    use std::io;
++    use twiggy_ir::Items;
++    use twiggy_opt::Paths;
++
++    // Process a paths entry, by adding its name and size to the given JSON object.
++    pub(super) fn process_entry(
++        entry: &PathsEntry,
++        obj: &mut Object,
++        depth: u32,
++        paths: usize,
++        items: &Items,
++        opts: &Paths,
++    ) -> io::Result<()> {
++        let PathsEntry {
++            name,
++            size,
++            children,
++        } = entry;
++        obj.field("name", name.as_str())?;
++        obj.field("shallow_size", *size)?;
++        let size_percent = f64::from(*size) / f64::from(items.size()) * 100.0;
++        obj.field("shallow_size_percent", size_percent)?;
+ 
++        let mut callers = obj.array("callers")?;
++        if depth < opts.max_depth() {
++            for child in children.iter().take(paths) {
++                let mut obj = callers.object()?;
++                process_entry(child, &mut obj, depth + 1, paths, items, opts)?;
++            }
++        }
++
++        Ok(())
++    }
++}
+ 
+ /// This module contains helper functions and structs used by the `emit_csv`
+ /// method in Path's implementation of the `traits::Emit` trait.
+ #[cfg(feature = "emit_csv")]
++mod emit_csv_helpers {
++    use crate::analyses::paths::paths_entry::PathsEntry;
+-pub(crate) mod emit_csv_helpers {
+     use serde_derive::Serialize;
++    use std::iter;
++    use twiggy_ir::Items;
++    use twiggy_opt::Paths;
+ 
+     /// This structure represents a row in the CSV output.
+     #[derive(Serialize, Debug)]
+     #[serde(rename_all = "PascalCase")]
++    pub(super) struct CsvRecord {
+-    pub(crate) struct CsvRecord {
+         pub name: String,
+         pub shallow_size: u32,
+         pub shallow_size_percent: f64,
+@@ -43,8 +243,59 @@ mod emit_csv_helpers {
+     }
+ 
+     // Process a given entry and its children, returning an iterator of CSV records.
++    pub(super) fn process_entry<'a>(
++        entry: &'a PathsEntry,
++        depth: u32,
++        paths: usize,
++        items: &'a Items,
++        opts: &'a Paths,
++    ) -> Box<dyn Iterator<Item = CsvRecord> + 'a> {
++        let name = entry.name.clone();
++        let shallow_size = entry.size;
++        let shallow_size_percent = f64::from(entry.size) / f64::from(items.size()) * 100.0;
++        let path = get_path(entry);
++
++        // Create an iterator containing the current entry's CSV record.
++        let record_iter = iter::once(CsvRecord {
++            name,
++            shallow_size,
++            shallow_size_percent,
++            path,
++        });
+ 
++        if depth < opts.max_depth() {
++            // Process each child entry, and chain together the resulting iterators.
++            let children_iter = entry
++                .children
++                .iter()
++                .take(paths)
++                .flat_map(move |child_entry| {
++                    process_entry(child_entry, depth + 1, paths, items, opts)
++                });
++            Box::new(record_iter.chain(children_iter))
++        } else if depth == opts.max_depth() {
++            // Create a summary row, and chain it to the row iterator.
++            Box::new(record_iter)
++        } else {
++            // If we are beyond the maximum depth, return an empty iterator.
++            Box::new(iter::empty())
++        }
++    }
+ 
+     // Given a path entry, return the value for its corresponding CsvRecord's `path` field.
++    fn get_path(entry: &PathsEntry) -> Option<String> {
++        if entry.children.is_empty() {
++            None
++        } else {
++            Some(
++                entry
++                    .children
++                    .iter()
++                    .map(|child| child.name.as_str())
++                    .chain(iter::once(entry.name.as_str()))
++                    .collect::<Vec<_>>()
++                    .join(" -> "),
++            )
++        }
++    }
+-
+ }
+diff --git a/analyze/analyses/paths/paths_entry.rs b/analyze/analyses/paths/paths_entry.rs
+index b15c306..5c86158 100644
+--- a/analyze/analyses/paths/paths_entry.rs
++++ b/analyze/analyses/paths/paths_entry.rs
+@@ -1,8 +1,26 @@
++use std::cmp;
++
+ #[derive(Debug, PartialEq, Eq)]
++pub(super) struct PathsEntry {
+-pub(crate) struct PathsEntry {
+     pub name: String,
+     pub size: u32,
++    pub children: Vec<PathsEntry>,
++}
++
++impl PathsEntry {
++    pub fn _count(&self) -> u32 {
++        1 + self.children.iter().map(|c| c._count()).sum::<u32>()
++    }
++}
++
++impl PartialOrd for PathsEntry {
++    fn partial_cmp(&self, rhs: &Self) -> Option<cmp::Ordering> {
++        Some(self.cmp(rhs))
++    }
++}
++
++impl Ord for PathsEntry {
++    fn cmp(&self, rhs: &Self) -> cmp::Ordering {
++        rhs.size.cmp(&self.size).then(self.name.cmp(&rhs.name))
++    }
+-    pub depth: u32,
+-    pub end: usize,
+-    pub child_names: Vec<String>,
+ }
+diff --git a/analyze/analyses/top.rs b/analyze/analyses/top.rs
+index 8ddc82b..65d7f04 100644
+--- a/analyze/analyses/top.rs
++++ b/analyze/analyses/top.rs
+@@ -1,31 +1,244 @@
+ use std::io;
+ 
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
++use anyhow::anyhow;
++use csv;
++use serde_derive::Serialize;
+ use twiggy_ir as ir;
+ use twiggy_opt as opt;
+ use twiggy_traits as traits;
+ 
++struct Top {
++    items: Vec<ir::Id>,
++    opts: opt::Top,
+-pub(crate) struct Top {
+-    pub(crate) engine: crate::engine::AnalysisEngine,
+ }
+ 
+ impl traits::Emit for Top {
+     #[cfg(feature = "emit_text")]
+     fn emit_text(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        // A struct used to represent a row in the table that will be emitted.
++        struct TableRow {
++            size: u32,
++            size_percent: f64,
++            name: String,
++        }
++
++        // Helper function used to process an item, and return a struct
++        // representing a row containing its size and name.
++        fn process_item(id: ir::Id, items: &ir::Items, retained: bool) -> TableRow {
++            let item = &items[id];
++            let size = if retained {
++                items.retained_size(id)
++            } else {
++                item.size()
++            };
++            let size_percent = (f64::from(size)) / (f64::from(items.size())) * 100.0;
++            let name = item.name().to_string();
++            TableRow {
++                size,
++                size_percent,
++                name,
++            }
++        }
++
++        // Helper function used to summnarize a sequence of table rows. This is
++        // used to generate the remaining summary and total rows. Returns a tuple
++        // containing the total size, total size percentage, and number of items.
++        fn summarize_rows(rows: impl Iterator<Item = TableRow>) -> (u32, f64, u32) {
++            rows.fold(
++                (0, 0.0, 0),
++                |(total_size, total_percent, remaining_count),
++                 TableRow {
++                     size, size_percent, ..
++                 }| {
++                    (
++                        total_size + size,
++                        total_percent + size_percent,
++                        remaining_count + 1,
++                    )
++                },
++            )
++        }
++
++        // Access the options that are relevant to emitting the correct output.
++        let max_items = self.opts.max_items() as usize;
++        let retained = self.opts.retained();
++        let sort_label = if retained { "Retained" } else { "Shallow" };
++
++        // Initialize a new table.
++        let mut table = Table::with_header(vec![
++            (Align::Right, format!("{} Bytes", sort_label)),
++            (Align::Right, format!("{} %", sort_label)),
++            (Align::Left, "Item".to_string()),
++        ]);
++
++        // Process the number of items specified, and add them to the table.
++        self.items
++            .iter()
++            .take(max_items)
++            .map(|&id| process_item(id, items, retained))
++            .for_each(
++                |TableRow {
++                     size,
++                     size_percent,
++                     name,
++                 }| {
++                    table.add_row(vec![
++                        size.to_string(),
++                        format!("{:.2}%", size_percent),
++                        name,
++                    ])
++                },
++            );
++
++        // Find the summary statistics by processing the remaining items.
++        let remaining_rows = self
++            .items
++            .iter()
++            .skip(max_items)
++            .map(|&id| process_item(id, items, retained));
++        let (rem_size, rem_size_percent, rem_count) = summarize_rows(remaining_rows);
++
++        // If there were items remaining, add a summary row to the table.
++        if rem_count > 0 {
++            let rem_name_col = format!("... and {} more.", rem_count);
++            let (rem_size_col, rem_size_percent_col) = if retained {
++                ("...".to_string(), "...".to_string())
++            } else {
++                (rem_size.to_string(), format!("{:.2}%", rem_size_percent))
++            };
++            table.add_row(vec![rem_size_col, rem_size_percent_col, rem_name_col]);
++        }
++
++        // Add a row containing the totals to the table.
++        let all_rows = self
++            .items
++            .iter()
++            .map(|&id| process_item(id, items, retained));
++        let (total_size, total_size_percent, total_count) = summarize_rows(all_rows);
++        let total_name_col = format!("Σ [{} Total Rows]", total_count);
++        let (total_size_col, total_size_percent_col) = if retained {
++            ("...".to_string(), "...".to_string())
++        } else {
++            (
++                total_size.to_string(),
++                format!("{:.2}%", total_size_percent),
++            )
++        };
++        table.add_row(vec![total_size_col, total_size_percent_col, total_name_col]);
++
++        // Write the generated table out to the destination and return.
++        write!(dest, "{}", &table)?;
++        Ok(())
+-        crate::engine::AnalysisEngine::top_emit_text(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_json")]
+     fn emit_json(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut arr = json::array(dest)?;
++
++        let max_items = self.opts.max_items() as usize;
++        let items_iter = self.items.iter();
++
++        for &id in items_iter.take(max_items) {
++            let item = &items[id];
++
++            let mut obj = arr.object()?;
++            obj.field("name", item.name())?;
++
++            let size = item.size();
++            let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
++            obj.field("shallow_size", size)?;
++            obj.field("shallow_size_percent", size_percent)?;
++
++            if self.opts.retained() {
++                let size = items.retained_size(id);
++                let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
++                obj.field("retained_size", size)?;
++                obj.field("retained_size_percent", size_percent)?;
++            }
++        }
++
++        Ok(())
+-        crate::engine::AnalysisEngine::top_emit_json(&self.engine, items, dest)
+     }
+ 
+     #[cfg(feature = "emit_csv")]
+     fn emit_csv(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut wtr = csv::Writer::from_writer(dest);
++
++        #[derive(Serialize, Debug)]
++        #[serde(rename_all = "PascalCase")]
++        struct CsvRecord {
++            name: String,
++            shallow_size: u32,
++            shallow_size_percent: f64,
++            retained_size: Option<u32>,
++            retained_size_percent: Option<f64>,
++        }
++
++        let max_items = self.opts.max_items() as usize;
++        let items_iter = self.items.iter();
++
++        for &id in items_iter.take(max_items) {
++            let item = &items[id];
++
++            let (shallow_size, shallow_size_percent) = {
++                let size = item.size();
++                let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
++                (size, size_percent)
++            };
++            let (retained_size, retained_size_percent) = if self.opts.retained() {
++                let size = items.retained_size(id);
++                let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
++                (Some(size), Some(size_percent))
++            } else {
++                (None, None)
++            };
++
++            wtr.serialize(CsvRecord {
++                name: item.name().to_string(),
++                shallow_size,
++                shallow_size_percent,
++                retained_size,
++                retained_size_percent,
++            })?;
++            wtr.flush()?;
++        }
++        Ok(())
+-        crate::engine::AnalysisEngine::top_emit_csv(&self.engine, items, dest)
+     }
+ }
+ 
+ /// Run the `top` analysis on the given IR items.
+ pub fn top(items: &mut ir::Items, opts: &opt::Top) -> anyhow::Result<Box<dyn traits::Emit>> {
++    if opts.retaining_paths() {
++        return Err(anyhow!("retaining paths are not yet implemented",));
++    }
++
++    if opts.retained() {
++        items.compute_retained_sizes();
++    }
++
++    let mut top_items: Vec<_> = items
++        .iter()
++        .filter(|item| item.id() != items.meta_root())
++        .collect();
++
++    top_items.sort_by(|a, b| {
++        if opts.retained() {
++            items
++                .retained_size(b.id())
++                .cmp(&items.retained_size(a.id()))
++        } else {
++            b.size().cmp(&a.size())
++        }
++    });
++
++    let top_items: Vec<_> = top_items.into_iter().map(|i| i.id()).collect();
++
++    let top = Top {
++        items: top_items,
++        opts: opts.clone(),
++    };
++
++    Ok(Box::new(top) as Box<_>)
+-    crate::engine::AnalysisEngine::top(items, opts)
+ }
+diff --git a/analyze/analyze.rs b/analyze/analyze.rs
+index 76733a0..7d0247f 100644
+--- a/analyze/analyze.rs
++++ b/analyze/analyze.rs
+@@ -4,7 +4,6 @@
+ #![deny(missing_debug_implementations)]
+ 
+ mod analyses;
+-mod engine;
+ mod formats;
+ 
+ pub use analyses::{
+diff --git a/analyze/engine.rs b/analyze/engine.rs
+deleted file mode 100644
+index 5fe587a..0000000
+--- a/analyze/engine.rs
++++ /dev/null
+@@ -1,957 +0,0 @@
+-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+-use std::{cmp,io,iter};
+-use anyhow::anyhow;
+-use serde_derive::Serialize;
+-use twiggy_ir as ir;
+-use twiggy_opt as opt;
+-use twiggy_traits as traits;
+-use crate::formats::json;
+-use crate::formats::table::{Align,Table};
+-use crate::analyses::top::Top;
+-use crate::analyses::garbage::{Garbage,get_unreachable_items};
+-use crate::analyses::diff::{Diff,DiffEntry};
+-use crate::analyses::dominators::{DominatorTree,UnreachableItemsSummary};
+-use crate::analyses::paths::{Paths,PathsEntry};
+-use crate::analyses::monos::{Monos,MonosEntry};
+-#[cfg(feature = "emit_csv")]
+-use crate::analyses::dominators::emit::CsvRecord;
+-#[cfg(feature = "emit_csv")]
+-use crate::analyses::paths::paths_emit::emit_csv_helpers::CsvRecord as PathsCsvRecord;
+-
+-#[derive(Default)]
+-pub(crate) struct AnalysisEngine {
+-    ids: Vec<ir::Id>,
+-    top_options: Option<opt::Top>,
+-    data_segments: BTreeSet<ir::Id>,
+-    limit: usize,
+-    deltas: Vec<DiffEntry>,
+-    comparison_total: i64,
+-    tree: BTreeMap<ir::Id, Vec<ir::Id>>,
+-    dom_options: Option<opt::Dominators>,
+-    unreachable_items_summary: Option<UnreachableItemsSummary>,
+-    paths_options: Option<opt::Paths>,
+-    entries: Vec<PathsEntry>,
+-    path_roots: Vec<usize>,
+-    monos: Vec<MonosEntry>,
+-    largest_instances: BTreeMap<String, u32>,
+-}
+-
+-impl AnalysisEngine {
+-pub(crate) fn top(items: &mut ir::Items, opts: &opt::Top) -> anyhow::Result<Box<dyn traits::Emit>> {
+-    if opts.retaining_paths() {
+-        return Err(anyhow!("retaining paths are not yet implemented",));
+-    }
+-
+-    if opts.retained() {
+-        items.compute_retained_sizes();
+-    }
+-
+-    let mut top_items: Vec<_> = items
+-        .iter()
+-        .filter(|item| item.id() != items.meta_root())
+-        .collect();
+-
+-    top_items.sort_by(|a, b| {
+-        if opts.retained() {
+-            items
+-                .retained_size(b.id())
+-                .cmp(&items.retained_size(a.id()))
+-        } else {
+-            b.size().cmp(&a.size())
+-        }
+-    });
+-
+-    let top_items: Vec<_> = top_items.into_iter().map(|i| i.id()).collect();
+-
+-    let top = Top { engine: AnalysisEngine { ids: top_items, top_options: Some(opts.clone()), ..Default::default() } };
+-
+-    Ok(Box::new(top) as Box<_>)
+-}
+-pub(crate) fn garbage(items: &ir::Items, opts: &opt::Garbage) -> anyhow::Result<Box<dyn traits::Emit>> {
+-    let mut unreachable_items = get_unreachable_items(&items).collect::<Vec<_>>();
+-    unreachable_items.sort_by(|a, b| b.size().cmp(&a.size()));
+-
+-    let mut report = AnalysisEngine { limit: opts.max_items() as usize, ..Default::default() };
+-    for item in unreachable_items {
+-        report.ids.push(item.id());
+-        if !opts.show_data_segments() && item.kind().is_data() {
+-            report.data_segments.insert(item.id());
+-        }
+-    }
+-    let garbage_items = Garbage { engine: report };
+-
+-    Ok(Box::new(garbage_items) as Box<_>)
+-}
+-pub(crate) fn diff(
+-    old_items: &mut ir::Items,
+-    new_items: &mut ir::Items,
+-    opts: &opt::Diff,
+-) -> anyhow::Result<Box<dyn traits::Emit>> {
+-
+-        let max_items = opts.max_items() as usize;
+-        let old_sizes: HashMap<&str, i64> = old_items.iter().map(|item| (item.name(),i64::from(item.size()))).collect();
+-        let new_sizes: HashMap<&str, i64> = new_items.iter().map(|item| (item.name(),i64::from(item.size()))).collect();
+-        let names: HashSet<String> = old_sizes.keys().chain(new_sizes.keys()).map(|name| name.to_string()).collect();
+-        let regexps = if !opts.items().is_empty() && opts.using_regexps() { Some(regex::RegexSet::new(opts.items())?) } else { None };
+-        let mut deltas = vec![];
+-        for name in names {
+-            if !opts.items().is_empty() {
+-                if let Some(ref regexps) = regexps {
+-                    if !regexps.is_match(&name) { continue; }
+-                } else if !opts.items().iter().any(|needle| needle == &name) { continue; }
+-            }
+-            let delta = match (old_sizes.get(name.as_str()), new_sizes.get(name.as_str())) {
+-                (Some(old),Some(new)) => new-old,
+-                (Some(old),None) => -old,
+-                (None,Some(new)) => *new,
+-                (None,None) => return Err(anyhow!("Could not find item with name `{}`",name)),
+-            };
+-            if delta != 0 { deltas.push(DiffEntry {name,delta}); }
+-        }
+-        deltas.sort();
+-        let comparison_total = if opts.items().is_empty() {
+-            i64::from(new_items.size()) - i64::from(old_items.size())
+-        } else { deltas.iter().map(|entry| entry.delta).sum() };
+-        Ok(Box::new(Diff { engine: AnalysisEngine {
+-            deltas, limit: max_items, comparison_total, ..Default::default()
+-        } }) as Box<_>)
+-
+-}
+-pub(crate) fn dominators(
+-    items: &mut ir::Items,
+-    opts: &opt::Dominators,
+-) -> anyhow::Result<Box<dyn traits::Emit>> {
+-    items.compute_dominator_tree();
+-    items.compute_dominators();
+-    items.compute_retained_sizes();
+-    items.compute_predecessors();
+-
+-    let arguments = opts.items();
+-    let dominator_items = if arguments.is_empty() {
+-        vec![items.meta_root()]
+-    } else if opts.using_regexps() {
+-        let regexps = regex::RegexSet::new(arguments)?;
+-        let mut sorted_items: Vec<_> = items
+-            .iter()
+-            .filter(|item| regexps.is_match(&item.name()))
+-            .map(|item| item.id())
+-            .collect();
+-        sorted_items.sort_by_key(|id| -i64::from(items.retained_size(*id)));
+-        sorted_items
+-    } else {
+-        arguments
+-            .iter()
+-            .filter_map(|name| items.get_item_by_name(name))
+-            .map(|item| item.id())
+-            .collect()
+-    };
+-
+-    let mut report = AnalysisEngine {
+-        tree: items.dominator_tree().clone(),
+-        ids: dominator_items,
+-        dom_options: Some(opts.clone()),
+-        ..Default::default()
+-    };
+-    let (mut unreachable_size,mut unreachable_count)=(0u32,0usize);
+-    for item in get_unreachable_items(items) {
+-        unreachable_size+=item.size();
+-        unreachable_count+=1;
+-    }
+-    if report.dom_options.as_ref().expect("report options").items().is_empty() && unreachable_size>0 {
+-        report.unreachable_items_summary=Some(UnreachableItemsSummary {
+-            count:unreachable_count,
+-            size:unreachable_size,
+-            size_percent:f64::from(unreachable_size)/f64::from(items.size())*100.0,
+-        });
+-    }
+-    Ok(Box::new(DominatorTree {engine:report}) as Box<_>)
+-}
+-
+-pub(crate) fn paths(items: &mut ir::Items, opts: &opt::Paths) -> anyhow::Result<Box<dyn traits::Emit>> {
+-    // The predecessor tree only needs to be computed if we are ascending
+-    // through the retaining paths.
+-    if !opts.descending() {
+-        items.compute_predecessors();
+-    }
+-
+-    // Initialize the collection of Id values whose retaining paths we will emit.
+-    let opts = opts.clone();
+-    let starting = if opts.functions().is_empty() {
+-        let mut defaults = if opts.descending() {
+-            items.neighbors(items.meta_root()).map(|id| &items[id]).collect::<Vec<_>>()
+-        } else {
+-            items.iter().filter(|item| item.id()!=items.meta_root()).collect::<Vec<_>>()
+-        };
+-        defaults.sort_by(|a,b| b.size().cmp(&a.size()));
+-        defaults.into_iter().map(|item| item.id()).collect()
+-    } else { AnalysisEngine::get_starting_positions(items, &opts)? };
+-    let mut report = AnalysisEngine { paths_options: Some(opts), ..Default::default() };
+-    for id in starting {
+-        report.path_roots.push(report.entries.len());
+-        report.create_entry(id, items, 0, true, &mut BTreeSet::new());
+-    }
+-    Ok(Box::new(Paths { engine: report }) as Box<_>)
+-}
+-pub(crate) fn get_starting_positions(items: &ir::Items, opts: &opt::Paths) -> anyhow::Result<Vec<ir::Id>> {
+-    if opts.using_regexps() {
+-        let regexps=regex::RegexSet::new(opts.functions())?;
+-        Ok(items.iter().filter(|item| regexps.is_match(item.name())).map(|item| item.id()).collect())
+-    } else {
+-        Ok(opts.functions().iter().filter_map(|name| items.get_item_by_name(name)).map(|item|item.id()).collect())
+-    }
+-}
+-fn create_entry(&mut self, id: ir::Id, items: &ir::Items, depth: u32, visible: bool, seen: &mut BTreeSet<ir::Id>) {
+-    let opts = self.paths_options.as_ref().expect("report options");
+-    let children: Vec<_> = if opts.descending() {
+-        items.neighbors(id).collect()
+-    } else {
+-        items.predecessors(id).collect()
+-    };
+-    let children: Vec<_> = children.into_iter()
+-        .filter(|child| !seen.contains(child) && *child != items.meta_root())
+-        .collect();
+-    let max_paths = opts.max_paths() as usize;
+-    let descend = visible && depth < opts.max_depth();
+-    let position = if visible {
+-        let position = self.entries.len();
+-        self.entries.push(PathsEntry {
+-            name: items[id].name().to_string(),
+-            size: items[id].size(),
+-            depth,
+-            end: position + 1,
+-            child_names: children.iter().map(|child| items[*child].name().to_string()).collect(),
+-        });
+-        Some(position)
+-    } else { None };
+-    seen.insert(id);
+-    for (ordinal, child) in children.into_iter().enumerate() {
+-        self.create_entry(child, items, depth + 1, descend && ordinal < max_paths, seen);
+-    }
+-    seen.remove(&id);
+-    if let Some(position) = position { self.entries[position].end = self.entries.len(); }
+-
+-}
+-fn collect_monomorphizations(&mut self, items: &ir::Items, opts: &opt::Monos) -> anyhow::Result<()> {
+-    let regexps = regex::RegexSet::new(opts.functions())?;
+-    let mut positions = BTreeMap::new();
+-    let mut instances = BTreeSet::new();
+-    for item in items.iter() {
+-        let generic = match item.monomorphization_of() { Some(name) => name, None => continue };
+-        if !opts.functions().is_empty() {
+-            if opts.using_regexps() {
+-                if !regexps.is_match(generic) { continue; }
+-            } else if !opts.functions().iter().any(|name| name == generic) { continue; }
+-        }
+-        if !instances.insert((generic, item.name(), item.size())) { continue; }
+-        let position = *positions.entry(generic).or_insert_with(|| {
+-            let position = self.monos.len();
+-            self.monos.push(MonosEntry { name: generic.to_string(), insts: vec![], size: 0, bloat: 0 });
+-            position
+-        });
+-        let entry = &mut self.monos[position];
+-        entry.size += item.size();
+-        entry.insts.push((item.name().to_string(), item.size()));
+-        let largest = self.largest_instances.entry(generic.to_string()).or_insert(0);
+-        *largest = cmp::max(*largest, item.size());
+-    }
+-    Ok(())
+-}
+-
+-pub(crate) fn monos(items: &mut ir::Items, opts: &opt::Monos) -> anyhow::Result<Box<dyn traits::Emit>> {
+-        let mut report = AnalysisEngine::default();
+-        report.collect_monomorphizations(items, opts)?;
+-        let mut rows = std::mem::take(&mut report.monos);
+-        for entry in &mut rows {
+-            entry.insts.sort_by(|(a_name,a_size),(b_name,b_size)| b_size.cmp(a_size).then(a_name.cmp(b_name)));
+-            let count = entry.insts.len() as u32;
+-            let largest = report.largest_instances.remove(&entry.name).expect("collected generic");
+-            entry.bloat = cmp::min((entry.size/count)*(count-1), entry.size-largest);
+-            if opts.only_generics() { entry.insts.clear(); } else {
+-                let max = opts.max_monos() as usize;
+-                let mut bytes = 0u32;
+-                let mut omitted = 0u32;
+-                for (_,size) in entry.insts.iter().skip(max) { bytes += size; omitted += 1; }
+-                entry.insts.truncate(max);
+-                if omitted > 0 { entry.insts.push((format!("... and {} more.",omitted),bytes)); }
+-            }
+-        }
+-        rows.sort();
+-        let max=opts.max_generics() as usize;
+-        let (mut count,mut bytes,mut savings)=(0usize,0u32,0u32);
+-        let (mut rest_count,mut rest_bytes,mut rest_savings)=(0usize,0u32,0u32);
+-        for (position,entry) in rows.iter().enumerate() {
+-            let row_count=1+entry.insts.len();
+-            count+=row_count;bytes+=entry.size;savings+=entry.bloat;
+-            if position>=max {rest_count+=row_count;rest_bytes+=entry.size;rest_savings+=entry.bloat;}
+-        }
+-        let has_remaining=rows.len()>max;
+-        rows.truncate(max);
+-        if has_remaining {rows.push(MonosEntry{name:format!("... and {} more.",rest_count),size:rest_bytes,insts:vec![],bloat:rest_savings});}
+-        rows.push(MonosEntry{name:format!("Σ [{} Total Rows]",count),size:bytes,insts:vec![],bloat:savings});
+-        report.monos = rows;
+-        Ok(Box::new(Monos{engine:report}) as Box<_>)
+-    }
+-#[cfg(feature = "emit_text")]
+-pub(crate) fn top_emit_text(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-
+-        let opts = report.top_options.as_ref().expect("report options");
+-        let retained = opts.retained();
+-        let max_items = opts.max_items() as usize;
+-        let label = if retained { "Retained" } else { "Shallow" };
+-        let mut table = Table::with_header(vec![
+-            (Align::Right, format!("{} Bytes", label)),
+-            (Align::Right, format!("{} %", label)),
+-            (Align::Left, "Item".to_string()),
+-        ]);
+-        let (mut total_size, mut total_percent, mut total_count) = (0u32, 0.0, 0u32);
+-        let (mut remaining_size, mut remaining_percent, mut remaining_count) = (0u32, 0.0, 0u32);
+-        for (position, &id) in report.ids.iter().enumerate() {
+-            let item = &items[id];
+-            let size = if retained { items.retained_size(id) } else { item.size() };
+-            let percent = f64::from(size) / f64::from(items.size()) * 100.0;
+-            total_size += size;
+-            total_percent += percent;
+-            total_count += 1;
+-            if position < max_items {
+-                table.add_row(vec![size.to_string(), format!("{:.2}%", percent), item.name().to_string()]);
+-            } else {
+-                remaining_size += size;
+-                remaining_percent += percent;
+-                remaining_count += 1;
+-            }
+-        }
+-        if remaining_count > 0 {
+-            let (size, percent) = if retained { ("...".to_string(), "...".to_string()) }
+-                else { (remaining_size.to_string(), format!("{:.2}%", remaining_percent)) };
+-            table.add_row(vec![size, percent, format!("... and {} more.", remaining_count)]);
+-        }
+-        let (size, percent) = if retained { ("...".to_string(), "...".to_string()) }
+-            else { (total_size.to_string(), format!("{:.2}%", total_percent)) };
+-        table.add_row(vec![size, percent, format!("Σ [{} Total Rows]", total_count)]);
+-        write!(dest, "{}", &table)?;
+-        Ok(())
+-
+-}
+-#[cfg(feature = "emit_json")]
+-pub(crate) fn top_emit_json(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        let mut arr = json::array(dest)?;
+-
+-        let max_items = report.top_options.as_ref().expect("report options").max_items() as usize;
+-        let items_iter = report.ids.iter();
+-
+-        for &id in items_iter.take(max_items) {
+-            let item = &items[id];
+-
+-            let mut obj = arr.object()?;
+-            obj.field("name", item.name())?;
+-
+-            let size = item.size();
+-            let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
+-            obj.field("shallow_size", size)?;
+-            obj.field("shallow_size_percent", size_percent)?;
+-
+-            if report.top_options.as_ref().expect("report options").retained() {
+-                let size = items.retained_size(id);
+-                let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
+-                obj.field("retained_size", size)?;
+-                obj.field("retained_size_percent", size_percent)?;
+-            }
+-        }
+-
+-        Ok(())
+-    }
+-#[cfg(feature = "emit_csv")]
+-pub(crate) fn top_emit_csv(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        let mut wtr = csv::Writer::from_writer(dest);
+-
+-        #[derive(Serialize, Debug)]
+-        #[serde(rename_all = "PascalCase")]
+-        struct CsvRecord {
+-            name: String,
+-            shallow_size: u32,
+-            shallow_size_percent: f64,
+-            retained_size: Option<u32>,
+-            retained_size_percent: Option<f64>,
+-        }
+-
+-        let max_items = report.top_options.as_ref().expect("report options").max_items() as usize;
+-        let items_iter = report.ids.iter();
+-
+-        for &id in items_iter.take(max_items) {
+-            let item = &items[id];
+-
+-            let (shallow_size, shallow_size_percent) = {
+-                let size = item.size();
+-                let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
+-                (size, size_percent)
+-            };
+-            let (retained_size, retained_size_percent) = if report.top_options.as_ref().expect("report options").retained() {
+-                let size = items.retained_size(id);
+-                let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
+-                (Some(size), Some(size_percent))
+-            } else {
+-                (None, None)
+-            };
+-
+-            wtr.serialize(CsvRecord {
+-                name: item.name().to_string(),
+-                shallow_size,
+-                shallow_size_percent,
+-                retained_size,
+-                retained_size_percent,
+-            })?;
+-            wtr.flush()?;
+-        }
+-        Ok(())
+-    }
+-#[cfg(feature = "emit_text")]
+-pub(crate) fn garbage_emit_text(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-
+-        let mut table = Table::with_header(vec![
+-            (Align::Right, "Bytes".to_string()),
+-            (Align::Right, "Size %".to_string()),
+-            (Align::Left, "Garbage Item".to_string()),
+-        ]);
+-        let (mut total, mut omitted_size, mut omitted_count) = (0u32, 0u32, 0usize);
+-        let (mut count, mut segment_size) = (0usize, 0u32);
+-        for &id in &report.ids {
+-            let item = &items[id];
+-            let size = item.size();
+-            if report.data_segments.contains(&id) { segment_size += size; continue; }
+-            total += size;
+-            if count < report.limit {
+-                table.add_row(vec![size.to_string(), format!("{:.2}%", f64::from(size)/f64::from(items.size())*100.0), item.name().to_string()]);
+-            } else { omitted_size += size; omitted_count += 1; }
+-            count += 1;
+-        }
+-        if omitted_count > 0 {
+-            table.add_row(vec![omitted_size.to_string(), format!("{:.2}%", f64::from(omitted_size)/f64::from(items.size())*100.0), format!("... and {} more", omitted_count)]);
+-        }
+-        table.add_row(vec![total.to_string(), format!("{:.2}%", f64::from(total)/f64::from(items.size())*100.0), format!("Σ [{} Total Rows]", count)]);
+-        if !report.data_segments.is_empty() {
+-            table.add_row(vec![segment_size.to_string(), format!("{:.2}%", f64::from(segment_size)/f64::from(items.size())*100.0), format!("{} potential false-positive data segments", report.data_segments.len())]);
+-        }
+-        write!(dest, "{}", &table)?;
+-        Ok(())
+-
+-}
+-#[cfg(feature = "emit_json")]
+-pub(crate) fn garbage_emit_json(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        let mut arr = json::array(dest)?;
+-
+-        let (mut total_size, mut total_cnt, mut count, mut bytes, mut segment_size) = (0u32, 0usize, 0usize, 0u32, 0u32);
+-        for &id in &report.ids {
+-            let item = &items[id];
+-            let size = item.size();
+-            if report.data_segments.contains(&id) { segment_size += size; continue; }
+-            bytes += size;
+-            count += 1;
+-            if count > report.limit { total_size += size; total_cnt += 1; continue; }
+-            let mut obj = arr.object()?;
+-            obj.field("name", item.name())?;
+-            obj.field("bytes", size)?;
+-            obj.field("size_percent", f64::from(size) / f64::from(items.size()) * 100.0)?;
+-        }
+-        if total_cnt > 0 {
+-            let name = format!("... and {} more", total_cnt);
+-            let total_size_percent = (f64::from(total_size)) / (f64::from(items.size())) * 100.0;
+-            let mut obj = arr.object()?;
+-            obj.field("name", name.as_str())?;
+-            obj.field("bytes", total_size)?;
+-            obj.field("size_percent", total_size_percent)?;
+-        }
+-
+-        // Scoping the borrow of `arr` so we can get another object in the next block
+-        {
+-            let total_name = format!("Σ [{} Total Rows]", count);
+-            let total_size = bytes;
+-            let total_size_percent = (f64::from(total_size)) / (f64::from(items.size())) * 100.0;
+-            let mut obj = arr.object()?;
+-            obj.field("name", total_name.as_str())?;
+-            obj.field("bytes", total_size)?;
+-            obj.field("size_percent", total_size_percent)?;
+-        }
+-
+-        if !report.data_segments.is_empty() {
+-            let name = format!(
+-                "{} potential false-positive data segments",
+-                report.data_segments.len()
+-            );
+-            let size = segment_size;
+-            let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
+-
+-            let mut obj = arr.object()?;
+-            obj.field("name", name.as_str())?;
+-            obj.field("bytes", size)?;
+-            obj.field("size_percent", size_percent)?;
+-        }
+-
+-        Ok(())
+-    }
+-#[cfg(feature = "emit_csv")]
+-pub(crate) fn garbage_emit_csv(_report: &AnalysisEngine, _items: &ir::Items, _dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        unimplemented!();
+-    }
+-#[cfg(feature = "emit_text")]
+-pub(crate) fn diff_emit_text(report: &AnalysisEngine, _items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-    let mut table = Table::with_header(vec![
+-        (Align::Right, "Delta Bytes".into()), (Align::Left, "Item".to_string()),
+-    ]);
+-    let mut omitted = 0i64;
+-    for (position, entry) in report.deltas.iter().enumerate() {
+-        if position < report.limit {
+-            table.add_row(vec![format!("{:+}", entry.delta), entry.name.clone()]);
+-        } else { omitted += entry.delta; }
+-    }
+-    if report.deltas.len() > report.limit {
+-        table.add_row(vec![format!("{:+}", omitted), format!("... and {} more.", report.deltas.len() - report.limit)]);
+-    }
+-    table.add_row(vec![format!("{:+}", report.comparison_total), format!("Σ [{} Total Rows]", report.deltas.len())]);
+-    write!(dest, "{}", &table)?;
+-    Ok(())
+-}
+-#[cfg(feature = "emit_json")]
+-pub(crate) fn diff_emit_json(report: &AnalysisEngine, _items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-    let mut arr = json::array(dest)?;
+-    let mut omitted = 0i64;
+-    for (position, entry) in report.deltas.iter().enumerate() {
+-        if position >= report.limit { omitted += entry.delta; continue; }
+-        let mut obj = arr.object()?;
+-        obj.field("delta_bytes", entry.delta as f64)?;
+-        obj.field("name", entry.name.as_str())?;
+-    }
+-    if report.deltas.len() > report.limit {
+-        let mut obj = arr.object()?;
+-        obj.field("delta_bytes", omitted as f64)?;
+-        obj.field("name", format!("... and {} more.", report.deltas.len() - report.limit).as_str())?;
+-    }
+-    let mut obj = arr.object()?;
+-    obj.field("delta_bytes", report.comparison_total as f64)?;
+-    obj.field("name", format!("Σ [{} Total Rows]", report.deltas.len()).as_str())?;
+-    Ok(())
+-}
+-#[cfg(feature = "emit_csv")]
+-pub(crate) fn diff_emit_csv(report: &AnalysisEngine, _items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-    let mut wtr = csv::Writer::from_writer(dest);
+-    let mut omitted = 0i64;
+-    for (position, entry) in report.deltas.iter().enumerate() {
+-        if position >= report.limit { omitted += entry.delta; continue; }
+-        wtr.serialize(entry)?;
+-        wtr.flush()?;
+-    }
+-    if report.deltas.len() > report.limit {
+-        wtr.serialize(DiffEntry { name: format!("... and {} more.", report.deltas.len() - report.limit), delta: omitted })?;
+-        wtr.flush()?;
+-    }
+-    wtr.serialize(DiffEntry { name: format!("Σ [{} Total Rows]", report.deltas.len()), delta: report.comparison_total })?;
+-    wtr.flush()?;
+-    Ok(())
+-}
+-#[cfg(feature = "emit_text")]
+-pub(crate) fn dominators_emit_text(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        let mut table = Table::with_header(vec![
+-            (Align::Right, "Retained Bytes".to_string()),
+-            (Align::Right, "Retained %".to_string()),
+-            (Align::Left, "Dominator Tree".to_string()),
+-        ]);
+-
+-        let opts = report.dom_options.as_ref().expect("report options");
+-        let mut pending = Vec::new();
+-        let mut row = 0u32;
+-        for &root in &report.ids {
+-            pending.push((root, if root == items.meta_root() { 0 } else { 1 }, false));
+-            while let Some((id, depth, counted)) = pending.pop() {
+-                if counted { row += 1; }
+-                assert_eq!(id == items.meta_root(), depth == 0);
+-                if row > opts.max_rows() || depth > opts.max_depth() { continue; }
+-                if depth > 0 {
+-                    let size = items.retained_size(id);
+-                    let mut label = String::new();
+-                    for _ in 2..depth { label.push_str("    "); }
+-                    if depth != 1 { label.push_str("  ⤷ "); }
+-                    label.push_str(items[id].name());
+-                    table.add_row(vec![size.to_string(),
+-                        format!("{:.2}%", f64::from(size) / f64::from(items.size()) * 100.0), label]);
+-                }
+-                if let Some(children) = report.tree.get(&id) {
+-                    let mut children = children.clone();
+-                    children.sort_by(|a,b| items.retained_size(*b).cmp(&items.retained_size(*a)));
+-                    pending.extend(children.into_iter().rev().map(|child| (child, depth + 1, true)));
+-                }
+-            }
+-        }
+-
+-        if let Some(UnreachableItemsSummary {
+-            count,
+-            size,
+-            size_percent,
+-        }) = report.unreachable_items_summary
+-        {
+-            table.add_row(vec![
+-                size.to_string(),
+-                format!("{:.2}%", size_percent),
+-                format!("[{} Unreachable Items]", count),
+-            ]);
+-        }
+-
+-        write!(dest, "{}", &table)?;
+-        Ok(())
+-    }
+-#[cfg(feature = "emit_json")]
+-pub(crate) fn dominators_emit_json(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        fn recursive_add_children(
+-            items: &ir::Items,
+-            opts: &opt::Dominators,
+-            dominator_tree: &BTreeMap<ir::Id, Vec<ir::Id>>,
+-            id: ir::Id,
+-            obj: &mut json::Object,
+-        ) -> anyhow::Result<()> {
+-            AnalysisEngine::dom_add_json_item(items, id, obj)?;
+-
+-            if let Some(children) = dominator_tree.get(&id) {
+-                let mut children = children.to_vec();
+-                children.sort_by(|a, b| items.retained_size(*b).cmp(&items.retained_size(*a)));
+-
+-                let mut arr = obj.array("children")?;
+-                for child in children {
+-                    let mut obj = arr.object()?;
+-                    recursive_add_children(items, opts, dominator_tree, child, &mut obj)?;
+-                }
+-            }
+-
+-            Ok(())
+-        }
+-
+-        // Scoping the borrow of `arr` so we can get another object in the next block
+-        let mut obj = json::object(dest)?;
+-        {
+-            let mut arr = obj.array("items")?;
+-            for curr_id in &report.ids {
+-                let mut item = arr.object()?;
+-                recursive_add_children(items, &report.dom_options.as_ref().expect("report options"), &report.tree, *curr_id, &mut item)?;
+-            }
+-        }
+-
+-        if let Some(UnreachableItemsSummary {
+-            count,
+-            size,
+-            size_percent,
+-        }) = report.unreachable_items_summary
+-        {
+-            let mut summary_obj = obj.array("summary")?;
+-            let mut unreachable_items_obj = summary_obj.object()?;
+-            unreachable_items_obj
+-                .field("name", format!("[{} Unreachable Items]", count).as_ref())?;
+-            unreachable_items_obj.field("retained_size", size)?;
+-            unreachable_items_obj.field("retained_size_percent", size_percent)?;
+-        }
+-
+-        Ok(())
+-    }
+-#[cfg(feature = "emit_csv")]
+-pub(crate) fn dominators_emit_csv(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        let mut wtr = csv::Writer::from_writer(dest);
+-        let mut pending = vec![items.meta_root()];
+-        while let Some(id) = pending.pop() {
+-            let item = &items[id];
+-            let shallow_size = item.size();
+-            let retained_size = items.retained_size(id);
+-            let idom = items.immediate_dominators().get(&id).copied().unwrap_or(id);
+-            let rc = CsvRecord {
+-                id: Some(item.id().serializable()),
+-                name: item.name().to_string(),
+-                shallow_size,
+-                shallow_size_percent: f64::from(shallow_size) / f64::from(items.size()) * 100.0,
+-                retained_size,
+-                retained_size_percent: f64::from(retained_size) / f64::from(items.size()) * 100.0,
+-                immediate_dominator: Some(idom.serializable()),
+-            };
+-            wtr.serialize(rc)?;
+-            wtr.flush()?;
+-            if let Some(children) = report.tree.get(&id) {
+-                let mut children = children.clone();
+-                children.sort_by(|a,b| items.retained_size(*b).cmp(&items.retained_size(*a)));
+-                pending.extend(children.into_iter().rev());
+-            }
+-        }
+-
+-        if let Some(UnreachableItemsSummary {
+-            count,
+-            size,
+-            size_percent,
+-        }) = report.unreachable_items_summary
+-        {
+-            let rc = CsvRecord {
+-                id: None,
+-                name: format!("[{} Unreachable Items]", count),
+-                shallow_size: size,
+-                shallow_size_percent: size_percent,
+-                retained_size: size,
+-                retained_size_percent: size_percent,
+-                immediate_dominator: None,
+-            };
+-            wtr.serialize(rc)?;
+-            wtr.flush()?;
+-        }
+-
+-        Ok(())
+-    }
+-#[cfg(feature = "emit_text")]
+-pub(crate) fn paths_emit_text(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-    let mut table = Table::with_header(vec![
+-        (Align::Right, "Shallow Bytes".to_string()),
+-        (Align::Right, "Shallow %".to_string()),
+-        (Align::Left, "Retaining Paths".to_string()),
+-    ]);
+-    let descending = report.paths_options.as_ref().expect("report options").descending();
+-    for entry in &report.entries {
+-        let mut label = String::new();
+-        for _ in 1..entry.depth { label.push_str("    "); }
+-        if entry.depth > 0 { label.push_str(if descending { "  ↳ " } else { "  ⬑ " }); }
+-        label.push_str(&entry.name);
+-        let (size, percent) = if entry.depth == 0 {
+-            (entry.size.to_string(), format!("{:.2}%", f64::from(entry.size) / f64::from(items.size()) * 100.0))
+-        } else { (String::new(), String::new()) };
+-        table.add_row(vec![size, percent, label]);
+-    }
+-    write!(dest, "{}", table)?;
+-    Ok(())
+-}
+-#[cfg(feature = "emit_json")]
+-pub(crate) fn paths_emit_json(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-    let mut arr = json::array(dest)?;
+-    for &root in &report.path_roots {
+-        let mut obj = arr.object()?;
+-        report.paths_json_process(root, &mut obj, items)?;
+-    }
+-    Ok(())
+-}
+-#[cfg(feature = "emit_csv")]
+-pub(crate) fn paths_emit_csv(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-    let mut wtr = csv::Writer::from_writer(dest);
+-    for entry in &report.entries {
+-        let path = if entry.child_names.is_empty() { None } else {
+-            Some(entry.child_names.iter().map(|name| name.as_str())
+-                .chain(iter::once(entry.name.as_str())).collect::<Vec<_>>().join(" -> "))
+-        };
+-        wtr.serialize(PathsCsvRecord {
+-            name: entry.name.clone(), shallow_size: entry.size,
+-            shallow_size_percent: f64::from(entry.size) / f64::from(items.size()) * 100.0,
+-            path,
+-        })?;
+-        wtr.flush()?;
+-    }
+-    Ok(())
+-}
+-#[cfg(feature = "emit_text")]
+-pub(crate) fn monos_emit_text(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        struct TableRow {
+-            bloat: Option<u32>,
+-            bloat_percent: Option<f64>,
+-            size: u32,
+-            size_percent: f64,
+-            name: String,
+-        }
+-
+-        // Given an entry representing a generic function and its various
+-        // monomorphizations, return a vector of table rows.
+-        fn process_entry<'a>(
+-            entry: &'a MonosEntry,
+-            total_size: f64,
+-        ) -> impl Iterator<Item = TableRow> + 'a {
+-            let MonosEntry {
+-                name,
+-                insts,
+-                size,
+-                bloat,
+-            } = entry;
+-
+-            let get_size_percent = move |x: u32| f64::from(x) / total_size * 100.0;
+-
+-            iter::once(TableRow {
+-                bloat: Some(*bloat),
+-                bloat_percent: Some(get_size_percent(*bloat)),
+-                size: *size,
+-                size_percent: get_size_percent(*size),
+-                name: name.to_string(),
+-            })
+-            .chain(insts.iter().map(move |(name, size)| TableRow {
+-                bloat: None,
+-                bloat_percent: None,
+-                size: *size,
+-                size_percent: get_size_percent(*size),
+-                name: format!("    {}", name),
+-            }))
+-        }
+-
+-        let mut table = Table::with_header(vec![
+-            (Align::Right, "Apprx. Bloat Bytes".into()),
+-            (Align::Right, "Apprx. Bloat %".into()),
+-            (Align::Right, "Bytes".into()),
+-            (Align::Right, "%".into()),
+-            (Align::Left, "Monomorphizations".to_string()),
+-        ]);
+-
+-        for TableRow {
+-            bloat,
+-            bloat_percent,
+-            size,
+-            size_percent,
+-            name,
+-        } in report
+-            .monos
+-            .iter()
+-            .flat_map(|mono| process_entry(mono, f64::from(items.size())))
+-        {
+-            table.add_row(vec![
+-                bloat.map(|b| b.to_string()).unwrap_or_default(),
+-                bloat_percent
+-                    .map(|b| format!("{:.2}%", b))
+-                    .unwrap_or_default(),
+-                size.to_string(),
+-                format!("{:.2}%", size_percent),
+-                name.clone(),
+-            ]);
+-        }
+-        write!(dest, "{}", &table)?;
+-        Ok(())
+-    }
+-#[cfg(feature = "emit_json")]
+-pub(crate) fn monos_emit_json(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        // Given an entry representing a generic function and its various
+-        // monomorphizations, add its information to the given JSON object.
+-        fn process_entry(
+-            entry: &MonosEntry,
+-            obj: &mut json::Object,
+-            total_size: f64,
+-        ) -> anyhow::Result<()> {
+-            let get_size_percent = |size: u32| (f64::from(size)) / total_size * 100.0;
+-            let MonosEntry {
+-                name,
+-                insts,
+-                size,
+-                bloat,
+-            } = entry;
+-            obj.field("generic", name.as_str())?;
+-            obj.field("approximate_monomorphization_bloat_bytes", *bloat)?;
+-            obj.field(
+-                "approximate_monomorphization_bloat_percent",
+-                get_size_percent(*bloat),
+-            )?;
+-            obj.field("total_size", *size)?;
+-            obj.field("total_size_percent", get_size_percent(*size))?;
+-            let mut monos = obj.array("monomorphizations")?;
+-            for (name, size, size_percent) in insts
+-                .iter()
+-                .map(|(name, size)| (name, size, get_size_percent(*size)))
+-            {
+-                let mut obj = monos.object()?;
+-                obj.field("name", name.as_str())?;
+-                obj.field("shallow_size", *size)?;
+-                obj.field("shallow_size_percent", size_percent)?;
+-            }
+-            Ok(())
+-        }
+-
+-        let items_size = f64::from(items.size());
+-        let mut arr = json::array(dest)?;
+-        for entry in &report.monos {
+-            let mut obj = arr.object()?;
+-            process_entry(entry, &mut obj, items_size)?;
+-        }
+-
+-        Ok(())
+-    }
+-#[cfg(feature = "emit_csv")]
+-pub(crate) fn monos_emit_csv(report: &AnalysisEngine, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
+-        // Calculate the total size of the collection of items, and define a
+-        // helper closure to calculate a percent value for a given u32 size.
+-        let items_size = f64::from(items.size());
+-        let get_size_percent = |size: u32| (f64::from(size)) / items_size * 100.0;
+-
+-        #[derive(Debug, Default, Serialize)]
+-        #[serde(rename_all = "PascalCase")]
+-        struct Record {
+-            generic: Option<String>,
+-            approximate_monomorphization_bloat_bytes: Option<u32>,
+-            approximate_monomorphization_bloat_percent: Option<f64>,
+-            total_size: Option<u32>,
+-            total_size_percent: Option<f64>,
+-            monomorphizations: Option<String>,
+-        }
+-
+-        // Given a single `MonosEntry` object, create a record object.
+-        let process_entry = |entry: &MonosEntry| -> Record {
+-            let monos = entry
+-                .insts
+-                .iter()
+-                .map(|(name, _)| name.as_str())
+-                .collect::<Vec<_>>();
+-            Record {
+-                generic: Some(entry.name.clone()),
+-                approximate_monomorphization_bloat_bytes: Some(entry.bloat),
+-                approximate_monomorphization_bloat_percent: Some(get_size_percent(entry.bloat)),
+-                total_size: Some(entry.size),
+-                total_size_percent: Some(get_size_percent(entry.size)),
+-                monomorphizations: Some(monos.join(", ")),
+-            }
+-        };
+-
+-        // Create a CSV writer and iterate through the monomorphization entries.
+-        // Process each record and pass it to the destination to be serialized.
+-        let mut wtr = csv::Writer::from_writer(dest);
+-        for entry in &report.monos {
+-            let record = process_entry(entry);
+-            wtr.serialize(record)?;
+-            wtr.flush()?;
+-        }
+-        Ok(())
+-    }
+-#[cfg(feature = "emit_json")]
+-fn paths_json_process(&self, position: usize, obj: &mut json::Object, items: &ir::Items) -> io::Result<()> {
+-    let entry = &self.entries[position];
+-    obj.field("name", entry.name.as_str())?;
+-    obj.field("shallow_size", entry.size)?;
+-    obj.field("shallow_size_percent", f64::from(entry.size) / f64::from(items.size()) * 100.0)?;
+-    let mut callers = obj.array("callers")?;
+-    let mut child = position + 1;
+-    while child < entry.end {
+-        let mut obj = callers.object()?;
+-        self.paths_json_process(child, &mut obj, items)?;
+-        child = self.entries[child].end;
+-    }
+-    Ok(())
+-}
+-#[cfg(feature = "emit_json")]
+-pub(crate) fn dom_add_json_item(items: &ir::Items, id: ir::Id, obj: &mut json::Object) -> anyhow::Result<()> {
+-    let item = &items[id];
+-
+-    obj.field("name", item.name())?;
+-
+-    let shallow_size = item.size();
+-    let shallow_size_percent = f64::from(shallow_size) / f64::from(items.size()) * 100.0;
+-    obj.field("shallow_size", shallow_size)?;
+-    obj.field("shallow_size_percent", shallow_size_percent)?;
+-
+-    let retained_size = items.retained_size(id);
+-    let retained_size_percent = f64::from(retained_size) / f64::from(items.size()) * 100.0;
+-    obj.field("retained_size", retained_size)?;
+-    obj.field("retained_size_percent", retained_size_percent)?;
+-    Ok(())
+-}
+-
+-}
+-
+-impl std::fmt::Debug for AnalysisEngine {
+-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+-        f.debug_struct("AnalysisEngine")
+-            .field("ids", &self.ids)
+-            .field("data_segments", &self.data_segments)
+-            .field("limit", &self.limit)
+-            .field("deltas", &self.deltas)
+-            .field("tree", &self.tree)
+-            .field("entries", &self.entries)
+-            .field("monos", &self.monos)
+-            .finish()
+-    }
+-}

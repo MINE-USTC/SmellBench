@@ -1,0 +1,355 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "zhihu_griffith_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "FE01",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R3 manifest expansion; fused stage2 serialization",
+      "intent_basis": "R3 manifest expansion; fused stage2 serialization",
+      "baseline_defect": "Blob creation independently owns HLS tag syntax.",
+      "criterion": "Keep HLS manifest serialization coherently maintained with playlist formatting.",
+      "acceptance": "Preserve EXTM3U first, PROGRAM-ID/BANDWIDTH/RESOLUTION ordering, source line order, newline joining without extra final newline and Blob MIME type; existing createMasterM3U8 qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith-hls/src/utils/getMasterM3U8Blob.ts",
+          "symbol": "default export",
+          "detail": "Blob creation independently owns HLS tag syntax.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R3 source conversion",
+      "intent_basis": "R3 source conversion",
+      "baseline_defect": "Blob adapter interprets bitrate units and resolution while writing manifest syntax.",
+      "criterion": "Keep source-to-variant conversion a coherent maintained contract with serialization.",
+      "acceptance": "Multiply bitrate by 1024, preserve source and width/height, retain one variant per input in order; combined conversion/formatting is allowed, no prescribed intermediate list. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith-hls/src/utils/getMasterM3U8Blob.ts",
+          "symbol": "default export",
+          "detail": "Blob adapter interprets bitrate units and resolution while writing manifest syntax.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE03",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R3 probe range; stage2 intervals",
+      "intent_basis": "R3 probe range; stage2 intervals",
+      "baseline_defect": "MSE writes video/audio intervals, timeRange and bufferStart using raw box data.",
+      "criterion": "Keep interval selection and derived probe state with coherent media analysis.",
+      "acceptance": "Numeric time (including zero) selects explicit interval, otherwise advance prior offset; combine normalized audio/video time bounds and derive shared buffer origin consistently. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith-mp4/src/mse/MSE.ts",
+          "symbol": "seek",
+          "detail": "MSE writes video/audio intervals, timeRange and bufferStart using raw box data.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE04",
+      "dimension": "cross_file_coordination",
+      "source_stage": "Retry cache admission integration",
+      "intent_basis": "Retry cache admission integration",
+      "baseline_defect": "Probe progression is split around transport cache admission.",
+      "criterion": "Preserve the media-plan-to-cache-admission contract when removing foreign-state orchestration.",
+      "acceptance": "Clear fetch first and commit intervals/timeRange/bufferStart before cache test; cached ranges return unless qualityChangeFlag; sample materialization can remain after admission. No requirement to reproduce unsupported malformed-table error timing. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith-mp4/src/mse/MSE.ts",
+          "symbol": "seek",
+          "detail": "Probe progression is split around transport cache admission.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE05",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R3 byte range; retry last-chunk integration",
+      "intent_basis": "R3 byte range; retry last-chunk integration",
+      "baseline_defect": "MSE computes physical sample bounds and chunk-tail identity inside load admission.",
+      "criterion": "Keep fragment byte-range derivation coherent with media sample analysis.",
+      "acceptance": "Start is minimum first video/audio byte plus origin, absent audio uses MAX_SAFE_INTEGER; last video sample absolute start determines final chunk; final request end is empty string, otherwise maximum sample end plus origin; replay handling precedes load. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith-mp4/src/mse/MSE.ts",
+          "symbol": "seek",
+          "detail": "MSE computes physical sample bounds and chunk-tail identity inside load admission.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE06",
+      "dimension": "cross_file_coordination",
+      "source_stage": "Stage2 and retry asynchronous track handoff",
+      "intent_basis": "Stage2 and retry asynchronous track handoff",
+      "baseline_defect": "Fetch callback rebuilds video/audio samples from the then-current probe and passes partially prepared tracks onward.",
+      "criterion": "Make asynchronous track preparation a coherent handoff without freezing the wrong probe state.",
+      "acceptance": "Use the active probe when fetch resolves, slice fetched bytes by sample start/end and preserve track IDs 1/2 and current decode intervals; absent buffer returns before preparation. Existing probe APIs can provide complete track data. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith-mp4/src/mse/MSE.ts",
+          "symbol": "seek",
+          "detail": "Fetch callback rebuilds video/audio samples from the then-current probe and passes partially prepared tracks onward.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE07",
+      "dimension": "cross_file_coordination",
+      "source_stage": "Stage2/retry fragment assembly",
+      "intent_basis": "Stage2/retry fragment assembly",
+      "baseline_defect": "Sample slicing, decode timing and FMP4 construction are divided between callback and append routine.",
+      "criterion": "Keep fragment construction coherent while preserving playback append effects.",
+      "acceptance": "Construct video payload before optional audio; append audio before video, omit audio when no samples. Keep post-append truthy-time needUpdateTime and quality-change completion order. A combined preparation operation may satisfy this and the track item. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith-mp4/src/mse/MSE.ts",
+          "symbol": "appendFragment",
+          "detail": "Sample slicing, decode timing and FMP4 construction are divided between callback and append routine.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE08",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R3 refill threshold",
+      "intent_basis": "R3 refill threshold",
+      "baseline_defect": "MSE directly interprets probe timeRange to decide draining.",
+      "criterion": "Keep the supported draining threshold a coherent buffering-policy responsibility.",
+      "acceptance": "Replay handling stays first; fetch only when currentTime strictly exceeds start+(end-start)/4. Existing isDraining delegation is sufficient. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith-mp4/src/mse/MSE.ts",
+          "symbol": "shouldFetchNextSegment",
+          "detail": "MSE directly interprets probe timeRange to decide draining.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE09",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R2 history persistence",
+      "intent_basis": "R2 history persistence",
+      "baseline_defect": "Player reaches into storage backend and duplicates JSON encoding/error policy.",
+      "criterion": "Keep storage encoding and retrieval policy coherent across volume read/write.",
+      "acceptance": "Parse/storage-read errors fall back null; apply history only when truthy (zero not applied); round incoming volume to two decimals, update state then stringify/write same key; retain write-error behavior. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith/src/components/Player.tsx",
+          "symbol": "useMount / handleVideoVolumeChange",
+          "detail": "Player reaches into storage backend and duplicates JSON encoding/error policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE10",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R2 PiP initialization",
+      "intent_basis": "R2 PiP initialization",
+      "baseline_defect": "Player publishes PiP lifecycle fields and binds event handlers.",
+      "criterion": "Keep PiP initialization and event binding coherently owned with the PiP lifecycle.",
+      "acceptance": "Initialize once under current enabled/root/no-instance guard, bind handlers to their owner and retain enter/exit callbacks; reconnection to init is accepted, no invented mandatory teardown behavior. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith/src/components/Player.tsx",
+          "symbol": "PiP useEffect",
+          "detail": "Player publishes PiP lifecycle fields and binds event handlers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE11",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 toggle; stage2 fullscreen interaction",
+      "intent_basis": "R1 toggle; stage2 fullscreen interaction",
+      "baseline_defect": "Player repeats browser PiP state/action policy across fullscreen exit and toggle.",
+      "criterion": "Give PiP state and request/exit decisions a coherent contract consumed by playback controls.",
+      "acceptance": "Preserve prior fullscreen/page-fullscreen exit and event order; with a PiP instance exit if document has any PiP element, otherwise request its element if present. Keep existing call/promise behavior. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith/src/components/Player.tsx",
+          "symbol": "handleTogglePip",
+          "detail": "Player repeats browser PiP state/action policy across fullscreen exit and toggle.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE12",
+      "dimension": "responsibility_allocation",
+      "source_stage": "Stage2 PiP rendering",
+      "intent_basis": "Stage2 PiP rendering",
+      "baseline_defect": "Player interprets PiP initialization and browser capability directly in render decisions.",
+      "criterion": "Keep capability and active-state interpretation consistent with PiP control policy.",
+      "acceptance": "Active depends on an instance plus document pictureInPictureElement; supported depends on initialized instance and pictureInPictureEnabled, gated by disable flag; retain absent-instance undefined versus false where exposed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith/src/components/Player.tsx",
+          "symbol": "isPip / showPip",
+          "detail": "Player interprets PiP initialization and browser capability directly in render decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE13",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 buffered range",
+      "intent_basis": "R1 buffered range",
+      "baseline_defect": "Player embeds range selection and endpoint policy inside memoization.",
+      "criterion": "Keep buffered-range interpretation a cohesive reusable policy.",
+      "acceptance": "Return end of first range containing currentTime inclusively, else zero; preserve memo inputs. Existing getBufferedTime qualifies without extra class or state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith/src/components/Player.tsx",
+          "symbol": "bufferedTime",
+          "detail": "Player embeds range selection and endpoint policy inside memoization.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE14",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R1 playlist admission; combined stage2 projection",
+      "intent_basis": "R1 playlist admission; combined stage2 projection",
+      "baseline_defect": "Provider interprets fixed quality ordering and device admission alongside React lifecycle.",
+      "criterion": "Maintain supported quality ordering/filtering as a coherent playlist policy.",
+      "acceptance": "Order auto/ld/sd/hd/fhd according to direction; with multiple candidates mobile keeps first, desktop excludes ld; sole ld remains. Preserve source rest fields, play_url-to-source conversion and physical quality/source correspondence. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith/src/contexts/VideoSourceProvider.tsx",
+          "symbol": "availableQualities memo",
+          "detail": "Provider interprets fixed quality ordering and device admission alongside React lifecycle.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE15",
+      "dimension": "cross_file_coordination",
+      "source_stage": "Retry physical/synthetic quality split",
+      "intent_basis": "Retry physical/synthetic quality split",
+      "baseline_defect": "Display choices and source selection interpret separate physical/synthetic quality sets.",
+      "criterion": "Make synthetic-auto and physical-source correspondence explicit and consistently maintained.",
+      "acceptance": "Only desktop m3u8 with useAutoQuality and no physical auto prepends synthetic auto; it consumes no source slot; unknown/auto falls back first physical source, empty yields undefined. Encapsulated parallel arrays, records or lookup functions all qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith/src/contexts/VideoSourceProvider.tsx",
+          "symbol": "qualities / currentSrc memos",
+          "detail": "Display choices and source selection interpret separate physical/synthetic quality sets.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE16",
+      "dimension": "cross_file_coordination",
+      "source_stage": "Retry memo identity and selection interaction",
+      "intent_basis": "Retry memo identity and selection interaction",
+      "baseline_defect": "Playlist projection identity feeds selection resets and quality events as well as display order.",
+      "criterion": "Preserve the playlist-to-selection lifecycle contract across ownership changes.",
+      "acceptance": "Initial default must be included, else first choice; later identity change resets defaultQuality || first without adding new membership check; emit only actual changes. Preserve dependency-triggered reset behavior (including useAutoQuality) and display reversal independently of physical source order. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving unchanged foreign policy into another orchestration block or enforcing an unrelated architecture does not resolve the evidenced maintenance issue."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/griffith/src/contexts/VideoSourceProvider.tsx",
+          "symbol": "currentQuality initialization/reset",
+          "detail": "Playlist projection identity feeds selection resets and quality events as well as display order.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "zhihu_griffith_fe",
+    "smell_type": "feature_envy",
+    "rubric_status": "ready",
+    "aggregation": "Each independent criterion has equal weight; award one point only when the stated structural defect is repaired at its real path.",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "Compilation and behavior preservation alone",
+      "Pre-existing comments and business names"
+    ]
+  }
+}

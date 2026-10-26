@@ -1,0 +1,2137 @@
+diff --git a/src/map.rs b/src/map.rs
+index bfc484c..d2121e0 100644
+--- a/src/map.rs
++++ b/src/map.rs
+@@ -113,16 +113,7 @@ impl<D: AsRef<[u8]>> Map<D> {
+     /// assert_eq!(map.contains_key("z"), false);
+     /// ```
+     pub fn contains_key<K: AsRef<[u8]>>(&self, key: K) -> bool {
++        self.0.contains_key(key)
+-        let fst = self.0.as_ref();
+-        let key = key.as_ref();
+-        let mut node = fst.root();
+-        for &byte in key {
+-            node = match node.find_input(byte) {
+-                None => return false,
+-                Some(index) => fst.node(node.transition_addr(index)),
+-            };
+-        }
+-        node.is_final()
+     }
+ 
+     /// Retrieves the value associated with a key.
+@@ -140,25 +131,7 @@ impl<D: AsRef<[u8]>> Map<D> {
+     /// assert_eq!(map.get("z"), None);
+     /// ```
+     pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Option<u64> {
++        self.0.get(key).map(|output| output.value())
+-        let fst = self.0.as_ref();
+-        let key = key.as_ref();
+-        let mut node = fst.root();
+-        let mut output = raw::Output::zero();
+-        for &byte in key {
+-            node = match node.find_input(byte) {
+-                None => return None,
+-                Some(index) => {
+-                    let transition = node.transition(index);
+-                    output = output.cat(transition.out);
+-                    fst.node(transition.addr)
+-                }
+-            };
+-        }
+-        if node.is_final() {
+-            Some(output.cat(node.final_output()).value())
+-        } else {
+-            None
+-        }
+     }
+ 
+     /// Return a lexicographically ordered stream of all key-value pairs in
+@@ -682,28 +655,9 @@ impl<W: io::Write> MapBuilder<W> {
+         K: AsRef<[u8]>,
+         I: IntoIterator<Item = (K, u64)>,
+     {
++        self.0.extend_iter(
++            iter.into_iter().map(|(k, v)| (k, raw::Output::new(v))),
++        )
+-        for (key, value) in iter {
+-            let bytes = key.as_ref();
+-            if let Some(ref mut last) = self.0.last {
+-                if bytes == &**last {
+-                    return Err(raw::Error::DuplicateKey { got: bytes.to_vec() }.into());
+-                }
+-                if bytes < &**last {
+-                    return Err(raw::Error::OutOfOrder {
+-                        previous: last.to_vec(),
+-                        got: bytes.to_vec(),
+-                    }.into());
+-                }
+-                last.clear();
+-                for &byte in bytes {
+-                    last.push(byte);
+-                }
+-            } else {
+-                self.0.last = Some(bytes.to_vec());
+-            }
+-            self.0.insert_output(key, Some(raw::Output::new(value)))?;
+-        }
+-        Ok(())
+     }
+ 
+     /// Calls insert on each item in the stream.
+@@ -719,29 +673,7 @@ impl<W: io::Write> MapBuilder<W> {
+         I: for<'a> IntoStreamer<'a, Into = S, Item = (&'a [u8], u64)>,
+         S: 'f + for<'a> Streamer<'a, Item = (&'a [u8], u64)>,
+     {
++        self.0.extend_stream(StreamOutput(stream.into_stream()))
+-        let mut stream = stream.into_stream();
+-        while let Some((key, value)) = stream.next() {
+-            let bytes = key.as_ref();
+-            if let Some(ref mut last) = self.0.last {
+-                if bytes == &**last {
+-                    return Err(raw::Error::DuplicateKey { got: bytes.to_vec() }.into());
+-                }
+-                if bytes < &**last {
+-                    return Err(raw::Error::OutOfOrder {
+-                        previous: last.to_vec(),
+-                        got: bytes.to_vec(),
+-                    }.into());
+-                }
+-                last.clear();
+-                for &byte in bytes {
+-                    last.push(byte);
+-                }
+-            } else {
+-                self.0.last = Some(bytes.to_vec());
+-            }
+-            self.0.insert_output(key, Some(raw::Output::new(value)))?;
+-        }
+-        Ok(())
+     }
+ 
+     /// Finishes the construction of the map and flushes the underlying
+@@ -790,12 +722,8 @@ impl<'m, A: Automaton> Stream<'m, A> {
+     /// Convert this stream into a vector of byte strings and outputs.
+     ///
+     /// Note that this creates a new allocation for every key in the stream.
++    pub fn into_byte_vec(self) -> Vec<(Vec<u8>, u64)> {
++        self.0.into_byte_vec()
+-    pub fn into_byte_vec(mut self) -> Vec<(Vec<u8>, u64)> {
+-        let mut values = vec![];
+-        while let Some((key, value)) = self.0.next() {
+-            values.push((key.to_vec(), value.value()));
+-        }
+-        values
+     }
+ 
+     /// Convert this stream into a vector of Unicode strings and outputs.
+@@ -804,24 +732,15 @@ impl<'m, A: Automaton> Stream<'m, A> {
+     /// and a UTF-8 decoding error is returned.
+     ///
+     /// Note that this creates a new allocation for every key in the stream.
++    pub fn into_str_vec(self) -> Result<Vec<(String, u64)>> {
++        self.0.into_str_vec()
+-    pub fn into_str_vec(mut self) -> Result<Vec<(String, u64)>> {
+-        let mut values = vec![];
+-        while let Some((key, value)) = self.0.next() {
+-            let key = String::from_utf8(key.to_vec()).map_err(raw::Error::from)?;
+-            values.push((key, value.value()));
+-        }
+-        Ok(values)
+     }
+ 
+     /// Convert this stream into a vector of byte strings.
+     ///
+     /// Note that this creates a new allocation for every key in the stream.
++    pub fn into_byte_keys(self) -> Vec<Vec<u8>> {
++        self.0.into_byte_keys()
+-    pub fn into_byte_keys(mut self) -> Vec<Vec<u8>> {
+-        let mut keys = vec![];
+-        while let Some((key, _)) = self.0.next() {
+-            keys.push(key.to_vec());
+-        }
+-        keys
+     }
+ 
+     /// Convert this stream into a vector of Unicode strings.
+@@ -830,22 +749,13 @@ impl<'m, A: Automaton> Stream<'m, A> {
+     /// and a UTF-8 decoding error is returned.
+     ///
+     /// Note that this creates a new allocation for every key in the stream.
++    pub fn into_str_keys(self) -> Result<Vec<String>> {
++        self.0.into_str_keys()
+-    pub fn into_str_keys(mut self) -> Result<Vec<String>> {
+-        let mut keys = vec![];
+-        while let Some((key, _)) = self.0.next() {
+-            let key = String::from_utf8(key.to_vec()).map_err(raw::Error::from)?;
+-            keys.push(key);
+-        }
+-        Ok(keys)
+     }
+ 
+     /// Convert this stream into a vector of outputs.
++    pub fn into_values(self) -> Vec<u64> {
++        self.0.into_values()
+-    pub fn into_values(mut self) -> Vec<u64> {
+-        let mut values = vec![];
+-        while let Some((_, value)) = self.0.next() {
+-            values.push(value.value());
+-        }
+-        values
+     }
+ }
+ 
+diff --git a/src/raw/build.rs b/src/raw/build.rs
+index f24077d..e93626b 100644
+--- a/src/raw/build.rs
++++ b/src/raw/build.rs
+@@ -60,7 +60,7 @@ pub struct Builder<W> {
+     ///
+     /// This is used to enforce the invariant that words are added in sorted
+     /// order.
++    last: Option<Vec<u8>>,
+-    pub(crate) last: Option<Vec<u8>>,
+     /// The address of the last compiled node.
+     ///
+     /// This is used to optimize states with one transition that point
+@@ -213,48 +213,8 @@ impl<W: io::Write> Builder<W> {
+     /// Just like `finish`, except it returns the underlying writer after
+     /// flushing it.
+     pub fn into_inner(mut self) -> Result<W> {
++        self.compile_from(0)?;
++        let root_node = self.unfinished.pop_root();
+-        let mut addr = NONE_ADDRESS;
+-        while 1 < self.unfinished.stack.len() {
+-            let mut pending = self.unfinished.stack.pop().unwrap();
+-            if addr == NONE_ADDRESS {
+-                assert!(pending.last.is_none());
+-            } else if let Some(trans) = pending.last.take() {
+-                pending.node.trans.push(Transition {
+-                    inp: trans.inp,
+-                    out: trans.out,
+-                    addr,
+-                });
+-            }
+-            let node = pending.node;
+-            addr = if node.is_final && node.trans.is_empty() && node.final_output.is_zero() {
+-                EMPTY_ADDRESS
+-            } else {
+-                let entry = self.registry.entry(&node);
+-                if let RegistryEntry::Found(ref found) = entry {
+-                    *found
+-                } else {
+-                    let start_addr = self.wtr.count() as CompiledAddr;
+-                    node.compile_to(&mut self.wtr, self.last_addr, start_addr)?;
+-                    self.last_addr = self.wtr.count() as CompiledAddr - 1;
+-                    if let RegistryEntry::NotFound(cell) = entry {
+-                        cell.insert(self.last_addr);
+-                    }
+-                    self.last_addr
+-                }
+-            };
+-            assert!(addr != NONE_ADDRESS);
+-        }
+-        let tail = self.unfinished.stack.len().checked_sub(1).unwrap();
+-        if let Some(trans) = self.unfinished.stack[tail].last.take() {
+-            self.unfinished.stack[tail].node.trans.push(Transition {
+-                inp: trans.inp,
+-                out: trans.out,
+-                addr,
+-            });
+-        }
+-        assert!(self.unfinished.stack.len() == 1);
+-        assert!(self.unfinished.stack[0].last.is_none());
+-        let root_node = self.unfinished.stack.pop().unwrap().node;
+         let root_addr = self.compile(&root_node)?;
+         bytes::io_write_u64_le(self.len as u64, &mut self.wtr)?;
+         bytes::io_write_u64_le(root_addr as u64, &mut self.wtr)?;
+@@ -266,51 +226,20 @@ impl<W: io::Write> Builder<W> {
+         Ok(wtr)
+     }
+ 
++    fn insert_output<B>(&mut self, bs: B, out: Option<Output>) -> Result<()>
+-    pub(crate) fn insert_output<B>(&mut self, bs: B, out: Option<Output>) -> Result<()>
+     where
+         B: AsRef<[u8]>,
+     {
+         let bs = bs.as_ref();
+         if bs.is_empty() {
+             self.len = 1; // must be first key, so length is always 1
++            self.unfinished.set_root_output(out.unwrap_or(Output::zero()));
+-            self.unfinished.stack[0].node.is_final = true;
+-            self.unfinished.stack[0].node.final_output = out.unwrap_or(Output::zero());
+             return Ok(());
+         }
++        let (prefix_len, out) = if let Some(out) = out {
++            self.unfinished.find_common_prefix_and_set_output(bs, out)
+-        let (prefix_len, out) = if let Some(mut out) = out {
+-            let mut prefix = 0;
+-            while prefix < bs.len() {
+-                let remainder = match self.unfinished.stack[prefix].last.as_mut() {
+-                    Some(transition) if transition.inp == bs[prefix] => {
+-                        prefix += 1;
+-                        let shared = transition.out.prefix(out);
+-                        let remainder = transition.out.sub(shared);
+-                        out = out.sub(shared);
+-                        transition.out = shared;
+-                        remainder
+-                    }
+-                    _ => break,
+-                };
+-                if !remainder.is_zero() {
+-                    let pending = &mut self.unfinished.stack[prefix];
+-                    if pending.node.is_final {
+-                        pending.node.final_output = remainder.cat(pending.node.final_output);
+-                    }
+-                    for transition in &mut pending.node.trans {
+-                        transition.out = remainder.cat(transition.out);
+-                    }
+-                    if let Some(transition) = pending.last.as_mut() {
+-                        transition.out = remainder.cat(transition.out);
+-                    }
+-                }
+-            }
+-            (prefix, out)
+         } else {
++            (self.unfinished.find_common_prefix(bs), Output::zero())
+-            let prefix = bs.iter().zip(&self.unfinished.stack)
+-                .take_while(|&(&byte, pending)| {
+-                    pending.last.as_ref().map(|t| t.inp == byte).unwrap_or(false)
+-                }).count();
+-            (prefix, Output::zero())
+         };
+         if prefix_len == bs.len() {
+             // If the prefix found consumes the entire set of bytes, then
+@@ -323,47 +252,26 @@ impl<W: io::Write> Builder<W> {
+             return Ok(());
+         }
+         self.len += 1;
++        self.compile_from(prefix_len)?;
++        self.unfinished.add_suffix(&bs[prefix_len..], out);
++        Ok(())
++    }
++
++    fn compile_from(&mut self, istate: usize) -> Result<()> {
+         let mut addr = NONE_ADDRESS;
++        while istate + 1 < self.unfinished.len() {
++            let node = if addr == NONE_ADDRESS {
++                self.unfinished.pop_empty()
++            } else {
++                self.unfinished.pop_freeze(addr)
++            };
++            addr = self.compile(&node)?;
+-        loop {
+-            if prefix_len + 1 >= self.unfinished.stack.len() {
+-                let tail = self.unfinished.stack.len().checked_sub(1).unwrap();
+-                if let Some(transition) = self.unfinished.stack[tail].last.take() {
+-                    self.unfinished.stack[tail].node.trans.push(Transition {
+-                        inp: transition.inp, out: transition.out, addr,
+-                    });
+-                }
+-                let suffix = &bs[prefix_len..];
+-                assert!(self.unfinished.stack[tail].last.is_none());
+-                self.unfinished.stack[tail].last = Some(LastTransition {
+-                    inp: suffix[0], out,
+-                });
+-                for &byte in &suffix[1..] {
+-                    self.unfinished.stack.push(BuilderNodeUnfinished {
+-                        node: BuilderNode::default(),
+-                        last: Some(LastTransition { inp: byte, out: Output::zero() }),
+-                    });
+-                }
+-                self.unfinished.stack.push(BuilderNodeUnfinished {
+-                    node: BuilderNode { is_final: true, ..BuilderNode::default() },
+-                    last: None,
+-                });
+-                break;
+-            }
+-            let mut pending = self.unfinished.stack.pop().unwrap();
+-            if addr == NONE_ADDRESS {
+-                assert!(pending.last.is_none());
+-            } else if let Some(transition) = pending.last.take() {
+-                pending.node.trans.push(Transition {
+-                    inp: transition.inp, out: transition.out, addr,
+-                });
+-            }
+-            addr = self.compile(&pending.node)?;
+             assert!(addr != NONE_ADDRESS);
+         }
++        self.unfinished.top_last_freeze(addr);
+         Ok(())
+     }
+ 
+-
+     fn compile(&mut self, node: &BuilderNode) -> Result<CompiledAddr> {
+         if node.is_final
+             && node.trans.is_empty()
+@@ -424,12 +332,118 @@ impl UnfinishedNodes {
+         unfinished
+     }
+ 
++    fn len(&self) -> usize {
++        self.stack.len()
++    }
++
+     fn push_empty(&mut self, is_final: bool) {
+         self.stack.push(BuilderNodeUnfinished {
+             node: BuilderNode { is_final, ..BuilderNode::default() },
+             last: None,
+         });
+     }
++
++    fn pop_root(&mut self) -> BuilderNode {
++        assert!(self.stack.len() == 1);
++        assert!(self.stack[0].last.is_none());
++        self.stack.pop().unwrap().node
++    }
++
++    fn pop_freeze(&mut self, addr: CompiledAddr) -> BuilderNode {
++        let mut unfinished = self.stack.pop().unwrap();
++        unfinished.last_compiled(addr);
++        unfinished.node
++    }
++
++    fn pop_empty(&mut self) -> BuilderNode {
++        let unfinished = self.stack.pop().unwrap();
++        assert!(unfinished.last.is_none());
++        unfinished.node
++    }
++
++    fn set_root_output(&mut self, out: Output) {
++        self.stack[0].node.is_final = true;
++        self.stack[0].node.final_output = out;
++    }
++
++    fn top_last_freeze(&mut self, addr: CompiledAddr) {
++        let last = self.stack.len().checked_sub(1).unwrap();
++        self.stack[last].last_compiled(addr);
++    }
++
++    fn add_suffix(&mut self, bs: &[u8], out: Output) {
++        if bs.is_empty() {
++            return;
++        }
++        let last = self.stack.len().checked_sub(1).unwrap();
++        assert!(self.stack[last].last.is_none());
++        self.stack[last].last = Some(LastTransition { inp: bs[0], out });
++        for &b in &bs[1..] {
++            self.stack.push(BuilderNodeUnfinished {
++                node: BuilderNode::default(),
++                last: Some(LastTransition { inp: b, out: Output::zero() }),
++            });
++        }
++        self.push_empty(true);
++    }
++
++    fn find_common_prefix(&mut self, bs: &[u8]) -> usize {
++        bs.iter()
++            .zip(&self.stack)
++            .take_while(|&(&b, ref node)| {
++                node.last.as_ref().map(|t| t.inp == b).unwrap_or(false)
++            })
++            .count()
++    }
++
++    fn find_common_prefix_and_set_output(
++        &mut self,
++        bs: &[u8],
++        mut out: Output,
++    ) -> (usize, Output) {
++        let mut i = 0;
++        while i < bs.len() {
++            let add_prefix = match self.stack[i].last.as_mut() {
++                Some(ref mut t) if t.inp == bs[i] => {
++                    i += 1;
++                    let common_pre = t.out.prefix(out);
++                    let add_prefix = t.out.sub(common_pre);
++                    out = out.sub(common_pre);
++                    t.out = common_pre;
++                    add_prefix
++                }
++                _ => break,
++            };
++            if !add_prefix.is_zero() {
++                self.stack[i].add_output_prefix(add_prefix);
++            }
++        }
++        (i, out)
++    }
++}
++
++impl BuilderNodeUnfinished {
++    fn last_compiled(&mut self, addr: CompiledAddr) {
++        if let Some(trans) = self.last.take() {
++            self.node.trans.push(Transition {
++                inp: trans.inp,
++                out: trans.out,
++                addr,
++            });
++        }
++    }
++
++    fn add_output_prefix(&mut self, prefix: Output) {
++        if self.node.is_final {
++            self.node.final_output = prefix.cat(self.node.final_output);
++        }
++        for t in &mut self.node.trans {
++            t.out = prefix.cat(t.out);
++        }
++        if let Some(ref mut t) = self.last {
++            t.out = prefix.cat(t.out);
++        }
++    }
+ }
+ 
+ impl Clone for BuilderNode {
+diff --git a/src/raw/counting_writer.rs b/src/raw/counting_writer.rs
+index 03bd535..70d9315 100644
+--- a/src/raw/counting_writer.rs
++++ b/src/raw/counting_writer.rs
+@@ -1,19 +1,18 @@
+ use std::io;
+ 
++use crate::raw::crc32::CheckSummer;
+-use crate::bytes;
+-use crate::raw::crc32_table::{TABLE, TABLE16};
+ 
+ /// Wraps any writer that counts and checksums bytes written.
+ pub struct CountingWriter<W> {
+     wtr: W,
+     cnt: u64,
++    summer: CheckSummer,
+-    crc: u32,
+ }
+ 
+ impl<W: io::Write> CountingWriter<W> {
+     /// Wrap the given writer with a counter.
+     pub fn new(wtr: W) -> CountingWriter<W> {
++        CountingWriter { wtr, cnt: 0, summer: CheckSummer::new() }
+-        CountingWriter { wtr, cnt: 0, crc: !0 }
+     }
+ 
+     /// Return the total number of bytes written to the underlying writer.
+@@ -30,8 +29,7 @@ impl<W: io::Write> CountingWriter<W> {
+     /// Masking is supposed to make the checksum robust with respect to data
+     /// that contains the checksum itself.
+     pub fn masked_checksum(&self) -> u32 {
++        self.summer.masked()
+-        let sum = !self.crc;
+-        (sum.wrapping_shr(15) | sum.wrapping_shl(17)).wrapping_add(0xA282EAD8)
+     }
+ 
+     /// Unwrap the counting writer and return the inner writer.
+@@ -46,34 +44,8 @@ impl<W: io::Write> CountingWriter<W> {
+ }
+ 
+ impl<W: io::Write> io::Write for CountingWriter<W> {
++    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
++        self.summer.update(buf);
+-    fn write(&mut self, mut buf: &[u8]) -> io::Result<usize> {
+-        let input = buf;
+-        let mut crc = self.crc;
+-        while buf.len() >= 16 {
+-            crc ^= bytes::read_u32_le(buf);
+-            crc = TABLE16[0][buf[15] as usize]
+-                ^ TABLE16[1][buf[14] as usize]
+-                ^ TABLE16[2][buf[13] as usize]
+-                ^ TABLE16[3][buf[12] as usize]
+-                ^ TABLE16[4][buf[11] as usize]
+-                ^ TABLE16[5][buf[10] as usize]
+-                ^ TABLE16[6][buf[9] as usize]
+-                ^ TABLE16[7][buf[8] as usize]
+-                ^ TABLE16[8][buf[7] as usize]
+-                ^ TABLE16[9][buf[6] as usize]
+-                ^ TABLE16[10][buf[5] as usize]
+-                ^ TABLE16[11][buf[4] as usize]
+-                ^ TABLE16[12][(crc >> 24) as u8 as usize]
+-                ^ TABLE16[13][(crc >> 16) as u8 as usize]
+-                ^ TABLE16[14][(crc >> 8) as u8 as usize]
+-                ^ TABLE16[15][(crc) as u8 as usize];
+-            buf = &buf[16..];
+-        }
+-        for &b in buf {
+-            crc = TABLE[((crc as u8) ^ b) as usize] ^ (crc >> 8);
+-        }
+-        self.crc = crc;
+-        let buf = input;
+         let n = self.wtr.write(buf)?;
+         self.cnt += n as u64;
+         Ok(n)
+diff --git a/src/raw/mod.rs b/src/raw/mod.rs
+index ae11fed..6cc0eeb 100644
+--- a/src/raw/mod.rs
++++ b/src/raw/mod.rs
+@@ -410,40 +410,13 @@ impl<D: AsRef<[u8]>> Fst<D> {
+     /// If the key does not exist, then `None` is returned.
+     #[inline]
+     pub fn get<B: AsRef<[u8]>>(&self, key: B) -> Option<Output> {
++        self.as_ref().get(key.as_ref())
+-        let fst = self.as_ref();
+-        let key = key.as_ref();
+-        let mut node = fst.root();
+-        let mut out = Output::zero();
+-        for &b in key {
+-            node = match node.find_input(b) {
+-                None => return None,
+-                Some(i) => {
+-                    let t = node.transition(i);
+-                    out = out.cat(t.out);
+-                    fst.node(t.addr)
+-                }
+-            }
+-        }
+-        if !node.is_final() {
+-            None
+-        } else {
+-            Some(out.cat(node.final_output()))
+-        }
+     }
+ 
+     /// Returns true if and only if the given key is in this FST.
+     #[inline]
+     pub fn contains_key<B: AsRef<[u8]>>(&self, key: B) -> bool {
++        self.as_ref().contains_key(key.as_ref())
+-        let fst = self.as_ref();
+-        let key = key.as_ref();
+-        let mut node = fst.root();
+-        for &b in key {
+-            node = match node.find_input(b) {
+-                None => return false,
+-                Some(i) => fst.node(node.transition_addr(i)),
+-            }
+-        }
+-        node.is_final()
+     }
+ 
+     /// Retrieves the key associated with the given value.
+@@ -458,27 +431,7 @@ impl<D: AsRef<[u8]>> Fst<D> {
+     #[inline]
+     pub fn get_key(&self, value: u64) -> Option<Vec<u8>> {
+         let mut key = vec![];
++        if self.get_key_into(value, &mut key) {
+-        let fst = self.as_ref();
+-        let mut node = fst.root();
+-        let mut remaining = value;
+-        let found = loop {
+-            if remaining == 0 && node.is_final() {
+-                break true;
+-            }
+-            let transition = node
+-                .transitions()
+-                .take_while(|t| t.out.value() <= remaining)
+-                .last();
+-            node = match transition {
+-                None => break false,
+-                Some(transition) => {
+-                    remaining -= transition.out.value();
+-                    key.push(transition.inp);
+-                    fst.node(transition.addr)
+-                }
+-            };
+-        };
+-        if found {
+             Some(key)
+         } else {
+             None
+@@ -495,24 +448,8 @@ impl<D: AsRef<[u8]>> Fst<D> {
+     /// The values in this FST are not monotonically increasing when sorted
+     /// lexicographically by key, then this routine has unspecified behavior.
+     #[inline]
++    pub fn get_key_into(&self, value: u64, key: &mut Vec<u8>) -> bool {
++        self.as_ref().get_key_into(value, key)
+-    pub fn get_key_into(&self, mut value: u64, key: &mut Vec<u8>) -> bool {
+-        let fst = self.as_ref();
+-        let mut node = fst.root();
+-        while value != 0 || !node.is_final() {
+-            let trans = node
+-                .transitions()
+-                .take_while(|t| t.out.value() <= value)
+-                .last();
+-            node = match trans {
+-                None => return false,
+-                Some(t) => {
+-                    value -= t.out.value();
+-                    key.push(t.inp);
+-                    fst.node(t.addr)
+-                }
+-            };
+-        }
+-        true
+     }
+ 
+     /// Return a lexicographically ordered stream of all key-value pairs in
+@@ -696,7 +633,7 @@ impl<D: AsRef<[u8]>> Fst<D> {
+     }
+ 
+     #[inline]
++    fn as_ref(&self) -> FstRef {
+-    pub(crate) fn as_ref(&self) -> FstRef {
+         FstRef { meta: &self.meta, data: self.data.as_ref() }
+     }
+ }
+@@ -735,14 +672,64 @@ impl<'a, 'f, D: AsRef<[u8]>> IntoStreamer<'a> for &'f Fst<D> {
+     }
+ }
+ 
++struct FstRef<'f> {
+-pub(crate) struct FstRef<'f> {
+     meta: &'f Meta,
+     data: &'f [u8],
+ }
+ 
+ impl<'f> FstRef<'f> {
++    #[inline]
++    fn get(&self, key: &[u8]) -> Option<Output> {
++        let mut node = self.root();
++        let mut out = Output::zero();
++        for &b in key {
++            node = match node.find_input(b) {
++                None => return None,
++                Some(i) => {
++                    let t = node.transition(i);
++                    out = out.cat(t.out);
++                    self.node(t.addr)
++                }
++            }
++        }
++        if !node.is_final() {
++            None
++        } else {
++            Some(out.cat(node.final_output()))
++        }
++    }
+ 
++    #[inline]
++    fn contains_key(&self, key: &[u8]) -> bool {
++        let mut node = self.root();
++        for &b in key {
++            node = match node.find_input(b) {
++                None => return false,
++                Some(i) => self.node(node.transition_addr(i)),
++            }
++        }
++        node.is_final()
++    }
+ 
++    #[inline]
++    fn get_key_into(&self, mut value: u64, key: &mut Vec<u8>) -> bool {
++        let mut node = self.root();
++        while value != 0 || !node.is_final() {
++            let trans = node
++                .transitions()
++                .take_while(|t| t.out.value() <= value)
++                .last();
++            node = match trans {
++                None => return false,
++                Some(t) => {
++                    value -= t.out.value();
++                    key.push(t.inp);
++                    self.node(t.addr)
++                }
++            };
++        }
++        true
++    }
+ 
+     #[inline]
+     fn len(&self) -> usize {
+@@ -770,12 +757,12 @@ impl<'f> FstRef<'f> {
+     }
+ 
+     #[inline]
++    fn root(&self) -> Node<'f> {
+-    pub(crate) fn root(&self) -> Node<'f> {
+         self.node(self.root_addr())
+     }
+ 
+     #[inline]
++    fn node(&self, addr: CompiledAddr) -> Node<'f> {
+-    pub(crate) fn node(&self, addr: CompiledAddr) -> Node<'f> {
+         Node::new(self.meta.version, addr, self.as_bytes())
+     }
+ 
+@@ -859,83 +846,7 @@ impl<'a, 'f, A: Automaton> IntoStreamer<'a> for StreamBuilder<'f, A> {
+     type Into = Stream<'f, A>;
+ 
+     fn into_stream(self) -> Stream<'f, A> {
++        Stream::new(self.fst, self.aut, self.min, self.max)
+-        let min = self.min;
+-        let mut reader = StreamWithState {
+-            fst: self.fst,
+-            aut: self.aut,
+-            inp: Vec::with_capacity(16),
+-            empty_output: None,
+-            stack: vec![],
+-            end_at: self.max,
+-        };
+-        let (key, inclusive): (&[u8], bool) = match &min {
+-            Bound::Included(value) => (value.as_slice(), true),
+-            Bound::Excluded(value) => (value.as_slice(), false),
+-            Bound::Unbounded => (&[], true),
+-        };
+-        if key.is_empty() {
+-            if inclusive {
+-                reader.empty_output = reader.fst.empty_final_output();
+-            }
+-            reader.stack = vec![StreamState {
+-                node: reader.fst.root(),
+-                trans: 0,
+-                out: Output::zero(),
+-                aut_state: reader.aut.start(),
+-            }];
+-        } else {
+-            let mut node = reader.fst.root();
+-            let mut out = Output::zero();
+-            let mut path_state = Some(reader.aut.start());
+-            for &byte in key {
+-                match node.find_input(byte) {
+-                    Some(index) => {
+-                        let transition = node.transition(index);
+-                        let previous = path_state.take().unwrap();
+-                        path_state = Some(reader.aut.accept(&previous, byte));
+-                        reader.inp.push(byte);
+-                        reader.stack.push(StreamState {
+-                            node,
+-                            trans: index + 1,
+-                            out,
+-                            aut_state: previous,
+-                        });
+-                        out = out.cat(transition.out);
+-                        node = reader.fst.node(transition.addr);
+-                    }
+-                    None => {
+-                        reader.stack.push(StreamState {
+-                            node,
+-                            trans: node.transitions()
+-                                .position(|transition| transition.inp > byte)
+-                                .unwrap_or(node.len()),
+-                            out,
+-                            aut_state: path_state.take().unwrap(),
+-                        });
+-                        break;
+-                    }
+-                }
+-            }
+-            if let Some(aut_state) = path_state {
+-                if !reader.stack.is_empty() {
+-                    let last = reader.stack.len() - 1;
+-                    if inclusive {
+-                        reader.stack[last].trans -= 1;
+-                        reader.inp.pop();
+-                    } else {
+-                        let node = reader.stack[last].node;
+-                        let trans = reader.stack[last].trans;
+-                        reader.stack.push(StreamState {
+-                            node: reader.fst.node(node.transition(trans - 1).addr),
+-                            trans: 0,
+-                            out,
+-                            aut_state,
+-                        });
+-                    }
+-                }
+-            }
+-        }
+-        Stream(reader)
+     }
+ }
+ 
+@@ -1019,83 +930,7 @@ where
+     type Into = StreamWithState<'f, A>;
+ 
+     fn into_stream(self) -> StreamWithState<'f, A> {
++        StreamWithState::new(self.fst, self.aut, self.min, self.max)
+-        let min = self.min;
+-        let mut reader = StreamWithState {
+-            fst: self.fst,
+-            aut: self.aut,
+-            inp: Vec::with_capacity(16),
+-            empty_output: None,
+-            stack: vec![],
+-            end_at: self.max,
+-        };
+-        let (key, inclusive): (&[u8], bool) = match &min {
+-            Bound::Included(value) => (value.as_slice(), true),
+-            Bound::Excluded(value) => (value.as_slice(), false),
+-            Bound::Unbounded => (&[], true),
+-        };
+-        if key.is_empty() {
+-            if inclusive {
+-                reader.empty_output = reader.fst.empty_final_output();
+-            }
+-            reader.stack = vec![StreamState {
+-                node: reader.fst.root(),
+-                trans: 0,
+-                out: Output::zero(),
+-                aut_state: reader.aut.start(),
+-            }];
+-        } else {
+-            let mut node = reader.fst.root();
+-            let mut out = Output::zero();
+-            let mut path_state = Some(reader.aut.start());
+-            for &byte in key {
+-                match node.find_input(byte) {
+-                    Some(index) => {
+-                        let transition = node.transition(index);
+-                        let previous = path_state.take().unwrap();
+-                        path_state = Some(reader.aut.accept(&previous, byte));
+-                        reader.inp.push(byte);
+-                        reader.stack.push(StreamState {
+-                            node,
+-                            trans: index + 1,
+-                            out,
+-                            aut_state: previous,
+-                        });
+-                        out = out.cat(transition.out);
+-                        node = reader.fst.node(transition.addr);
+-                    }
+-                    None => {
+-                        reader.stack.push(StreamState {
+-                            node,
+-                            trans: node.transitions()
+-                                .position(|transition| transition.inp > byte)
+-                                .unwrap_or(node.len()),
+-                            out,
+-                            aut_state: path_state.take().unwrap(),
+-                        });
+-                        break;
+-                    }
+-                }
+-            }
+-            if let Some(aut_state) = path_state {
+-                if !reader.stack.is_empty() {
+-                    let last = reader.stack.len() - 1;
+-                    if inclusive {
+-                        reader.stack[last].trans -= 1;
+-                        reader.inp.pop();
+-                    } else {
+-                        let node = reader.stack[last].node;
+-                        let trans = reader.stack[last].trans;
+-                        reader.stack.push(StreamState {
+-                            node: reader.fst.node(node.transition(trans - 1).addr),
+-                            trans: 0,
+-                            out,
+-                            aut_state,
+-                        });
+-                    }
+-                }
+-            }
+-        }
+-        reader
+     }
+ }
+ 
+@@ -1116,6 +951,22 @@ impl Bound {
+         }
+     }
+ 
++    #[inline]
++    fn is_empty(&self) -> bool {
++        match *self {
++            Bound::Included(ref v) => v.is_empty(),
++            Bound::Excluded(ref v) => v.is_empty(),
++            Bound::Unbounded => true,
++        }
++    }
++
++    #[inline]
++    fn is_inclusive(&self) -> bool {
++        match *self {
++            Bound::Excluded(_) => false,
++            _ => true,
++        }
++    }
+ }
+ 
+ /// A lexicographically ordered stream of key-value pairs from an fst.
+@@ -1128,7 +979,7 @@ pub struct Stream<'f, A: Automaton = AlwaysMatch>(StreamWithState<'f, A>);
+ 
+ impl<'f, A: Automaton> Stream<'f, A> {
+     fn new(fst: FstRef<'f>, aut: A, min: Bound, max: Bound) -> Stream<'f, A> {
++        Stream(StreamWithState::new(fst, aut, min, max))
+-        StreamBuilder { fst, aut, min, max }.into_stream()
+     }
+ 
+     /// Convert this stream into a vector of byte strings and outputs.
+@@ -1149,59 +1000,12 @@ impl<'f, A: Automaton> Stream<'f, A> {
+     ///
+     /// Note that this creates a new allocation for every key in the stream.
+     pub fn into_str_vec(mut self) -> Result<Vec<(String, u64)>> {
++        let mut vs = vec![];
++        while let Some((k, v)) = self.next() {
++            let k = String::from_utf8(k.to_vec()).map_err(Error::from)?;
++            vs.push((k, v.value()));
+-        let mut values = vec![];
+-        if let Some(out) = self.0.empty_output.take() {
+-            if self.0.end_at.exceeded_by(&[]) {
+-                self.0.stack.clear();
+-                return Ok(values);
+-            }
+-
+-            let start = self.0.aut.start();
+-            let matched = self.0.aut.is_match(&start);
+-            drop(start);
+-            if matched {
+-                values.push((String::new(), out.value()));
+-            }
+         }
++        Ok(vs)
+-        while let Some(state) = self.0.stack.pop() {
+-            if state.trans >= state.node.len()
+-                || !self.0.aut.can_match(&state.aut_state)
+-            {
+-                if state.node.addr() != self.0.fst.root_addr() {
+-                    self.0.inp.pop().unwrap();
+-                }
+-                continue;
+-            }
+-            let trans = state.node.transition(state.trans);
+-            let out = state.out.cat(trans.out);
+-            let next_state = self.0.aut.accept(&state.aut_state, trans.inp);
+-            let mut is_match = self.0.aut.is_match(&next_state);
+-            let next_node = self.0.fst.node(trans.addr);
+-            self.0.inp.push(trans.inp);
+-            if next_node.is_final() {
+-                if let Some(eof_state) = self.0.aut.accept_eof(&next_state) {
+-                    is_match = self.0.aut.is_match(&eof_state);
+-                }
+-            }
+-            self.0.stack.push(StreamState { trans: state.trans + 1, ..state });
+-            self.0.stack.push(StreamState {
+-                node: next_node,
+-                trans: 0,
+-                out,
+-                aut_state: next_state,
+-            });
+-            if self.0.end_at.exceeded_by(&self.0.inp) {
+-                // We are done, forever.
+-                self.0.stack.clear();
+-                return Ok(values);
+-            }
+-            if next_node.is_final() && is_match {
+-                let output = out.cat(next_node.final_output());
+-                let key = String::from_utf8(self.0.inp.to_vec()).map_err(Error::from)?;
+-                values.push((key, output.value()));
+-            }
+-        }
+-        Ok(values)
+     }
+ 
+     /// Convert this stream into a vector of byte strings.
+@@ -1222,59 +1026,12 @@ impl<'f, A: Automaton> Stream<'f, A> {
+     ///
+     /// Note that this creates a new allocation for every key in the stream.
+     pub fn into_str_keys(mut self) -> Result<Vec<String>> {
++        let mut vs = vec![];
++        while let Some((k, _)) = self.next() {
++            let k = String::from_utf8(k.to_vec()).map_err(Error::from)?;
++            vs.push(k);
+-        let mut values = vec![];
+-        if let Some(_out) = self.0.empty_output.take() {
+-            if self.0.end_at.exceeded_by(&[]) {
+-                self.0.stack.clear();
+-                return Ok(values);
+-            }
+-
+-            let start = self.0.aut.start();
+-            let matched = self.0.aut.is_match(&start);
+-            drop(start);
+-            if matched {
+-                values.push(String::new());
+-            }
+-        }
+-        while let Some(state) = self.0.stack.pop() {
+-            if state.trans >= state.node.len()
+-                || !self.0.aut.can_match(&state.aut_state)
+-            {
+-                if state.node.addr() != self.0.fst.root_addr() {
+-                    self.0.inp.pop().unwrap();
+-                }
+-                continue;
+-            }
+-            let trans = state.node.transition(state.trans);
+-            let out = state.out.cat(trans.out);
+-            let next_state = self.0.aut.accept(&state.aut_state, trans.inp);
+-            let mut is_match = self.0.aut.is_match(&next_state);
+-            let next_node = self.0.fst.node(trans.addr);
+-            self.0.inp.push(trans.inp);
+-            if next_node.is_final() {
+-                if let Some(eof_state) = self.0.aut.accept_eof(&next_state) {
+-                    is_match = self.0.aut.is_match(&eof_state);
+-                }
+-            }
+-            self.0.stack.push(StreamState { trans: state.trans + 1, ..state });
+-            self.0.stack.push(StreamState {
+-                node: next_node,
+-                trans: 0,
+-                out,
+-                aut_state: next_state,
+-            });
+-            if self.0.end_at.exceeded_by(&self.0.inp) {
+-                // We are done, forever.
+-                self.0.stack.clear();
+-                return Ok(values);
+-            }
+-            if next_node.is_final() && is_match {
+-                let _output = out.cat(next_node.final_output());
+-                let key = String::from_utf8(self.0.inp.to_vec()).map_err(Error::from)?;
+-                values.push(key);
+-            }
+         }
++        Ok(vs)
+-        Ok(values)
+     }
+ 
+     /// Convert this stream into a vector of outputs.
+@@ -1291,57 +1048,7 @@ impl<'f, 'a, A: Automaton> Streamer<'a> for Stream<'f, A> {
+     type Item = (&'a [u8], Output);
+ 
+     fn next(&'a mut self) -> Option<(&'a [u8], Output)> {
++        self.0.next_with(|_| ()).map(|(key, out, _)| (key, out))
+-        if let Some(out) = self.0.empty_output.take() {
+-            if self.0.end_at.exceeded_by(&[]) {
+-                self.0.stack.clear();
+-                return None;
+-            }
+-
+-            let start = self.0.aut.start();
+-            if self.0.aut.is_match(&start) {
+-                return Some((&[], out));
+-            }
+-        }
+-        while let Some(state) = self.0.stack.pop() {
+-            if state.trans >= state.node.len()
+-                || !self.0.aut.can_match(&state.aut_state)
+-            {
+-                if state.node.addr() != self.0.fst.root_addr() {
+-                    self.0.inp.pop().unwrap();
+-                }
+-                continue;
+-            }
+-            let trans = state.node.transition(state.trans);
+-            let out = state.out.cat(trans.out);
+-            let next_state = self.0.aut.accept(&state.aut_state, trans.inp);
+-            let mut is_match = self.0.aut.is_match(&next_state);
+-            let next_node = self.0.fst.node(trans.addr);
+-            self.0.inp.push(trans.inp);
+-            if next_node.is_final() {
+-                if let Some(eof_state) = self.0.aut.accept_eof(&next_state) {
+-                    is_match = self.0.aut.is_match(&eof_state);
+-                }
+-            }
+-            self.0.stack.push(StreamState { trans: state.trans + 1, ..state });
+-            self.0.stack.push(StreamState {
+-                node: next_node,
+-                trans: 0,
+-                out,
+-                aut_state: next_state,
+-            });
+-            if self.0.end_at.exceeded_by(&self.0.inp) {
+-                // We are done, forever.
+-                self.0.stack.clear();
+-                return None;
+-            }
+-            if next_node.is_final() && is_match {
+-                return Some((
+-                    &self.0.inp,
+-                    out.cat(next_node.final_output()),
+-                ));
+-            }
+-        }
+-        None
+     }
+ }
+ 
+@@ -1375,14 +1082,116 @@ struct StreamState<'f, S> {
+     aut_state: S,
+ }
+ 
++impl<'f, A: Automaton> StreamWithState<'f, A> {
++    fn new(
++        fst: FstRef<'f>,
++        aut: A,
++        min: Bound,
++        max: Bound,
++    ) -> StreamWithState<'f, A> {
++        let mut rdr = StreamWithState {
++            fst,
++            aut,
++            inp: Vec::with_capacity(16),
++            empty_output: None,
++            stack: vec![],
++            end_at: max,
++        };
++        rdr.seek_min(min);
++        rdr
++    }
+ 
++    /// Seeks the underlying stream such that the next key to be read is the
++    /// smallest key in the underlying fst that satisfies the given minimum
++    /// bound.
++    ///
++    /// This theoretically should be straight-forward, but we need to make
++    /// sure our stack is correct, which includes accounting for automaton
++    /// states.
++    fn seek_min(&mut self, min: Bound) {
++        if min.is_empty() {
++            if min.is_inclusive() {
++                self.empty_output = self.fst.empty_final_output();
++            }
++            self.stack = vec![StreamState {
++                node: self.fst.root(),
++                trans: 0,
++                out: Output::zero(),
++                aut_state: self.aut.start(),
++            }];
++            return;
++        }
++        let (key, inclusive) = match min {
++            Bound::Excluded(ref min) => (min, false),
++            Bound::Included(ref min) => (min, true),
++            Bound::Unbounded => unreachable!(),
++        };
++        // At this point, we need to find the starting location of `min` in
++        // the FST. However, as we search, we need to maintain a stack of
++        // reader states so that the reader can pick up where we left off.
++        // N.B. We do not necessarily need to stop in a final state, unlike
++        // the one-off `find` method. For the example, the given bound might
++        // not actually exist in the FST.
++        let mut node = self.fst.root();
++        let mut out = Output::zero();
++        let mut aut_state = self.aut.start();
++        for &b in key {
++            match node.find_input(b) {
++                Some(i) => {
++                    let t = node.transition(i);
++                    let prev_state = aut_state;
++                    aut_state = self.aut.accept(&prev_state, b);
++                    self.inp.push(b);
++                    self.stack.push(StreamState {
++                        node,
++                        trans: i + 1,
++                        out,
++                        aut_state: prev_state,
++                    });
++                    out = out.cat(t.out);
++                    node = self.fst.node(t.addr);
++                }
++                None => {
++                    // This is a little tricky. We're in this case if the
++                    // given bound is not a prefix of any key in the FST.
++                    // Since this is a minimum bound, we need to find the
++                    // first transition in this node that proceeds the current
++                    // input byte.
++                    self.stack.push(StreamState {
++                        node,
++                        trans: node
++                            .transitions()
++                            .position(|t| t.inp > b)
++                            .unwrap_or(node.len()),
++                        out,
++                        aut_state,
++                    });
++                    return;
++                }
++            }
++        }
++        if !self.stack.is_empty() {
++            let last = self.stack.len() - 1;
++            if inclusive {
++                self.stack[last].trans -= 1;
++                self.inp.pop();
++            } else {
++                let node = self.stack[last].node;
++                let trans = self.stack[last].trans;
++                self.stack.push(StreamState {
++                    node: self.fst.node(node.transition(trans - 1).addr),
++                    trans: 0,
++                    out,
++                    aut_state,
++                });
++            }
++        }
++    }
+-impl<'a, 'f, A: 'a + Automaton> Streamer<'a> for StreamWithState<'f, A>
+-where
+-    A::State: Clone,
+-{
+-    type Item = (&'a [u8], Output, A::State);
+ 
++    fn next_with<T>(
++        &mut self,
++        mut map: impl FnMut(&A::State) -> T,
++    ) -> Option<(&[u8], Output, T)> {
+-    fn next(&'a mut self) -> Option<(&'a [u8], Output, A::State)> {
+         if let Some(out) = self.empty_output.take() {
+             if self.end_at.exceeded_by(&[]) {
+                 self.stack.clear();
+@@ -1391,7 +1200,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+ 
+             let start = self.aut.start();
+             if self.aut.is_match(&start) {
++                return Some((&[], out, map(&start)));
+-                return Some((&[], out, start.clone()));
+             }
+         }
+         while let Some(state) = self.stack.pop() {
+@@ -1406,7 +1215,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+             let trans = state.node.transition(state.trans);
+             let out = state.out.cat(trans.out);
+             let next_state = self.aut.accept(&state.aut_state, trans.inp);
++            let t = map(&next_state);
+-            let t = next_state.clone();
+             let mut is_match = self.aut.is_match(&next_state);
+             let next_node = self.fst.node(trans.addr);
+             self.inp.push(trans.inp);
+@@ -1439,6 +1248,17 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+     }
+ }
+ 
++impl<'a, 'f, A: 'a + Automaton> Streamer<'a> for StreamWithState<'f, A>
++where
++    A::State: Clone,
++{
++    type Item = (&'a [u8], Output, A::State);
++
++    fn next(&'a mut self) -> Option<(&'a [u8], Output, A::State)> {
++        self.next_with(|state| state.clone())
++    }
++}
++
+ /// An output is a value that is associated with a key in a finite state
+ /// transducer.
+ ///
+diff --git a/src/raw/node.rs b/src/raw/node.rs
+index 579c1fd..820b29e 100644
+--- a/src/raw/node.rs
++++ b/src/raw/node.rs
+@@ -57,16 +57,7 @@ impl<'f> Node<'f> {
+         addr: CompiledAddr,
+         data: &[u8],
+     ) -> Node<'_> {
++        let state = State::new(data, addr);
+-        let state = if addr == EMPTY_ADDRESS {
+-            State::EmptyFinal
+-        } else {
+-            let byte = data[addr];
+-            match (byte & 0b11_000000) >> 6 {
+-                0b11 => State::OneTransNext(StateOneTransNext(byte)),
+-                0b10 => State::OneTrans(StateOneTrans(byte)),
+-                _ => State::AnyTrans(StateAnyTrans(byte)),
+-            }
+-        };
+         match state {
+             State::EmptyFinal => Node {
+                 data: &[],
+@@ -86,7 +77,7 @@ impl<'f> Node<'f> {
+                     version,
+                     state,
+                     start: addr,
++                    end: s.end_addr(data),
+-                    end: data.len() - 1 - if s.common_input().is_none() { 1 } else { 0 },
+                     is_final: false,
+                     sizes: PackSizes::new(),
+                     ntrans: 1,
+@@ -95,15 +86,13 @@ impl<'f> Node<'f> {
+             }
+             State::OneTrans(s) => {
+                 let data = &data[..addr + 1];
++                let sizes = s.sizes(data);
+-                let input_len = if s.common_input().is_none() { 1 } else { 0 };
+-                let sizes = PackSizes::decode(data[data.len() - 1 - input_len - 1]);
+                 Node {
+                     data,
+                     version,
+                     state,
+                     start: addr,
++                    end: s.end_addr(data, sizes),
+-                    end: data.len() - 1 - input_len - 1
+-                        - sizes.transition_pack_size() - sizes.output_pack_size(),
+                     is_final: false,
+                     ntrans: 1,
+                     sizes,
+@@ -112,28 +101,18 @@ impl<'f> Node<'f> {
+             }
+             State::AnyTrans(s) => {
+                 let data = &data[..addr + 1];
++                let sizes = s.sizes(data);
+-                let ntrans_len = if s.state_ntrans().is_none() { 1 } else { 0 };
+-                let sizes = PackSizes::decode(data[data.len() - 1 - ntrans_len - 1]);
+                 let ntrans = s.ntrans(data);
+-                let end = data.len() - 1 - ntrans_len - 1
+-                    - s.total_trans_size(version, sizes, ntrans)
+-                    - ntrans * sizes.output_pack_size()
+-                    - if s.is_final_state() { sizes.output_pack_size() } else { 0 };
+-                let final_output = if sizes.output_pack_size() == 0 || !s.is_final_state() {
+-                    Output::zero()
+-                } else {
+-                    Output::new(bytes::unpack_uint(&data[end..], sizes.output_pack_size() as u8))
+-                };
+                 Node {
+                     data,
+                     version,
+                     state,
+                     start: addr,
++                    end: s.end_addr(version, data, sizes, ntrans),
+-                    end,
+                     is_final: s.is_final_state(),
+                     ntrans,
+                     sizes,
++                    final_output: s.final_output(version, data, sizes, ntrans),
+-                    final_output,
+                 }
+             }
+         }
+@@ -262,108 +241,38 @@ impl<'f> Node<'f> {
+         }
+     }
+ 
++    fn compile<W: io::Write>(
++        wtr: W,
++        last_addr: CompiledAddr,
++        addr: CompiledAddr,
++        node: &BuilderNode,
++    ) -> io::Result<()> {
++        assert!(node.trans.len() <= 256);
++        if node.trans.is_empty()
++            && node.is_final
++            && node.final_output.is_zero()
++        {
++            return Ok(());
++        } else if node.trans.len() != 1 || node.is_final {
++            StateAnyTrans::compile(wtr, addr, node)
++        } else {
++            if node.trans[0].addr == last_addr && node.trans[0].out.is_zero() {
++                StateOneTransNext::compile(wtr, addr, node.trans[0].inp)
++            } else {
++                StateOneTrans::compile(wtr, addr, node.trans[0])
++            }
++        }
++    }
+ }
+ 
+ impl BuilderNode {
+     pub fn compile_to<W: io::Write>(
+         &self,
++        wtr: W,
+-        mut wtr: W,
+         last_addr: CompiledAddr,
+         addr: CompiledAddr,
+     ) -> io::Result<()> {
++        Node::compile(wtr, last_addr, addr, self)
+-        let count = self.trans.len();
+-        assert!(count <= 256);
+-        if count == 0 && self.is_final && self.final_output.is_zero() {
+-            return Ok(());
+-        }
+-        let single = count == 1 && !self.is_final;
+-        let next = single && self.trans[0].addr == last_addr
+-            && self.trans[0].out.is_zero();
+-        let common = if single { common_idx(self.trans[0].inp, 0b111111) } else { 0 };
+-        let mut transition_size = 0;
+-        let mut output_size = 0;
+-
+-        if !single {
+-            output_size = bytes::pack_size(self.final_output.value());
+-            let mut has_outputs = !self.final_output.is_zero();
+-            for transition in &self.trans {
+-                transition_size = cmp::max(transition_size, pack_delta_size(addr, transition.addr));
+-                output_size = cmp::max(output_size, bytes::pack_size(transition.out.value()));
+-                has_outputs = has_outputs || !transition.out.is_zero();
+-            }
+-            if has_outputs {
+-                if self.is_final {
+-                    bytes::pack_uint_in(&mut wtr, self.final_output.value(), output_size)?;
+-                }
+-                for transition in self.trans.iter().rev() {
+-                    bytes::pack_uint_in(&mut wtr, transition.out.value(), output_size)?;
+-                }
+-            } else {
+-                output_size = 0;
+-            }
+-        } else if !next {
+-            let mut value = self.trans[0].out.value();
+-            if value != 0 {
+-                output_size = bytes::pack_size(value);
+-                let mut packed = [0u8; 8];
+-                for index in 0..output_size {
+-                    packed[index as usize] = value as u8;
+-                    value >>= 8;
+-                }
+-                wtr.write_all(&packed[..output_size as usize])?;
+-            }
+-        }
+-
+-        if single && !next {
+-            let target = self.trans[0].addr;
+-            let mut delta = if target == EMPTY_ADDRESS {
+-                EMPTY_ADDRESS as u64
+-            } else {
+-                (addr - target) as u64
+-            };
+-            transition_size = bytes::pack_size(delta);
+-            let mut packed = [0u8; 8];
+-            for index in 0..transition_size {
+-                packed[index as usize] = delta as u8;
+-                delta >>= 8;
+-            }
+-            wtr.write_all(&packed[..transition_size as usize])?;
+-        } else if !single {
+-            for transition in self.trans.iter().rev() {
+-                pack_delta_in(&mut wtr, addr, transition.addr, transition_size)?;
+-            }
+-            for transition in self.trans.iter().rev() {
+-                wtr.write_all(&[transition.inp])?;
+-            }
+-            if count > TRANS_INDEX_THRESHOLD {
+-                let mut index = [255u8; 256];
+-                for (position, transition) in self.trans.iter().enumerate() {
+-                    index[transition.inp as usize] = position as u8;
+-                }
+-                wtr.write_all(&index)?;
+-            }
+-        }
+-
+-        if !next {
+-            assert!(output_size <= 8);
+-            assert!(transition_size <= 8);
+-            wtr.write_all(&[(transition_size << 4) | output_size])?;
+-        }
+-        let state = if single {
+-            if common == 0 {
+-                wtr.write_all(&[self.trans[0].inp])?;
+-            }
+-            (if next { 0b11000000 } else { 0b10000000 }) | common
+-        } else {
+-            let count_byte = count as u8;
+-            let inline_count = if count_byte <= 0b00111111 { count_byte } else { 0 };
+-            if inline_count == 0 {
+-                wtr.write_all(&[if count == 256 { 1 } else { count_byte }])?;
+-            }
+-            (if self.is_final { 0b01000000 } else { 0 }) | inline_count
+-        };
+-        wtr.write_all(&[state])?;
+-        Ok(())
+     }
+ }
+ 
+@@ -385,15 +294,64 @@ struct StateOneTrans(u8);
+ #[derive(Clone, Copy, Debug)]
+ struct StateAnyTrans(u8);
+ 
++impl State {
++    fn new(data: &[u8], addr: CompiledAddr) -> State {
++        if addr == EMPTY_ADDRESS {
++            return State::EmptyFinal;
++        }
++        let v = data[addr];
++        match (v & 0b11_000000) >> 6 {
++            0b11 => State::OneTransNext(StateOneTransNext(v)),
++            0b10 => State::OneTrans(StateOneTrans(v)),
++            _ => State::AnyTrans(StateAnyTrans(v)),
++        }
++    }
++}
++
+ impl StateOneTransNext {
++    fn compile<W: io::Write>(
++        mut wtr: W,
++        _: CompiledAddr,
++        input: u8,
++    ) -> io::Result<()> {
++        let mut state = StateOneTransNext::new();
++        state.set_common_input(input);
++        if state.common_input().is_none() {
++            wtr.write_all(&[input])?;
++        }
++        wtr.write_all(&[state.0])?;
++        Ok(())
++    }
+ 
++    #[inline]
++    fn new() -> StateOneTransNext {
++        StateOneTransNext(0b11_000000)
++    }
+ 
++    #[inline]
++    fn set_common_input(&mut self, input: u8) {
++        self.0 = (self.0 & 0b11_000000) | common_idx(input, 0b111111);
++    }
+ 
+     #[inline]
+     fn common_input(&self) -> Option<u8> {
+         common_input(self.0 & 0b00_111111)
+     }
+ 
++    #[inline]
++    fn input_len(&self) -> usize {
++        if self.common_input().is_none() {
++            1
++        } else {
++            0
++        }
++    }
++
++    #[inline]
++    fn end_addr(&self, data: &[u8]) -> usize {
++        data.len() - 1 - self.input_len()
++    }
++
+     #[inline]
+     fn input(&self, node: &Node<'_>) -> u8 {
+         if let Some(inp) = self.common_input() {
+@@ -410,8 +368,39 @@ impl StateOneTransNext {
+ }
+ 
+ impl StateOneTrans {
++    fn compile<W: io::Write>(
++        mut wtr: W,
++        addr: CompiledAddr,
++        trans: Transition,
++    ) -> io::Result<()> {
++        let out = trans.out.value();
++        let output_pack_size =
++            if out == 0 { 0 } else { bytes::pack_uint(&mut wtr, out)? };
++        let trans_pack_size = pack_delta(&mut wtr, addr, trans.addr)?;
++
++        let mut pack_sizes = PackSizes::new();
++        pack_sizes.set_output_pack_size(output_pack_size);
++        pack_sizes.set_transition_pack_size(trans_pack_size);
++        wtr.write_all(&[pack_sizes.encode()])?;
++
++        let mut state = StateOneTrans::new();
++        state.set_common_input(trans.inp);
++        if state.common_input().is_none() {
++            wtr.write_all(&[trans.inp])?;
++        }
++        wtr.write_all(&[state.0])?;
++        Ok(())
++    }
+ 
++    #[inline]
++    fn new() -> StateOneTrans {
++        StateOneTrans(0b10_000000)
++    }
+ 
++    #[inline]
++    fn set_common_input(&mut self, input: u8) {
++        self.0 = (self.0 & 0b10_000000) | common_idx(input, 0b111111);
++    }
+ 
+     #[inline]
+     fn common_input(&self) -> Option<u8> {
+@@ -427,7 +416,20 @@ impl StateOneTrans {
+         }
+     }
+ 
++    #[inline]
++    fn sizes(&self, data: &[u8]) -> PackSizes {
++        let i = data.len() - 1 - self.input_len() - 1;
++        PackSizes::decode(data[i])
++    }
+ 
++    #[inline]
++    fn end_addr(&self, data: &[u8], sizes: PackSizes) -> usize {
++        data.len() - 1
++        - self.input_len()
++        - 1 // pack size
++        - sizes.transition_pack_size()
++        - sizes.output_pack_size()
++    }
+ 
+     #[inline]
+     fn input(&self, node: &Node<'_>) -> u8 {
+@@ -464,14 +466,102 @@ impl StateOneTrans {
+ }
+ 
+ impl StateAnyTrans {
++    fn compile<W: io::Write>(
++        mut wtr: W,
++        addr: CompiledAddr,
++        node: &BuilderNode,
++    ) -> io::Result<()> {
++        assert!(node.trans.len() <= 256);
++
++        let mut tsize = 0;
++        let mut osize = bytes::pack_size(node.final_output.value());
++        let mut any_outs = !node.final_output.is_zero();
++        for t in &node.trans {
++            tsize = cmp::max(tsize, pack_delta_size(addr, t.addr));
++            osize = cmp::max(osize, bytes::pack_size(t.out.value()));
++            any_outs = any_outs || !t.out.is_zero();
++        }
++
++        let mut pack_sizes = PackSizes::new();
++        if any_outs {
++            pack_sizes.set_output_pack_size(osize);
++        } else {
++            pack_sizes.set_output_pack_size(0);
++        }
++        pack_sizes.set_transition_pack_size(tsize);
++
++        let mut state = StateAnyTrans::new();
++        state.set_final_state(node.is_final);
++        state.set_state_ntrans(node.trans.len() as u8);
++
++        if any_outs {
++            if node.is_final {
++                bytes::pack_uint_in(
++                    &mut wtr,
++                    node.final_output.value(),
++                    osize,
++                )?;
++            }
++            for t in node.trans.iter().rev() {
++                bytes::pack_uint_in(&mut wtr, t.out.value(), osize)?;
++            }
++        }
++        for t in node.trans.iter().rev() {
++            pack_delta_in(&mut wtr, addr, t.addr, tsize)?;
++        }
++        for t in node.trans.iter().rev() {
++            wtr.write_all(&[t.inp])?;
++        }
++        if node.trans.len() > TRANS_INDEX_THRESHOLD {
++            // A value of 255 indicates that no transition exists for the byte
++            // at that index. (Except when there are 256 transitions.) Namely,
++            // any value greater than or equal to the number of transitions in
++            // this node indicates an absent transition.
++            let mut index = [255u8; 256];
++            for (i, t) in node.trans.iter().enumerate() {
++                index[t.inp as usize] = i as u8;
++            }
++            wtr.write_all(&index)?;
++        }
++
++        wtr.write_all(&[pack_sizes.encode()])?;
++        if state.state_ntrans().is_none() {
++            if node.trans.len() == 256 {
++                // 256 can't be represented in a u8, so we abuse the fact that
++                // the # of transitions can never be 1 here, since 1 is always
++                // encoded in the state byte.
++                wtr.write_all(&[1])?;
++            } else {
++                wtr.write_all(&[node.trans.len() as u8])?;
++            }
++        }
++        wtr.write_all(&[state.0])?;
++        Ok(())
++    }
+ 
++    #[inline]
++    fn new() -> StateAnyTrans {
++        StateAnyTrans(0b00_000000)
++    }
+ 
++    #[inline]
++    fn set_final_state(&mut self, yes: bool) {
++        if yes {
++            self.0 |= 0b01_000000;
++        }
++    }
+ 
+     #[inline]
+     fn is_final_state(&self) -> bool {
+         self.0 & 0b01_000000 == 0b01_000000
+     }
+ 
++    #[inline]
++    fn set_state_ntrans(&mut self, n: u8) {
++        if n <= 0b00_111111 {
++            self.0 = (self.0 & 0b11_000000) | n;
++        }
++    }
+ 
+     #[inline]
+     fn state_ntrans(&self) -> Option<u8> {
+@@ -483,6 +573,11 @@ impl StateAnyTrans {
+         }
+     }
+ 
++    #[inline]
++    fn sizes(&self, data: &[u8]) -> PackSizes {
++        let i = data.len() - 1 - self.ntrans_len() - 1;
++        PackSizes::decode(data[i])
++    }
+ 
+     #[inline]
+     fn total_trans_size(
+@@ -529,6 +624,45 @@ impl StateAnyTrans {
+         }
+     }
+ 
++    #[inline]
++    fn final_output(
++        &self,
++        version: u64,
++        data: &[u8],
++        sizes: PackSizes,
++        ntrans: usize,
++    ) -> Output {
++        let osize = sizes.output_pack_size();
++        if osize == 0 || !self.is_final_state() {
++            return Output::zero();
++        }
++        let at = data.len() - 1
++                 - self.ntrans_len()
++                 - 1 // pack size
++                 - self.total_trans_size(version, sizes, ntrans)
++                 - (ntrans * osize) // output values
++                 - osize; // the desired output value
++        Output::new(bytes::unpack_uint(&data[at..], osize as u8))
++    }
++
++    #[inline]
++    fn end_addr(
++        &self,
++        version: u64,
++        data: &[u8],
++        sizes: PackSizes,
++        ntrans: usize,
++    ) -> usize {
++        let osize = sizes.output_pack_size();
++        let final_osize = if !self.is_final_state() { 0 } else { osize };
++        data.len() - 1
++        - self.ntrans_len()
++        - 1 // pack size
++        - self.total_trans_size(version, sizes, ntrans)
++        - (ntrans * osize) // output values
++        - final_osize // final output
++    }
++
+     #[inline]
+     fn trans_addr(&self, node: &Node<'_>, i: usize) -> CompiledAddr {
+         assert!(i < node.ntrans);
+@@ -612,13 +746,27 @@ impl PackSizes {
+         PackSizes(v)
+     }
+ 
++    #[inline]
++    fn encode(&self) -> u8 {
++        self.0
++    }
+ 
++    #[inline]
++    fn set_transition_pack_size(&mut self, size: u8) {
++        assert!(size <= 8);
++        self.0 = (self.0 & 0b0000_1111) | (size << 4);
++    }
+ 
+     #[inline]
+     fn transition_pack_size(&self) -> usize {
+         ((self.0 & 0b1111_0000) >> 4) as usize
+     }
+ 
++    #[inline]
++    fn set_output_pack_size(&mut self, size: u8) {
++        assert!(size <= 8);
++        self.0 = (self.0 & 0b1111_0000) | size;
++    }
+ 
+     #[inline]
+     fn output_pack_size(&self) -> usize {
+@@ -675,6 +823,17 @@ fn common_input(idx: u8) -> Option<u8> {
+     }
+ }
+ 
++#[inline]
++fn pack_delta<W: io::Write>(
++    wtr: W,
++    node_addr: CompiledAddr,
++    trans_addr: CompiledAddr,
++) -> io::Result<u8> {
++    let nbytes = pack_delta_size(node_addr, trans_addr);
++    pack_delta_in(wtr, node_addr, trans_addr, nbytes)?;
++    Ok(nbytes)
++}
++
+ #[inline]
+ fn pack_delta_in<W: io::Write>(
+     wtr: W,
+diff --git a/src/raw/ops.rs b/src/raw/ops.rs
+index 0105018..9baf855 100644
+--- a/src/raw/ops.rs
++++ b/src/raw/ops.rs
+@@ -212,15 +212,7 @@ impl<'a, 'f> Streamer<'a> for Union<'f> {
+ 
+     fn next(&'a mut self) -> Option<(&'a [u8], &'a [IndexedValue])> {
+         if let Some(slot) = self.cur_slot.take() {
++            self.heap.refill(slot);
+-            {
+-                let mut slot = slot;
+-                if let Some((input, output)) = self.heap.rdrs[slot.idx].next() {
+-                    slot.input.clear();
+-                    slot.input.extend(input);
+-                    slot.output = output;
+-                    self.heap.heap.push(slot);
+-                }
+-            }
+         }
+         let slot = match self.heap.pop() {
+             None => return None,
+@@ -233,15 +225,7 @@ impl<'a, 'f> Streamer<'a> for Union<'f> {
+         self.outs.push(slot.indexed_value());
+         while let Some(slot2) = self.heap.pop_if_equal(slot.input()) {
+             self.outs.push(slot2.indexed_value());
++            self.heap.refill(slot2);
+-            {
+-                let mut slot2 = slot2;
+-                if let Some((input, output)) = self.heap.rdrs[slot2.idx].next() {
+-                    slot2.input.clear();
+-                    slot2.input.extend(input);
+-                    slot2.output = output;
+-                    self.heap.heap.push(slot2);
+-                }
+-            }
+         }
+         Some((slot.input(), &self.outs))
+     }
+@@ -262,15 +246,7 @@ impl<'a, 'f> Streamer<'a> for Intersection<'f> {
+ 
+     fn next(&'a mut self) -> Option<(&'a [u8], &'a [IndexedValue])> {
+         if let Some(slot) = self.cur_slot.take() {
++            self.heap.refill(slot);
+-            {
+-                let mut slot = slot;
+-                if let Some((input, output)) = self.heap.rdrs[slot.idx].next() {
+-                    slot.input.clear();
+-                    slot.input.extend(input);
+-                    slot.output = output;
+-                    self.heap.heap.push(slot);
+-                }
+-            }
+         }
+         loop {
+             let slot = match self.heap.pop() {
+@@ -279,28 +255,14 @@ impl<'a, 'f> Streamer<'a> for Intersection<'f> {
+             };
+             self.outs.clear();
+             self.outs.push(slot.indexed_value());
++            let mut popped: usize = 1;
+             while let Some(slot2) = self.heap.pop_if_equal(slot.input()) {
+                 self.outs.push(slot2.indexed_value());
++                self.heap.refill(slot2);
++                popped += 1;
+-                {
+-                    let mut slot2 = slot2;
+-                    if let Some((input, output)) = self.heap.rdrs[slot2.idx].next() {
+-                        slot2.input.clear();
+-                        slot2.input.extend(input);
+-                        slot2.output = output;
+-                        self.heap.heap.push(slot2);
+-                    }
+-                }
+             }
++            if popped < self.heap.num_slots() {
++                self.heap.refill(slot);
+-            if self.outs.len() < self.heap.rdrs.len() {
+-                {
+-                    let mut slot = slot;
+-                    if let Some((input, output)) = self.heap.rdrs[slot.idx].next() {
+-                        slot.input.clear();
+-                        slot.input.extend(input);
+-                        slot.output = output;
+-                        self.heap.heap.push(slot);
+-                    }
+-                }
+             } else {
+                 self.cur_slot = Some(slot);
+                 let key = self.cur_slot.as_ref().unwrap().input();
+@@ -341,16 +303,11 @@ impl<'a, 'f> Streamer<'a> for Difference<'f> {
+                 }
+             };
+             let mut unique = true;
++            while let Some(slot) = self.heap.pop_if_le(&self.key) {
++                if slot.input() == &*self.key {
++                    unique = false;
+-            while self.heap.heap.peek().map(|slot| slot.input() <= &*self.key).unwrap_or(false) {
+-                let mut slot = self.heap.heap.pop().unwrap();
+-                let matched = slot.input() == &*self.key;
+-                if let Some((input, output)) = self.heap.rdrs[slot.idx].next() {
+-                    slot.input.clear();
+-                    slot.input.extend(input);
+-                    slot.output = output;
+-                    self.heap.heap.push(slot);
+                 }
++                self.heap.refill(slot);
+-                unique = unique && !matched;
+             }
+             if unique {
+                 return Some((&self.key, &self.outs));
+@@ -374,15 +331,7 @@ impl<'a, 'f> Streamer<'a> for SymmetricDifference<'f> {
+ 
+     fn next(&'a mut self) -> Option<(&'a [u8], &'a [IndexedValue])> {
+         if let Some(slot) = self.cur_slot.take() {
++            self.heap.refill(slot);
+-            {
+-                let mut slot = slot;
+-                if let Some((input, output)) = self.heap.rdrs[slot.idx].next() {
+-                    slot.input.clear();
+-                    slot.input.extend(input);
+-                    slot.output = output;
+-                    self.heap.heap.push(slot);
+-                }
+-            }
+         }
+         loop {
+             let slot = match self.heap.pop() {
+@@ -391,30 +340,16 @@ impl<'a, 'f> Streamer<'a> for SymmetricDifference<'f> {
+             };
+             self.outs.clear();
+             self.outs.push(slot.indexed_value());
++            let mut popped: usize = 1;
+             while let Some(slot2) = self.heap.pop_if_equal(slot.input()) {
+                 self.outs.push(slot2.indexed_value());
++                self.heap.refill(slot2);
++                popped += 1;
+-                {
+-                    let mut slot2 = slot2;
+-                    if let Some((input, output)) = self.heap.rdrs[slot2.idx].next() {
+-                        slot2.input.clear();
+-                        slot2.input.extend(input);
+-                        slot2.output = output;
+-                        self.heap.heap.push(slot2);
+-                    }
+-                }
+             }
+             // This key is in the symmetric difference if and only if it
+             // appears in an odd number of sets.
++            if popped % 2 == 0 {
++                self.heap.refill(slot);
+-            if self.outs.len() % 2 == 0 {
+-                {
+-                    let mut slot = slot;
+-                    if let Some((input, output)) = self.heap.rdrs[slot.idx].next() {
+-                        slot.input.clear();
+-                        slot.input.extend(input);
+-                        slot.output = output;
+-                        self.heap.heap.push(slot);
+-                    }
+-                }
+             } else {
+                 self.cur_slot = Some(slot);
+                 let key = self.cur_slot.as_ref().unwrap().input();
+@@ -454,6 +389,18 @@ impl<'f> StreamHeap<'f> {
+         }
+     }
+ 
++    fn pop_if_le(&mut self, key: &[u8]) -> Option<Slot> {
++        if self.heap.peek().map(|s| s.input() <= key).unwrap_or(false) {
++            self.pop()
++        } else {
++            None
++        }
++    }
++
++    fn num_slots(&self) -> usize {
++        self.rdrs.len()
++    }
++
+     fn refill(&mut self, mut slot: Slot) {
+         if let Some((input, output)) = self.rdrs[slot.idx].next() {
+             slot.set_input(input);
+diff --git a/src/set.rs b/src/set.rs
+index 7752b66..3b1b90d 100644
+--- a/src/set.rs
++++ b/src/set.rs
+@@ -88,16 +88,7 @@ impl<D: AsRef<[u8]>> Set<D> {
+     /// assert_eq!(set.contains("z"), false);
+     /// ```
+     pub fn contains<K: AsRef<[u8]>>(&self, key: K) -> bool {
++        self.0.contains_key(key)
+-        let fst = self.0.as_ref();
+-        let key = key.as_ref();
+-        let mut node = fst.root();
+-        for &byte in key {
+-            node = match node.find_input(byte) {
+-                None => return false,
+-                Some(index) => fst.node(node.transition_addr(index)),
+-            };
+-        }
+-        node.is_final()
+     }
+ 
+     /// Return a lexicographically ordered stream of all keys in this set.
+@@ -599,22 +590,7 @@ impl<W: io::Write> SetBuilder<W> {
+         I: IntoIterator<Item = T>,
+     {
+         for key in iter {
++            self.0.add(key)?;
+-            let bytes = key.as_ref();
+-            if let Some(ref mut last) = self.0.last {
+-                if bytes < &**last {
+-                    return Err(raw::Error::OutOfOrder {
+-                        previous: last.to_vec(),
+-                        got: bytes.to_vec(),
+-                    }.into());
+-                }
+-                last.clear();
+-                for &byte in bytes {
+-                    last.push(byte);
+-                }
+-            } else {
+-                self.0.last = Some(bytes.to_vec());
+-            }
+-            self.0.insert_output(key, None)?;
+         }
+         Ok(())
+     }
+@@ -628,29 +604,7 @@ impl<W: io::Write> SetBuilder<W> {
+         I: for<'a> IntoStreamer<'a, Into = S, Item = &'a [u8]>,
+         S: 'f + for<'a> Streamer<'a, Item = &'a [u8]>,
+     {
++        self.0.extend_stream(StreamZeroOutput(stream.into_stream()))
+-        let mut stream = stream.into_stream();
+-        while let Some(key) = stream.next() {
+-            let bytes = key.as_ref();
+-            if let Some(ref mut last) = self.0.last {
+-                if bytes == &**last {
+-                    return Err(raw::Error::DuplicateKey { got: bytes.to_vec() }.into());
+-                }
+-                if bytes < &**last {
+-                    return Err(raw::Error::OutOfOrder {
+-                        previous: last.to_vec(),
+-                        got: bytes.to_vec(),
+-                    }.into());
+-                }
+-                last.clear();
+-                for &byte in bytes {
+-                    last.push(byte);
+-                }
+-            } else {
+-                self.0.last = Some(bytes.to_vec());
+-            }
+-            self.0.insert_output(key, Some(raw::Output::zero()))?;
+-        }
+-        Ok(())
+     }
+ 
+     /// Finishes the construction of the set and flushes the underlying
+@@ -694,24 +648,15 @@ impl<'s, A: Automaton> Stream<'s, A> {
+     /// and a UTF-8 decoding error is returned.
+     ///
+     /// Note that this creates a new allocation for every key in the stream.
++    pub fn into_strs(self) -> Result<Vec<String>> {
++        self.0.into_str_keys()
+-    pub fn into_strs(mut self) -> Result<Vec<String>> {
+-        let mut keys = vec![];
+-        while let Some((key, _)) = self.0.next() {
+-            let key = String::from_utf8(key.to_vec()).map_err(raw::Error::from)?;
+-            keys.push(key);
+-        }
+-        Ok(keys)
+     }
+ 
+     /// Convert this stream into a vector of byte strings.
+     ///
+     /// Note that this creates a new allocation for every key in the stream.
++    pub fn into_bytes(self) -> Vec<Vec<u8>> {
++        self.0.into_byte_keys()
+-    pub fn into_bytes(mut self) -> Vec<Vec<u8>> {
+-        let mut keys = vec![];
+-        while let Some((key, _)) = self.0.next() {
+-            keys.push(key.to_vec());
+-        }
+-        keys
+     }
+ }
+ 

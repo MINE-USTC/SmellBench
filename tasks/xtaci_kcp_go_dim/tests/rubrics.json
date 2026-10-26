@@ -1,0 +1,564 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "xtaci_kcp_go_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "DIM01",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 decoder sampling",
+      "intent_basis": "R1 decoder sampling",
+      "baseline_defect": "Data and parity branches plus session decoding repeat pulse-ring transitions.",
+      "criterion": "Unify the maintained pulse sampling rule across decoder entry paths.",
+      "acceptance": "Sample before invalid-sequence rejection; publish tail modulo capacity, count until full then head; retain both bit values. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "fec.go",
+          "symbol": "decode",
+          "detail": "Data and parity branches plus session decoding repeat pulse-ring transitions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 shard retirement",
+      "intent_basis": "R1 shard retirement",
+      "baseline_defect": "Age comparison, pool returns and map/gauge updates are embedded in decode and session input.",
+      "criterion": "Make expired-shard retirement a cohesive operation across both consumers.",
+      "acceptance": "Use wrap-aware product comparison and strict age threshold; return every stored packet, delete expired sets and publish remaining set count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "fec.go",
+          "symbol": "decode",
+          "detail": "Age comparison, pool returns and map/gauge updates are embedded in decode and session input.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 encoder framing",
+      "intent_basis": "R1 encoder framing",
+      "baseline_defect": "Header bytes and sequence transitions are repeated across data, parity, OOB and session output.",
+      "criterion": "Maintain FEC framing and sequence policy coherently across packet kinds.",
+      "acceptance": "Data/parity advance modulo paws; OOB uses max uint32 without consuming sequence; length starts at payloadOffset. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "fec.go",
+          "symbol": "encode",
+          "detail": "Header bytes and sequence transitions are repeated across data, parity, OOB and session output.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM04",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 skipped parity",
+      "intent_basis": "R1 skipped parity",
+      "baseline_defect": "Codec failure and discontinuity duplicate parity-block advancement in encoder/session paths.",
+      "criterion": "Share skipped-parity sequence policy while retaining the distinct failure accounting.",
+      "acceptance": "Both causes advance parityShards modulo paws; only codec failure increments FECErrs. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "fec.go",
+          "symbol": "encode",
+          "detail": "Codec failure and discontinuity duplicate parity-block advancement in encoder/session paths.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 segment lifecycle",
+      "intent_basis": "R1 segment lifecycle",
+      "baseline_defect": "Allocation, pool return and nil invalidation repeat across Send, Recv, ACK input and session copies.",
+      "criterion": "Keep segment storage lifecycle consistent across allocation and release consumers.",
+      "acceptance": "Owned payloads are copied on admission, returned once when non-nil and invalidated; retaining existing pool APIs is sufficient. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Input",
+          "detail": "Allocation, pool return and nil invalidation repeat across Send, Recv, ACK input and session copies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM06",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 PeekSize expansion; R2 and retry Read",
+      "intent_basis": "R1 PeekSize expansion; R2 and retry Read",
+      "baseline_defect": "Peek, Recv and session Read repeat fragment completeness and cumulative-size logic.",
+      "criterion": "Give complete-message availability and length one maintained policy across peek and consuming paths.",
+      "acceptance": "Empty/incomplete remains unavailable; stop at frg zero, retain Recv short-buffer result and Read size-positive admission; direct suitability uses total message length. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Recv",
+          "detail": "Peek, Recv and session Read repeat fragment completeness and cumulative-size logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM07",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 ACK expansion",
+      "intent_basis": "R1 ACK expansion",
+      "baseline_defect": "Input embeds cumulative removal and snd_una refresh.",
+      "criterion": "Separate coherent cumulative-ACK progression from packet parsing.",
+      "acceptance": "Discard only leading sn below una, recycle and signal flush if removed, then snd_una is first remaining sn or snd_nxt. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Input",
+          "detail": "Input embeds cumulative removal and snd_una refresh.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM08",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 ACK expansion",
+      "intent_basis": "R1 ACK expansion",
+      "baseline_defect": "Input embeds selective ACK marking and buffer retirement.",
+      "criterion": "Give selective ACK handling a cohesive sequence-bounded transition.",
+      "acceptance": "Only sn in [snd_una,snd_nxt) may mark; free payload but retain acknowledged segment until cumulative removal; stop ordered search correctly. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Input",
+          "detail": "Input embeds selective ACK marking and buffer retirement.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM09",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 ACK expansion",
+      "intent_basis": "R1 ACK expansion",
+      "baseline_defect": "Fast ACK timestamp filtering and retransmit sentinel logic are embedded alongside selective ACK.",
+      "criterion": "Keep fast-ACK progression independently maintainable.",
+      "acceptance": "Earlier nonmatching sn with seg.ts <= ts increment unless sentinel max uint32; threshold contributes flush signal without losing earlier signal. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Input",
+          "detail": "Fast ACK timestamp filtering and retransmit sentinel logic are embedded alongside selective ACK.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM10",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 RTT expansion",
+      "intent_basis": "R1 RTT expansion",
+      "baseline_defect": "RTT estimator arithmetic is expanded inside packet handling.",
+      "criterion": "Isolate maintained RTT estimation and its admission contract.",
+      "acceptance": "Only regular packets with ACK sample and nonnegative elapsed time update; retain delta shifts, reduced variance weight, interval floor and RTO clamps. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Input",
+          "detail": "RTT estimator arithmetic is expanded inside packet handling.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM11",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 receive reassembly; R2 Read",
+      "intent_basis": "R1 receive reassembly; R2 Read",
+      "baseline_defect": "Input and session reading manipulate heap/queue and rcv_nxt directly.",
+      "criterion": "Keep accepted-packet insertion and contiguous receive promotion coherent across input and consumption.",
+      "acceptance": "Copy only new in-window payloads, preserve duplicate reporting; promote only expected sn while queue has room, push back first blocked segment. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Input",
+          "detail": "Input and session reading manipulate heap/queue and rcv_nxt directly.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM12",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R2 receive handoff; retry destination integration",
+      "intent_basis": "R2 receive handoff; retry destination integration",
+      "baseline_defect": "Read expands dequeue, fragment copy, pool release and recovery notification.",
+      "criterion": "Let session read consume a coherent receive operation while retaining application buffering.",
+      "acceptance": "Consume whole message even for small application buffers, retain unread suffix, mark ASK_TELL only after previously full window becomes available; unlock before byte counters and return. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "Read",
+          "detail": "Read expands dequeue, fragment copy, pool release and recovery notification.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM13",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R2 send handoff; retry offsets",
+      "intent_basis": "R2 send handoff; retry offsets",
+      "baseline_defect": "Vector writing embeds stream tail extension and queue allocation.",
+      "criterion": "Keep transport segmentation and stream-tail policy coherent between Send and WriteBuffers.",
+      "acceptance": "Preserve MSS-sized per-vector chunks and message boundaries, stream append consumes only available tail capacity, allocate remaining chunk once and advance original chunk end; empty vectors enqueue nothing. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "WriteBuffers",
+          "detail": "Vector writing embeds stream tail extension and queue allocation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM14",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R4 framing",
+      "intent_basis": "R4 framing",
+      "baseline_defect": "ACK/probe/data and timer copies repeat little-endian header layout and OutSegs.",
+      "criterion": "Maintain outbound KCP wire serialization through one coherent policy.",
+      "acceptance": "Preserve all fields and payload length, overhead advancement and exactly one OutSegs increment per encoded header. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "flush",
+          "detail": "ACK/probe/data and timer copies repeat little-endian header layout and OutSegs.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM15",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R4 output batching",
+      "intent_basis": "R4 output batching",
+      "baseline_defect": "MTU checks and flush/reset are duplicated across packet kinds and timer copies.",
+      "criterion": "Keep output-buffer capacity and final emission coherent across transmit paths.",
+      "acceptance": "Emit before write only when size+need > mtu; ACK space check remains before jitter filter; deferred final output precedes ring gauges; retain output callback dispatch. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "flush",
+          "detail": "MTU checks and flush/reset are duplicated across packet kinds and timer copies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM16",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R4 transmit expansion",
+      "intent_basis": "R4 transmit expansion",
+      "baseline_defect": "Timer copies independently implement ACK filtering and zero-window probing.",
+      "criterion": "Maintain ACK and window-probe transmit policy coherently across full and partial flush entry points.",
+      "acceptance": "Last ACK survives jitter filtering, clear list only admitted mode; zero-window backoff saturates and nonzero resets; WASK before WINS, clear probe after both. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Update",
+          "detail": "Timer copies independently implement ACK filtering and zero-window probing.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM17",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R4 sliding window",
+      "intent_basis": "R4 sliding window",
+      "baseline_defect": "Queue admission and segment publication are embedded in both timer workflows.",
+      "criterion": "Keep sliding-window admission coherent across flush callers.",
+      "acceptance": "Window is min send/remote and optional congestion; ordered Pop, conv/cmd/sn initialization, Push then snd_nxt and new-count advance; use wrap-aware comparisons. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Update",
+          "detail": "Queue admission and segment publication are embedded in both timer workflows.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM18",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R4 retransmission; retry integrated decisions",
+      "intent_basis": "R4 retransmission; retry integrated decisions",
+      "baseline_defect": "Full flush and two timers maintain parallel initial/fast/early/timeout algorithms.",
+      "criterion": "Consolidate retransmission decision and state transition policy across transmit entry points.",
+      "acceptance": "Skip acked; initial then eligible fast then early then timeout, sentinel suppresses repeated fast/early; preserve RTO backoff, resend deadline before refreshed packet clock, xmit/dead-link and nearest positive delay. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "update",
+          "detail": "Full flush and two timers maintain parallel initial/fast/early/timeout algorithms.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM19",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R4 post-transmit feedback",
+      "intent_basis": "R4 post-transmit feedback",
+      "baseline_defect": "Timer copies repeat loss counters and congestion feedback.",
+      "criterion": "Keep retransmission accounting and congestion feedback coherently maintained.",
+      "acceptance": "Separate lost/fast/early counts and aggregate; optional congestion fast reduction then timeout reset (timeout wins), retain floor and incr updates. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "Update",
+          "detail": "Timer copies repeat loss counters and congestion feedback.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM20",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R4 scheduled flush handoff",
+      "intent_basis": "R4 scheduled flush handoff",
+      "baseline_defect": "Both timers contain complete flush bodies instead of consuming transport progress.",
+      "criterion": "Remove independent full-transmit implementations from timer orchestration.",
+      "acceptance": "A complete flush reconnection qualifies; preserve KCP timer normalization/advance and session locking, write notification and scheduling using returned interval. No requirement to dismantle a cohesive flush engine. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "update",
+          "detail": "Both timers contain complete flush bodies instead of consuming transport progress.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM21",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R2 outbound FEC; retry cache preparation",
+      "intent_basis": "R2 outbound FEC; retry cache preparation",
+      "baseline_defect": "Session post-processing owns encoder cache filling, padding, codec dispatch and reset.",
+      "criterion": "Make FEC block generation coherently maintained across encoder and session output.",
+      "acceptance": "Use payload-only equal-sized codec slices; clear data tails only, strict continuity test, dispatch codec, parity framing, block reset and latest-packet timestamp; encryption remains subsequent and polymorphic. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "postProcess",
+          "detail": "Session post-processing owns encoder cache filling, padding, codec dispatch and reset.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM22",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R3 and stage2 auto-tuning",
+      "intent_basis": "R3 and stage2 auto-tuning",
+      "baseline_defect": "Session input expands sort-cache population and two pulse-width searches.",
+      "criterion": "Give pulse-period discovery a cohesive maintained rule across tuning consumers.",
+      "acceptance": "Require three observations, wrap-aware sequence sort, stop at first gap, count only bounded transitions for each bit; retain unknown -1 and do not infer from partial leading runs. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "kcpInput",
+          "detail": "Session input expands sort-cache population and two pulse-width searches.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM23",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R3 decoder expansion",
+      "intent_basis": "R3 decoder expansion",
+      "baseline_defect": "Input directly changes decoder parameters, retires shards and replaces codec/caches.",
+      "criterion": "Keep decoder retuning and its lifecycle boundary cohesive.",
+      "acceptance": "Validate positive widths with sum strictly below 256; changed parameters clear/recycle before codec construction; failed construction exits without falsely clearing shouldTune; valid unchanged settings clear flag; tuning packet is not decoded further. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "kcpInput",
+          "detail": "Input directly changes decoder parameters, retires shards and replaces codec/caches.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM24",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R3 decoder expansion",
+      "intent_basis": "R3 decoder expansion",
+      "baseline_defect": "Input owns shard deduplication, cache preparation, reconstruction and buffer transfer.",
+      "criterion": "Maintain shard admission/recovery as a coherent decoder operation.",
+      "acceptance": "Reject duplicates before parity count/copy; preserve all-data shortcut, zero-padding, allocate missing data only; failure returns new buffers, success transfers recovered buffers to caller; original packets recycled once and newest-shard update precedes aging. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "kcpInput",
+          "detail": "Input owns shard deduplication, cache preparation, reconstruction and buffer transfer.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM25",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R3 codec construction",
+      "intent_basis": "R3 codec construction",
+      "baseline_defect": "Session constructor expands FEC validation, codec allocation, cache geometry and framing offsets.",
+      "criterion": "Restore a coherent FEC construction contract consumed by session initialization.",
+      "acceptance": "Nonpositive disables both; decoder sum<=256 rule distinct from encoder construction; publish each only on successful codec creation, increment header only for actual encoder, preserve cache sizes and offsets. Existing constructors qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "newUDPSession",
+          "detail": "Session constructor expands FEC validation, codec allocation, cache geometry and framing offsets.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DIM26",
+      "dimension": "cross_file_coordination",
+      "source_stage": "Stage2 initialization integration",
+      "intent_basis": "Stage2 initialization integration",
+      "baseline_defect": "Session initialization repeats MTU, AEAD overhead, MSS and backing buffer policy.",
+      "criterion": "Keep initial MTU derivation consistent with the existing MTU configuration operation.",
+      "acceptance": "Clamp requested MTU, subtract framing and actual AEAD overhead, reject <= KCP overhead, commit mtu/mss/buffer consistently; retain crypt interface dispatch. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only moving the same algorithm into local anonymous blocks or leaving a second independently maintained copy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "newUDPSession",
+          "detail": "Session initialization repeats MTU, AEAD overhead, MSS and backing buffer policy.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "xtaci_kcp_go_dim",
+    "schema_version": "source_grounded_four_dimensions.v1",
+    "aggregation": "equal_weight_per_item",
+    "excluded_from_scoring": [
+      "The empty post.diff adds no repair obligation.",
+      "Compilation and behavior restoration are controls, not independent structural points.",
+      "Orphaned comments are leakage findings, not scoring items."
+    ]
+  }
+}

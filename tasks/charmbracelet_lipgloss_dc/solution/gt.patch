@@ -1,0 +1,1036 @@
+diff --git a/borders.go b/borders.go
+index 031ff67..7f12360 100644
+--- a/borders.go
++++ b/borders.go
+@@ -278,7 +278,14 @@ func ASCIIBorder() Border {
+ 	return asciiBorder
+ }
+ 
++type borderBlend struct {
++	topGradient    []color.Color
++	rightGradient  []color.Color
++	bottomGradient []color.Color
++	leftGradient   []color.Color
++}
++
++func (s Style) borderBlend(width, height int, colors ...color.Color) *borderBlend {
+-func (s Style) borderBlend(width, height int, colors ...color.Color) ([]color.Color, []color.Color, []color.Color, []color.Color) {
+ 	gradient := Blend1D(
+ 		(height+width+2)*2,
+ 		colors...,
+@@ -303,12 +310,18 @@ func (s Style) borderBlend(width, height int, colors ...color.Color) *borderBlen
+ 		return s
+ 	}
+ 
++	blend := &borderBlend{
++		topGradient:    getFromOffset(width + 2),
++		rightGradient:  getFromOffset(height),
++		bottomGradient: getFromOffset(width + 2),
++		leftGradient:   getFromOffset(height),
++	}
++
++	// bottom and left gradients are reversed because they are drawn in reverse order.
++	slices.Reverse(blend.bottomGradient)
++	slices.Reverse(blend.leftGradient)
+-	topGradient := getFromOffset(width + 2)
+-	rightGradient := getFromOffset(height)
+-	bottomGradient := getFromOffset(width + 2)
+-	leftGradient := getFromOffset(height)
+ 
++	return blend
+-	return topGradient, rightGradient, bottomGradient, leftGradient
+ }
+ 
+ func (s Style) applyBorder(str string) string {
+@@ -334,24 +347,68 @@ func (s Style) applyBorder(str string) string {
+ 		return str
+ 	}
+ 
+-	edgeTop := s.borderGlyphTop
+-	edgeBottom := s.borderGlyphBottom
+-	edgeLeft := s.borderGlyphLeft
+-	edgeRight := s.borderGlyphRight
+-	edgeTopLeft := border.TopLeft
+-	edgeTopRight := border.TopRight
+-	edgeBottomLeft := border.BottomLeft
+-	edgeBottomRight := border.BottomRight
+ 	lines, width := getLines(str)
+ 
+ 	if hasLeft {
++		if border.Left == "" {
++			border.Left = " "
++		}
++		width += maxRuneWidth(border.Left)
+-		width += maxRuneWidth(edgeLeft)
+ 	}
+ 
+ 	if hasRight {
++		if border.Right == "" {
++			border.Right = " "
++		}
++		width += maxRuneWidth(border.Right)
++	}
++
++	// If corners should be rendered but are set with the empty string, fill them
++	// with a single space.
++	if hasTop && hasLeft && border.TopLeft == "" {
++		border.TopLeft = " "
++	}
++	if hasTop && hasRight && border.TopRight == "" {
++		border.TopRight = " "
++	}
++	if hasBottom && hasLeft && border.BottomLeft == "" {
++		border.BottomLeft = " "
++	}
++	if hasBottom && hasRight && border.BottomRight == "" {
++		border.BottomRight = " "
+-		width += maxRuneWidth(edgeRight)
+ 	}
+ 
++	// Figure out which corners we should actually be using based on which
++	// sides are set to show.
++	if hasTop {
++		switch {
++		case !hasLeft && !hasRight:
++			border.TopLeft = ""
++			border.TopRight = ""
++		case !hasLeft:
++			border.TopLeft = ""
++		case !hasRight:
++			border.TopRight = ""
++		}
++	}
++	if hasBottom {
++		switch {
++		case !hasLeft && !hasRight:
++			border.BottomLeft = ""
++			border.BottomRight = ""
++		case !hasLeft:
++			border.BottomLeft = ""
++		case !hasRight:
++			border.BottomRight = ""
++		}
++	}
++
++	// For now, limit corners to one rune.
++	border.TopLeft = getFirstRuneAsString(border.TopLeft)
++	border.TopRight = getFirstRuneAsString(border.TopRight)
++	border.BottomRight = getFirstRuneAsString(border.BottomRight)
++	border.BottomLeft = getFirstRuneAsString(border.BottomLeft)
++
+ 	var topFG, rightFG, bottomFG, leftFG color.Color
+ 	var (
+ 		blendFG  = s.getAsColors(borderForegroundBlendKey)
+@@ -361,10 +418,9 @@ func (s Style) applyBorder(str string) string {
+ 		leftBG   = s.getAsColor(borderLeftBackgroundKey)
+ 	)
+ 
++	var blend *borderBlend
+-	var topGradient, rightGradient, bottomGradient, leftGradient []color.Color
+-	blended := len(blendFG) > 0
+ 	if len(blendFG) > 0 {
++		blend = s.borderBlend(width, len(lines), blendFG...)
+-		topGradient, rightGradient, bottomGradient, leftGradient = s.borderBlend(width, len(lines), blendFG...)
+ 	} else {
+ 		topFG = s.getAsColor(borderTopForegroundKey)
+ 		rightFG = s.getAsColor(borderRightForegroundKey)
+@@ -376,40 +432,22 @@ func (s Style) applyBorder(str string) string {
+ 
+ 	// Render top
+ 	if hasTop {
++		top := renderHorizontalEdge(border.TopLeft, border.Top, border.TopRight, width)
++		if blend != nil {
++			out.WriteString(s.styleBorderBlend(top, blend.topGradient, topBG))
+-		if hasLeft && edgeTopLeft == "" {
+-			edgeTopLeft = " "
+-		}
+-		if hasRight && edgeTopRight == "" {
+-			edgeTopRight = " "
+-		}
+-		if !hasLeft {
+-			edgeTopLeft = ""
+-		}
+-		if !hasRight {
+-			edgeTopRight = ""
+-		}
+-		edgeTopLeft = getFirstRuneAsString(edgeTopLeft)
+-		edgeTopRight = getFirstRuneAsString(edgeTopRight)
+-
+-		top := renderHorizontalEdge(edgeTopLeft, edgeTop, edgeTopRight, width)
+-		if blended {
+-			out.WriteString(s.styleBorderBlend(top, topGradient, topBG))
+ 		} else {
+ 			out.WriteString(s.styleBorder(top, topFG, topBG))
+ 		}
+ 		out.WriteRune('\n')
+ 	}
+ 
++	leftRunes := []rune(border.Left)
+-	leftRunes := []rune(edgeLeft)
+ 	leftIndex := 0
+ 
++	rightRunes := []rune(border.Right)
+-	rightRunes := []rune(edgeRight)
+ 	rightIndex := 0
+ 
+ 	// Render sides
+-	if blended {
+-		slices.Reverse(leftGradient)
+-	}
+ 	var r string
+ 	for i, l := range lines {
+ 		if hasLeft {
+@@ -418,8 +456,8 @@ func (s Style) applyBorder(str string) string {
+ 			if leftIndex >= len(leftRunes) {
+ 				leftIndex = 0
+ 			}
++			if blend != nil {
++				out.WriteString(s.styleBorder(r, blend.leftGradient[i], leftBG))
+-			if blended {
+-				out.WriteString(s.styleBorder(r, leftGradient[i], leftBG))
+ 			} else {
+ 				out.WriteString(s.styleBorder(r, leftFG, leftBG))
+ 			}
+@@ -431,8 +469,8 @@ func (s Style) applyBorder(str string) string {
+ 			if rightIndex >= len(rightRunes) {
+ 				rightIndex = 0
+ 			}
++			if blend != nil {
++				out.WriteString(s.styleBorder(r, blend.rightGradient[i], rightBG))
+-			if blended {
+-				out.WriteString(s.styleBorder(r, rightGradient[i], rightBG))
+ 			} else {
+ 				out.WriteString(s.styleBorder(r, rightFG, rightBG))
+ 			}
+@@ -444,28 +482,10 @@ func (s Style) applyBorder(str string) string {
+ 
+ 	// Render bottom
+ 	if hasBottom {
++		bottom := renderHorizontalEdge(border.BottomLeft, border.Bottom, border.BottomRight, width)
+-		if blended {
+-			slices.Reverse(bottomGradient)
+-		}
+-		if hasLeft && edgeBottomLeft == "" {
+-			edgeBottomLeft = " "
+-		}
+-		if hasRight && edgeBottomRight == "" {
+-			edgeBottomRight = " "
+-		}
+-		if !hasLeft {
+-			edgeBottomLeft = ""
+-		}
+-		if !hasRight {
+-			edgeBottomRight = ""
+-		}
+-		edgeBottomLeft = getFirstRuneAsString(edgeBottomLeft)
+-		edgeBottomRight = getFirstRuneAsString(edgeBottomRight)
+-
+-		bottom := renderHorizontalEdge(edgeBottomLeft, edgeBottom, edgeBottomRight, width)
+ 		out.WriteRune('\n')
++		if blend != nil {
++			out.WriteString(s.styleBorderBlend(bottom, blend.bottomGradient, bottomBG))
+-		if blended {
+-			out.WriteString(s.styleBorderBlend(bottom, bottomGradient, bottomBG))
+ 		} else {
+ 			out.WriteString(s.styleBorder(bottom, bottomFG, bottomBG))
+ 		}
+diff --git a/get.go b/get.go
+index c653dc0..d1fe1d6 100644
+--- a/get.go
++++ b/get.go
+@@ -615,20 +615,7 @@ func (s Style) getBorderStyle() Border {
+ 	if !s.isSet(borderStyleKey) {
+ 		return noBorder
+ 	}
++	return s.borderStyle
+-	b := Border{Top: s.borderGlyphTop, Bottom: s.borderGlyphBottom, Left: s.borderGlyphLeft, Right: s.borderGlyphRight, TopLeft: s.borderGlyphTopLeft, TopRight: s.borderGlyphTopRight, BottomLeft: s.borderGlyphBottomLeft, BottomRight: s.borderGlyphBottomRight, MiddleLeft: s.borderGlyphMiddleLeft, MiddleRight: s.borderGlyphMiddleRight, Middle: s.borderGlyphMiddle, MiddleTop: s.borderGlyphMiddleTop, MiddleBottom: s.borderGlyphMiddleBottom}
+-	if s.borderTopEmpty {
+-		b.Top = ""
+-	}
+-	if s.borderBottomEmpty {
+-		b.Bottom = ""
+-	}
+-	if s.borderLeftEmpty {
+-		b.Left = ""
+-	}
+-	if s.borderRightEmpty {
+-		b.Right = ""
+-	}
+-	return b
+ }
+ 
+ func (s Style) getAsTransform(propKey) func(string) string {
+diff --git a/layer.go b/layer.go
+index 0b8d0cb..e30d1ef 100644
+--- a/layer.go
++++ b/layer.go
+@@ -186,12 +186,18 @@ func (lh LayerHit) Bounds() image.Rectangle {
+ // once and provides efficient drawing and hit testing operations. All computation
+ // related to layers happens in the Compositor.
+ type Compositor struct {
++	root   *Layer
++	layers []compositeLayer
++	index  map[string]*Layer
++	bounds image.Rectangle
++}
++
++// compositeLayer holds a flattened layer with its calculated absolute position and bounds.
++type compositeLayer struct {
++	layer  *Layer
++	absX   int
++	absY   int
++	bounds image.Rectangle
+-	root                       *Layer
+-	layers                     []*Layer
+-	parentXs, parentYs         []int
+-	minXs, minYs, maxXs, maxYs []int
+-	index                      map[string]*Layer
+-	bounds                     image.Rectangle
+ }
+ 
+ // NewCompositor creates a new Compositor with an internal root layer. Optional
+@@ -218,31 +224,19 @@ func (c *Compositor) AddLayers(layers ...*Layer) *Compositor {
+ // flatten builds the internal flattened layer list and calculates overall bounds.
+ func (c *Compositor) flatten() {
+ 	c.layers = nil
+-	c.parentXs, c.parentYs = nil, nil
+-	c.minXs, c.minYs, c.maxXs, c.maxYs = nil, nil, nil, nil
+ 	c.index = make(map[string]*Layer)
+ 	c.flattenRecursive(c.root, 0, 0)
+ 
+ 	// Sort by absolute z-index (lowest to highest for drawing)
++	slices.SortFunc(c.layers, func(a, b compositeLayer) int {
++		return a.layer.z - b.layer.z
++	})
+-	order := make([]int, len(c.layers))
+-	for i := range order {
+-		order[i] = i
+-	}
+-	slices.SortFunc(order, func(a, b int) int { return c.layers[a].z - c.layers[b].z })
+-	layers := append([]*Layer(nil), c.layers...)
+-	xs, ys := append([]int(nil), c.parentXs...), append([]int(nil), c.parentYs...)
+-	minXs, minYs := append([]int(nil), c.minXs...), append([]int(nil), c.minYs...)
+-	maxXs, maxYs := append([]int(nil), c.maxXs...), append([]int(nil), c.maxYs...)
+-	for i, j := range order {
+-		c.layers[i], c.parentXs[i], c.parentYs[i] = layers[j], xs[j], ys[j]
+-		c.minXs[i], c.minYs[i], c.maxXs[i], c.maxYs[i] = minXs[j], minYs[j], maxXs[j], maxYs[j]
+-	}
+ 
+ 	// Calculate overall bounds
+ 	if len(c.layers) > 0 {
++		c.bounds = c.layers[0].bounds
+-		c.bounds = image.Rect(c.minXs[0]+c.parentXs[0], c.minYs[0]+c.parentYs[0], c.maxXs[0]+c.parentXs[0], c.maxYs[0]+c.parentYs[0])
+ 		for i := 1; i < len(c.layers); i++ {
++			c.bounds = c.bounds.Union(c.layers[i].bounds)
+-			c.bounds = c.bounds.Union(image.Rect(c.minXs[i]+c.parentXs[i], c.minYs[i]+c.parentYs[i], c.maxXs[i]+c.parentXs[i], c.maxYs[i]+c.parentYs[i]))
+ 		}
+ 	}
+ }
+@@ -258,13 +252,12 @@ func (c *Compositor) flattenRecursive(layer *Layer, parentX, parentY int) {
+ 		Max: image.Pt(absX+width, absY+height),
+ 	}
+ 
++	c.layers = append(c.layers, compositeLayer{
++		layer:  layer,
++		absX:   absX,
++		absY:   absY,
++		bounds: bounds,
++	})
+-	c.layers = append(c.layers, layer)
+-	c.parentXs = append(c.parentXs, parentX)
+-	c.parentYs = append(c.parentYs, parentY)
+-	c.minXs = append(c.minXs, bounds.Min.X-parentX)
+-	c.minYs = append(c.minYs, bounds.Min.Y-parentY)
+-	c.maxXs = append(c.maxXs, bounds.Max.X-parentX)
+-	c.maxYs = append(c.maxYs, bounds.Max.Y-parentY)
+ 
+ 	// Index layer by ID if it has one
+ 	if layer.id != "" {
+@@ -283,10 +276,9 @@ func (c *Compositor) Bounds() image.Rectangle {
+ 
+ // Draw draws all layers onto the given [uv.Screen] in z-index order.
+ func (c *Compositor) Draw(scr uv.Screen, area image.Rectangle) {
++	for _, cl := range c.layers {
++		if cl.bounds.Overlaps(area) {
++			cl.layer.Draw(scr, cl.bounds)
+-	for i, cl := range c.layers {
+-		bounds := image.Rect(c.minXs[i]+c.parentXs[i], c.minYs[i]+c.parentYs[i], c.maxXs[i]+c.parentXs[i], c.maxYs[i]+c.parentYs[i])
+-		if bounds.Overlaps(area) {
+-			cl.Draw(scr, bounds)
+ 		}
+ 	}
+ }
+@@ -296,14 +288,14 @@ func (c *Compositor) Draw(scr uv.Screen, area image.Rectangle) {
+ // are ignored. If no layer is hit, it returns an empty [LayerHit].
+ func (c *Compositor) Hit(x, y int) LayerHit {
+ 	var hit LayerHit
++	pt := image.Pt(x, y)
+ 	// Check from highest z to lowest (reverse order)
+ 	for i := len(c.layers) - 1; i >= 0; i-- {
+ 		cl := c.layers[i]
++		if cl.layer.id != "" && pt.In(cl.bounds) {
++			hit.id = cl.layer.id
++			hit.layer = cl.layer
++			hit.bounds = cl.bounds
+-		bounds := image.Rect(c.minXs[i]+c.parentXs[i], c.minYs[i]+c.parentYs[i], c.maxXs[i]+c.parentXs[i], c.maxYs[i]+c.parentYs[i])
+-		if cl.id != "" && x-c.parentXs[i] >= c.minXs[i] && x-c.parentXs[i] < c.maxXs[i] && y-c.parentYs[i] >= c.minYs[i] && y-c.parentYs[i] < c.maxYs[i] {
+-			hit.id = cl.id
+-			hit.layer = cl
+-			hit.bounds = bounds
+ 			return hit
+ 		}
+ 	}
+diff --git a/set.go b/set.go
+index 4437076..f10b453 100644
+--- a/set.go
++++ b/set.go
+@@ -51,34 +51,7 @@ func (s *Style) set(key propKey, value any) {
+ 	case marginCharKey:
+ 		s.marginChar = value.(rune)
+ 	case borderStyleKey:
++		s.borderStyle = value.(Border)
+-		b := value.(Border)
+-		s.borderGlyphTop = b.Top
+-		s.borderGlyphBottom = b.Bottom
+-		s.borderGlyphLeft = b.Left
+-		s.borderGlyphRight = b.Right
+-		s.borderTopEmpty, s.borderBottomEmpty = b.Top == "", b.Bottom == ""
+-		s.borderLeftEmpty, s.borderRightEmpty = b.Left == "", b.Right == ""
+-		if s.borderTopEmpty {
+-			s.borderGlyphTop = " "
+-		}
+-		if s.borderBottomEmpty {
+-			s.borderGlyphBottom = " "
+-		}
+-		if s.borderLeftEmpty {
+-			s.borderGlyphLeft = " "
+-		}
+-		if s.borderRightEmpty {
+-			s.borderGlyphRight = " "
+-		}
+-		s.borderGlyphTopLeft = b.TopLeft
+-		s.borderGlyphTopRight = b.TopRight
+-		s.borderGlyphBottomLeft = b.BottomLeft
+-		s.borderGlyphBottomRight = b.BottomRight
+-		s.borderGlyphMiddleLeft = b.MiddleLeft
+-		s.borderGlyphMiddleRight = b.MiddleRight
+-		s.borderGlyphMiddle = b.Middle
+-		s.borderGlyphMiddleTop = b.MiddleTop
+-		s.borderGlyphMiddleBottom = b.MiddleBottom
+ 	case borderTopForegroundKey:
+ 		s.borderTopFgColor = colorOrNil(value)
+ 	case borderRightForegroundKey:
+@@ -176,15 +149,7 @@ func (s *Style) setFrom(key propKey, i Style) {
+ 	case marginCharKey:
+ 		s.set(marginCharKey, i.marginChar)
+ 	case borderStyleKey:
++		s.set(borderStyleKey, i.borderStyle)
+-		s.borderGlyphTop, s.borderGlyphBottom = i.borderGlyphTop, i.borderGlyphBottom
+-		s.props = s.props.set(borderStyleKey)
+-		s.borderGlyphLeft, s.borderGlyphRight = i.borderGlyphLeft, i.borderGlyphRight
+-		s.borderTopEmpty, s.borderBottomEmpty = i.borderTopEmpty, i.borderBottomEmpty
+-		s.borderLeftEmpty, s.borderRightEmpty = i.borderLeftEmpty, i.borderRightEmpty
+-		s.borderGlyphTopLeft, s.borderGlyphTopRight = i.borderGlyphTopLeft, i.borderGlyphTopRight
+-		s.borderGlyphBottomLeft, s.borderGlyphBottomRight = i.borderGlyphBottomLeft, i.borderGlyphBottomRight
+-		s.borderGlyphMiddleLeft, s.borderGlyphMiddleRight = i.borderGlyphMiddleLeft, i.borderGlyphMiddleRight
+-		s.borderGlyphMiddle, s.borderGlyphMiddleTop, s.borderGlyphMiddleBottom = i.borderGlyphMiddle, i.borderGlyphMiddleTop, i.borderGlyphMiddleBottom
+ 	case borderTopForegroundKey:
+ 		s.set(borderTopForegroundKey, i.borderTopFgColor)
+ 	case borderRightForegroundKey:
+diff --git a/style.go b/style.go
+index 0a89667..3cd6595 100644
+--- a/style.go
++++ b/style.go
+@@ -175,31 +175,17 @@ type Style struct {
+ 	marginBgColor color.Color
+ 	marginChar    rune
+ 
++	borderStyle                 Border
++	borderTopFgColor            color.Color
++	borderRightFgColor          color.Color
++	borderBottomFgColor         color.Color
++	borderLeftFgColor           color.Color
++	borderBlendFgColor          []color.Color
++	borderForegroundBlendOffset int
++	borderTopBgColor            color.Color
++	borderRightBgColor          color.Color
++	borderBottomBgColor         color.Color
++	borderLeftBgColor           color.Color
+-	borderGlyphTop                    string
+-	borderTopEmpty, borderBottomEmpty bool
+-	borderLeftEmpty, borderRightEmpty bool
+-	borderGlyphBottom                 string
+-	borderGlyphLeft                   string
+-	borderGlyphRight                  string
+-	borderGlyphTopLeft                string
+-	borderGlyphTopRight               string
+-	borderGlyphBottomLeft             string
+-	borderGlyphBottomRight            string
+-	borderGlyphMiddleLeft             string
+-	borderGlyphMiddleRight            string
+-	borderGlyphMiddle                 string
+-	borderGlyphMiddleTop              string
+-	borderGlyphMiddleBottom           string
+-	borderTopFgColor                  color.Color
+-	borderRightFgColor                color.Color
+-	borderBottomFgColor               color.Color
+-	borderLeftFgColor                 color.Color
+-	borderBlendFgColor                []color.Color
+-	borderForegroundBlendOffset       int
+-	borderTopBgColor                  color.Color
+-	borderRightBgColor                color.Color
+-	borderBottomBgColor               color.Color
+-	borderLeftBgColor                 color.Color
+ 
+ 	maxWidth  int
+ 	maxHeight int
+diff --git a/table/resizing.go b/table/resizing.go
+index be20e39..ce5fd5f 100644
+--- a/table/resizing.go
++++ b/table/resizing.go
+@@ -79,6 +79,7 @@ func (t *Table) resize() {
+ 		r.yPaddings[i] = make([]int, len(row))
+ 
+ 		for j := range row {
++			column := &r.columns[j]
+ 
+ 			// Making sure we're passing the right index to `styleFunc`. The header row should be `-1` and
+ 			// the others should start from `0`.
+@@ -88,10 +89,8 @@ func (t *Table) resize() {
+ 			}
+ 			style := styleFunc(rowIndex, j)
+ 
++			column.xPadding = max(column.xPadding, style.GetHorizontalFrameSize())
++			column.fixedWidth = max(column.fixedWidth, style.GetWidth())
+-			frame := max(r.columnXPaddings[j], style.GetHorizontalFrameSize())
+-			r.columnMaxes[j] += frame - r.columnXPaddings[j]
+-			r.columnXPaddings[j] = frame
+-			r.columnFixedWidths[j] = max(r.columnFixedWidths[j], style.GetWidth())
+ 
+ 			r.rowHeights[i] = max(r.rowHeights[i], style.GetHeight())
+ 			r.yPaddings[i][j] = style.GetVerticalFrameSize()
+@@ -111,24 +110,28 @@ func (t *Table) resize() {
+ 	}
+ 
+ 	t.widths, t.heights = r.optimizedWidths()
+-	t.columnFrames = r.columnXPaddings
+ 	t.firstVisibleRowIndex, t.lastVisibleRowIndex, t.overflowHeight = r.visibleRowIndexes()
+ }
+ 
++// resizerColumn is a column in the resizer.
++type resizerColumn struct {
++	index      int
++	min        int
++	max        int
++	median     int
++	rows       [][]string
++	xPadding   int // horizontal padding
++	fixedWidth int
++}
++
+ // resizer is a table resizer.
+ type resizer struct {
++	tableWidth  int
++	tableHeight int
++	headers     []string
++	allRows     [][]string
++	rowHeights  []int
++	columns     []resizerColumn
+-	tableWidth        int
+-	tableHeight       int
+-	headers           []string
+-	allRows           [][]string
+-	rowHeights        []int
+-	columnIndices     []int
+-	columnMins        []int
+-	columnMaxes       []int
+-	columnMedians     []int
+-	columnRows        [][][]string
+-	columnXPaddings   []int
+-	columnFixedWidths []int
+ 
+ 	wrap         bool
+ 	borderColumn bool
+@@ -163,28 +166,27 @@ func newResizer(tableWidth, tableHeight int, headers []string, rows [][]string)
+ 			cellLen := lipgloss.Width(cell)
+ 
+ 			// Header or first row. Just add as is.
++			if len(r.columns) <= i {
++				r.columns = append(r.columns, resizerColumn{
++					index:  i,
++					min:    cellLen,
++					max:    cellLen,
++					median: cellLen,
++				})
+-			if len(r.columnIndices) <= i {
+-				r.columnIndices = append(r.columnIndices, i)
+-				r.columnMins = append(r.columnMins, cellLen)
+-				r.columnMaxes = append(r.columnMaxes, cellLen)
+-				r.columnMedians = append(r.columnMedians, cellLen)
+-				r.columnRows = append(r.columnRows, nil)
+-				r.columnXPaddings = append(r.columnXPaddings, 0)
+-				r.columnFixedWidths = append(r.columnFixedWidths, 0)
+ 				continue
+ 			}
+ 
++			r.columns[i].rows = append(r.columns[i].rows, row)
++			r.columns[i].min = min(r.columns[i].min, cellLen)
++			r.columns[i].max = max(r.columns[i].max, cellLen)
+-			r.columnRows[i] = append(r.columnRows[i], row)
+-			r.columnMins[i] = min(r.columnMins[i], cellLen)
+-			r.columnMaxes[i] = max(r.columnMaxes[i], cellLen)
+ 		}
+ 	}
++	for j := range r.columns {
++		widths := make([]int, len(r.columns[j].rows))
++		for i, row := range r.columns[j].rows {
+-	for j := range r.columnIndices {
+-		widths := make([]int, len(r.columnRows[j]))
+-		for i, row := range r.columnRows[j] {
+ 			widths[i] = lipgloss.Width(row[j])
+ 		}
++		r.columns[j].median = median(widths)
+-		r.columnMedians[j] = median(widths)
+ 	}
+ 
+ 	return r
+@@ -208,7 +210,7 @@ func (r *resizer) expandTableWidth() (colWidths []int) {
+ 	colWidths = r.maxColumnWidths()
+ 
+ 	for {
++		totalWidth := sum(colWidths) + r.totalHorizontalBorder()
+-		totalWidth := sum(colWidths) + r.totalHorizontalPadding() + r.totalHorizontalBorder()
+ 		if totalWidth >= r.tableWidth {
+ 			break
+ 		}
+@@ -217,8 +219,7 @@ func (r *resizer) expandTableWidth() (colWidths []int) {
+ 		shorterColumnWidth := math.MaxInt32
+ 
+ 		for j, width := range colWidths {
++			if width == r.columns[j].fixedWidth {
+-			width += r.columnXPaddings[j]
+-			if width == r.columnFixedWidths[j] {
+ 				continue
+ 			}
+ 			if width < shorterColumnWidth {
+@@ -239,7 +240,7 @@ func (r *resizer) expandTableWidth() (colWidths []int) {
+ // plus at least 1 to ensure the "…" truncation marker or one character is
+ // always visible. A column must never shrink below this floor.
+ func (r *resizer) minWidth(j int) int {
++	return r.xPaddingForCol(j) + max(r.columns[j].min, 1)
+-	return r.xPaddingForCol(j) + max(r.columnMins[j], 1)
+ }
+ 
+ // shrinkTableWidth shrinks the table width.
+@@ -249,7 +250,7 @@ func (r *resizer) shrinkTableWidth() (colWidths []int) {
+ 	// Cut width of columns that are way too big.
+ 	shrinkBiggestColumns := func(veryBigOnly, useFloor bool) {
+ 		for {
++			totalWidth := sum(colWidths) + r.totalHorizontalBorder()
+-			totalWidth := sum(colWidths) + r.totalHorizontalPadding() + r.totalHorizontalBorder()
+ 			if totalWidth <= r.tableWidth {
+ 				break
+ 			}
+@@ -258,8 +259,7 @@ func (r *resizer) shrinkTableWidth() (colWidths []int) {
+ 			bigColumnWidth := -math.MaxInt32
+ 
+ 			for j, width := range colWidths {
++				if width == r.columns[j].fixedWidth {
+-				width += r.columnXPaddings[j]
+-				if width == r.columnFixedWidths[j] {
+ 					continue
+ 				}
+ 				if useFloor && width <= r.minWidth(j) {
+@@ -278,7 +278,7 @@ func (r *resizer) shrinkTableWidth() (colWidths []int) {
+ 				}
+ 			}
+ 
++			if bigColumnIndex < 0 || colWidths[bigColumnIndex] == 0 {
+-			if bigColumnIndex < 0 || colWidths[bigColumnIndex]+r.columnXPaddings[bigColumnIndex] == 0 {
+ 				break
+ 			}
+ 			colWidths[bigColumnIndex]--
+@@ -288,7 +288,7 @@ func (r *resizer) shrinkTableWidth() (colWidths []int) {
+ 	// Cut width of columns that differ the most from the median.
+ 	shrinkToMedian := func(useFloor bool) {
+ 		for {
++			totalWidth := sum(colWidths) + r.totalHorizontalBorder()
+-			totalWidth := sum(colWidths) + r.totalHorizontalPadding() + r.totalHorizontalBorder()
+ 			if totalWidth <= r.tableWidth {
+ 				break
+ 			}
+@@ -297,21 +297,20 @@ func (r *resizer) shrinkTableWidth() (colWidths []int) {
+ 			biggestDiffToMedianIndex := -math.MaxInt32
+ 
+ 			for j, width := range colWidths {
++				if width == r.columns[j].fixedWidth {
+-				width += r.columnXPaddings[j]
+-				if width == r.columnFixedWidths[j] {
+ 					continue
+ 				}
+ 				if useFloor && width <= r.minWidth(j) {
+ 					continue
+ 				}
++				diffToMedian := width - r.columns[j].median
+-				diffToMedian := width - r.columnMedians[j]
+ 				if diffToMedian > 0 && diffToMedian > biggestDiffToMedian {
+ 					biggestDiffToMedian = diffToMedian
+ 					biggestDiffToMedianIndex = j
+ 				}
+ 			}
+ 
++			if biggestDiffToMedianIndex <= 0 || colWidths[biggestDiffToMedianIndex] == 0 {
+-			if biggestDiffToMedianIndex <= 0 || colWidths[biggestDiffToMedianIndex]+r.columnXPaddings[biggestDiffToMedianIndex] == 0 {
+ 				break
+ 			}
+ 			colWidths[biggestDiffToMedianIndex]--
+@@ -326,7 +325,7 @@ func (r *resizer) shrinkTableWidth() (colWidths []int) {
+ 
+ 	// If the table is still too wide (e.g. impossible width budgets like
+ 	// Width(1)), fall back to unreserved shrinking without a floor.
++	if sum(colWidths)+r.totalHorizontalBorder() > r.tableWidth {
+-	if sum(colWidths)+r.totalHorizontalPadding()+r.totalHorizontalBorder() > r.tableWidth {
+ 		shrinkBiggestColumns(true, false)
+ 		shrinkToMedian(false)
+ 		shrinkBiggestColumns(false, false)
+@@ -352,7 +351,7 @@ func (r *resizer) expandRowHeights(colWidths []int) {
+ 				r.rowHeights[i] = 1 + r.yPaddingForCell(i, j)
+ 				continue
+ 			}
++			height := r.detectContentHeight(cell, colWidths[j]-r.xPaddingForCol(j)) + r.yPaddingForCell(i, j)
+-			height := r.detectContentHeight(cell, colWidths[j]) + r.yPaddingForCell(i, j)
+ 			r.rowHeights[i] = max(r.rowHeights[i], height)
+ 		}
+ 	}
+@@ -372,12 +371,12 @@ func (r *resizer) defaultRowHeights() (rowHeights []int) {
+ 
+ // maxColumnWidths returns the maximum column widths.
+ func (r *resizer) maxColumnWidths() []int {
++	maxColumnWidths := make([]int, len(r.columns))
++	for i, col := range r.columns {
++		if col.fixedWidth > 0 {
++			maxColumnWidths[i] = col.fixedWidth
+-	maxColumnWidths := make([]int, len(r.columnIndices))
+-	for i := range r.columnIndices {
+-		if r.columnFixedWidths[i] > 0 {
+-			maxColumnWidths[i] = r.columnFixedWidths[i] - r.columnXPaddings[i]
+ 		} else {
++			maxColumnWidths[i] = col.max + r.xPaddingForCol(col.index)
+-			maxColumnWidths[i] = r.columnMaxes[i] - r.columnXPaddings[i]
+ 		}
+ 	}
+ 	return maxColumnWidths
+@@ -385,17 +384,17 @@ func (r *resizer) maxColumnWidths() []int {
+ 
+ // columnCount returns the column count.
+ func (r *resizer) columnCount() int {
++	return len(r.columns)
+-	return len(r.columnIndices)
+ }
+ 
+ // maxCharCount returns the maximum character count.
+ func (r *resizer) maxCharCount() int {
+ 	var count int
++	for _, col := range r.columns {
++		if col.fixedWidth > 0 {
++			count += col.fixedWidth - r.xPaddingForCol(col.index)
+-	for i := range r.columnIndices {
+-		if r.columnFixedWidths[i] > 0 {
+-			count += r.columnFixedWidths[i] - r.xPaddingForCol(r.columnIndices[i])
+ 		} else {
++			count += col.max
+-			count += r.columnMaxes[i] - r.xPaddingForCol(r.columnIndices[i])
+ 		}
+ 	}
+ 	return count
+@@ -403,11 +402,11 @@ func (r *resizer) maxCharCount() int {
+ 
+ // maxTotal returns the maximum total width.
+ func (r *resizer) maxTotal() (maxTotal int) {
++	for j, column := range r.columns {
++		if column.fixedWidth > 0 {
++			maxTotal += column.fixedWidth
+-	for j := range r.columnIndices {
+-		if r.columnFixedWidths[j] > 0 {
+-			maxTotal += r.columnFixedWidths[j]
+ 		} else {
++			maxTotal += column.max + r.xPaddingForCol(j)
+-			maxTotal += r.columnMaxes[j]
+ 		}
+ 	}
+ 	return
+@@ -415,18 +414,18 @@ func (r *resizer) maxTotal() (maxTotal int) {
+ 
+ // totalHorizontalPadding returns the total padding.
+ func (r *resizer) totalHorizontalPadding() (totalHorizontalPadding int) {
++	for _, col := range r.columns {
++		totalHorizontalPadding += col.xPadding
+-	for i := range r.columnIndices {
+-		totalHorizontalPadding += r.columnXPaddings[i]
+ 	}
+ 	return
+ }
+ 
+ // xPaddingForCol returns the horizontal padding for a column.
+ func (r *resizer) xPaddingForCol(j int) int {
++	if j >= len(r.columns) {
+-	if j >= len(r.columnIndices) {
+ 		return 0
+ 	}
++	return r.columns[j].xPadding
+-	return r.columnXPaddings[j]
+ }
+ 
+ // yPaddingForCell returns the horizontal padding for a cell.
+diff --git a/table/table.go b/table/table.go
+index 7711c0c..bc65544 100644
+--- a/table/table.go
++++ b/table/table.go
+@@ -43,21 +43,9 @@ func DefaultStyles(_, _ int) lipgloss.Style {
+ 
+ // Table is a type for rendering tables.
+ type Table struct {
++	baseStyle lipgloss.Style
++	styleFunc StyleFunc
++	border    lipgloss.Border
+-	baseStyle               lipgloss.Style
+-	styleFunc               StyleFunc
+-	borderGlyphTop          string
+-	borderGlyphBottom       string
+-	borderGlyphLeft         string
+-	borderGlyphRight        string
+-	borderGlyphTopLeft      string
+-	borderGlyphTopRight     string
+-	borderGlyphBottomLeft   string
+-	borderGlyphBottomRight  string
+-	borderGlyphMiddleLeft   string
+-	borderGlyphMiddleRight  string
+-	borderGlyphMiddle       string
+-	borderGlyphMiddleTop    string
+-	borderGlyphMiddleBottom string
+ 
+ 	borderTop    bool
+ 	borderBottom bool
+@@ -78,9 +66,8 @@ type Table struct {
+ 	yOffset         int
+ 	wrap            bool
+ 
++	widths  []int
++	heights []int
+-	widths       []int
+-	columnFrames []int
+-	heights      []int
+ 
+ 	firstVisibleRowIndex int
+ 	lastVisibleRowIndex  int
+@@ -92,30 +79,17 @@ type Table struct {
+ //
+ // By default, a table has normal border, no styling, and no rows.
+ func New() *Table {
+-	b := lipgloss.NormalBorder()
+ 	return &Table{
++		styleFunc:    DefaultStyles,
++		border:       lipgloss.NormalBorder(),
++		borderBottom: true,
++		borderColumn: true,
++		borderHeader: true,
++		borderLeft:   true,
++		borderRight:  true,
++		borderTop:    true,
++		wrap:         true,
++		data:         NewStringData(),
+-		styleFunc:               DefaultStyles,
+-		borderGlyphTop:          b.Top,
+-		borderGlyphBottom:       b.Bottom,
+-		borderGlyphLeft:         b.Left,
+-		borderGlyphRight:        b.Right,
+-		borderGlyphTopLeft:      b.TopLeft,
+-		borderGlyphTopRight:     b.TopRight,
+-		borderGlyphBottomLeft:   b.BottomLeft,
+-		borderGlyphBottomRight:  b.BottomRight,
+-		borderGlyphMiddleLeft:   b.MiddleLeft,
+-		borderGlyphMiddleRight:  b.MiddleRight,
+-		borderGlyphMiddle:       b.Middle,
+-		borderGlyphMiddleTop:    b.MiddleTop,
+-		borderGlyphMiddleBottom: b.MiddleBottom,
+-		borderBottom:            true,
+-		borderColumn:            true,
+-		borderHeader:            true,
+-		borderLeft:              true,
+-		borderRight:             true,
+-		borderTop:               true,
+-		wrap:                    true,
+-		data:                    NewStringData(),
+ 	}
+ }
+ 
+@@ -191,19 +165,7 @@ func (t *Table) GetHeaders() []string {
+ 
+ // Border sets the table border.
+ func (t *Table) Border(border lipgloss.Border) *Table {
++	t.border = border
+-	t.borderGlyphTop = border.Top
+-	t.borderGlyphBottom = border.Bottom
+-	t.borderGlyphLeft = border.Left
+-	t.borderGlyphRight = border.Right
+-	t.borderGlyphTopLeft = border.TopLeft
+-	t.borderGlyphTopRight = border.TopRight
+-	t.borderGlyphBottomLeft = border.BottomLeft
+-	t.borderGlyphBottomRight = border.BottomRight
+-	t.borderGlyphMiddleLeft = border.MiddleLeft
+-	t.borderGlyphMiddleRight = border.MiddleRight
+-	t.borderGlyphMiddle = border.Middle
+-	t.borderGlyphMiddleTop = border.MiddleTop
+-	t.borderGlyphMiddleBottom = border.MiddleBottom
+ 	return t
+ }
+ 
+@@ -436,16 +398,16 @@ func (t *Table) Render() string {
+ func (t *Table) constructTopBorder() string {
+ 	var s strings.Builder
+ 	if t.borderLeft {
++		s.WriteString(t.borderStyle.Render(t.border.TopLeft))
+-		s.WriteString(t.borderStyle.Render(t.borderGlyphTopLeft))
+ 	}
+ 	for i := range t.widths {
++		s.WriteString(t.borderStyle.Render(strings.Repeat(t.border.Top, t.widths[i])))
+-		s.WriteString(t.borderStyle.Render(strings.Repeat(t.borderGlyphTop, t.widths[i]+t.columnFrames[i])))
+ 		if i < len(t.widths)-1 && t.borderColumn {
++			s.WriteString(t.borderStyle.Render(t.border.MiddleTop))
+-			s.WriteString(t.borderStyle.Render(t.borderGlyphMiddleTop))
+ 		}
+ 	}
+ 	if t.borderRight {
++		s.WriteString(t.borderStyle.Render(t.border.TopRight))
+-		s.WriteString(t.borderStyle.Render(t.borderGlyphTopRight))
+ 	}
+ 	return s.String()
+ }
+@@ -455,16 +417,16 @@ func (t *Table) constructTopBorder() string {
+ func (t *Table) constructBottomBorder() string {
+ 	var s strings.Builder
+ 	if t.borderLeft {
++		s.WriteString(t.borderStyle.Render(t.border.BottomLeft))
+-		s.WriteString(t.borderStyle.Render(t.borderGlyphBottomLeft))
+ 	}
+ 	for i := range t.widths {
++		s.WriteString(t.borderStyle.Render(strings.Repeat(t.border.Bottom, t.widths[i])))
+-		s.WriteString(t.borderStyle.Render(strings.Repeat(t.borderGlyphBottom, t.widths[i]+t.columnFrames[i])))
+ 		if i < len(t.widths)-1 && t.borderColumn {
++			s.WriteString(t.borderStyle.Render(t.border.MiddleBottom))
+-			s.WriteString(t.borderStyle.Render(t.borderGlyphMiddleBottom))
+ 		}
+ 	}
+ 	if t.borderRight {
++		s.WriteString(t.borderStyle.Render(t.border.BottomRight))
+-		s.WriteString(t.borderStyle.Render(t.borderGlyphBottomRight))
+ 	}
+ 	return s.String()
+ }
+@@ -476,7 +438,7 @@ func (t *Table) constructHeaders() string {
+ 	cells := make([]string, 0, len(t.headers)*2+1)
+ 	height := t.heights[0]
+ 
++	left := strings.Repeat(t.borderStyle.Render(t.border.Left)+"\n", height)
+-	left := strings.Repeat(t.borderStyle.Render(t.borderGlyphLeft)+"\n", height)
+ 	if t.borderLeft {
+ 		cells = append(cells, left)
+ 	}
+@@ -490,7 +452,7 @@ func (t *Table) constructHeaders() string {
+ 		cells = append(cells,
+ 			cellStyle.
+ 				Height(height-cellStyle.GetVerticalMargins()).
++				Width(t.widths[j]-cellStyle.GetHorizontalMargins()).
+-				Width(t.widths[j]+t.columnFrames[j]-cellStyle.GetHorizontalMargins()).
+ 				Render(header),
+ 		)
+ 
+@@ -500,7 +462,7 @@ func (t *Table) constructHeaders() string {
+ 	}
+ 
+ 	if t.borderRight {
++		right := strings.Repeat(t.borderStyle.Render(t.border.Right)+"\n", height)
+-		right := strings.Repeat(t.borderStyle.Render(t.borderGlyphRight)+"\n", height)
+ 		cells = append(cells, right)
+ 	}
+ 
+@@ -512,16 +474,16 @@ func (t *Table) constructHeaders() string {
+ 
+ 	if t.borderHeader {
+ 		if t.borderLeft {
++			s.WriteString(t.borderStyle.Render(t.border.MiddleLeft))
+-			s.WriteString(t.borderStyle.Render(t.borderGlyphMiddleLeft))
+ 		}
+ 		for i := range t.headers {
++			s.WriteString(t.borderStyle.Render(strings.Repeat(t.border.Top, t.widths[i])))
+-			s.WriteString(t.borderStyle.Render(strings.Repeat(t.borderGlyphTop, t.widths[i]+t.columnFrames[i])))
+ 			if i < len(t.headers)-1 && t.borderColumn {
++				s.WriteString(t.borderStyle.Render(t.border.Middle))
+-				s.WriteString(t.borderStyle.Render(t.borderGlyphMiddle))
+ 			}
+ 		}
+ 		if t.borderRight {
++			s.WriteString(t.borderStyle.Render(t.border.MiddleRight))
+-			s.WriteString(t.borderStyle.Render(t.borderGlyphMiddleRight))
+ 		}
+ 		s.WriteString("\n")
+ 	}
+@@ -545,7 +507,7 @@ func (t *Table) constructRow(index int, isOverflow bool) string {
+ 		height = t.overflowHeight
+ 	}
+ 
++	left := strings.Repeat(t.borderStyle.Render(t.border.Left)+"\n", height)
+-	left := strings.Repeat(t.borderStyle.Render(t.borderGlyphLeft)+"\n", height)
+ 	if t.borderLeft {
+ 		cells = append(cells, left)
+ 	}
+@@ -564,8 +526,8 @@ func (t *Table) constructRow(index int, isOverflow bool) string {
+ 			// Account for the margins in the cell sizing.
+ 			Height(height-cellStyle.GetVerticalMargins()).
+ 			MaxHeight(height).
++			Width(t.widths[c]-cellStyle.GetHorizontalMargins()).
++			MaxWidth(t.widths[c]).
+-			Width(t.widths[c]+t.columnFrames[c]-cellStyle.GetHorizontalMargins()).
+-			MaxWidth(t.widths[c]+t.columnFrames[c]).
+ 			Render(cell))
+ 
+ 		if c < t.data.Columns()-1 && t.borderColumn {
+@@ -574,7 +536,7 @@ func (t *Table) constructRow(index int, isOverflow bool) string {
+ 	}
+ 
+ 	if t.borderRight {
++		right := strings.Repeat(t.borderStyle.Render(t.border.Right)+"\n", height)
+-		right := strings.Repeat(t.borderStyle.Render(t.borderGlyphRight)+"\n", height)
+ 		cells = append(cells, right)
+ 	}
+ 
+@@ -586,16 +548,16 @@ func (t *Table) constructRow(index int, isOverflow bool) string {
+ 
+ 	if t.borderRow && !isOverflow && index < t.data.Rows()-1 {
+ 		if t.borderLeft {
++			s.WriteString(t.borderStyle.Render(t.border.MiddleLeft))
+-			s.WriteString(t.borderStyle.Render(t.borderGlyphMiddleLeft))
+ 		}
+ 		for i := range t.widths {
++			s.WriteString(t.borderStyle.Render(strings.Repeat(t.border.Bottom, t.widths[i])))
+-			s.WriteString(t.borderStyle.Render(strings.Repeat(t.borderGlyphBottom, t.widths[i]+t.columnFrames[i])))
+ 			if i < len(t.widths)-1 && t.borderColumn {
++				s.WriteString(t.borderStyle.Render(t.border.Middle))
+-				s.WriteString(t.borderStyle.Render(t.borderGlyphMiddle))
+ 			}
+ 		}
+ 		if t.borderRight {
++			s.WriteString(t.borderStyle.Render(t.border.MiddleRight))
+-			s.WriteString(t.borderStyle.Render(t.borderGlyphMiddleRight))
+ 		}
+ 		s.WriteString("\n")
+ 	}
+@@ -606,7 +568,7 @@ func (t *Table) constructRow(index int, isOverflow bool) string {
+ func (t *Table) truncateCell(cell string, rowIndex, colIndex int) string {
+ 	hasHeaders := len(t.headers) > 0
+ 	height := t.heights[rowIndex+btoi(hasHeaders)]
++	cellWidth := t.widths[colIndex]
+-	cellWidth := t.widths[colIndex] + t.columnFrames[colIndex]
+ 	cellStyle := t.style(rowIndex, colIndex)
+ 
+ 	// NOTE(@andreynering): We always truncate headers to 1 line.

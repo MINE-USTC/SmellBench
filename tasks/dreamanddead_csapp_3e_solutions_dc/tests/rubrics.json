@@ -1,0 +1,247 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "dreamanddead_csapp_3e_solutions_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "image_clear",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 clear splits storage/extent.",
+      "baseline_defect": "Memory clearing forwards independent contents/capacity.",
+      "criterion": "Keep allocation and clear extent associated through the effective clearing operation.",
+      "acceptance": "Clear the original full byte capacity; do not substitute word-start bound. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "clear_mem,memory_clear_parts",
+          "detail": "Memory clearing forwards independent contents/capacity.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_copy",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 copy plus R2 snapshots, CLI and GUI reset.",
+      "baseline_defect": "Copy consumers unpack allocation and extent independently across ISA/YIS/PIPE/SEQ snapshots.",
+      "criterion": "Keep source bytes and allocation extent associated throughout copy/snapshot/reset handoffs.",
+      "acceptance": "Preserve allocation/copy length, independent snapshot storage and register versus RAM source identity. Include CLI initial/reference snapshots and GUI post-load restore; no required separate snapshot class. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "copy_mem,copy_reg,copy_state",
+          "detail": "Copy consumers unpack allocation and extent independently across ISA/YIS/PIPE/SEQ snapshots.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_load",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 loader plus R2 YIS/PIPE/SEQ CLI and GUI load.",
+      "baseline_defect": "Parser receives independent target bytes/capacity.",
+      "criterion": "Bind the target allocation and byte bounds through object loading and its consumers.",
+      "acceptance": "Preserve parser bytes, counts, diagnostics/report_error and existing partial writes on failure. No new transaction requirement. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "load_mem,memory_load_parts",
+          "detail": "Parser receives independent target bytes/capacity.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "byte_access",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 access plus R2 instruction fetch.",
+      "baseline_defect": "Byte access exposes independently supplied storage/capacity, including fetch consumers.",
+      "criterion": "Give byte reads/writes a coherent bounded-memory access contract used by actual fetch callers.",
+      "acceptance": "Preserve negative/end rejection, one-byte access and unchanged read destination on failure. Read/write can share one memory abstraction. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "memory_read_byte_parts,memory_write_byte_parts",
+          "detail": "Byte access exposes independently supplied storage/capacity, including fetch consumers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "word_access",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 capacity versus last-word-start interpretation.",
+      "baseline_defect": "Word accesses repeatedly derive and forward last_start detached from backing storage.",
+      "criterion": "Own word-address validity with its allocation through ISA, PIPE and SEQ fetch/data/commit/display paths.",
+      "acceptance": "Preserve eight-byte little-endian access, short allocations and failure before mutation. A boundary may derive or retain a valid bound; no mandatory cache, new type or hypothetical variable word width. One shared memory repair may satisfy byte and word items. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "memory_read_word_limit,memory_write_word_limit",
+          "detail": "Word accesses repeatedly derive and forward last_start detached from backing storage.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_compare",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 old/current comparisons; stage2 independent bounds.",
+      "baseline_defect": "Comparison passes four detached image components and separately reconstructs each word bound.",
+      "criterion": "Keep each historical/current image associated with its own extent throughout comparison and reporting.",
+      "acceptance": "Iteration uses common extent but each read retains its own full bound. Preserve initialized-zero failed reads, stop early without outfile, all differences with outfile, register labels and memory diagnostics. Do not bind two independent images into one persistent owner. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "memory_compare_parts,diff_reg,diff_state",
+          "detail": "Comparison passes four detached image components and separately reconstructs each word bound.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_dump",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 dump alignment and clamping; stage2 word bound.",
+      "baseline_defect": "Dump traversal trusts detached capacity and bytes and separately derives word bounds.",
+      "criterion": "Keep dump target storage and bounds coherently associated through alignment, clamping and reads.",
+      "acceptance": "Preserve BPL alignment/rounding, original formatting and value reuse on failed later read within a row. Register dump uses its own image; no forced shared presentation renderer. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "memory_dump_parts,dump_reg",
+          "detail": "Dump traversal trusts detached capacity and bytes and separately derives word bounds.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "register_access",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage2 separates register lineage through actual decode/writeback.",
+      "baseline_defect": "Register operations pass raw bytes/capacity through ISA and PIPE/SEQ decode/writeback.",
+      "criterion": "Keep register identity, extent and ID-to-byte interpretation at a coherent register access boundary.",
+      "acceptance": "Preserve REG_NONE handling, zero failed reads, id*8 mapping and original GUI write notification behavior. RAM and register representations may share implementation; no mandatory distinct nominal types. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "register_read_parts,register_write_parts",
+          "detail": "Register operations pass raw bytes/capacity through ISA and PIPE/SEQ decode/writeback.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "machine_step",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 architectural tuple; R2 three runners; stage2 raw RAM/register lineages.",
+      "baseline_defect": "Stepping receives independently assembled live PC/CC and RAM/register pairs.",
+      "criterion": "Bind architectural execution state through the shared step implementation and YIS/PIPE/SEQ reference consumers.",
+      "acceptance": "Preserve live updates including partial register writes before stack errors, PC/CC changes only on original branches and diagnostics/status ordering. No mandate for a new state type or transactional commit; existing state_ptr suffices. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "step_state,machine_step_parts",
+          "detail": "Stepping receives independently assembled live PC/CC and RAM/register pairs.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "channel_advance",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 publication; stage2 selected source and transfer; packaged final moves following op to caller.",
+      "baseline_defect": "Selected bytes, count and transfer are passed separately while pending operation updates are outside copy helper.",
+      "criterion": "Keep channel selection/publication/control transition coherently associated with the same channel.",
+      "acceptance": "Preserve ERROR bubble publication and persistent ERROR, BUBBLE reset to LOAD, LOAD next bytes, STALL/default no transfer and reset, zero-byte transfer distinct from no-transfer. Inline original loop is valid; no mandatory transition object. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/pipe/psim.c",
+          "symbol": "update_pipes,advance_pipe_parts",
+          "detail": "Selected bytes, count and transfer are passed separately while pending operation updates are outside copy helper.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "channel_clear",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 reset same channel storage/control.",
+      "baseline_defect": "Reset receives five independently supplied buffer/count/control components.",
+      "criterion": "Keep both buffers, bubble value, extent and reset control associated through channel clearing.",
+      "acceptance": "Copy bubble into current and next then set LOAD, including ERROR. Creation/binding was unchanged and earns no extra requirement. Intended separately allocated buffers; no fabricated alias-over-metadata domain. Reconnecting existing mem_t/state_ptr/pipe_ptr APIs is a complete legal repair. A bound view, closure or local coherent flow also qualifies; internal primitive operations are allowed once association is owned. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping an independently reconstructed argument group at the same effective boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/pipe/psim.c",
+          "symbol": "clear_pipes,clear_pipe_parts",
+          "detail": "Reset receives five independently supplied buffer/count/control components.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "dreamanddead_csapp_3e_solutions_dc",
+    "aggregation": "equal_weight_per_item",
+    "excluded_from_scoring": [
+      "The empty post.diff adds no obligation.",
+      "Preserving simulator outputs, errors, GUI signals and tests is a constraint rather than an independent structural score."
+    ]
+  }
+}

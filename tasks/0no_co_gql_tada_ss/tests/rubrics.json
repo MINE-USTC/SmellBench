@@ -1,0 +1,573 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "0no_co_gql_tada_ss",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "schema_collection",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The same configured null/named schema collection feeds document acceptance and warning cardinality in three workers. This item specifically covers: Use a coherent schema collection contract for membership and count in scan, persisted generation, and turbo scanning.",
+      "baseline_defect": "Scan, persisted, and turbo each independently build schemaCount and separately inspect schema/schemas for membership, so one configuration change must be synchronized across three consumers and two decisions per consumer.",
+      "criterion": "Use a coherent schema collection contract for membership and count in scan, persisted generation, and turbo scanning.",
+      "acceptance": "Membership and schema-name enumeration/cardinality in scan, persisted and turbo, including fingerprint enumeration, use a coherent configuration interpretation also consistent with the public config API. A set, indexed model, predicate/count operations or another design may be used; no mandatory collection object. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Only make the three membership expressions textually identical, or centralize count while leaving three independent membership rules."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/cli-utils/src/commands/scan/thread.ts",
+          "symbol": "_runScan",
+          "detail": "schemaCount and call.schema predicate",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-persisted/thread.ts",
+          "symbol": "_runPersisted",
+          "detail": "matching count and predicate",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/turbo/thread.ts",
+          "symbol": "_runTurbo",
+          "detail": "matching count and predicate",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fingerprint_schema_resolution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Turbo fingerprints need the output location for each configured schema, including default and named schemas. This item specifically covers: Resolve fingerprint output locations through the configuration selection boundary, leaving file reading and hashing to the fingerprint consumer.",
+      "baseline_defect": "computeSchemaFingerprints duplicates the public default/top-level/nested config selection branches before reading tadaOutputLocation; schema enumeration is scored by schema_collection.",
+      "criterion": "Eliminate independently maintained configuration selection rules for fingerprint output locations.",
+      "acceptance": "Default and named schema locations, including absent outputs, derive from coherent configuration policy shared with the other affected config consumers. File reading and hashing may be composed at any suitable boundary; no separate fingerprint consumer, mandatory selection helper or fixed object model is required. Identical but independently maintained selection branches remain insufficient.",
+      "insufficient_repairs": [
+        "Share only schemaCount or rename the local loop while retaining independent configuration-shape selection in the fingerprint function."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/turbo/thread.ts",
+          "symbol": "computeSchemaFingerprints",
+          "detail": "local Set enumeration and config/name/outputLocation branches",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "project_output_identity",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Cross-project outputs use normalized paths, schema origins, and an exception for identical introspection output. This item specifically covers: Unify output-path identity policy across project loading and public conflict validation.",
+      "baseline_defect": "loadProjects and the public validator independently resolve output paths against project roots and apply Windows case normalization.",
+      "criterion": "Unify output-path identity policy across project loading and public conflict validation.",
+      "acceptance": "Output locations use one coherent identity rule in both paths; origin identity and shareability are assessed separately. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/shared/projects.ts",
+          "symbol": "loadProjects / resolved",
+          "detail": "path.resolve(project.projectPath, location) and win32 lowercasing duplicate config.ts.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "project_schema_origin",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Cross-project outputs use normalized paths, schema origins, and an exception for identical introspection output. This item specifically covers: Unify schema-origin identity policy used by output-conflict decisions.",
+      "baseline_defect": "loadProjects duplicates URL/header serialization, URL-string recognition and normalized file-origin identity from config.ts.",
+      "criterion": "Unify schema-origin identity policy used by output-conflict decisions.",
+      "acceptance": "Object URLs with headers, URL strings and file origins no longer have independent identity definitions in project loading and public validation. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/shared/projects.ts",
+          "symbol": "loadProjects / origin / identity",
+          "detail": "Origin branch serializes headers or resolves file paths independently of public schemaIdentity.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "project_sharing_policy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Cross-project outputs use normalized paths, schema origins, and an exception for identical introspection output. This item specifically covers: Unify output collision and allowed-sharing policy across project loading and public validation.",
+      "baseline_defect": "The command maintains its own property list, seen registry and same-origin introspection sharing exception beside the public validator.",
+      "criterion": "Unify output collision and allowed-sharing policy across project loading and public validation.",
+      "acceptance": "The existing introspection-versus-document-derived output distinction and conflict decision have one authoritative policy; separate identity algorithms are assessed independently. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/shared/projects.ts",
+          "symbol": "loadProjects / seen / isSharedOutput",
+          "detail": "Three output properties and the tadaOutputLocation equality exception are duplicated.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "header_collection",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Output and turbo reuse existing leading comments, including multiline blocks. This item specifically covers: Consolidate leading-comment collection so output and turbo consumers use one rule for line termination and complete block comments.",
+      "baseline_defect": "Both generate-output branches and createCacheContents each scan existing text with their own header/inBlock loop.",
+      "criterion": "Consolidate leading-comment collection so output and turbo consumers use one rule for line termination and complete block comments.",
+      "acceptance": "The two output branches and cache generation use the same collection contract or equivalent shared parser for existing headers. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Extract only one of the output branches or leave a separate turbo parser with the same loop."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "runProject",
+          "detail": "two header/inBlock scans",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/turbo/runner.ts",
+          "symbol": "createCacheContents",
+          "detail": "third header/inBlock scan",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "header_eligibility",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The second stage moved generated-annotation exclusion from collection into final output assembly in two different producers. This item specifically covers: Coordinate custom-header eligibility with header collection across introspection output and turbo cache assembly.",
+      "baseline_defect": "After accepting any complete comment header, outputIntrospectionFile and createCacheContents separately reject generated introspection annotation text at consumption time.",
+      "criterion": "Coordinate custom-header eligibility with header collection across introspection output and turbo cache assembly.",
+      "acceptance": "Both consumers follow one explicit rule that preserves eligible custom multiline headers and excludes generated annotation headers; collection and final assembly agree on that result. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Only share the scanning loop while retaining two independent generated-annotation tests in final formatters, or only delete the tests."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "outputIntrospectionFile",
+          "detail": "preamble eligibility moved from caller scan to formatter",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/turbo/runner.ts",
+          "symbol": "createCacheContents",
+          "detail": "eligibility moved to final concatenation",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Type reduction in the command is handed to a formatter that now reconstructs root query, mutation, subscription, name, and directives. This item specifically covers: Unify introspection type-set filtering and ordering between command output and the public minifier.",
+      "baseline_defect": "The command repeats public system-type exclusion, supported-kind admission and type-name ordering in minifyIntrospectionTypes.",
+      "criterion": "Unify introspection type-set filtering and ordering between command output and the public minifier.",
+      "acceptance": "Changing included type categories/system types or their ordering does not require independent changes in runner and internal minifier. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "minifyIntrospectionTypes",
+          "detail": "The filter switch excludes eight meta types, admits six kinds and sorts names.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection_ref_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Type reduction in the command is handed to a formatter that now reconstructs root query, mutation, subscription, name, and directives. This item specifically covers: Unify nested introspection reference projection across runner and public minifier.",
+      "baseline_defect": "Runner-local mapTypeRef duplicates the public recursive LIST/NON_NULL and named-leaf representation.",
+      "criterion": "Unify nested introspection reference projection across runner and public minifier.",
+      "acceptance": "All input/output/argument references in the affected generation flow use a policy consistent by construction with public minification, without a second recursive mapping. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "mapTypeRef",
+          "detail": "Recursive kind/ofType and named kind/name projection duplicates internal/minify.ts.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection_input_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Type reduction in the command is handed to a formatter that now reconstructs root query, mutation, subscription, name, and directives. This item specifically covers: Unify input-value normalization across command and public minifier.",
+      "baseline_defect": "Runner-local mapInputField duplicates input-value name/type/default projection used for arguments and input fields.",
+      "criterion": "Unify input-value normalization across command and public minifier.",
+      "acceptance": "Argument and input-field default/member policy is no longer maintained independently in runner and public implementation; reference recursion is assessed separately. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "mapInputField / mapField / minifyIntrospectionType",
+          "detail": "mapInputField normalizes defaultValue and is consumed by input objects and arguments.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection_member_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Type reduction in the command is handed to a formatter that now reconstructs root query, mutation, subscription, name, and directives. This item specifically covers: Remove independently maintained type/member record-shape policy from command minification.",
+      "baseline_defect": "Runner-local field, enum and parent-kind record projection duplicates public minifier policy, including deprecation and interfaces/possible types.",
+      "criterion": "Remove independently maintained type/member record-shape policy from command minification.",
+      "acceptance": "Field, enum and enclosing type shapes derive from the same policy as public minification. Input-value defaults, recursive references and type-set admission are separate checks. A generic projection model may satisfy several at once. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "mapField / mapEnumValue / minifyIntrospectionType",
+          "detail": "Parent kind switch constructs fields, enum deprecation, oneOf and named interfaces/possibleTypes.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection_root_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Type reduction in the command is handed to a formatter that now reconstructs root query, mutation, subscription, name, and directives. This item specifically covers: Unify root metadata projection across command formatting and public minification.",
+      "baseline_defect": "The local formatter rebuilds query/mutation/subscription roots, schema name and empty directives independently of the public minifier while receiving prepared types.",
+      "criterion": "Unify root metadata projection across command formatting and public minification.",
+      "acceptance": "Root/directive/name policy has one authoritative definition and receives the appropriate normalized types; a complete materialized intermediate object is not required. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "outputIntrospectionFile / opts.types",
+          "detail": "Formatter reconstructs __schema roots and directives around separately prepared types.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "preprocessed_type_language",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Preprocessed declaration output serializes schema type references, fields, and roots into a TypeScript type representation. This item specifically covers: Unify preprocessed reference-text policy between command and public preprocessing.",
+      "baseline_defect": "Runner-local printTypeRef duplicates the public TypeScript text language for recursive wrappers and named leaves.",
+      "criterion": "Unify preprocessed reference-text policy between command and public preprocessing.",
+      "acceptance": "LIST/NON_NULL text and named-leaf rendering no longer require independent edits in runner and public module. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "printTypeRef",
+          "detail": "Both implementations render wrapper kind/name/ofType text recursively.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "preprocessed_input_text",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Preprocessed declaration output serializes schema type references, fields, and roots into a TypeScript type representation. This item specifically covers: Unify input-field declaration text policy across command and public preprocessing.",
+      "baseline_defect": "Runner-local printInputFields duplicates input-member/default formatting and list punctuation from public preprocessing.",
+      "criterion": "Unify input-field declaration text policy across command and public preprocessing.",
+      "acceptance": "Input names, default serialization and member/list formatting derive from one definition; reference text policy is assessed separately. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "printInputFields",
+          "detail": "The copied loop constructs name/type/defaultValue records.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "preprocessed_output_text",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Preprocessed declaration output serializes schema type references, fields, and roots into a TypeScript type representation. This item specifically covers: Unify output-field declaration text policy across command and public preprocessing.",
+      "baseline_defect": "Runner-local printFields duplicates object/interface field-map formatting from public preprocessing.",
+      "criterion": "Unify output-field declaration text policy across command and public preprocessing.",
+      "acceptance": "Object/interface field entry and map punctuation policy is no longer separately maintained in the runner. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "printFields",
+          "detail": "Copied name/type entry loop is used by OBJECT and INTERFACE.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "preprocessed_kind_text",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Preprocessed declaration output serializes schema type references, fields, and roots into a TypeScript type representation. This item specifically covers: Unify named-collection and enclosing type-shell rendering across command and public preprocessing.",
+      "baseline_defect": "Runner-local printNamedTypes and printIntrospectionType duplicate named-union and type-kind shell policy beside public preprocessing.",
+      "criterion": "Unify named-collection and enclosing type-shell rendering across command and public preprocessing.",
+      "acceptance": "Enum/union/interface names, empty never and current type-shell selection derive from a common rendering policy. No separate renderer per kind is required. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "printNamedTypes / printIntrospectionType",
+          "detail": "Copied named unions and per-kind shell templates duplicate public representation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "preprocessed_root_text",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Preprocessed declaration output serializes schema type references, fields, and roots into a TypeScript type representation. This item specifically covers: Unify preprocessed schema/root text construction between command and public preprocessing.",
+      "baseline_defect": "Runner-local preprocessIntrospection duplicates root aliases/schema name/type-table linkage from public preprocessing.",
+      "criterion": "Unify preprocessed schema/root text construction between command and public preprocessing.",
+      "acceptance": "Schema name, query/mutation/subscription aliases and type-table linkage use common policy; sharing member renderers alone does not satisfy this root-text obligation. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "preprocessIntrospection / preprocessIntrospectionTypes",
+          "detail": "Copied root text references query, mutation, subscription and typesStr.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "artifact_format_variation",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Current output supports .ts versus .d.ts, optional preprocessing, and named-schema registration suppression. This item specifically covers: Unify artifact format and registration policy across the command and public output API.",
+      "baseline_defect": "Runner-local outputIntrospectionFile duplicates public suffix dispatch, export templates, preprocessing selection and setupSchema decisions; annotation text duplication is scored separately.",
+      "criterion": "Unify artifact format and registration policy across the command and public output API.",
+      "acceptance": "Current .ts/.d.ts templates, preprocessing selection and named-schema registration are maintained in a coherent policy shared by both paths. Reuse of the existing renderer or a redesigned representation qualifies; command-local placement alone is not failure if it is the common owner. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Extract annotation constants alone while leaving local suffix dispatch and complete format templates in the command."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "outputIntrospectionFile",
+          "detail": ".d.ts/.ts branches, preprocessing, and setupSchema condition",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "artifact_annotations",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Current output supports .ts versus .d.ts, optional preprocessing, and named-schema registration suppression. This item specifically covers: Unify generated annotation and default-preamble definitions used by command and public output.",
+      "baseline_defect": "The command copies ANNOTATION_TS, ANNOTATION_DTS and default preamble content from the public output constants, creating a second place to update generated artifact documentation.",
+      "criterion": "Unify generated annotation and default-preamble definitions used by command and public output.",
+      "acceptance": "Generated documentation/preamble changes have one source of truth across both output paths. Annotation text is distinct from suffix/template control and from deciding whether an existing header is custom. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Fix a different policy or merely relocate/rename the duplicate implementation while this policy still requires synchronized edits."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "ANNOTATION_TS / ANNOTATION_DTS / PREAMBLE_IGNORE",
+          "detail": "Copied multiline generated descriptions and default preamble duplicate internal constants.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "publication_routing",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The second stage moves stream flush/error and new-file versus replacement dispatch into four producer call sites. This item specifically covers: Unify file preparation and new-file-versus-replacement routing across artifact producers.",
+      "baseline_defect": "Four producers duplicate directory preparation, file existence checks and direct-new-file versus replacement selection beside shared/utils.ts.",
+      "criterion": "Unify file preparation and new-file-versus-replacement routing across artifact producers.",
+      "acceptance": "File-producing branches and the shared publication API use one coherent directory/existence/first-write policy; producers retain business-specific publish conditions. Stream callback policy and replacement transaction internals are assessed separately. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Share only the private replacement helper while leaving writable checks and file-existence selection copied in the runners."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "runProject",
+          "detail": "stream and file routing in single and multi-schema branches",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/generate-persisted/runner.ts",
+          "symbol": "runProject",
+          "detail": "manifest publication routing",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/generate-schema/runner.ts",
+          "symbol": "run",
+          "detail": "schema publication routing",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/turbo/runner.ts",
+          "symbol": "runProject",
+          "detail": "cache publication routing",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stream_publication",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The second stage moves stream flush/error and new-file versus replacement dispatch into four producer call sites. This item specifically covers: Unify writable-stream publication and completion policy across artifact producers.",
+      "baseline_defect": "Four stream-capable producer branches copy writable-target detection and callback-based Promise completion beside the shared writer.",
+      "criterion": "Unify writable-stream publication and completion policy across artifact producers.",
+      "acceptance": "All affected stream-capable producers use common writable-target and callback success/error policy, with file-only branches remaining file-only. File preparation and swap replacement are separate obligations. Reconnecting supported public operations, shared policy data, composition or an equivalent redesign qualifies. No original helper name, fixed file placement, complete intermediate object, or one-component-per-item architecture is required. Separate copies with the same behavior do not remove the duplication.",
+      "insufficient_repairs": [
+        "Share file replacement only while keeping independent stream-write callback implementations in the producers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "runProject",
+          "detail": "stream and file routing in single and multi-schema branches",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/generate-persisted/runner.ts",
+          "symbol": "runProject",
+          "detail": "manifest publication routing",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/generate-schema/runner.ts",
+          "symbol": "run",
+          "detail": "schema publication routing",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/cli-utils/src/commands/turbo/runner.ts",
+          "symbol": "runProject",
+          "detail": "cache publication routing",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "replacement_lifecycle",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Existing-file publication uses a swap file, rename cleanup, and timestamp touch to manage watcher behavior. This item specifically covers: Unify the replacement transaction and watcher notification lifecycle used by the artifact producers.",
+      "baseline_defect": "Four runner-local writeOutput/touchFile copies retain identical replacement transactions after the second stage strips their stream and first-write branches.",
+      "criterion": "Unify the replacement transaction and watcher notification lifecycle used by the artifact producers.",
+      "acceptance": "Existing-file publication across all four producers and the public publication path no longer independently defines replacement, failure cleanup and watcher-notification policy. A shared operation, shared policy model or equivalent publication design qualifies. Temporary-file creation, rename and timestamp updates describe the injected baseline rather than a mandatory implementation sequence; an alternative must preserve required publication and notification semantics. Sharing only constants while retaining independently maintained transactions is insufficient.",
+      "insufficient_repairs": [
+        "Share only the .tmp suffix or touchFile call while leaving separate rename/unlink transactions in each runner."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "writeOutput / touchFile",
+          "detail": "replacement lifecycle copy",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-persisted/runner.ts",
+          "symbol": "writeOutput / touchFile",
+          "detail": "replacement lifecycle copy",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-schema/runner.ts",
+          "symbol": "writeOutput / touchFile",
+          "detail": "replacement lifecycle copy",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/turbo/runner.ts",
+          "symbol": "writeOutput / touchFile",
+          "detail": "replacement lifecycle copy",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded.v1",
+    "task_id": "0no_co_gql_tada_ss",
+    "aggregation": "equal_weight_per_item",
+    "rubric_status": "ready",
+    "source_diff_sha256": "8cd1df6a2cafc80b2f9810a9c52e00b3e74b06a9dcdbfe740fc925e7143bee5a",
+    "excluded_from_scoring": [
+      "The post.diff comment deletion changes no structural obligation.",
+      "Compilation, passing tests, preserving output bytes, and warning text alone are controls rather than independent smell-removal points.",
+      "The observed short reconnection to supported internal and shared APIs is a valid equivalent structure, not a reason to privilege a reference patch."
+    ]
+  }
+}

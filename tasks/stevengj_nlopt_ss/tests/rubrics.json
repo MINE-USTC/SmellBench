@@ -1,0 +1,487 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "stevengj_nlopt_ss",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "objective_tolerance",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1\u20133 shared scalar policy across20 files.",
+      "baseline_defect": "Participating solvers independently maintain objective tolerance semantics across their local history and result decisions.",
+      "criterion": "Give shared objective tolerance rules coherent ownership across the affected consumers.",
+      "acceptance": "Preserve infinite-prior rejection, strict absolute or relative mean-magnitude alternatives, equality only with positive relative tolerance, floating operation order. Plain ftol does not silently acquire target threshold; retain solver-specific eligibility and consecutive Luksan convergence counters. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/bobyqa/bobyqa.c",
+          "symbol": "bobyqb_",
+          "detail": "Participating solvers independently maintain objective tolerance semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/neldermead/nldrmd.c",
+          "symbol": "nldrmd_minimize_",
+          "detail": "Participating solvers independently maintain objective tolerance semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/luksan/pssubs.c",
+          "symbol": "luksan_pyfut1__",
+          "detail": "Participating solvers independently maintain objective tolerance semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "target_threshold",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 stop_f versus strict target result branches.",
+      "baseline_defect": "Participating solvers independently maintain target threshold semantics across their local history and result decisions.",
+      "criterion": "Give shared target threshold rules coherent ownership across the affected consumers.",
+      "acceptance": "Shared target-aware convergence permits <= independently of prior infinity, while explicit target exits may use strict<. CRS equality yields FTOL not MINF_MAX; feasibility guards and PRAXIS <= target remain distinct. One universal result code or strictness is invalid. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/cdirect/cdirect.c",
+          "symbol": "cdirect_unscaled",
+          "detail": "Participating solvers independently maintain target threshold semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/crs/crs.c",
+          "symbol": "crs_minimize",
+          "detail": "Participating solvers independently maintain target threshold semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/praxis/praxis.c",
+          "symbol": "praxis_",
+          "detail": "Participating solvers independently maintain target threshold semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "coordinate_tolerance",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1\u20133 point/displacement variants.",
+      "baseline_defect": "Participating solvers independently maintain coordinate tolerance semantics across their local history and result decisions.",
+      "criterion": "Give shared coordinate tolerance rules coherent ownership across the affected consumers.",
+      "acceptance": "Weighted L1 displacement versus weighted L1 current point uses strict relative test; alternatively every absolute displacement must be below per-coordinate limits, absent array disables alternative. Preserve floating translated-point cancellation and prepared displacement representations. Caller may supply summaries or points; no required two-array signature. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/luksan/plip.c",
+          "symbol": "plip_dx_converged",
+          "detail": "Participating solvers independently maintain coordinate tolerance semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/mma/mma.c",
+          "symbol": "mma_minimize",
+          "detail": "Participating solvers independently maintain coordinate tolerance semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/slsqp/slsqp.c",
+          "symbol": "nlopt_slsqp",
+          "detail": "Participating solvers independently maintain coordinate tolerance semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "forced_stop",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Ancillary resource dispersion at actual callback exits.",
+      "baseline_defect": "Participating solvers independently maintain forced stop semantics across their local history and result decisions.",
+      "criterion": "Give shared forced stop rules coherent ownership across the affected consumers.",
+      "acceptance": "Nullable pointer convention and live read occur at original objective/constraint callback boundaries. Keep callback count/result writes before cancellation where existing; do not move cancellation before callback or continue result postprocessing after stopped callback. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/auglag/auglag.c",
+          "symbol": "auglag",
+          "detail": "Participating solvers independently maintain forced stop semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/cobyla/cobyla.c",
+          "symbol": "func_wrap",
+          "detail": "Participating solvers independently maintain forced stop semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/mma/mma.c",
+          "symbol": "mma_minimize",
+          "detail": "Participating solvers independently maintain forced stop semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "evaluation_budget",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Ancillary common maxeval rule.",
+      "baseline_defect": "Participating solvers independently maintain evaluation budget semantics across their local history and result decisions.",
+      "criterion": "Give shared evaluation budget rules coherent ownership across the affected consumers.",
+      "acceptance": "Only positive limit enabled, current count>=limit; preserve algorithms that first require count>0, initial evaluation allowance and result overrides. Queries remain at actual sites, not cached across callbacks; no mandatory shared result-selection state machine. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/crs/crs.c",
+          "symbol": "crs_init,crs_trial",
+          "detail": "Participating solvers independently maintain evaluation budget semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/newuoa/newuoa.c",
+          "symbol": "newuob_",
+          "detail": "Participating solvers independently maintain evaluation budget semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "elapsed_time_budget",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Ancillary clock/combined budget policy.",
+      "baseline_defect": "Participating solvers independently maintain elapsed time budget semantics across their local history and result decisions.",
+      "criterion": "Give shared elapsed time budget rules coherent ownership across the affected consumers.",
+      "acceptance": "Positive maxtime only, sample seconds-start>=limit lazily; combined eval-or-time short-circuits clock on evaluation exhaustion. Preserve inverse InTime, local result codes, Luksan100 and all original sampling positions. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/stogo/global.cc",
+          "symbol": "Global::InTime",
+          "detail": "Participating solvers independently maintain elapsed time budget semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/stogo/local.cc",
+          "symbol": "local",
+          "detail": "Participating solvers independently maintain elapsed time budget semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/luksan/pnet.c",
+          "symbol": "pnet_",
+          "detail": "Participating solvers independently maintain elapsed time budget semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "simplex_radius_handoff",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 translated radius and psi gating.",
+      "baseline_defect": "Participating solvers independently maintain simplex radius handoff semantics across their local history and result decisions.",
+      "criterion": "Give shared simplex radius handoff rules coherent ownership across the affected consumers.",
+      "acceptance": "Keep centroid plus radius construction and evaluate actual subtraction, not mathematically simplified raw radius. psi>0 diameter exception bypasses ordinary x tolerance and psi<=0 gates ftol; shared coordinate policy consumes correct centroid norm without owning simplex geometry. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/neldermead/nldrmd.c",
+          "symbol": "nldrmd_minimize_",
+          "detail": "Participating solvers independently maintain simplex radius handoff semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "subspace_step_guard",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 displacement also feeds subsequent step update.",
+      "baseline_defect": "Participating solvers independently maintain subspace step guard semantics across their local history and result decisions.",
+      "criterion": "Give shared subspace step guard rules coherent ownership across the affected consumers.",
+      "acceptance": "After inner XTOL, ftol uses minf+fdiff_max then global coordinate test plus extra unweighted abs(xstep)*psi guard against both absolute and relative limits. Keep strict> guard and absent absolute0, prepare dx for next iteration only as needed. Do not absorb legitimate subspace exception into all solvers. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/neldermead/sbplx.c",
+          "symbol": "sbplx_minimize",
+          "detail": "Participating solvers independently maintain subspace step guard semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "approximation_history",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry final callback convergence interleaved with sigma adaptation.",
+      "baseline_defect": "Participating solvers independently maintain approximation history semantics across their local history and result decisions.",
+      "criterion": "Give shared approximation history rules coherent ownership across the affected consumers.",
+      "acceptance": "Use post-recomputation fcur/xcur and previous iteration, XTOL overrides FTOL. Preserve sigma sign-product update and distinct MMA .01 versus CCSA1e-8 bound-span floor, sigma_min, k>1, rho update/log continuation only on success. Quiet discarded sigma updates can legally move after convergence; no forced preservation of unobservable scratch writes. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/mma/mma.c",
+          "symbol": "mma_minimize",
+          "detail": "Participating solvers independently maintain approximation history semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/mma/ccsa_quadratic.c",
+          "symbol": "ccsa_quadratic_minimize",
+          "detail": "Participating solvers independently maintain approximation history semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "accepted_incumbent_interval",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry summaries across accepted point publication.",
+      "baseline_defect": "Participating solvers independently maintain accepted incumbent interval semantics across their local history and result decisions.",
+      "criterion": "Give shared accepted incumbent interval rules coherent ownership across the affected consumers.",
+      "acceptance": "Compare old incumbent before overwrite and still publish accepted point/value/penalty when terminating. CRS only improves objective; AUGLAG may accept infeasible lower penalty but convergence requires feasible. Preserve target\u2192ftol\u2192xtol and later CRS budget/time override rather than forcing same precedence. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/crs/crs.c",
+          "symbol": "crs_minimize",
+          "detail": "Participating solvers independently maintain accepted incumbent interval semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/auglag/auglag.c",
+          "symbol": "auglag_minimize",
+          "detail": "Participating solvers independently maintain accepted incumbent interval semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "normalized_penalty_convergence",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2/retry penalty producer separate from selection and publication.",
+      "baseline_defect": "Participating solvers independently maintain normalized penalty convergence semantics across their local history and result decisions.",
+      "criterion": "Give shared normalized penalty convergence rules coherent ownership across the affected consumers.",
+      "acceptance": "Normalize feasible penalty to0 only for convergence/incumbent, retain raw penalty ranking/all_feasible. Candidate admission remains original combined ranking; joint objective and penalty convergence required before FTOL, target needs feasible, XTOL fallback requires finite previous objective. Do not compare overwritten minf_penalty or previous point. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/isres/isres.c",
+          "symbol": "isres_minimize",
+          "detail": "Participating solvers independently maintain normalized penalty convergence semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "slsqp_history_and_relaxation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 mode8 and retry mode-1 history handoff.",
+      "baseline_defect": "Participating solvers independently maintain slsqp history and relaxation semantics across their local history and result decisions.",
+      "criterion": "Give shared slsqp history and relaxation rules coherent ownership across the affected consumers.",
+      "acceptance": "Normal comparisons only completed line search mode-1, feasible and noninfinite prior; history advances even ineligible. Mode8 feasible uses ftol_abs/rel and xtol_rel times10 but unchanged coordinate absolute array, ftol before xtol. Preserve later resource/target overrides and original public incumbent vs line-search history distinction; effective policy view or scoped copy legal. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/slsqp/slsqp.c",
+          "symbol": "nlopt_slsqp",
+          "detail": "Participating solvers independently maintain slsqp history and relaxation semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "projected_history_membership",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 shared producer excludes fixed coordinates but three consumers clear history.",
+      "baseline_defect": "Participating solvers independently maintain projected history membership semantics across their local history and result decisions.",
+      "criterion": "Give shared projected history membership rules coherent ownership across the affected consumers.",
+      "acceptance": "kbf>0 and ix<0 clears both xo displacement and go gradient-history before convergence/quasi-Newton consumption; dmax excludes same coordinates. One shared handoff or equivalent owner replaces three maintained clearing policies; clearing only dx is insufficient. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/luksan/pssubs.c",
+          "symbol": "luksan_pytrcd__",
+          "detail": "Participating solvers independently maintain projected history membership semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/luksan/plip.c",
+          "symbol": "plip_",
+          "detail": "Participating solvers independently maintain projected history membership semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/luksan/plis.c",
+          "symbol": "plis_",
+          "detail": "Participating solvers independently maintain projected history membership semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/luksan/pnet.c",
+          "symbol": "pnet_",
+          "detail": "Participating solvers independently maintain projected history membership semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "division_history",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry producer cached change/scale spans complete division.",
+      "baseline_defect": "Participating solvers independently maintain division history semantics across their local history and result decisions.",
+      "criterion": "Give shared division history rules coherent ownership across the affected consumers.",
+      "acceptance": "Use baseline at iteration/division start, updated incumbent from accepted samples, and decide only after successful complete division with strict improvement. Failed/limited division overrides summaries; resetting baseline per sample changes interval. Cached summaries may be retired in favor of correct old/new values. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/cdirect/cdirect.c",
+          "symbol": "function_eval,cdirect_unscaled",
+          "detail": "Participating solvers independently maintain division history semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/cdirect/hybrid.c",
+          "symbol": "optimize_rect,divide_largest",
+          "detail": "Participating solvers independently maintain division history semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "trust_region_reduction",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry objective delta used for prediction error/ratio and deferred tolerance.",
+      "baseline_defect": "Participating solvers independently maintain trust region reduction semantics across their local history and result decisions.",
+      "criterion": "Give shared trust region reduction rules coherent ownership across the affected consumers.",
+      "acceptance": "Objective tolerance uses actual f-fopt, not diff including vquad. Preserve accepted point/model update before stop, old fsave where fopt overwritten, ratio using actual delta. COBYLA fbest selection and improvement guard remain valid concise utility reconnection; no forced common trust-region algorithm. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/bobyqa/bobyqa.c",
+          "symbol": "bobyqb_",
+          "detail": "Participating solvers independently maintain trust region reduction semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/newuoa/newuoa.c",
+          "symbol": "newuob_",
+          "detail": "Participating solvers independently maintain trust region reduction semantics across their local history and result decisions.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/cobyla/cobyla.c",
+          "symbol": "cobylb",
+          "detail": "Participating solvers independently maintain trust region reduction semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "praxis_history",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry convergence summaries during length loop/previous-coordinate overwrite.",
+      "baseline_defect": "Participating solvers independently maintain praxis history semantics across their local history and result decisions.",
+      "criterion": "Give shared praxis history rules coherent ownership across the affected consumers.",
+      "acceptance": "Keep same prior best interval for both kt reset and completion, preserve L2 length calculation distinct from weighted L1 tolerance, reset only long step and neither convergence, then ++kt and ftol priority. Compute before overwrite or equivalent snapshot; no added public history object required. Reconnecting existing stopping utilities, with correct caller context, is sufficient; no required abstraction or extra persistent state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A per-solver renamed copy or a common helper left unused at participating decision sites does not resolve dispersion."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/praxis/praxis.c",
+          "symbol": "praxis_",
+          "detail": "Participating solvers independently maintain praxis history semantics across their local history and result decisions.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "stevengj_nlopt_ss",
+    "rubric_status": "ready",
+    "weighting": "Each item has equal weight.",
+    "excluded_from_scoring": [
+      "Empty post.diff contributes no additional defect.",
+      "Behavior restoration and test passage are controls, not rubric points.",
+      "The expansion's per-file convergence helper names were removed by interaction_delta.diff; their historical presence is not a final-state repair requirement."
+    ]
+  }
+}

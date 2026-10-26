@@ -1,0 +1,622 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "0no_co_gql_tada_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "hash-fragment-resolution",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 1 expands fragment-array, spread and initializer recursion; the interaction makes collection mutate the outer fragmentHashes.",
+      "baseline_defect": "Recursive collection and unhashable propagation are embedded in the digest/cache operation.",
+      "criterion": "Give ordered fragment traversal and collection a coherent boundary consumed by document hashing.",
+      "acceptance": "Array/spread/initializer traversal produces or encapsulates an ordered collection and failure outcome; it delegates call lookup through a distinct contract. Lookup internals are assessed separately. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract only symbol lookup while retaining the recursive collection inside digest construction."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/turbo/hash.ts",
+          "symbol": "hashCallExpression / collectFragments",
+          "detail": "Array elements, spread recursion, initializer recursion and fragmentHashes.push occur before digest construction.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash-static-expression",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 1 moves static text and expression unwrapping into document and fragment consumers.",
+      "baseline_defect": "Four wrapper-peeling loops occur in document text, fragment container, fragment element and declaration initializer handling.",
+      "criterion": "Provide shared TypeScript expression normalization used by the affected text and fragment-resolution paths.",
+      "acceptance": "Parenthesized, as, assertion, satisfies and non-null expressions are normalized through a shared operation; static literal extraction consumes that boundary. Declaration and alias lookup are scored separately. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract the document loop alone and leave the other copies intact."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/turbo/hash.ts",
+          "symbol": "hashCallExpression / collectFragments",
+          "detail": "The same TypeScript wrapper predicates are repeated at four expression sites.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash-symbol-resolution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 1 includes symbol, alias and declaration initialization; later scope fusion retains negative symbol-call caching.",
+      "baseline_defect": "collectFragments mixes array traversal with alias lookup, declaration search, call classification and symbolCallCache publication.",
+      "criterion": "Give symbol/initializer and document-call resolution a focused owner used by fragment traversal.",
+      "acceptance": "The boundary handles direct calls and aliased variable initializers, distinguishes an absent cached lookup from cached null, and exposes call or initializer outcomes without requiring traversal to inspect declarations. Equivalent coordinated resolvers qualify. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share wrapper peeling but leave checker lookup, declaration loops and negative cache decisions embedded in collection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/turbo/hash.ts",
+          "symbol": "collectFragments / symbolCallCache",
+          "detail": "getSymbolAtLocation/getAliasedSymbol and declaration scans are embedded in array-element and collection-initializer paths.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash-digest-completion",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The hasher frames cache buster, schema, fingerprint, text, and fragment hashes after inputs are known, then publishes an active-call/cache result.",
+      "baseline_defect": "Digest framing and result completion are nested directly after fragment traversal in hashCallExpression.",
+      "criterion": "Separate framed digest composition from AST traversal and from the surrounding active-call/cache lifecycle.",
+      "acceptance": "A focused composition boundary consumes resolved text and ordered fragment hashes and owns cache-buster/schema/fingerprint framing and digest formatting. The caller coordinates active membership and cache publication. Equivalent lazy inputs may preserve fingerprint evaluation timing; preserving cache behavior alone earns no credit. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract fragment recursion but leave digest assembly hidden inside the lookup routine, or change only digest formatting."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/turbo/hash.ts",
+          "symbol": "hashCallExpression / activeCalls / callExpressionCache",
+          "detail": "join digest assembly to lookup and cache publication",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "minify-reference-projection",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "GraphQL input fields, output fields, and arguments all project nested LIST/NON_NULL references and named leaves.",
+      "baseline_defect": "Three parent-type branches reconstruct wrapper stacks and named leaves separately in minifyIntrospectionQuery.",
+      "criterion": "Consolidate nested type-reference projection into a cohesive operation used by input fields, output fields, and field arguments.",
+      "acceptance": "The shared projection preserves wrapper order and valid input/output leaf kinds while parent member projections consume its result. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Move identical wrapper loops into three branch-local closures or only rename their temporary variables."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/introspection/minify.ts",
+          "symbol": "minifyIntrospectionQuery / reference / wrappers",
+          "detail": "repeat reference projection in three member contexts",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "minify-member-projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 1 embeds output-field construction in OBJECT and INTERFACE type projection.",
+      "baseline_defect": "The parent kind branch owns each field name, return-type projection, arguments and deprecation shape.",
+      "criterion": "Separate output-field record construction from the enclosing object/interface type dispatch.",
+      "acceptance": "Object and interface projection use one focused field operation that composes return-reference and argument inputs into a field record; caller-level collection ordering is allowed. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract only reference traversal while the parent type dispatch still assembles complete field records."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/introspection/minify.ts",
+          "symbol": "minifyIntrospectionQuery / fields.push",
+          "detail": "OBJECT and INTERFACE share a branch containing return-reference, args and field-record construction.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "minify-input-value",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch 1 removes shared input-value mapping used by INPUT_OBJECT and field arguments.",
+      "baseline_defect": "Input fields and arguments independently assemble name, projected type and defaultValue policy.",
+      "criterion": "Use a common input-value projection for input-object fields and field arguments.",
+      "acceptance": "Both paths delegate input-value record policy through a shared operation, while their different collection ordering may remain with their consumers. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share only type-reference projection but retain duplicate input-value construction."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/introspection/minify.ts",
+          "symbol": "minifyIntrospectionQuery / inputFields.push / args.push",
+          "detail": "Both inputFields.push and args.push construct name/type/defaultValue records.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "preprocess-reference-rendering",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Nested GraphQL references are rendered in input fields and in object/interface fields.",
+      "baseline_defect": "Each parent branch peels LIST/NON_NULL wrappers and rebuilds the same TypeScript reference text.",
+      "criterion": "Centralize nested type-reference rendering so parent type formatting consumes rendered references.",
+      "acceptance": "Input, object, and interface fields use a cohesive renderer that preserves wrapper order and named leaf text. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Replace concatenation with templates while leaving three wrapper traversals in parent branches."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/introspection/preprocess.ts",
+          "symbol": "printIntrospectionType / ref / wrappers",
+          "detail": "repeat nested reference rendering",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "preprocess-member-rendering",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 1 embeds printFields in OBJECT and INTERFACE; later parent scopes own its punctuation.",
+      "baseline_defect": "Both branches duplicate field-map assembly around nested references.",
+      "criterion": "Provide shared object/interface field-map rendering consumed by type-shell formatting.",
+      "acceptance": "The shared renderer owns field entry text and collection punctuation and accepts or obtains rendered references. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract only type references while duplicating complete field-map loops."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/introspection/preprocess.ts",
+          "symbol": "printIntrospectionType / OBJECT / INTERFACE",
+          "detail": "Both branches initialize fields to an opening brace and append name/type records.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "preprocess-input-rendering",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 1 embeds input-field array rendering with default-value text in the type shell.",
+      "baseline_defect": "INPUT_OBJECT mixes shell kind/name/isOneOf with input-member delimiters, names, reference rendering and default serialization.",
+      "criterion": "Separate input-field collection text construction from the INPUT_OBJECT shell.",
+      "acceptance": "A focused renderer owns input member/default formatting and list delimiters, while the enclosing type constructs its own shell. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Move the entire INPUT_OBJECT branch without separating its child rendering."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/introspection/preprocess.ts",
+          "symbol": "printIntrospectionType / INPUT_OBJECT",
+          "detail": "fields starts with a bracket; loop appends name, rendered type and JSON default before the shell return.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "preprocess-named-collections",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 1 expands printNamedTypes into enum and possible-type consumers.",
+      "baseline_defect": "ENUM, INTERFACE and UNION repeat named-union separators and the empty never result.",
+      "criterion": "Share named-collection union rendering across enum values and possible types.",
+      "acceptance": "A common rendering operation or declarative representation owns name joining and empty collection handling for all three consumers. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only share printName and retain the three union-building loops."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/introspection/preprocess.ts",
+          "symbol": "printIntrospectionType / ENUM / INTERFACE / UNION",
+          "detail": "values and possibleTypes loops append pipe-separated names and replace empty output with never.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection-schema-selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 3 nests schema root/directive selection construction inside the cached document builder.",
+      "baseline_defect": "makeIntrospectionQuery constructs root operation type selections and support-conditioned directive fields inside document/cache assembly.",
+      "criterion": "Decouple schema root/directive selection policy from cached-document orchestration.",
+      "acceptance": "Root-type and directive selection choices are represented coherently so modifying them does not require working through unrelated cache and fragment-construction logic. Declarative query templates, selection data, composed builders or equivalent designs qualify; no dedicated __schema helper or preserved fragment layout is required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract only the cache check or move the entire document AST unchanged."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/introspection.ts",
+          "symbol": "makeIntrospectionQuery / __schema",
+          "detail": "__schema selection contains queryType/mutationType/subscriptionType/types and directive support choices.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection-fulltype-selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 3 embeds FullType fragment/member construction in the query document.",
+      "baseline_defect": "FullType mixes support-gated type metadata and field/interface/input/enum projections into the cache builder.",
+      "criterion": "Decouple type/member selection policy from cached-document orchestration.",
+      "acceptance": "Type metadata and field/interface/input/enum selection choices have coherent expression rather than remaining an embedded procedural concern of the cache builder. A unified declarative query or generic selection engine may resolve this together with other fragment items; no distinct FullType component or original fragment name is mandatory. Args and depth policies are independently assessed. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract InputValue or TypeRef only while leaving FullType construction in document/cache assembly."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/introspection.ts",
+          "symbol": "makeIntrospectionQuery / FullType",
+          "detail": "FullType definition embeds isOneOf/specifiedByURL and fields/interfaces/possibleTypes/inputFields/enumValues selections.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection-inputvalue-selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 3 embeds InputValue fragment construction, including deprecation support, into the cached document.",
+      "baseline_defect": "InputValue name/description/default/type and conditional deprecation fields are inline with document/cache assembly.",
+      "criterion": "Decouple input-value selection and its deprecation variation from unrelated query/cache construction.",
+      "acceptance": "Input-value member and deprecation policy is expressed coherently without embedding its full construction in document-cache bookkeeping. A template, data model, generic query builder or focused operation qualifies; no separate InputValue function, class or fragment is required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only extract FullType or wrap the entire document AST."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/introspection.ts",
+          "symbol": "makeIntrospectionQuery / InputValue",
+          "detail": "InputValue fragment includes defaultValue/type and support.inputValueDeprecation fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection-args-selection",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch 3 duplicates schema argument selection under directives and ordinary fields.",
+      "baseline_defect": "Two _makeSchemaArgsField IIFEs construct the same args field and conditional includeDeprecated argument.",
+      "criterion": "Remove duplicated argument-selection and includeDeprecated policy across directive and field query construction.",
+      "acceptance": "Both existing contexts obtain argument-selection policy from one coherent definition or avoid its duplication through a redesigned query. Parameters, selection data, shared fragments or an equivalent design qualify; no required args-builder function is imposed. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Keep two identical factories or merely preserve includeDeprecated behavior."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/introspection.ts",
+          "symbol": "makeIntrospectionQuery / _makeSchemaArgsField",
+          "detail": "Directive and FullType field selections separately construct args with support.directiveArgumentsIsDeprecated or support.fieldArgumentsIsDeprecated.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection-typeref-selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch 3 nests recursive reference selection beneath the TypeRef document fragment.",
+      "baseline_defect": "Depth recursion and kind/name/ofType AST construction are buried in cached document assembly.",
+      "criterion": "Decouple reference-depth selection policy from cached-document construction.",
+      "acceptance": "The bounded nested ofType selection is expressed through coherent traversal, declarative generation or another query representation rather than embedded recursion within cache assembly. No dedicated TypeRef helper, recursion strategy or preserved fragment is required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Move the entire document or only rename the recursive IIFE."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/introspection.ts",
+          "symbol": "makeIntrospectionQuery / _makeTypeRefSelection",
+          "detail": "TypeRef selection builds kind/name and recursively nested ofType while depth is below 9.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection-support-selection",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The current support query probes meta-type fields with and without the arguments selection.",
+      "baseline_defect": "makeIntrospectSupportQuery repeats field-name AST variants in four meta-type branches.",
+      "criterion": "Make the existing with-arguments versus names-only support-probe variation selectable at one field-selection boundary.",
+      "acceptance": "Each meta-type chooses the variant through a shared builder or data-driven selection, so changing the probed argument fields does not require editing every meta-type branch. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Format or rename the four repeated AST blocks without centralizing their variant decision."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/introspection.ts",
+          "symbol": "makeIntrospectSupportQuery",
+          "detail": "repeat support field selection variants",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection-field-support",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 3 expands _hasField into both support-query and full-introspection support conversion.",
+      "baseline_defect": "The same nullable field-presence inspection is repeated for isRepeatable, specifiedByURL, isOneOf and isDeprecated across two producers.",
+      "criterion": "Share metadata field-presence inspection across both supported-feature conversion paths.",
+      "acceptance": "Both toSupportedFeatures and introspectionToSupportedFeatures use a shared inspection policy; their source-shape lookup and fallback choices may stay distinct. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consolidate only one producer or count preserving feature booleans as the repair."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/introspection.ts",
+          "symbol": "toSupportedFeatures / introspectionToSupportedFeatures",
+          "detail": "Repeated data.fields.some checks and _hasField IIFEs inspect the same feature names.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "introspection-argument-support",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch 3 expands _supportsDeprecatedArgumentsArg for directive/field metadata in both support-data producers.",
+      "baseline_defect": "Four local bodies independently find args then inspect includeDeprecated.",
+      "criterion": "Share argument-capability inspection across directive/field checks in both support conversion paths.",
+      "acceptance": "A common inspector owns the args-field and includeDeprecated-argument traversal; all affected producers consume it. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share basic field-presence checks but leave the nested argument-capability searches duplicated."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/introspection.ts",
+          "symbol": "toSupportedFeatures / introspectionToSupportedFeatures / _supportsDeprecatedArgumentsArg",
+          "detail": "Four local function expressions find the args field and its includeDeprecated argument.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sdl-materialization",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 2 spreads JSON introspection materialization into explicit and both watcher loads.",
+      "baseline_defect": "Each path parses JSON, validates __schema and builds a named introspection/client-schema result itself.",
+      "criterion": "Share JSON file-content materialization across explicit loading and both watcher refresh paths.",
+      "acceptance": "A common JSON conversion boundary owns parse/validation/result policy and is used by all three consumers; file IO may be common or separate. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share readFile alone while each consumer retains JSON parsing and result construction."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/sdl.ts",
+          "symbol": "loadFromSDL / load / reload",
+          "detail": "Three ext === .json branches repeat JSON.parse, __schema validation and buildClientSchema.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sdl-schema-materialization",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Batch 2 spreads SDL build/query/execute conversion into explicit and both watcher loads.",
+      "baseline_defect": "All three paths build SDL schemas, obtain a query, execute it and convert error/data outcomes directly.",
+      "criterion": "Share SDL schema/introspection materialization across explicit and watcher loads through the query-builder boundary.",
+      "acceptance": "One conversion owner coordinates buildSchema, makeIntrospectionQuery and executeSync, returning a complete result to all three consumers without duplicating outcome conversion. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share JSON parsing only, or share query construction while retaining three SDL execution/conversion chains."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/sdl.ts",
+          "symbol": "loadFromSDL / load / reload",
+          "detail": "Three non-JSON branches call buildSchema, makeIntrospectionQuery(getPeerSupportedFeatures()) and executeSync.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/introspection.ts",
+          "symbol": "makeIntrospectionQuery",
+          "detail": "Query producer consumed by SDL materialization.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sdl-watch-publication",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "TypeScript and fs watchers share the same reload success, error, and subscriber publication transaction.",
+      "baseline_defect": "Both watcher callbacks nest materialization, cache assignment, success publication, error conversion, and error publication into watcher resource handling.",
+      "criterion": "Make watcher resource lifecycle invoke a coherent reload-and-publication transaction shared by both watcher implementations.",
+      "acceptance": "Both watcher types preserve setup/teardown and use a common transaction for result commit and success/error notification. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract file parsing alone while both event handlers still duplicate cache and subscriber transactions."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/sdl.ts",
+          "symbol": "notifyOnUpdate / watch / reload",
+          "detail": "contain duplicate watcher reload publication",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sdl-watcher-lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch 2 embeds watch backend selection and resource setup in notifyOnUpdate.",
+      "baseline_defect": "Subscription registration nests TypeScript watcher setup and fs async event handling with abort resource ownership.",
+      "criterion": "Separate file-watcher backend/resource coordination from subscriber registration and reload publication.",
+      "acceptance": "A coherent watcher boundary owns backend selection, event hookup and stop/abort behavior; subscription handling uses it to begin/end observation and events invoke reload work. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract parsing or reload publication but retain backend setup and event-loop machinery inline in subscription registration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/sdl.ts",
+          "symbol": "loadFromSDL / notifyOnUpdate / watch",
+          "detail": "notifyOnUpdate contains ts.sys.watchFile and fs.watch setup, event loop and abort assignment.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "url-capability-negotiation",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Initial and timed remote loads both negotiate supported introspection features, including fallback after support-query GraphQL errors.",
+      "baseline_defect": "Both normal and timer paths repeat the support probe, fallback introspection, defaults, and miscellaneous-error handling.",
+      "criterion": "Use one coherent remote capability-negotiation operation across initial and scheduled loads.",
+      "acceptance": "The shared operation owns supportedFeatures decisions for successful probes, GraphQL-error fallback, no-data default, and other errors; initial and timer consumers use its result. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share only client.query while retaining separate fallback decision trees in timer and initial callers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/url.ts",
+          "symbol": "loadFromURL / supportedFeatures",
+          "detail": "repeat negotiation",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "url-response-projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Fallback introspection needs capability data while a full load needs a named introspection and built client schema.",
+      "baseline_defect": "Fallback and full response branches repeat error/data checks and schema validation while constructing different result shapes inside their callers.",
+      "criterion": "Give remote response validation a coherent boundary with appropriate fallback-data and full-result contracts.",
+      "acceptance": "Fallback can consume validated introspection data and full load can consume a named introspection plus schema; common response validation is shared without dropping schema validation. A shared complete-result operation whose fallback caller selects its introspection also qualifies; distinct public return types are not mandatory. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Wrap only client.query, delete fallback validation, or leave duplicated error/data branches inside each negotiation caller."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/url.ts",
+          "symbol": "receivedIntrospection / loadedResult",
+          "detail": "show distinct repeated response projections",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "url-polling-lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Remote loader polling controls one timer, reloads, cache state, and notifications after introspection attempts.",
+      "baseline_defect": "Nested finally blocks schedule timers whose callbacks contain complete remote loading, result assignment, and subscriber publication.",
+      "criterion": "Separate polling timer coordination from reusable remote loading and update publication.",
+      "acceptance": "An identifiable polling boundary owns pending-timer and reschedule decisions while load/update work owns requests and result/error publication. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract only setTimeout while its callback still embeds the full capability and introspection flow."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/url.ts",
+          "symbol": "scheduleUpdate / timeoutID / subscriptions",
+          "detail": "nest polling and load transactions",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "loader-lazy-construction",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The reference loader's load and autoupdate consumers need the same lazily initialized root or multi-schema loader set.",
+      "baseline_defect": "loadRef constructs equivalent root/multi loader collections independently in load and autoupdate before saving _loaders.",
+      "criterion": "Remove duplicated lazy root/multi-loader construction policy across load and autoupdate.",
+      "acceptance": "Both consumers use coherent loader initialization state and policy without separate copies of root/multi construction. A shared initializer, lazy state object, unified flow or equivalent representation qualifies; no single retrieval function is required. Existing initialization timing and loader handoff semantics remain constraints. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Rename _loaders or extract a load call while leaving duplicate construction branches."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/index.ts",
+          "symbol": "loadRef / _loaders",
+          "detail": "duplicate lazy loader setup",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/sdl.ts",
+          "symbol": "loadFromSDL",
+          "detail": "one downstream loader family",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/internal/src/loaders/url.ts",
+          "symbol": "loadFromURL",
+          "detail": "other downstream loader family",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "project-output-lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The CLI enumerates projects, deduplicates destinations, then produces single- or multi-schema files and summaries per project.",
+      "baseline_defect": "run's project loop absorbs destination mapping, schema loading, branch-specific destination choice, output generation, writes, errors, and summary state.",
+      "criterion": "Keep project traversal and destination deduplication distinct from a coherent per-project output-generation lifecycle.",
+      "acceptance": "A per-project operation or equivalent phase boundary handles schema load, single/multi output, write/error and summary decisions, while traversal owns project iteration and deduplication. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extract only destination mapping or move the entire project loop unchanged into another function."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "run / destinations / showHint",
+          "detail": "merge project enumeration and output lifecycle",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded.v1",
+    "case_id": "0no-co--gql.tada--deeply_inlined_method",
+    "aggregation": "equal_weight_per_item"
+  }
+}

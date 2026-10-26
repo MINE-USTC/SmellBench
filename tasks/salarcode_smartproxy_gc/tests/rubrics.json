@@ -1,0 +1,459 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "salarcode_smartproxy_gc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "profile_identity_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 profile CRUD and lookup.",
+      "baseline_defect": "Settings persistence also owns profile identity lifecycle implementation while public facades forward back to it.",
+      "criterion": "Give profile identity lifecycle coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Existing ID updates existing object with Object.assign, new profile keeps identity and receives ID only if missing; optional settings respected. Delete rejects missing/builtin without mutation. Rule support and subscription support differ for IgnoreFailureRules; active missing returns null/warning. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "addUpdateProfile,deleteProfile",
+          "detail": "Settings persistence also owns profile identity lifecycle implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ignore_failure_creation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 and complete continuation creation-before-validation.",
+      "baseline_defect": "Settings persistence also owns ignore failure creation implementation while public facades forward back to it.",
+      "criterion": "Give ignore failure creation coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Empty list creates nothing; nonempty invalid list still creates/publishes identified default IgnoreFailureRules profile before hostname validation. Reuse existing first matching type; later batch failure retains prior successful edits, no transaction rollback. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "getIgnoreFailureRulesProfile,enableByHostnameListIgnoreFailureRules",
+          "detail": "Settings persistence also owns ignore failure creation implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "profile_copy_policy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 copy/base/config and continuation restore/merge.",
+      "baseline_defect": "Settings persistence also owns profile copy policy implementation while public facades forward back to it.",
+      "criterion": "Give profile copy policy coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Copy selected base fields; copyConfig false leaves destination config intact, true copies explicit config fields to new object. Clone child rules/subscriptions and filter copied validity. Type reset only when default exists; backup reset and boolean builtin override remain caller policy, not imposed on ordinary copy; merge rule equivalence after copy versus raw subscription identity before copy preserved. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "copySmartProfileBase,copySmartProfile,resetProfileTypeConfig",
+          "detail": "Settings persistence also owns profile copy policy implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rule_toggle_remove",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 domain editing.",
+      "baseline_defect": "Settings persistence also owns rule toggle remove implementation while public facades forward back to it.",
+      "criterion": "Give rule toggle remove coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Toggle checks supported type, positive found ID bypasses hostname validation, otherwise hostname validation/lookup; enabled rule deletes only when live popup option says so, else disables. Remove editable check then ID or exact hostname; keep existing undefined versus failure results and remove by object identity. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "toggleRule,removeByHostname,toggleExistingRule",
+          "detail": "Settings persistence also owns rule toggle remove implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rule_enable_batches",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 independent enable/batch errors.",
+      "baseline_defect": "Settings persistence also owns rule enable batches implementation while public facades forward back to it.",
+      "criterion": "Give rule enable batches coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Validate host before lookup; disabled becomes enabled, already enabled succeeds with exists message, missing rule created with DomainSubdomain/default whitelist and collision-free ID. Normal active-profile editable/type checks remain; batches stop at first failure retaining previous edits and exact fallback message. No new save/engine effects. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "enableByHostnameList,enableByHostnameInternal",
+          "detail": "Settings persistence also owns rule enable batches implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rule_proxy_assignment",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 proxy ID/object consistency.",
+      "baseline_defect": "Settings persistence also owns rule proxy assignment implementation while public facades forward back to it.",
+      "criterion": "Give rule proxy assignment coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Active/editable/rules-capable and rule checks precede assignment. DefaultGeneral/ProfileProxy set object null, ordinary ID resolves or fails without mutation; publish both proxyServerId/proxy together and existing response shape. Can share editor owner with enable/toggle. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "changeProxyForRule",
+          "detail": "Settings persistence also owns rule proxy assignment implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "local_rule_compilation",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 and compiler-publication batch.",
+      "baseline_defect": "Settings persistence also owns local rule compilation implementation while public facades forward back to it.",
+      "criterion": "Give local rule compilation coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Enabled rules only; preserve exact/domain/path lowercasing, host regex i versus URL regex case-sensitive, match-pattern/CIDR nullskip and CIDR warning, invalid regex throws, unknownskip. Retain rule metadata/proxy/source and standalone list result; callback-based internals optional, whole-list collection valid. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "compileRules",
+          "detail": "Settings persistence also owns local rule compilation implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "compiled_proxy_resolution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 special proxy and profile lookup.",
+      "baseline_defect": "Settings persistence also owns compiled proxy resolution implementation while public facades forward back to it.",
+      "criterion": "Give compiled proxy resolution coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "DefaultGeneral forces null; ProfileProxy uses resolved profile ID only if found, otherwise retains original rule.proxy. Compiled profile resolves its own profileProxyServer after rule compilation. A focused resolver or compiler can own policy without moving persistence wholesale. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "compileRules,compileSmartProfile",
+          "detail": "Settings persistence also owns compiled proxy resolution implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "subscription_rule_compilation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 imported-rule mapping and strict whitelist override.",
+      "baseline_defect": "Settings persistence also owns subscription rule compilation implementation while public facades forward back to it.",
+      "criterion": "Give subscription rule compilation coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Imported search retained as supplied, source Subscriptions; markAsWhitelisted only strict true; host regex i/URL regex no i, recognized text forms accepted, unsupported logs/skips. Null rules returns[], regex failures preserve error; public result collection remains supported. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "compileRulesSubscription",
+          "detail": "Settings persistence also owns subscription rule compilation implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "compiled_profile_routing",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + stage2 raw publication and effective list placement.",
+      "baseline_defect": "Settings persistence also owns compiled profile routing implementation while public facades forward back to it.",
+      "criterion": "Give compiled profile routing coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Local Rules/Whitelist always arrays; enabled subscriptions append in source order, reversal swaps effective lists but raw compiled whiteList metadata remains unchanged (raw whitelist can be effective proxy). Preserve no-subscription constructor defaults; coherent aggregate result or callbacks both legal. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "compileSmartProfileRuleInternal",
+          "detail": "Settings persistence also owns compiled profile routing implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rule_validation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 validation accumulated independently of matching.",
+      "baseline_defect": "Settings persistence also owns rule validation implementation while public facades forward back to it.",
+      "criterion": "Give rule validation coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Present hostname validity checked before empty rule pattern; failures preserve i18n result, default enabled=true only when null/undefined after validation succeeds. Do not turn validation into compiler or force persistence. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "validateRule",
+          "detail": "Settings persistence also owns rule validation implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "matching_precedence",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 source precedence and query adapters.",
+      "baseline_defect": "Settings persistence also owns matching precedence implementation while public facades forward back to it.",
+      "criterion": "Give matching precedence coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "First match in user whitelist, user rules, subscription whitelist, subscription rules; result source reflects effective list regardless raw whiteList. Domain adapters lowercase/add http:// only absent :/, batch retains null result positions. Shared matcher may also own per-form logic. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "findMatchedUrlInRulesInfo,findMatchedDomainListInRulesInfo",
+          "detail": "Settings persistence also owns matching precedence implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "matching_rule_forms",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 normalization and domain/path/regex interpretation.",
+      "baseline_defect": "Settings persistence also owns matching rule forms implementation while public facades forward back to it.",
+      "criterion": "Give matching rule forms coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "First ordered match; lower URL for exact/prefix/domain, original URL for RegexUrl; exact/subdomain dot boundary and existing path prefix/includes semantics. Lazy host/schemeless parsing, failed parse continues; host regex tests raw host first then changed nonnull normalized IP. Single outer catch logs and ends search, not per-rule continue. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "findMatchedUrlInRules",
+          "detail": "Settings persistence also owns matching rule forms implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "matching_port_fallback",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 second pass independent hostname-with-port behavior.",
+      "baseline_defect": "Settings persistence also owns matching port fallback implementation while public facades forward back to it.",
+      "criterion": "Give matching port fallback coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Only after all first-pass matches fail and host was extracted, rerun eligible host/subdomain/path/regex forms with host including port if different. Do not rerun exact/URL/searchurl/plain DomainAndPath. Preserve source and rule order; no eager port match preempting earlier portless rule. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "findMatchedUrlInRules",
+          "detail": "Settings persistence also owns matching port fallback implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "empty_subscription_reload",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 empty enabled discovery.",
+      "baseline_defect": "Settings persistence also owns empty subscription reload implementation while public facades forward back to it.",
+      "criterion": "Give empty subscription reload coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Server enabled and no proxies; rules enabled and both proxy/whitelist empty across profiles. Fire calls without awaiting network completion; wrappers async signatures preserved. Neither profile enabled gate nor immediate reload of populated subscriptions invented. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "reloadEmptyServerSubscriptions,reloadEmptyRulesSubscriptions",
+          "detail": "Settings persistence also owns empty subscription reload implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "timer_reconciliation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 server/rule registry lifecycle.",
+      "baseline_defect": "Settings persistence also owns timer reconciliation implementation while public facades forward back to it.",
+      "criterion": "Give timer reconciliation coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Server keyed by name/rule by ID; disabled/nonpositive cancel+remove, unchanged rate retain, changed rate cancel+replace, missing subscriptions final sweep. Shared scheduler permitted but server callback relooks up by name while rules callback captures object. Preserve registry object/handle ownership across settings-triggered reschedule. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "setServerSubscriptionsRefreshTimers,setRulesSubscriptionsRefreshTimers",
+          "detail": "Settings persistence also owns timer reconciliation implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "timer_first_tick",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + continuation delayed handle publication.",
+      "baseline_defect": "Settings persistence also owns timer first tick implementation while public facades forward back to it.",
+      "criterion": "Give timer first tick coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Interval minutes*60*1000; lastTry remaining max0. Positive remaining timeout invokes refresh then installs interval and updates original registered timer object, so later disable cancels interval. Zero/absent remaining installs interval without immediate fetch. Do not register only on successful response or change fire-and-forget cadence. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "setServerSubscriptionsRefreshTimers,setRulesSubscriptionsRefreshTimers",
+          "detail": "Settings persistence also owns timer first tick implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "server_refresh_publication",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 import/list/stats/storage handoff.",
+      "baseline_defect": "Settings persistence also owns server refresh publication implementation while public facades forward back to it.",
+      "criterion": "Give server refresh publication coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Missing named subscription removes registered timer; create stats before import. Null response noops; success replaces proxies, captures current subscription list, updates count/stats, local persistence iff !sync then saveAllSync(false), country enrichment fire-and-forget. Failure response/error updates failure stats/log only, preserving previous values; supported save operation reconnect legal. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "readServerSubscription",
+          "detail": "Settings persistence also owns server refresh publication implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rules_refresh_publication",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 rule list/statistics/engine effects.",
+      "baseline_defect": "Settings persistence also owns rules refresh publication implementation while public facades forward back to it.",
+      "criterion": "Give rules refresh publication coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Success sets blackList then whiteList/count/stats, performs existing local proxyServerSubscriptions storage and saveAllSync(false), then notifyProxyRulesChanged. Preserve actual storage payload even if surprising; null response noop, false/error only stats/log. Existing early name/log behavior and object lifetime retained, no fabricated removed-subscription lookup. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "readRulesSubscription",
+          "detail": "Settings persistence also owns rules refresh publication implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "country_resolution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 independent async DNS/country ownership.",
+      "baseline_defect": "Settings persistence also owns country resolution implementation while public facades forward back to it.",
+      "criterion": "Give country resolution coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Skip existing country/no host; resolve non-IP sequentially use first DNS address, failures skip; local IP marks LOCAL, others queued with original proxy reference. Country initialization callback assigns ISO code when present; external callback timing stays independent of returned async promise. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "updateProxyServersCountryCode",
+          "detail": "Settings persistence also owns country resolution implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "country_persistence",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + continuation separate aggregate and callback lifetimes.",
+      "baseline_defect": "Settings persistence also owns country persistence implementation while public facades forward back to it.",
+      "criterion": "Give country persistence coherent substantive ownership rather than leaving its detailed policy inside the settings persistence class.",
+      "acceptance": "Single-list save only inside nonempty remote-country initialization callback when updated&&save; local-only list currently has no save. Aggregate awaits each enabled nonempty list with save=false then saves once if requested even no updates. Do not invent await of ensureInitialized callback or coalesce lifetimes into subscription refresh completion. Public static entry points and settings formats remain compatible; an orchestration facade may coordinate focused owners. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire god class or wrappers that delegate substantive work back to it is insufficient; no prescribed original class names, method count or one owner per rubric."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SettingsOperation.ts",
+          "symbol": "updateProxyServerSubscriptionsCountryCode,updateProxyServersCountryCode",
+          "detail": "Settings persistence also owns country persistence implementation while public facades forward back to it.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded.v1",
+    "task_id": "salarcode_smartproxy_gc",
+    "aggregation": "equal_weight_per_item",
+    "excluded_from_scoring": [
+      "Empty post.diff adds no defect",
+      "Test passage and compilation are controls, not repair points",
+      "The historical second-stage record describes possible future deepening that is absent from the final patch"
+    ]
+  }
+}

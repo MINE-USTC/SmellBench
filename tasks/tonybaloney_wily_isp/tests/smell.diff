@@ -1,0 +1,515 @@
+diff --git a/src/wily/commands/build.py b/src/wily/commands/build.py
+index b27f0b9..17d0ae1 100644
+--- a/src/wily/commands/build.py
++++ b/src/wily/commands/build.py
+@@ -27,6 +27,9 @@ from wily.backend import WilyIndex
+ from wily.cache import create as create_cache
+ from wily.config.types import WilyConfig
+ from wily.operators import Operator
++from wily.backend import find_revision
++from wily.backend import iter_filenames
++from wily.session import CommandSession, RuntimeBindings
+ 
+ 
+ class SpeedColumn(ProgressColumn):
+@@ -71,6 +74,9 @@ def analyze_revision_with_index(
+ 
+     archiver_instance.checkout(revision, config.checkout_options)
+ 
++    if isinstance(index, CommandSession):
++        return index.analyze_revision(paths=revision["added_files"] + revision["modified_files"], base_path=config.path)
++
+     # Analyze and accumulate in index
+     return index.analyze_revision(
+         paths=revision["added_files"] + revision["modified_files"],
+@@ -130,17 +136,18 @@ def build(config: WilyConfig, archiver: Archiver, operators: list[Operator]) ->
+     cache_dir.mkdir(parents=True, exist_ok=True)
+     parquet_path = str(cache_dir / "metrics.parquet")
+     operator_names = [op.name for op in operators]
++    runtime = CommandSession(config, parquet_path, operator_names, RuntimeBindings(WilyIndex, find_revision, iter_filenames, archiver_instance))
+ 
+     try:
+         with Progress(*progress_columns) as progress:
+             # Use WilyIndex context manager - all data written on exit
+-            with WilyIndex(parquet_path, operator_names) as index:
++            with runtime as index:
+                 for i, revision in enumerate(revisions):
+                     if i == 0:
+                         seed_task = progress.add_task("Analyzing seed", total=1)
+                         progress.start_task(seed_task)
+ 
+-                        seed_loc = analyze_revision_with_index(index, revision, archiver_instance, config)
++                        seed_loc = analyze_revision_with_index(index, revision, runtime, config)
+ 
+                         progress.stop_task(seed_task)
+                         if any(op.name == "raw" for op in operators):
+@@ -150,11 +157,11 @@ def build(config: WilyConfig, archiver: Archiver, operators: list[Operator]) ->
+                     elif i == 1:
+                         task_id = progress.add_task("Analyzing revisions", total=len(revisions) - 1)
+ 
+-                    analyze_revision_with_index(index, revision, archiver_instance, config)
++                    analyze_revision_with_index(index, revision, runtime, config)
+                     progress.advance(task_id)  # type: ignore
+ 
+     except Exception as e:
+         logger.error("Failed to build cache: %s: '%s'", type(e), e)
+         raise e
+     finally:
+-        archiver_instance.finish()
++        runtime.finish()
+diff --git a/src/wily/commands/diff.py b/src/wily/commands/diff.py
+index 731ca29..4f5cd22 100644
+--- a/src/wily/commands/diff.py
++++ b/src/wily/commands/diff.py
+@@ -21,6 +21,8 @@ from wily.config import DEFAULT_PATH
+ from wily.config.types import WilyConfig
+ from wily.defaults import DEFAULT_ARCHIVER, DEFAULT_TABLE_STYLE
+ from wily.helper import print_table
++from wily.backend import find_revision
++from wily.session import CommandSession, RuntimeBindings
+ from wily.operators import (
+     ALL_METRICS,
+     ALL_OPERATORS,
+@@ -130,6 +132,14 @@ def _load_indexed_metrics(
+         if not path_rows:
+             continue
+ 
++        if isinstance(index, CommandSession):
++            data, _ = index.select(path_rows, revision)
++            if data is None:
++                logger.error(f"Revision {revision} not found for {file}")
++                raise SystemExit(1)
++            last_data[file].update(index.values(data))
++            continue
++
+         if revision:
+             data = next((row for row in path_rows if row.get("revision") == revision), None)
+             if data is None:
+@@ -185,6 +195,14 @@ def _load_detailed_metrics(
+             if not obj_rows:
+                 continue
+ 
++            if isinstance(index, CommandSession):
++                obj_data, _ = index.select(obj_rows, revision)
++                if obj_data is None:
++                    logger.error(f"Revision {revision} not found for {obj_path}")
++                    raise SystemExit(1)
++                detailed_data[obj_path].update(index.values(obj_data))
++                continue
++
+             if revision:
+                 obj_data = next((row for row in obj_rows if row.get("revision") == revision), None)
+                 if obj_data is None:
+@@ -428,12 +446,12 @@ def diff(
+     operator_names = [op.name for op in operators]
+ 
+     # Load indexed data and run current analysis
+-    with WilyIndex(parquet_path, operator_names) as index:
++    with CommandSession(config, parquet_path, operator_names, RuntimeBindings(WilyIndex, find_revision, iter_filenames, None)) as index:
+         # Load file-level metrics from index
+         indexed_data = _load_indexed_metrics(index, files, revision)
+ 
+         # Analyze current files
+-        current_data = index.analyze_files(targets, str(config.path), detail)
++        current_data = index.current(targets, detail)
+ 
+         # Load function/class metrics if detail mode
+         if detail:
+diff --git a/src/wily/commands/graph.py b/src/wily/commands/graph.py
+index 7c04df2..86f71b6 100644
+--- a/src/wily/commands/graph.py
++++ b/src/wily/commands/graph.py
+@@ -16,6 +16,9 @@ from wily.cache import get_default_metrics_path
+ from wily.config.types import WilyConfig
+ from wily.defaults import DEFAULT_ARCHIVER
+ from wily.operators import Metric, resolve_metric, resolve_metric_as_tuple
++from wily.backend import find_revision
++from wily.backend import iter_filenames
++from wily.session import CommandSession, RuntimeBindings
+ 
+ 
+ def metric_parts(metric):
+@@ -87,7 +90,7 @@ def graph(
+     # Initialize title with a default - will be updated once we know paths
+     title = f"{x_axis.capitalize()} of {y_metric.description}"
+ 
+-    with WilyIndex(parquet_path, [operator]) as index:
++    with CommandSession(config, parquet_path, [operator], RuntimeBindings(WilyIndex, find_revision, iter_filenames, None)) as index:
+         # Get all rows and organize by revision
+         all_rows = list(index)
+         if not all_rows:
+@@ -95,23 +98,13 @@ def graph(
+             sys.exit(1)
+ 
+         # Get unique revisions sorted by date (oldest first for graph)
+-        revisions: dict[str, dict] = {}
+-        for row in all_rows:
+-            rev_key = row["revision"]
+-            if rev_key not in revisions:
+-                revisions[rev_key] = {
+-                    "key": rev_key,
+-                    "author": row.get("revision_author", "Unknown"),
+-                    "message": row.get("revision_message", ""),
+-                    "date": row.get("revision_date", 0),
+-                }
+-        sorted_revisions = sorted(revisions.values(), key=lambda r: r["date"])
++        sorted_revisions = index.catalog(all_rows)
+         revision_keys = [r["key"] for r in sorted_revisions]
+ 
+         # Build lookup: {revision: {path: row_data}}
+         revision_data: dict[str, dict[str, dict]] = {}
+         tracked_files: set[str] = set()
+-        for row in all_rows:
++        for row in index.scan(all_rows):
+             rev_key = row["revision"]
+             file_path = row["path"]
+             if rev_key not in revision_data:
+@@ -142,10 +135,7 @@ def graph(
+                 row = rev_paths.get(current_path)
+                 if row is None:
+                     # Try matching path that starts with current_path (for directories)
+-                    for p, r in rev_paths.items():
+-                        if p.startswith(current_path) or current_path.startswith(p):
+-                            row = r
+-                            break
++                    row = next(index.scan(rev_paths.values(), path=current_path), None)
+ 
+                 if row is None:
+                     continue
+diff --git a/src/wily/commands/index.py b/src/wily/commands/index.py
+index 91769ae..5a4b4e6 100644
+--- a/src/wily/commands/index.py
++++ b/src/wily/commands/index.py
+@@ -13,6 +13,9 @@ from wily.cache import get_default_metrics_path, list_archivers
+ from wily.config.types import WilyConfig
+ from wily.defaults import DEFAULT_TABLE_STYLE
+ from wily.helper import print_table
++from wily.backend import find_revision
++from wily.backend import iter_filenames
++from wily.session import CommandSession, RuntimeBindings
+ 
+ 
+ def index(
+@@ -49,21 +52,9 @@ def index(
+             continue
+ 
+         # Get unique revisions from parquet
+-        with WilyIndex(parquet_path, []) as idx:
++        with CommandSession(config, parquet_path, [], RuntimeBindings(WilyIndex, find_revision, iter_filenames, None)) as idx:
+             # Collect unique revisions (keyed by revision hash)
+-            revisions: dict[str, dict] = {}
+-            for row in idx:
+-                rev_key = row["revision"]
+-                if rev_key not in revisions:
+-                    revisions[rev_key] = {
+-                        "key": rev_key,
+-                        "author": row.get("revision_author", "Unknown"),
+-                        "message": row.get("revision_message", ""),
+-                        "date": row.get("revision_date", 0),
+-                    }
+-
+-            # Sort by date descending (most recent first)
+-            sorted_revisions = sorted(revisions.values(), key=lambda r: r["date"], reverse=True)
++            sorted_revisions = idx.revisions(reverse=True)
+ 
+             for rev in sorted_revisions:
+                 if include_message:
+diff --git a/src/wily/commands/rank.py b/src/wily/commands/rank.py
+index c8340e0..f2a914c 100644
+--- a/src/wily/commands/rank.py
++++ b/src/wily/commands/rank.py
+@@ -20,6 +20,7 @@ from wily.config import DEFAULT_PATH, WilyConfig
+ from wily.defaults import DEFAULT_ARCHIVER, DEFAULT_TABLE_STYLE
+ from wily.helper import print_table
+ from wily.operators import resolve_metric_as_tuple
++from wily.session import CommandSession, RuntimeBindings
+ 
+ 
+ def rank(
+@@ -61,7 +62,7 @@ def rank(
+         logger.error("Wily cache not found. Run 'wily build' first.")
+         sys.exit(1)
+ 
+-    with WilyIndex(parquet_path, [operator]) as index:
++    with CommandSession(config, parquet_path, [operator], RuntimeBindings(WilyIndex, find_revision, iter_filenames, None)) as index:
+         # Find target revision
+         if not revision_index:
+             # Get most recent revision
+@@ -69,22 +70,25 @@ def rank(
+             if not all_rows:
+                 logger.error("No data in cache. Run 'wily build' first.")
+                 sys.exit(1)
+-            all_rows.sort(key=lambda r: r.get("revision_date", 0), reverse=True)
+-            target_revision_key = all_rows[0]["revision"]
+-            target_revision_author = all_rows[0].get("revision_author", "Unknown")
+-            target_revision_date = all_rows[0].get("revision_date", 0)
++            selected, _ = index.select(all_rows, source=True)
++            identity = index.describe(selected, cached=True)
++            target_revision_key = identity["key"]
++            target_revision_author = identity["author"]
++            target_revision_date = identity["date"]
+         else:
+             # Resolve revision using git
+-            rev_data = find_revision(config.path, revision_index)
++            selected, rev_data = index.select([], revision_index, source=True)
+             if not rev_data:
+                 logger.error("Revision %s not found.", revision_index)
+                 sys.exit(1)
+-            target_revision_key = rev_data["key"]
+-            target_revision_author = rev_data.get("author_name", "Unknown")
+-            target_revision_date = rev_data.get("date", 0)
++            identity = index.describe(rev_data)
++            target_revision_key = identity["key"]
++            target_revision_author = identity["author"]
++            target_revision_date = identity["date"]
+             # Verify it's in the cache
+             all_rows = list(index)
+-            if not any(r["revision"] == target_revision_key for r in all_rows):
++            selected, _ = index.select(all_rows, target_revision_key)
++            if selected is None:
+                 logger.error(
+                     "Revision %s is not in the cache, make sure you have run wily build.",
+                     revision_index,
+@@ -100,14 +104,7 @@ def rank(
+         )
+ 
+         # Build lookup of metrics for target revision: {path: metric_value}
+-        revision_data: dict[str, float | int | str] = {}
+-        for row in index:
+-            if row["revision"] == target_revision_key:
+-                file_path = row["path"]
+-                # Get the metric value using just the metric name (not operator.metric)
+-                metric_value = row.get(resolved_metric.name)
+-                if metric_value is not None:
+-                    revision_data[file_path] = metric_value
++        revision_data = index.metric_rows(target_revision_key, resolved_metric.name)
+ 
+         # Filter to requested path if specified
+         if path is not None:
+@@ -118,7 +115,7 @@ def rank(
+                 targets = [path]
+ 
+             # Expand directories to paths (normalize to Unix-style paths)
+-            files = [os.path.relpath(fn, config.path).replace("\\", "/") for fn in iter_filenames(targets)]
++            files = [os.path.relpath(fn, config.path).replace("\\", "/") for fn in index.files(targets)]
+             logger.debug("Targeting - %s", files)
+         else:
+             # Use all files from the revision
+diff --git a/src/wily/commands/report.py b/src/wily/commands/report.py
+index 93c3995..6d1911c 100644
+--- a/src/wily/commands/report.py
++++ b/src/wily/commands/report.py
+@@ -22,6 +22,9 @@ from wily.helper import print_table
+ from wily.helper.custom_enums import ReportFormat
+ from wily.lang import _
+ from wily.operators import ALL_METRICS, MetricType, resolve_metric_as_tuple
++from wily.backend import find_revision
++from wily.backend import iter_filenames
++from wily.session import CommandSession, RuntimeBindings
+ 
+ # Rich style names for metric changes
+ STYLE_RED = "red"
+@@ -106,19 +109,9 @@ def report(
+ 
+         # Use WilyIndex to query data for the path
+         operator_names = [meta["operator"] for meta in metric_metas]
+-        with WilyIndex(str(parquet_path), operator_names) as index:
++        with CommandSession(config, str(parquet_path), operator_names, RuntimeBindings(WilyIndex, find_revision, iter_filenames, None)) as index:
+             # Check if this is a granular query (e.g., "file.py:function_name")
+-            is_granular = ":" in path
+-
+-            # Get all rows for this path
+-            # For granular paths (file.py:function), accept any path_type
+-            # For file paths, filter to file-level entries only
+-            if is_granular:
+-                rows = list(index[path])
+-            else:
+-                rows = [row for row in index[path] if row.get("path_type") == "file"]
+-            # Sort by date (oldest first) and limit to n
+-            rows = sorted(rows, key=lambda r: r.get("revision_date", 0))[-(n or len(rows)) :]
++            rows = index.history(path, n)
+ 
+             last: dict = {}
+             for row in rows:
+@@ -164,10 +157,11 @@ def report(
+                     vals.append(k)
+ 
+                 # Build row data
+-                revision_key = row.get("revision", "")
+-                author = row.get("revision_author", "")
+-                date = row.get("revision_date", 0)
+-                message = row.get("revision_message", "")
++                identity = index.describe(dict(row, revision=row.get("revision", "")), cached=True, author_default="")
++                revision_key = identity["key"]
++                author = identity["author"]
++                date = identity["date"]
++                message = identity["message"]
+ 
+                 if include_message:
+                     data.append(
+diff --git a/src/wily/session.py b/src/wily/session.py
+new file mode 100644
+index 0000000..bf7a520
+--- /dev/null
++++ b/src/wily/session.py
+@@ -0,0 +1,160 @@
++"""Command session support."""
++
++from dataclasses import dataclass
++
++
++@dataclass
++class RuntimeBindings:
++    """Dependencies for a command session."""
++
++    index_type: object
++    revision_lookup: object
++    file_iterator: object
++    archiver: object
++
++
++class CommandSession:
++    """Command session state."""
++
++    def __init__(self, config, parquet_path, operators, bindings):
++        """Bind configuration and the storage implementation."""
++        self.config = config
++        self.parquet_path = parquet_path
++        self.operators = operators
++        self.bindings = bindings
++
++    def checkout(self, revision, options):
++        """Switch the attached source to the requested revision."""
++        result = self.bindings.archiver.checkout(revision, options)
++        self.active_revision = revision
++        return result
++
++    def finish(self):
++        """Restore source ownership after indexing."""
++        return self.bindings.archiver.finish()
++
++    def __enter__(self):
++        """Open the command's store."""
++        self.store = self.bindings.index_type(self.parquet_path, self.operators)
++        self.index = self.store.__enter__()
++        return self
++
++    def __exit__(self, exc_type, exc_value, traceback):
++        """Close the current index."""
++        return self.store.__exit__(exc_type, exc_value, traceback)
++
++    def __iter__(self):
++        """Iterate stored rows."""
++        return iter(self.index)
++
++    def __getitem__(self, path):
++        """Read the cached rows for a path."""
++        return self.index[path]
++
++    def analyze_revision(self, **kwargs):
++        """Append analysis for one historical revision."""
++        if 'revision_key' not in kwargs:
++            revision = self.describe(self.active_revision, required=True)
++            kwargs.update(revision_key=revision['key'], revision_date=revision['date'],
++                          revision_author=revision['author'], revision_message=revision['message'])
++        return self.index.analyze_revision(**kwargs)
++
++    def analyze_files(self, paths, base_path, detail):
++        """Analyze working-tree files without appending rows."""
++        return self.index.analyze_files(paths, base_path, detail)
++
++    def find(self, search):
++        """Resolve a source revision."""
++        return self.bindings.revision_lookup(self.config.path, search)
++
++    def files(self, targets):
++        """Discover source files."""
++        return self.bindings.file_iterator(targets)
++
++    def revisions(self, reverse=False):
++        """Read revision metadata from the active store."""
++        return self.catalog(self, reverse)
++
++    def catalog(self, rows, reverse=False):
++        """List revisions in the given rows."""
++        revisions = {}
++        for row in self.scan(rows):
++            key = row['revision']
++            if key not in revisions:
++                revisions[key] = self.describe(row, cached=True)
++        return sorted(revisions.values(), key=lambda revision: revision['date'], reverse=reverse)
++
++    def current(self, paths, detail):
++        """Analyze the current files."""
++        return self.analyze_files(paths, str(self.config.path), detail)
++
++    def history(self, path, n):
++        """Select rows for the report path."""
++        rows = self.path_rows(path, granular=':' in path)
++        return sorted(rows, key=lambda row: row.get('revision_date', 0))[-(n or len(rows)):]
++
++    def path_rows(self, path, granular=True):
++        """Return rows for a path."""
++        rows = self[path]
++        return list(self.scan(rows, granular=granular))
++
++    def describe(self, revision, cached=False, required=False, author_default='Unknown'):
++        """Return revision details."""
++        if not cached and isinstance(revision, str):
++            revision = self.find(revision)
++        if revision is None:
++            return None
++        identity = {'key': revision['revision' if cached else 'key']}
++        for field, source_field, default in (
++            ('date', 'date', 0), ('author', 'author_name', author_default),
++            ('message', 'message', ''),
++        ):
++            storage_field = 'revision_' + field if cached else source_field
++            identity[field] = revision[storage_field] if required else revision.get(storage_field, default)
++        return identity
++
++    def scan(self, rows=None, revision=None, granular=True, path=None):
++        """Iterate rows matching the given filters."""
++        for row in self if rows is None else rows:
++            if revision is not None and row.get('revision') != revision:
++                continue
++            if not granular and row.get('path_type') != 'file':
++                continue
++            if path is not None:
++                candidate = row['path']
++                if not (candidate.startswith(path) or path.startswith(candidate)):
++                    continue
++            yield row
++
++    def select(self, rows, revision=None, source=False):
++        """Select a row and its revision details."""
++        if source and revision:
++            metadata = self.find(revision)
++            if not metadata:
++                return None, None
++            key = metadata['key']
++        else:
++            metadata = None
++            key = revision
++        if key:
++            row = next(self.scan(rows, revision=key), None)
++        elif source:
++            ordered = sorted(rows, key=lambda item: item.get('revision_date', 0), reverse=True)
++            row = ordered[0] if ordered else None
++        else:
++            row = rows[-1] if rows else None
++        return row, metadata
++
++    def values(self, row):
++        """Return metric values from a row."""
++        return {key: value for key, value in row.items() if key not in (
++            'revision', 'revision_date', 'revision_author', 'revision_message', 'path', 'path_type')}
++
++    def metric_rows(self, revision, name):
++        """Read one metric's per-path values."""
++        result = {}
++        for row in self.scan(revision=revision):
++            value = row.get(name)
++            if value is not None:
++                result[row['path']] = value
++        return result

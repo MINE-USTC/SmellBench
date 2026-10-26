@@ -1,0 +1,209 @@
+diff --git a/lychee-lib/src/checker/website.rs b/lychee-lib/src/checker/website.rs
+index 3b3c74d..771b30a 100644
+--- a/lychee-lib/src/checker/website.rs
++++ b/lychee-lib/src/checker/website.rs
+@@ -1,3 +1,7 @@
++mod transport;
++mod exchange;
++mod fragments;
++
+ use crate::{
+     BasicAuthExtractor, ErrorKind, FileType, FragmentCheckerOptions, Methods, Status, Uri,
+     chain::{Chain, ChainResult, ClientRequestChains, Handler, RequestChain},
+@@ -115,6 +119,7 @@ impl WebsiteChecker {
+         let mut retries: u64 = 0;
+         let mut wait_time = self.retry_wait_time;
+         let mut status = self.check_default(clone_unwrap(&request)).await;
++        status = transport::retry(self, &request, status, &mut retries, &mut wait_time).await;
+         while retries < self.max_retries {
+             if status.is_success() || !status.should_retry() {
+                 return status;
+@@ -137,13 +142,29 @@ impl WebsiteChecker {
+             // This last part ensures empty and top fragments do not trigger body retrieval.
+             && request_url.fragment().is_some_and(|x| !x.is_empty());
+ 
++        self.check_response(request, request_url, check_request_fragments).await
++    }
++
++    async fn check_response(
++        &self,
++        request: Request,
++        request_url: Url,
++        check_request_fragments: bool,
++    ) -> Status {
+         match self
+             .host_pool
+             .execute_request(request, check_request_fragments)
+             .await
+         {
+-            Ok(response) => {
++            Ok(mut response) => {
+                 let status = Status::new(&response, &self.accepted);
++                let status = fragments::validate(
++                    self,
++                    request_url.clone(),
++                    status,
++                    &mut response,
++                    check_request_fragments,
++                ).await;
+                 // when `accept=200,429`, `status_code=429` will be treated as success
+                 // but we are not able the check the fragment since it's inapplicable.
+                 if let Some(content) = response.text
+@@ -221,6 +242,7 @@ impl WebsiteChecker {
+         let default_chain: RequestChain = Chain::new(vec![
+             Box::<Quirks>::default(),
+             Box::new(credentials),
++            Box::new(transport::Transport(self.clone())),
+             Box::new(self.clone()),
+         ]);
+ 
+diff --git a/lychee-lib/src/checker/website/exchange.rs b/lychee-lib/src/checker/website/exchange.rs
+new file mode 100644
+index 0000000..81533dc
+--- /dev/null
++++ b/lychee-lib/src/checker/website/exchange.rs
+@@ -0,0 +1,12 @@
++use super::WebsiteChecker;
++use crate::Status;
++use http::Method;
++use reqwest::Request;
++
++pub(super) async fn exchange(checker: &WebsiteChecker, request: Request) -> Status {
++    let url = request.url().clone();
++    let fragments = checker.fragment_checker_options.any_enabled()
++        && request.method() == Method::GET
++        && url.fragment().is_some_and(|fragment| !fragment.is_empty());
++    checker.check_response(request, url, fragments).await
++}
+diff --git a/lychee-lib/src/checker/website/fragments.rs b/lychee-lib/src/checker/website/fragments.rs
+new file mode 100644
+index 0000000..ad3f0ac
+--- /dev/null
++++ b/lychee-lib/src/checker/website/fragments.rs
+@@ -0,0 +1,24 @@
++use super::WebsiteChecker;
++use crate::{ErrorKind, Status, ratelimit::CacheableResponse};
++use url::Url;
++
++pub(super) async fn validate(
++    checker: &WebsiteChecker,
++    url: Url,
++    status: Status,
++    response: &mut CacheableResponse,
++    requested: bool,
++) -> Status {
++    let input = response.take_fragment_input();
++    if !requested || !response.status.is_success() {
++        return status;
++    }
++    let Some(input) = input else {
++        return status;
++    };
++    match checker.fragment_checker.check(input, &url, checker.fragment_checker_options).await {
++        Ok(true) => status,
++        Ok(false) => ErrorKind::InvalidFragment(url.into()).into(),
++        Err(error) => error.into(),
++    }
++}
+diff --git a/lychee-lib/src/checker/website/transport.rs b/lychee-lib/src/checker/website/transport.rs
+new file mode 100644
+index 0000000..9e5c562
+--- /dev/null
++++ b/lychee-lib/src/checker/website/transport.rs
+@@ -0,0 +1,31 @@
++use super::{WebsiteChecker, clone_unwrap};
++use crate::{Status, chain::{ChainResult, Handler}, retry::RetrySchedule};
++use async_trait::async_trait;
++use reqwest::Request;
++
++#[derive(Debug)]
++pub(super) struct Transport(pub(super) WebsiteChecker);
++
++#[async_trait]
++impl Handler<Request, Status> for Transport {
++    async fn handle(&mut self, request: Request) -> ChainResult<Request, Status> {
++        ChainResult::Done(self.0.retry_request(request).await)
++    }
++}
++
++pub(super) async fn retry(
++    checker: &WebsiteChecker,
++    request: &Request,
++    mut status: Status,
++    retries: &mut u64,
++    wait_time: &mut std::time::Duration,
++) -> Status {
++    let mut schedule = RetrySchedule::new(checker.max_retries - *retries, *wait_time);
++    while let Some(delay) = schedule.next_delay(&status) {
++        *retries += 1;
++        tokio::time::sleep(delay).await;
++        *wait_time = delay.saturating_mul(2);
++        status = super::exchange::exchange(checker, clone_unwrap(request)).await;
++    }
++    status
++}
+diff --git a/lychee-lib/src/ratelimit/mod.rs b/lychee-lib/src/ratelimit/mod.rs
+index 11b2d30..dcd6f89 100644
+--- a/lychee-lib/src/ratelimit/mod.rs
++++ b/lychee-lib/src/ratelimit/mod.rs
+@@ -42,6 +42,28 @@ pub(crate) struct CacheableResponse {
+ }
+ 
+ impl CacheableResponse {
++    pub(crate) fn take_fragment_input(&mut self) -> Option<crate::utils::fragment_checker::FragmentInput<'static>> {
++        use crate::FileType;
++        use reqwest::header::CONTENT_TYPE;
++        let content = self.text.take()?;
++        let content_type = self.headers.get(CONTENT_TYPE)?.to_str().ok()?;
++        let file_type = if content_type.starts_with("text/html") {
++            FileType::Html
++        } else if content_type.starts_with("text/markdown") {
++            FileType::Markdown
++        } else if content_type.starts_with("text/plain")
++            && std::path::Path::new(self.url.path()).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
++        {
++            FileType::Markdown
++        } else {
++            return None;
++        };
++        Some(crate::utils::fragment_checker::FragmentInput {
++            content: std::borrow::Cow::Owned(content),
++            file_type,
++        })
++    }
++
+     async fn from_response(response: Response, needs_body: bool) -> Result<Self> {
+         let status = response.status();
+         let headers = response.headers().clone();
+diff --git a/lychee-lib/src/retry.rs b/lychee-lib/src/retry.rs
+index 0021c73..df0c7d3 100644
+--- a/lychee-lib/src/retry.rs
++++ b/lychee-lib/src/retry.rs
+@@ -16,6 +16,27 @@ pub(crate) trait RetryExt {
+     fn should_retry(&self) -> bool;
+ }
+ 
++pub(crate) struct RetrySchedule {
++    remaining: u64,
++    delay: std::time::Duration,
++}
++
++impl RetrySchedule {
++    pub(crate) fn new(remaining: u64, delay: std::time::Duration) -> Self {
++        Self { remaining, delay }
++    }
++
++    pub(crate) fn next_delay(&mut self, status: &Status) -> Option<std::time::Duration> {
++        if self.remaining == 0 || status.is_success() || !status.should_retry() {
++            return None;
++        }
++        self.remaining -= 1;
++        let delay = self.delay;
++        self.delay = delay.saturating_mul(2);
++        Some(delay)
++    }
++}
++
+ impl RetryExt for reqwest::StatusCode {
+     /// Try to map a `reqwest` response into `Retryable`.
+     fn should_retry(&self) -> bool {

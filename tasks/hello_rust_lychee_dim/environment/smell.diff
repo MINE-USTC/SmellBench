@@ -1,0 +1,723 @@
+diff --git a/lychee-lib/src/checker/file.rs b/lychee-lib/src/checker/file.rs
+index 082427e..8010538 100644
+--- a/lychee-lib/src/checker/file.rs
++++ b/lychee-lib/src/checker/file.rs
+@@ -86,14 +86,116 @@ impl FileChecker {
+     ///
+     /// Returns a `Status` indicating the result of the check.
+     pub(crate) async fn check(&self, uri: &Uri) -> Status {
+-        let Ok(path) = uri.url.to_file_path() else {
++        let Ok(mut path) = uri.url.to_file_path() else {
+             return ErrorKind::InvalidFilePath(uri.clone()).into();
+         };
++        let missing = match path.metadata() {
++            Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
++            Err(error) => return ErrorKind::ReadFileInput(error, path).into(),
++            Ok(metadata) => {
++                if metadata.is_dir() {
++                    let disabled = vec![".".to_owned()];
++                    let names = self.index_files.as_ref().unwrap_or(&disabled);
++                    let mut selected = None;
++                    let mut reported = Vec::new();
++                    for name in names {
++                        if !name.is_empty() { reported.push(name.clone()); }
++                        if selected.is_none() {
++                            let candidate = path.join(name);
++                            if if name == "." { candidate.exists() } else { candidate.is_file() } {
++                                selected = Some(candidate);
++                            }
++                        }
++                    }
++                    match selected {
++                        Some(index) => path = index,
++                        None => return ErrorKind::InvalidIndexFile(reported).into(),
++                    }
++                }
++                false
++            }
++        };
++        if missing || path.is_dir() {
++            let mut found = path.is_file();
++            let mut candidate = path.clone();
++            if !found {
++                if let Some(extension) = path.extension()
++                    && extension.as_encoded_bytes().iter().any(u8::is_ascii_whitespace)
++                    && let Some(first) = self.fallback_extensions.first()
++                {
++                    let mut extension = extension.to_os_string();
++                    extension.push(".");
++                    extension.push(first);
++                    candidate.set_extension(extension);
++                }
++                for extension in &self.fallback_extensions {
++                    candidate.set_extension(extension);
++                    if candidate.is_file() {
++                        path = candidate;
++                        found = true;
++                        break;
++                    }
++                }
++            }
++            if missing {
++                if !found {
++                    path = match &self.wikilink_resolver {
++                        Some(resolver) => match resolver.resolve(&path, uri) {
++                            Ok(resolved) => resolved,
++                            Err(error) => return error.into(),
++                        },
++                        None => return ErrorKind::InvalidFilePath(uri.clone()).into(),
++                    };
++                }
++                if path.is_dir() && !path.is_file() {
++                    let mut candidate = path.clone();
++                    if let Some(extension) = path.extension()
++                        && extension.as_encoded_bytes().iter().any(u8::is_ascii_whitespace)
++                        && let Some(first) = self.fallback_extensions.first()
++                    {
++                        let mut extension = extension.to_os_string();
++                        extension.push(".");
++                        extension.push(first);
++                        candidate.set_extension(extension);
++                    }
++                    for extension in &self.fallback_extensions {
++                        candidate.set_extension(extension);
++                        if candidate.is_file() { path = candidate; break; }
++                    }
++                }
++            }
++        }
++        let path = path.as_path();
++        if !self.fragment_checker_options.check_anchor_fragments { return Status::Ok(StatusCode::OK); }
++// for absent or trivial fragments, always return success.
++        if uri.url.fragment().is_none_or(str::is_empty) {
++            return Status::Ok(StatusCode::OK);
++        }
+ 
+-        let path = self.resolve_local_path(&path, uri);
+-        match path {
+-            Ok(path) => self.check_file(path.as_ref(), uri).await,
+-            Err(err) => err.into(),
++        // directories are treated as if they were a file with no fragments.
++        // reaching here means we have a non-trivial fragment on a directory,
++        // so return error.
++        if path.is_dir() {
++            return ErrorKind::InvalidFragment(uri.clone()).into();
++        }
++
++        match FragmentInput::from_path(path).await {
++            Ok(input) => match self
++                .fragment_checker
++                .check(input, &uri.url, self.fragment_checker_options)
++                .await
++            {
++                Ok(true) => Status::Ok(StatusCode::OK),
++                Ok(false) => ErrorKind::InvalidFragment(uri.clone()).into(),
++                Err(err) => {
++                    warn!("Skipping fragment check for {uri} due to the following error: {err}");
++                    Status::Ok(StatusCode::OK)
++                }
++            },
++            Err(err) => {
++                warn!("Skipping fragment check for {uri} due to the following error: {err}");
++                Status::Ok(StatusCode::OK)
++            }
+         }
+     }
+ 
+@@ -254,69 +358,7 @@ impl FileChecker {
+             .ok_or_else(invalid_index_error)
+     }
+ 
+-    /// Checks a resolved file, optionally verifying fragments for HTML files.
+-    ///
+-    /// # Arguments
+-    ///
+-    /// * `path` - The resolved path to check.
+-    /// * `uri` - The original URI, used for error reporting.
+-    ///
+-    /// # Returns
+-    ///
+-    /// Returns a `Status` indicating the result of the check.
+-    async fn check_file(&self, path: &Path, uri: &Uri) -> Status {
+-        if self.fragment_checker_options.check_anchor_fragments {
+-            self.check_fragment(path, uri).await
+-        } else {
+-            Status::Ok(StatusCode::OK)
+-        }
+-    }
+ 
+-    /// Checks for the existence of a fragment in a path.
+-    ///
+-    /// The given path may be a file or a directory. A directory
+-    /// is treated as if it was an empty file with no fragments.
+-    ///
+-    /// # Arguments
+-    ///
+-    /// * `path` - The path to the file or directory. Assumed to exist.
+-    /// * `uri` - The original URI, containing the fragment to check.
+-    ///
+-    /// # Returns
+-    ///
+-    /// Returns a `Status` indicating the result of the fragment check.
+-    async fn check_fragment(&self, path: &Path, uri: &Uri) -> Status {
+-        // for absent or trivial fragments, always return success.
+-        if uri.url.fragment().is_none_or(str::is_empty) {
+-            return Status::Ok(StatusCode::OK);
+-        }
+-
+-        // directories are treated as if they were a file with no fragments.
+-        // reaching here means we have a non-trivial fragment on a directory,
+-        // so return error.
+-        if path.is_dir() {
+-            return ErrorKind::InvalidFragment(uri.clone()).into();
+-        }
+-
+-        match FragmentInput::from_path(path).await {
+-            Ok(input) => match self
+-                .fragment_checker
+-                .check(input, &uri.url, self.fragment_checker_options)
+-                .await
+-            {
+-                Ok(true) => Status::Ok(StatusCode::OK),
+-                Ok(false) => ErrorKind::InvalidFragment(uri.clone()).into(),
+-                Err(err) => {
+-                    warn!("Skipping fragment check for {uri} due to the following error: {err}");
+-                    Status::Ok(StatusCode::OK)
+-                }
+-            },
+-            Err(err) => {
+-                warn!("Skipping fragment check for {uri} due to the following error: {err}");
+-                Status::Ok(StatusCode::OK)
+-            }
+-        }
+-    }
+ }
+ 
+ #[cfg(test)]
+diff --git a/lychee-lib/src/checker/website.rs b/lychee-lib/src/checker/website.rs
+index 3b3c74d..60d9aaf 100644
+--- a/lychee-lib/src/checker/website.rs
++++ b/lychee-lib/src/checker/website.rs
+@@ -112,25 +112,12 @@ impl WebsiteChecker {
+     /// Note that, in addition, there also is a host-specific backoff
+     /// when host-specific rate limiting or errors are detected.
+     pub(crate) async fn retry_request(&self, request: Request) -> Status {
+-        let mut retries: u64 = 0;
++        let mut retries = 0u64;
+         let mut wait_time = self.retry_wait_time;
+-        let mut status = self.check_default(clone_unwrap(&request)).await;
+-        while retries < self.max_retries {
+-            if status.is_success() || !status.should_retry() {
+-                return status;
+-            }
+-            retries += 1;
+-            tokio::time::sleep(wait_time).await;
+-            wait_time = wait_time.saturating_mul(2);
+-            status = self.check_default(clone_unwrap(&request)).await;
+-        }
+-
+-        status
+-    }
+-
+-    /// Check a URI using [reqwest](https://github.com/seanmonstar/reqwest).
+-    async fn check_default(&self, request: Request) -> Status {
+-        let method = request.method().clone();
++        loop {
++            let status = 'response: {
++                let request = clone_unwrap(&request);
++let method = request.method().clone();
+         let request_url = request.url().clone();
+         let check_request_fragments = self.fragment_checker_options.any_enabled()
+             && method == Method::GET
+@@ -155,7 +142,7 @@ impl WebsiteChecker {
+                         .get(CONTENT_TYPE)
+                         .and_then(|header| header.to_str().ok())
+                     else {
+-                        return status;
++                        break 'response status;
+                     };
+ 
+                     let file_type = match content_type {
+@@ -165,47 +152,46 @@ impl WebsiteChecker {
+                             let path = Path::new(response.url.path());
+                             match path.extension() {
+                                 Some(ext) if ext.eq_ignore_ascii_case("md") => FileType::Markdown,
+-                                _ => return status,
++                                _ => break 'response status,
+                             }
+                         }
+-                        _ => return status,
++                        _ => break 'response status,
+                     };
+ 
+-                    self.check_html_fragment(request_url, status, &content, file_type)
+-                        .await
+-                } else {
+-                    status
+-                }
+-            }
+-            Err(e) => e.into(),
+-        }
+-    }
+-
+-    async fn check_html_fragment(
+-        &self,
+-        url: Url,
+-        status: Status,
+-        content: &str,
+-        file_type: FileType,
+-    ) -> Status {
+-        match self
++                    match self
+             .fragment_checker
+             .check(
+                 FragmentInput {
+-                    content: Cow::Borrowed(content),
++                    content: Cow::Borrowed(&content),
+                     file_type,
+                 },
+-                &url,
++                &request_url,
+                 self.fragment_checker_options,
+             )
+             .await
+         {
+             Ok(true) => status,
+-            Ok(false) => Status::Error(ErrorKind::InvalidFragment(url.into())),
++            Ok(false) => Status::Error(ErrorKind::InvalidFragment(request_url.into())),
+             Err(e) => Status::Error(e),
++        }
++                } else {
++                    status
++                }
++            }
++            Err(e) => e.into(),
++        }
++            };
++            if retries >= self.max_retries || status.is_success() || !status.should_retry() {
++                return status;
++            }
++            retries += 1;
++            tokio::time::sleep(wait_time).await;
++            wait_time = wait_time.saturating_mul(2);
+         }
+     }
+ 
++
++
+     /// Checks the given URI of a website.
+     ///
+     /// # Errors
+@@ -271,72 +257,33 @@ impl WebsiteChecker {
+     /// - The response status code is not accepted.
+     async fn check_website_inner(&self, uri: &Uri, default_chain: &RequestChain) -> Status {
+         let mut last_status = None;
+-
+-        // Try each configured method in order and return the first success.
+-        //
+-        // Servers that don't accept a given method signal this in many different
+-        // ways (404, 403, 405, ...), so we deliberately fall back on any error
+-        // response without inspecting the reason. We also fall back on connection
+-        // errors, since some servers reject a method by resetting the connection
+-        // rather than returning a status code.
+-        //
+-        // The one exception is timeouts: a timeout is unlikely to be resolved by
+-        // switching methods (a heavier method such as `GET` would, if anything,
+-        // take longer than a lighter one such as `HEAD`), and retrying would
+-        // incur a second, equally long timeout, so we stop early instead.
+         for method in self.methods.iter() {
+-            let status = self
+-                .check_with_method(method.clone(), uri, default_chain)
+-                .await;
+-
+-            if status.is_success() || status.is_timeout() {
+-                return status;
++            let request = match self.host_pool.build_request(method.clone(), uri) {
++                Ok(request) => request,
++                Err(error) => {
++                    let status: Status = error.into();
++                    if status.is_success() || status.is_timeout() { return status; }
++                    last_status = Some(status);
++                    continue;
++                }
++            };
++            let status = ClientRequestChains::new(vec![&self.plugin_request_chain, default_chain])
++                .traverse(request).await;
++            if status.is_success() { return status; }
++            if let Ok(github_uri) = GithubUri::try_from(uri)
++                && let Some(client) = &self.github_client
++                && let Ok(repo) = client.repos(&github_uri.owner, &github_uri.repo).get().await
++                && (repo.private == Some(true) || github_uri.endpoint.is_none())
++            {
++                return Status::Ok(StatusCode::OK);
+             }
+-
++            if status.is_timeout() { return status; }
+             last_status = Some(status);
+         }
+-
+-        // `methods` is guaranteed to be non-empty (see `Methods`), so the loop
+-        // always runs at least once and `last_status` is always `Some` here.
+         last_status.expect("Methods is guaranteed to be non-empty")
+     }
+ 
+-    /// Build and check a single request for `uri` using the given `method`.
+-    async fn check_with_method(
+-        &self,
+-        method: Method,
+-        uri: &Uri,
+-        default_chain: &RequestChain,
+-    ) -> Status {
+-        let request = match self.host_pool.build_request(method, uri) {
+-            Ok(request) => request,
+-            Err(e) => return e.into(),
+-        };
+-
+-        let status = ClientRequestChains::new(vec![&self.plugin_request_chain, default_chain])
+-            .traverse(request)
+-            .await;
+-
+-        self.handle_github(status, uri).await
+-    }
+-
+-    // Pull out the heavy machinery in case of a failed normal request.
+-    // This could be a GitHub URL and we ran into the rate limiter.
+-    // TODO: We should try to parse the URI as GitHub URI first (Lucius, Jan 2023)
+-    async fn handle_github(&self, status: Status, uri: &Uri) -> Status {
+-        if status.is_success() {
+-            return status;
+-        }
+ 
+-        if let Ok(github_uri) = GithubUri::try_from(uri) {
+-            let status = self.check_github(github_uri).await;
+-            if status.is_success() {
+-                return status;
+-            }
+-        }
+-
+-        status
+-    }
+ 
+     /// Check a `uri` hosted on `GitHub` via the GitHub API.
+     ///
+diff --git a/lychee-lib/src/collector.rs b/lychee-lib/src/collector.rs
+index 0adac94..00b1d36 100644
+--- a/lychee-lib/src/collector.rs
++++ b/lychee-lib/src/collector.rs
+@@ -1,4 +1,6 @@
+-use crate::Preprocessor;
++use crate::{Preprocessor, Uri};
++use reqwest::Url;
++use url::PathSegmentsMut;
+ use crate::filter::PathExcludes;
+ use crate::ratelimit::HostPool;
+ use crate::types::resolver::UrlContentResolver;
+@@ -285,7 +287,71 @@ impl Collector {
+                     let content = content?;
+                     let uris: Vec<RawUri> = extractor.extract(&content);
+                     let requests =
+-                        request::create(uris, &content.source, root_dir.as_deref(), &global_base);
++                        (|| { let source = &content.source; let root_dir = root_dir.as_deref(); let fallback_base = &global_base; let source_base = match source.to_base_info() {
++        Ok(base) => base,
++        Err(e) => {
++            // This should be extremely rare and only happens
++            // if a FsPath leads to an invalid URL.
++            return vec![Err(RequestError::InputSourceError(
++                source.clone().into(),
++                e.into(),
++            ))];
++        }
++    };
++
++    // TODO: use_fs_root_as_origin is for backwards compat, so `--base-url file:///a`
++    // can resolve a link of `/b` to `file:///b` (in the absence of root-dir).
++    // maybe change if base-url semantics are changed in future.
++    let fallback_base = fallback_base.use_fs_root_as_origin();
++    let base = source_base.or_fallback(&fallback_base);
++
++    let mut requests = Vec::with_capacity(uris.len());
++    for raw_uri in uris {
++        let root_url = root_dir.and_then(|root| Url::from_directory_path(root).ok());
++        let parsed = match crate::types::uri::parsed::ParsedUri::try_from(raw_uri.text.as_str()) {
++            Ok(crate::types::uri::parsed::ParsedUri::Absolute(uri)) => Ok(uri.url),
++            Err(error) => Err(error),
++            Ok(crate::types::uri::parsed::ParsedUri::Relative(relative)) => {
++                use crate::types::uri::relative::RelativeUri;
++                let root = root_url.as_ref().filter(|_| {
++                    matches!(relative, RelativeUri::Root(_))
++                        && matches!(base.scheme(), None | Some("file"))
++                });
++                match (&base, &relative, root) {
++                    (_, RelativeUri::Root(text), Some(root)) => root
++                        .join(&format!(".{text}"))
++                        .map_err(|error| crate::ErrorKind::ParseUrl(error, relative.link_text().to_owned())),
++                    (BaseInfo::None | BaseInfo::NoRoot(_), RelativeUri::Root(_), _) =>
++                        Err(crate::ErrorKind::RootRelativeLinkWithoutRoot(relative.link_text().to_owned())),
++                    (BaseInfo::None, _, _) => Err(crate::ErrorKind::ParseUrl(
++                        url::ParseError::RelativeUrlWithoutBase, relative.link_text().to_owned())),
++                    (BaseInfo::NoRoot(origin), _, _) => origin.join(relative.link_text())
++                        .map_err(|error| crate::ErrorKind::ParseUrl(error, relative.link_text().to_owned())),
++                    (BaseInfo::Full { origin, .. }, RelativeUri::Root(text), _) if origin.scheme() == "file" =>
++                        origin.join(&format!(".{text}"))
++                            .map_err(|error| crate::ErrorKind::ParseUrl(error, relative.link_text().to_owned())),
++                    (BaseInfo::Full { origin, path }, _, _) => origin.join(path)
++                        .and_then(|origin| origin.join(relative.link_text()))
++                        .map_err(|error| crate::ErrorKind::ParseUrl(error, relative.link_text().to_owned())),
++                }
++            }
++        };
++        let mut url = match parsed {
++            Ok(url) => url,
++            Err(error) => {
++                requests.push(Err(RequestError::CreateRequestItem(raw_uri.clone().into(), source.clone(), error.into())));
++                continue;
++            }
++        };
++        if url.scheme() == "file" {
++            let _ = url.path_segments_mut().as_mut().map(PathSegmentsMut::pop_if_empty);
++        }
++        requests.push(Ok(Request {
++            uri: url.into(), source: source.clone(), element: raw_uri.element.clone(),
++            attribute: raw_uri.attribute.clone(), span: Some(raw_uri.span),
++        }));
++    }
++    requests })();
+                     Result::Ok(stream::iter(requests))
+                 }
+             })
+diff --git a/lychee-lib/src/utils/fragment_checker/mod.rs b/lychee-lib/src/utils/fragment_checker/mod.rs
+index 87d78f6..71aad54 100644
+--- a/lychee-lib/src/utils/fragment_checker/mod.rs
++++ b/lychee-lib/src/utils/fragment_checker/mod.rs
+@@ -128,25 +128,140 @@ impl FragmentChecker {
+         url: &Url,
+         options: FragmentCheckerOptions,
+     ) -> Result<bool> {
+-        let parsed = ParsedFragment::parse(url);
++        let (element_id, directives) = match url.fragment() {
++            Some(fragment) => match fragment.split_once(":~:") {
++                Some((anchor, directives)) => ((!anchor.is_empty()).then_some(anchor), Some(directives)),
++                None => (Some(fragment), None),
++            },
++            None => (None, None),
++        };
+         let FragmentInput { content, file_type } = input;
+-
+-        if options.check_anchor_fragments
+-            && parsed.element_id.is_some()
+-            && !self
+-                .check_anchor_fragment(&content, file_type, url, parsed.element_id)
+-                .await?
+-        {
+-            return Ok(false);
++        if options.check_anchor_fragments {
++            if let Some(fragment) = element_id {
++                if !fragment.is_empty() && !fragment.eq_ignore_ascii_case("top") {
++                    let mut cache_url = url.clone();
++                    cache_url.set_fragment(None);
++                    let mut anchor_url = url.clone();
++                    anchor_url.set_fragment(element_id);
++                    let extractor = match file_type {
++                        FileType::Markdown => Some(extract_markdown_fragments as fn(&str) -> HashSet<String>),
++                        FileType::Html => Some(extract_html_fragments as fn(&str) -> HashSet<String>),
++                        FileType::Css | FileType::Plaintext | FileType::Xml => {
++                            info!("Skipping fragment check for {anchor_url} within a {file_type} file");
++                            None
++                        }
++                    };
++                    if let Some(extractor) = extractor {
++                        let mut variants = vec![fragment.to_owned()];
++                        if anchor_url.host_str().is_some_and(|host| host.ends_with("github.com")) {
++                            variants.push(format!("user-content-{fragment}"));
++                        }
++                        let mut decoded = Vec::<String>::new();
++                        for variant in &variants {
++                            let mut candidate = percent_decode_str(variant).decode_utf8()?;
++                            let mut changed = matches!(candidate, Cow::Owned(_));
++                            if file_type == FileType::Markdown {
++                                let lowercase = candidate.to_lowercase();
++                                if lowercase != candidate {
++                                    candidate = Cow::Owned(lowercase);
++                                    changed = true;
++                                }
++                            }
++                            if changed { decoded.push(candidate.into_owned()); }
++                        }
++                        let fragments = match self.cache.lock_entry(cache_url.as_str()) {
++                            Ok(setter) => setter.set(extractor(&content)),
++                            Err(existing) => existing,
++                        };
++                        let fragments = fragments.wait().await?;
++                        if !variants.iter().chain(decoded.iter()).any(|item| fragments.contains(item)) {
++                            return Ok(false);
++                        }
++                    }
++                }
++            }
+         }
+-
+-        if options.check_text_fragments
+-            && !parsed.text_directives.is_empty()
+-            && !text::check_text_fragments(&parsed.text_directives, &content, file_type)
++        if options.check_text_fragments && file_type == FileType::Html
++            && let Some(directives) = directives
+         {
+-            return Ok(false);
++            let mut document = None;
++            for component in directives.split('&') {
++                let Some(("text", value)) = component.split_once('=') else { continue; };
++                let parts: Vec<_> = value.split(',').collect();
++                if parts[0].is_empty() { continue; }
++                let mut first = 0;
++                let mut last = parts.len();
++                let prefix = if last >= 2 && parts[0].ends_with('-') {
++                    first += 1;
++                    Some(&parts[0][..parts[0].len() - 1])
++                } else { None };
++                let suffix = if last - first >= 2 && parts[last - 1].starts_with('-') {
++                    last -= 1;
++                    Some(&parts[last][1..])
++                } else { None };
++                if !(1..=2).contains(&(last - first)) { continue; }
++                let decode = |part: &str| percent_decode_str(part).decode_utf8_lossy().into_owned();
++                let directive = parsed_fragment::TextDirective {
++                    prefix: prefix.map(decode),
++                    start: decode(parts[first]),
++                    end: (last - first == 2).then(|| decode(parts[first + 1])),
++                    suffix: suffix.map(decode),
++                };
++                let document = document.get_or_insert_with(|| {
++                    let mut document = String::new();
++                    let mut hidden = Vec::<String>::new();
++                    for Ok(token) in html5gum::Tokenizer::new(content.as_ref()) {
++                        match token {
++                            html5gum::Token::StartTag(tag) => {
++                                let name = String::from_utf8_lossy(&tag.name).into_owned();
++                                if matches!(name.as_str(), "head" | "script" | "style" | "template"
++                                    | "iframe" | "img" | "meter" | "object" | "progress"
++                                    | "video" | "audio" | "select") { hidden.push(name); }
++                            }
++                            html5gum::Token::EndTag(tag) => {
++                                if hidden.last().is_some_and(|name| name == &*String::from_utf8_lossy(&tag.name)) {
++                                    hidden.pop();
++                                }
++                            }
++                            html5gum::Token::String(value) if hidden.is_empty() => {
++                                let text = String::from_utf8_lossy(&value);
++                                for (index, word) in text.split_whitespace().enumerate() {
++                                    if (index > 0 || text.starts_with(char::is_whitespace))
++                                        && !document.ends_with(char::is_whitespace) { document.push(' '); }
++                                    document.push_str(word);
++                                }
++                                if text.ends_with(char::is_whitespace)
++                                    && !document.ends_with(char::is_whitespace) { document.push(' '); }
++                            }
++                            _ => {}
++                        }
++                    }
++                    document
++                });
++                let mut pattern = String::new();
++                if let Some(prefix) = &directive.prefix {
++                    pattern.push_str(&regex::escape(&prefix.split_whitespace().collect::<Vec<_>>().join(" ")));
++                    pattern.push_str(r"\s*");
++                }
++                pattern.push_str(&regex::escape(&directive.start.split_whitespace().collect::<Vec<_>>().join(" ")));
++                if let Some(end) = &directive.end {
++                    pattern.push_str(".+?");
++                    pattern.push_str(&regex::escape(&end.split_whitespace().collect::<Vec<_>>().join(" ")));
++                }
++                if let Some(suffix) = &directive.suffix {
++                    pattern.push_str(r"\s*");
++                    pattern.push_str(&regex::escape(&suffix.split_whitespace().collect::<Vec<_>>().join(" ")));
++                }
++                match regex::Regex::new(&pattern) {
++                    Ok(regex) if regex.is_match(document) => {}
++                    Ok(_) => return Ok(false),
++                    Err(error) => {
++                        log::warn!("Failed to create regex for text fragment {directive:?}. {error:?}");
++                        return Ok(false);
++                    }
++                }
++            }
+         }
+-
+         Ok(true)
+     }
+ 
+diff --git a/lychee-lib/src/utils/request.rs b/lychee-lib/src/utils/request.rs
+index c897d3e..cd32960 100644
+--- a/lychee-lib/src/utils/request.rs
++++ b/lychee-lib/src/utils/request.rs
+@@ -83,7 +83,7 @@ pub(crate) fn create(
+     root_dir: Option<&Path>,
+     fallback_base: &BaseInfo,
+ ) -> Vec<Result<Request, RequestError>> {
+-    let source_base = match source.to_base_info() {
++let source_base = match source.to_base_info() {
+         Ok(base) => base,
+         Err(e) => {
+             // This should be extremely rare and only happens
+@@ -101,14 +101,54 @@ pub(crate) fn create(
+     let fallback_base = fallback_base.use_fs_root_as_origin();
+     let base = source_base.or_fallback(&fallback_base);
+ 
+-    uris.into_iter()
+-        .map(|raw_uri| {
+-            create_request(&raw_uri, source, root_dir, base).map_err(|e| {
+-                RequestError::CreateRequestItem(raw_uri.clone().into(), source.clone(), e.into())
+-            })
+-        })
+-        .collect()
+-}
++    let mut requests = Vec::with_capacity(uris.len());
++    for raw_uri in uris {
++        let root_url = root_dir.and_then(|root| Url::from_directory_path(root).ok());
++        let parsed = match crate::types::uri::parsed::ParsedUri::try_from(raw_uri.text.as_str()) {
++            Ok(crate::types::uri::parsed::ParsedUri::Absolute(uri)) => Ok(uri.url),
++            Err(error) => Err(error),
++            Ok(crate::types::uri::parsed::ParsedUri::Relative(relative)) => {
++                use crate::types::uri::relative::RelativeUri;
++                let root = root_url.as_ref().filter(|_| {
++                    matches!(relative, RelativeUri::Root(_))
++                        && matches!(base.scheme(), None | Some("file"))
++                });
++                match (&base, &relative, root) {
++                    (_, RelativeUri::Root(text), Some(root)) => root
++                        .join(&format!(".{text}"))
++                        .map_err(|error| crate::ErrorKind::ParseUrl(error, relative.link_text().to_owned())),
++                    (BaseInfo::None | BaseInfo::NoRoot(_), RelativeUri::Root(_), _) =>
++                        Err(crate::ErrorKind::RootRelativeLinkWithoutRoot(relative.link_text().to_owned())),
++                    (BaseInfo::None, _, _) => Err(crate::ErrorKind::ParseUrl(
++                        url::ParseError::RelativeUrlWithoutBase, relative.link_text().to_owned())),
++                    (BaseInfo::NoRoot(origin), _, _) => origin.join(relative.link_text())
++                        .map_err(|error| crate::ErrorKind::ParseUrl(error, relative.link_text().to_owned())),
++                    (BaseInfo::Full { origin, .. }, RelativeUri::Root(text), _) if origin.scheme() == "file" =>
++                        origin.join(&format!(".{text}"))
++                            .map_err(|error| crate::ErrorKind::ParseUrl(error, relative.link_text().to_owned())),
++                    (BaseInfo::Full { origin, path }, _, _) => origin.join(path)
++                        .and_then(|origin| origin.join(relative.link_text()))
++                        .map_err(|error| crate::ErrorKind::ParseUrl(error, relative.link_text().to_owned())),
++                }
++            }
++        };
++        let mut url = match parsed {
++            Ok(url) => url,
++            Err(error) => {
++                requests.push(Err(RequestError::CreateRequestItem(raw_uri.clone().into(), source.clone(), error.into())));
++                continue;
++            }
++        };
++        if url.scheme() == "file" {
++            let _ = url.path_segments_mut().as_mut().map(PathSegmentsMut::pop_if_empty);
++        }
++        requests.push(Ok(Request {
++            uri: url.into(), source: source.clone(), element: raw_uri.element.clone(),
++            attribute: raw_uri.attribute.clone(), span: Some(raw_uri.span),
++        }));
++    }
++    requests
++    }
+ 
+ #[cfg(test)]
+ mod tests {

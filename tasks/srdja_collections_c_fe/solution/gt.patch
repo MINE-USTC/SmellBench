@@ -1,0 +1,2084 @@
+diff --git a/src/cc_array.c b/src/cc_array.c
+index ea955c0..7b48b82 100644
+--- a/src/cc_array.c
++++ b/src/cc_array.c
+@@ -23,7 +23,16 @@
+ #define DEFAULT_CAPACITY 8
+ #define DEFAULT_EXPANSION_FACTOR 2
+ 
++struct cc_array_s {
++    size_t   size;
++    size_t   capacity;
++    float    exp_factor;
++    void   **buffer;
++
++    void *(*mem_alloc)  (size_t size);
++    void *(*mem_calloc) (size_t blocks, size_t size);
++    void  (*mem_free)   (void *block);
++};
+-#include "cc_array_internal.h"
+ 
+ static enum cc_stat expand_capacity(CC_Array *ar);
+ 
+@@ -1149,4 +1158,4 @@ size_t cc_array_zip_iter_index(CC_ArrayZipIter *iter)
+ size_t cc_array_struct_size()
+ {
+     return sizeof(CC_Array);
++}
+\ No newline at end of file
+-}
+diff --git a/src/cc_array_internal.h b/src/cc_array_internal.h
+deleted file mode 100644
+index ef8769e..0000000
+--- a/src/cc_array_internal.h
++++ /dev/null
+@@ -1,15 +0,0 @@
+-#ifndef CC_ARRAY_INTERNAL_H
+-#define CC_ARRAY_INTERNAL_H
+-#include "cc_array.h"
+-struct cc_array_s {
+-    size_t   size;
+-    size_t   capacity;
+-    float    exp_factor;
+-    void   **buffer;
+-
+-    void *(*mem_alloc)  (size_t size);
+-    void *(*mem_calloc) (size_t blocks, size_t size);
+-    void  (*mem_free)   (void *block);
+-};
+-#endif
+-
+diff --git a/src/cc_deque.c b/src/cc_deque.c
+index 4c86b3d..1415e7c 100644
+--- a/src/cc_deque.c
++++ b/src/cc_deque.c
+@@ -23,7 +23,17 @@
+ #define DEFAULT_CAPACITY 8
+ #define DEFAULT_EXPANSION_FACTOR 2
+ 
++struct cc_deque_s {
++    size_t   size;
++    size_t   capacity;
++    size_t   first;
++    size_t   last;
++    void   **buffer;
++
++    void *(*mem_alloc)  (size_t size);
++    void *(*mem_calloc) (size_t blocks, size_t size);
++    void  (*mem_free)   (void *block);
++};
+-#include "cc_deque_internal.h"
+ 
+ static size_t upper_pow_two (size_t);
+ static void   copy_buffer   (CC_Deque const * const deque, void **buff, void *(*cp) (void*));
+@@ -1279,4 +1289,4 @@ size_t cc_deque_zip_iter_index(CC_DequeZipIter *iter)
+ size_t cc_deque_struct_size()
+ {
+     return sizeof(CC_Deque);
++}
+\ No newline at end of file
+-}
+diff --git a/src/cc_deque_internal.h b/src/cc_deque_internal.h
+deleted file mode 100644
+index 96da5b6..0000000
+--- a/src/cc_deque_internal.h
++++ /dev/null
+@@ -1,16 +0,0 @@
+-#ifndef CC_DEQUE_INTERNAL_H
+-#define CC_DEQUE_INTERNAL_H
+-#include "cc_deque.h"
+-struct cc_deque_s {
+-    size_t   size;
+-    size_t   capacity;
+-    size_t   first;
+-    size_t   last;
+-    void   **buffer;
+-
+-    void *(*mem_alloc)  (size_t size);
+-    void *(*mem_calloc) (size_t blocks, size_t size);
+-    void  (*mem_free)   (void *block);
+-};
+-#endif
+-
+diff --git a/src/cc_hashset.c b/src/cc_hashset.c
+index 8dea0a1..176e864 100644
+--- a/src/cc_hashset.c
++++ b/src/cc_hashset.c
+@@ -19,15 +19,7 @@
+  */
+ 
+ #include "cc_hashset.h"
+-#include "cc_hashtable_internal.h"
+ 
+-static INLINE size_t get_table_index(CC_HashTable *table, void *key);
+-static INLINE size_t round_pow_two(size_t n);
+-static INLINE void move_entries(TableEntry **src_bucket, TableEntry **dest_bucket,
+-             size_t       src_size,   size_t       dest_size);
+-static enum cc_stat resize(CC_HashTable *t, size_t new_capacity, TableEntry ***buckets);
+-static enum cc_stat remove_null_key(CC_HashTable *table, void **out);
+-static enum cc_stat hashset_storage_remove(CC_HashTable *table, void *key, void **out);
+ struct cc_hashset_s {
+     CC_HashTable *table;
+     int       *dummy;
+@@ -78,36 +70,25 @@ enum cc_stat cc_hashset_new(CC_HashSet **hs)
+ enum cc_stat cc_hashset_new_conf(CC_HashSetConf const * const conf, CC_HashSet **hs)
+ {
+     CC_HashSet *set = conf->mem_calloc(1, sizeof(CC_HashSet));
+-    if (!set) return CC_ERR_ALLOC;
+ 
++    if (!set)
++        return CC_ERR_ALLOC;
+-    CC_HashTable *table = conf->mem_calloc(1, sizeof(CC_HashTable));
+ 
++    CC_HashTable *table;
++    enum cc_stat stat = cc_hashtable_new_conf(conf, &table);
+-    if (!table)
+-        { conf->mem_free(set); return CC_ERR_ALLOC; }
+-
+-    table->capacity = round_pow_two(conf->initial_capacity);
+-    table->buckets  = conf->mem_calloc(table->capacity, sizeof(TableEntry*));
+ 
++    if (stat != CC_OK) {
++        conf->mem_free(set);
++        return stat;
+-    if (!table->buckets) {
+-        conf->mem_free(table);
+-        { conf->mem_free(set); return CC_ERR_ALLOC; }
+     }
+ 
++    set->table      = table;
++    set->mem_alloc  = conf->mem_alloc;
++    set->mem_calloc = conf->mem_calloc;
++    set->mem_free   = conf->mem_free;
+-    table->hash        = conf->hash;
+-    table->key_cmp     = conf->key_compare;
+-    table->load_factor = conf->load_factor;
+-    table->hash_seed   = conf->hash_seed;
+-    table->key_len     = conf->key_length;
+-    table->size        = 0;
+-    table->mem_alloc   = conf->mem_alloc;
+-    table->mem_calloc  = conf->mem_calloc;
+-    table->mem_free    = conf->mem_free;
+-    table->threshold   = (size_t) (table->capacity * table->load_factor);
+ 
++    /* A dummy pointer that is never actually dereferenced
++    *  that must not be null.*/
+-    set->table = table;
+-    set->mem_alloc = conf->mem_alloc;
+-    set->mem_calloc = conf->mem_calloc;
+-    set->mem_free = conf->mem_free;
+     set->dummy = (int*) 1;
+     *hs = set;
+     return CC_OK;
+@@ -121,19 +102,7 @@ enum cc_stat cc_hashset_new_conf(CC_HashSetConf const * const conf, CC_HashSet *
+  */
+ void cc_hashset_destroy(CC_HashSet *set)
+ {
++    cc_hashtable_destroy(set->table);
+-    size_t i;
+-    for (i = 0; i < (set->table)->capacity; i++) {
+-        TableEntry *next = (set->table)->buckets[i];
+-
+-        while (next) {
+-            TableEntry *tmp = next->next;
+-            (set->table)->mem_free(next);
+-            next = tmp;
+-        }
+-    }
+-    (set->table)->mem_free((set->table)->buckets);
+-    (set->table)->mem_free((set->table));
+-
+     set->mem_free(set);
+ }
+ 
+@@ -148,48 +117,7 @@ void cc_hashset_destroy(CC_HashSet *set)
+  */
+ enum cc_stat cc_hashset_add(CC_HashSet *set, void *element)
+ {
++    return cc_hashtable_add(set->table, element, set->dummy);
+-
+-    enum cc_stat stat;
+-    if ((set->table)->size >= (set->table)->threshold) {
+-        TableEntry **buckets;
+-        size_t capacity = set->table->capacity << 1;
+-        if ((stat = resize(set->table, capacity, &buckets)) != CC_OK)
+-            return stat;
+-        TableEntry **old = set->table->buckets;
+-        set->table->buckets = buckets;
+-        set->table->capacity = capacity;
+-        set->table->threshold = (size_t)(set->table->load_factor * capacity);
+-        set->table->mem_free(old);
+-    }
+-
+-    const size_t hash = element ? set->table->hash(element, set->table->key_len, set->table->hash_seed) : 0;
+-    const size_t i    = hash & ((set->table)->capacity - 1);
+-
+-    TableEntry *replace = (set->table)->buckets[i];
+-
+-    while (replace) {
+-        void *rk = replace->key;
+-        if (element ? (rk && set->table->key_cmp(rk, element) == 0) : !rk) {
+-            replace->value = set->dummy;
+-            return CC_OK;
+-        }
+-        replace = replace->next;
+-    }
+-
+-    TableEntry *new_entry = (set->table)->mem_alloc(sizeof(TableEntry));
+-
+-    if (!new_entry)
+-        return CC_ERR_ALLOC;
+-
+-    new_entry->key   = element;
+-    new_entry->value = set->dummy;
+-    new_entry->hash  = hash;
+-    new_entry->next  = (set->table)->buckets[i];
+-
+-    (set->table)->buckets[i] = new_entry;
+-    (set->table)->size++;
+-
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -206,37 +134,7 @@ enum cc_stat cc_hashset_add(CC_HashSet *set, void *element)
+  */
+ enum cc_stat cc_hashset_remove(CC_HashSet *set, void *element, void **out)
+ {
++    return cc_hashtable_remove(set->table, element, out);
+-
+-    if (!element)
+-        return remove_null_key((set->table), out);
+-
+-    const size_t i = get_table_index((set->table), element);
+-
+-    TableEntry *e    = (set->table)->buckets[i];
+-    TableEntry *prev = NULL;
+-    TableEntry *next = NULL;
+-
+-    while (e) {
+-        next = e->next;
+-
+-        if (e->key && (set->table)->key_cmp(element, e->key) == 0) {
+-            void *value = e->value;
+-
+-            if (!prev)
+-                (set->table)->buckets[i] = next;
+-            else
+-                prev->next = next;
+-
+-            (set->table)->mem_free(e);
+-            (set->table)->size--;
+-            if (out)
+-                *out = value;
+-            return CC_OK;
+-        }
+-        prev = e;
+-        e = next;
+-    }
+-    return CC_ERR_KEY_NOT_FOUND;
+ }
+ 
+ /**
+@@ -246,18 +144,7 @@ enum cc_stat cc_hashset_remove(CC_HashSet *set, void *element, void **out)
+  */
+ void cc_hashset_remove_all(CC_HashSet *set)
+ {
++    cc_hashtable_remove_all(set->table);
+-
+-    size_t i;
+-    for (i = 0; i < (set->table)->capacity; i++) {
+-        TableEntry *entry = (set->table)->buckets[i];
+-        while (entry) {
+-            TableEntry *next = entry->next;
+-            (set->table)->mem_free(entry);
+-            (set->table)->size--;
+-            entry = next;
+-        }
+-        (set->table)->buckets[i] = NULL;
+-    }
+ }
+ 
+ /**
+@@ -270,16 +157,7 @@ void cc_hashset_remove_all(CC_HashSet *set)
+  */
+ bool cc_hashset_contains(CC_HashSet *set, void *element)
+ {
++    return cc_hashtable_contains_key(set->table, element);
+-
+-    TableEntry *entry = (set->table)->buckets[get_table_index((set->table), element)];
+-
+-    while (entry) {
+-        if ((set->table)->key_cmp(element, entry->key) == 0)
+-            return true;
+-
+-        entry = entry->next;
+-    }
+-    return false;
+ }
+ 
+ /**
+@@ -291,8 +169,7 @@ bool cc_hashset_contains(CC_HashSet *set, void *element)
+  */
+ size_t cc_hashset_size(CC_HashSet *set)
+ {
++    return cc_hashtable_size(set->table);
+-
+-    return (set->table)->size;
+ }
+ 
+ /**
+@@ -304,8 +181,7 @@ size_t cc_hashset_size(CC_HashSet *set)
+  */
+ size_t cc_hashset_capacity(CC_HashSet *set)
+ {
++    return cc_hashtable_capacity(set->table);
+-
+-    return (set->table)->capacity;
+ }
+ 
+ /**
+@@ -317,16 +193,7 @@ size_t cc_hashset_capacity(CC_HashSet *set)
+  */
+ void cc_hashset_foreach(CC_HashSet *set, void (*fn) (const void *e))
+ {
++    cc_hashtable_foreach_key(set->table, fn);
+-
+-    size_t i;
+-    for (i = 0; i <(set->table)->capacity; i++) {
+-        TableEntry *entry = (set->table)->buckets[i];
+-
+-        while (entry) {
+-            fn(entry->key);
+-            entry = entry->next;
+-        }
+-    }
+ }
+ 
+ /**
+@@ -337,20 +204,7 @@ void cc_hashset_foreach(CC_HashSet *set, void (*fn) (const void *e))
+  */
+ void cc_hashset_iter_init(CC_HashSetIter *iter, CC_HashSet *set)
+ {
++    cc_hashtable_iter_init(&(iter->iter), set->table);
+-
+-    memset((&iter->iter), 0, sizeof(CC_HashTableIter));
+-    (&iter->iter)->table = (set->table);
+-
+-    size_t i;
+-    for (i = 0; i < (set->table)->capacity; i++) {
+-        TableEntry *e = (set->table)->buckets[i];
+-        if (e) {
+-            (&iter->iter)->bucket_index = i;
+-            (&iter->iter)->next_entry   = e;
+-            (&iter->iter)->prev_entry   = NULL;
+-            break;
+-        }
+-    }
+ }
+ 
+ /**
+@@ -365,22 +219,15 @@ void cc_hashset_iter_init(CC_HashSetIter *iter, CC_HashSet *set)
+  */
+ enum cc_stat cc_hashset_iter_next(CC_HashSetIter *iter, void **out)
+ {
++    TableEntry *entry;
++    enum cc_stat status = cc_hashtable_iter_next(&(iter->iter), &entry);
++
++    if (status != CC_OK)
++        return status;
++
++    if (out)
++        *out = entry->key;
++
+-    CC_HashTableIter *storage = &iter->iter;
+-    if (!storage->next_entry)
+-        return CC_ITER_END;
+-    storage->prev_entry = storage->next_entry;
+-    storage->next_entry = storage->next_entry->next;
+-    if (!storage->next_entry) {
+-        for (size_t bucket = storage->bucket_index + 1;
+-             bucket < storage->table->capacity; bucket++) {
+-            storage->next_entry = storage->table->buckets[bucket];
+-            if (storage->next_entry) {
+-                storage->bucket_index = bucket;
+-                break;
+-            }
+-        }
+-    }
+-    if (out) *out = storage->prev_entry->key;
+     return CC_OK;
+ }
+ 
+@@ -401,143 +248,11 @@ enum cc_stat cc_hashset_iter_next(CC_HashSetIter *iter, void **out)
+  */
+ enum cc_stat cc_hashset_iter_remove(CC_HashSetIter *iter, void **out)
+ {
++    return cc_hashtable_iter_remove(&(iter->iter), out);
+-    return hashset_storage_remove(iter->iter.table, iter->iter.prev_entry->key, out);
+ }
+ 
+ 
+ size_t cc_hashset_struct_size()
+ {
+     return cc_hashtable_struct_size();
++}
+\ No newline at end of file
+-}
+-static INLINE size_t get_table_index(CC_HashTable *table, void *key) {
+-    size_t hash = table->hash(key, table->key_len, table->hash_seed);
+-    return hash & (table->capacity - 1);
+-}
+-
+-
+-static INLINE size_t round_pow_two(size_t n) {
+-    if (n >= MAX_POW_TWO)
+-        return MAX_POW_TWO;
+-
+-    if (n == 0)
+-        return 1;
+-    /**
+-     * taken from:
+-     * http://graphics.stanford.edu/~seander/
+-     * bithacks.html#RoundUpPowerOf2
+-     */
+-    n--;
+-    n |= n >> 1;
+-    n |= n >> 2;
+-    n |= n >> 4;
+-    n |= n >> 8;
+-    n |= n >> 16;
+-#ifdef ARCH_64
+-    n |= n >> 32;
+-#endif /* ARCH_64 */
+-    n++;
+-
+-    return n;
+-}
+-
+-static INLINE void move_entries(TableEntry **src_bucket, TableEntry **dest_bucket,
+-             size_t       src_size,   size_t       dest_size) {
+-    size_t i;
+-    for (i = 0; i < src_size; i++) {
+-        TableEntry *entry = src_bucket[i];
+-
+-        while (entry) {
+-            TableEntry *next  = entry->next;
+-            size_t      index = entry->hash & (dest_size - 1);
+-
+-            entry->next = dest_bucket[index];
+-            dest_bucket[index] = entry;
+-
+-            entry = next;
+-        }
+-    }
+-}
+-
+-static enum cc_stat resize(CC_HashTable *t, size_t new_capacity, TableEntry ***buckets) {
+-    if (t->capacity == MAX_POW_TWO)
+-        return CC_ERR_MAX_CAPACITY;
+-
+-    TableEntry **new_buckets = t->mem_calloc(new_capacity, sizeof(TableEntry));
+-
+-    if (!new_buckets)
+-        return CC_ERR_ALLOC;
+-
+-    TableEntry **old_buckets = t->buckets;
+-
+-    move_entries(old_buckets, new_buckets, t->capacity, new_capacity);
+-
+-    *buckets = new_buckets;
+-
+-    return CC_OK;
+-}
+-
+-static enum cc_stat remove_null_key(CC_HashTable *table, void **out) {
+-    TableEntry *e = table->buckets[0];
+-
+-    TableEntry *prev = NULL;
+-    TableEntry *next = NULL;
+-
+-    while (e) {
+-        next = e->next;
+-
+-        if (e->key == NULL) {
+-            void *value = e->value;
+-
+-            if (!prev)
+-                table->buckets[0] = next;
+-            else
+-                prev->next = next;
+-
+-            table->mem_free(e);
+-            table->size--;
+-            if (out)
+-                *out = value;
+-            return CC_OK;
+-        }
+-        prev = e;
+-        e = next;
+-    }
+-    return CC_ERR_KEY_NOT_FOUND;
+-}
+-
+-
+-
+-
+-
+-static enum cc_stat hashset_storage_remove(CC_HashTable *table, void *key, void **out) {
+-    if (!key)
+-        return remove_null_key(table, out);
+-
+-    const size_t i = get_table_index(table, key);
+-
+-    TableEntry *e    = table->buckets[i];
+-    TableEntry *prev = NULL;
+-    TableEntry *next = NULL;
+-
+-    while (e) {
+-        next = e->next;
+-
+-        if (e->key && table->key_cmp(key, e->key) == 0) {
+-            void *value = e->value;
+-
+-            if (!prev)
+-                table->buckets[i] = next;
+-            else
+-                prev->next = next;
+-
+-            table->mem_free(e);
+-            table->size--;
+-            if (out)
+-                *out = value;
+-            return CC_OK;
+-        }
+-        prev = e;
+-        e = next;
+-    }
+-    return CC_ERR_KEY_NOT_FOUND;
+-}
+diff --git a/src/cc_hashtable.c b/src/cc_hashtable.c
+index c16bf65..9d8e63c 100644
+--- a/src/cc_hashtable.c
++++ b/src/cc_hashtable.c
+@@ -23,7 +23,21 @@
+ #define DEFAULT_CAPACITY 16
+ #define DEFAULT_LOAD_FACTOR 0.75f
+ 
++struct cc_hashtable_s {
++    size_t       capacity;
++    size_t       size;
++    size_t       threshold;
++    uint32_t     hash_seed;
++    int          key_len;
++    float        load_factor;
++    TableEntry **buckets;
++
++    size_t  (*hash)       (const void *key, int l, uint32_t seed);
++    int     (*key_cmp)    (const void *k1, const void *k2);
++    void   *(*mem_alloc)  (size_t size);
++    void   *(*mem_calloc) (size_t blocks, size_t size);
++    void    (*mem_free)   (void *block);
++};
+-#include "cc_hashtable_internal.h"
+ 
+ static enum cc_stat resize          (CC_HashTable *t, size_t new_capacity);
+ static enum cc_stat get_null_key    (CC_HashTable *table, void **out);
+diff --git a/src/cc_hashtable_internal.h b/src/cc_hashtable_internal.h
+deleted file mode 100644
+index aae6d89..0000000
+--- a/src/cc_hashtable_internal.h
++++ /dev/null
+@@ -1,20 +0,0 @@
+-#ifndef CC_HASHTABLE_INTERNAL_H
+-#define CC_HASHTABLE_INTERNAL_H
+-#include "cc_hashtable.h"
+-struct cc_hashtable_s {
+-    size_t       capacity;
+-    size_t       size;
+-    size_t       threshold;
+-    uint32_t     hash_seed;
+-    int          key_len;
+-    float        load_factor;
+-    TableEntry **buckets;
+-
+-    size_t  (*hash)       (const void *key, int l, uint32_t seed);
+-    int     (*key_cmp)    (const void *k1, const void *k2);
+-    void   *(*mem_alloc)  (size_t size);
+-    void   *(*mem_calloc) (size_t blocks, size_t size);
+-    void    (*mem_free)   (void *block);
+-};
+-#endif
+-
+diff --git a/src/cc_queue.c b/src/cc_queue.c
+index 262ee6d..5bcf791 100644
+--- a/src/cc_queue.c
++++ b/src/cc_queue.c
+@@ -20,15 +20,6 @@
+ 
+ #include "cc_queue.h"
+ 
+-#include "cc_deque_internal.h"
+-
+-static void copy_buffer(CC_Deque const * const deque, void **buff, void *(*cp) (void *));
+-static enum cc_stat expand_capacity(CC_Deque *deque, void ***buffer);
+-static INLINE size_t upper_pow_two(size_t n);
+-static enum cc_stat queue_storage_replace_at(CC_Deque *deque, void *element, size_t index, void **out);
+-static void queue_storage_iter_init(CC_DequeIter *iter, CC_Deque *deque);
+-static void queue_storage_zip_iter_init(CC_DequeZipIter *iter, CC_Deque *d1, CC_Deque *d2);
+-static void queue_storage_destroy(CC_Deque *deque);
+ struct cc_queue_s {
+     CC_Deque *d;
+ 
+@@ -79,31 +70,25 @@ enum cc_stat cc_queue_new(CC_Queue **queue)
+ enum cc_stat cc_queue_new_conf(CC_QueueConf const * const conf, CC_Queue **q)
+ {
+     CC_Queue *queue = conf->mem_calloc(1, sizeof(CC_Queue));
+-    if (!queue) return CC_ERR_ALLOC;
+ 
++    if (!queue)
++        return CC_ERR_ALLOC;
+-    CC_Deque *deque = conf->mem_calloc(1, sizeof(CC_Deque));
+ 
++    CC_Deque *deque;
++    enum cc_stat stat = cc_deque_new_conf(conf, &deque);
+-    if (!deque)
+-        { conf->mem_free(queue); return CC_ERR_ALLOC; }
+ 
++    if (stat) {
++        conf->mem_free(queue);
++        return CC_ERR_ALLOC;
+-    if (!(deque->buffer = conf->mem_alloc(conf->capacity * sizeof(void*)))) {
+-        conf->mem_free(deque);
+-        { conf->mem_free(queue); return CC_ERR_ALLOC; }
+     }
+ 
++    queue->d          = deque;
++    queue->mem_alloc  = conf->mem_alloc;
++    queue->mem_calloc = conf->mem_calloc;
++    queue->mem_free   = conf->mem_free;
+-    deque->mem_alloc  = conf->mem_alloc;
+-    deque->mem_calloc = conf->mem_calloc;
+-    deque->mem_free   = conf->mem_free;
+-    deque->capacity   = upper_pow_two(conf->capacity);
+-    deque->first      = 0;
+ 
++    *q = queue;
+-    deque->size       = 0;
+ 
+-    queue->d = deque;
+-    queue->mem_alloc = conf->mem_alloc;
+-    queue->mem_calloc = conf->mem_calloc;
+-    queue->mem_free = conf->mem_free;
+-    *q = queue;
+     return CC_OK;
+ }
+ 
+@@ -114,9 +99,7 @@ enum cc_stat cc_queue_new_conf(CC_QueueConf const * const conf, CC_Queue **q)
+  */
+ void cc_queue_destroy(CC_Queue *queue)
+ {
++    cc_deque_destroy(queue->d);
+-    (queue->d)->mem_free((queue->d)->buffer);
+-    (queue->d)->mem_free((queue->d));
+-
+     queue->mem_free(queue);
+ }
+ 
+@@ -130,12 +113,7 @@ void cc_queue_destroy(CC_Queue *queue)
+  */
+ void cc_queue_destroy_cb(CC_Queue *queue, void (*cb) (void*))
+ {
++    cc_deque_destroy_cb(queue->d, cb);
+-    cc_queue_foreach(queue, cb);
+-    queue->d->first = 0;
+-    queue->d->last = 0;
+-    queue->d->size = 0;
+-    queue_storage_destroy((queue->d));
+-
+     free(queue);
+ }
+ 
+@@ -151,13 +129,7 @@ void cc_queue_destroy_cb(CC_Queue *queue, void (*cb) (void*))
+  */
+ enum cc_stat cc_queue_peek(CC_Queue const * const queue, void **out)
+ {
++    return cc_deque_get_last(queue->d, out);
+-
+-    if ((queue->d)->size == 0)
+-        return CC_ERR_OUT_OF_RANGE;
+-
+-    size_t last = ((queue->d)->last - 1) & ((queue->d)->capacity - 1);
+-    *out = (queue->d)->buffer[last];
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -172,19 +144,7 @@ enum cc_stat cc_queue_peek(CC_Queue const * const queue, void **out)
+  */
+ enum cc_stat cc_queue_poll(CC_Queue *queue, void **out)
+ {
++    return cc_deque_remove_last(queue->d, out);
+-
+-    if ((queue->d)->size == 0)
+-        return CC_ERR_OUT_OF_RANGE;
+-
+-    size_t  last    = ((queue->d)->last - 1) & ((queue->d)->capacity - 1);
+-    void   *element = (queue->d)->buffer[last];
+-    (queue->d)->last = last;
+-    (queue->d)->size--;
+-
+-    if (out)
+-        *out = element;
+-
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -199,23 +159,7 @@ enum cc_stat cc_queue_poll(CC_Queue *queue, void **out)
+  */
+ enum cc_stat cc_queue_enqueue(CC_Queue *queue, void *element)
+ {
++    return cc_deque_add_first(queue->d, element);
+-
+-    if (queue->d->size >= queue->d->capacity) {
+-        void **buffer;
+-        if (expand_capacity(queue->d, &buffer) != CC_OK)
+-            return CC_ERR_ALLOC;
+-        queue->d->mem_free(queue->d->buffer);
+-        queue->d->buffer = buffer;
+-        queue->d->first = 0;
+-        queue->d->last = queue->d->size;
+-        queue->d->capacity <<= 1;
+-    }
+-
+-    (queue->d)->first = ((queue->d)->first - 1) & ((queue->d)->capacity - 1);
+-    (queue->d)->buffer[(queue->d)->first] = element;
+-    (queue->d)->size++;
+-
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -228,8 +172,7 @@ enum cc_stat cc_queue_enqueue(CC_Queue *queue, void *element)
+  */
+ size_t cc_queue_size(CC_Queue const * const queue)
+ {
++    return cc_deque_size(queue->d);
+-
+-    return (queue->d)->size;
+ }
+ 
+ /**
+@@ -240,13 +183,7 @@ size_t cc_queue_size(CC_Queue const * const queue)
+  */
+ void cc_queue_foreach(CC_Queue *queue, void (*fn) (void*))
+ {
++    cc_deque_foreach(queue->d, fn);
+-
+-    size_t i;
+-
+-    for (i = 0; i < (queue->d)->size; i++) {
+-        size_t p = ((queue->d)->first + i) & ((queue->d)->capacity - 1);
+-        fn((queue->d)->buffer[p]);
+-    }
+ }
+ 
+ /**
+@@ -257,7 +194,7 @@ void cc_queue_foreach(CC_Queue *queue, void (*fn) (void*))
+  */
+ void cc_queue_iter_init(CC_QueueIter *iter, CC_Queue *queue)
+ {
++    cc_deque_iter_init(&(iter->i), queue->d);
+-    queue_storage_iter_init(&(iter->i), queue->d);
+ }
+ 
+ /**
+@@ -272,21 +209,7 @@ void cc_queue_iter_init(CC_QueueIter *iter, CC_Queue *queue)
+  */
+ enum cc_stat cc_queue_iter_next(CC_QueueIter *iter, void **out)
+ {
++    return cc_deque_iter_next(&(iter->i), out);
+-
+-    const size_t c     = ((&iter->i)->deque->capacity - 1);
+-    const size_t last  = ((&iter->i)->deque->last) & c;
+-    const size_t first = ((&iter->i)->deque->first) & c;
+-
+-    if (last == first || (&iter->i)->index >= (&iter->i)->deque->size)
+-        return CC_ITER_END;
+-
+-    const size_t i = ((&iter->i)->deque->first + (&iter->i)->index) & c;
+-
+-    (&iter->i)->index++;
+-    (&iter->i)->last_removed = false;
+-    *out = (&iter->i)->deque->buffer[i];
+-
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -307,8 +230,7 @@ enum cc_stat cc_queue_iter_next(CC_QueueIter *iter, void **out)
+  */
+ enum cc_stat cc_queue_iter_replace(CC_QueueIter *iter, void *replacement, void **out)
+ {
++    return cc_deque_iter_replace(&(iter->i), replacement, out);
+-
+-    return queue_storage_replace_at((&iter->i)->deque, replacement, (&iter->i)->index, out);
+ }
+ 
+ /**
+@@ -320,7 +242,7 @@ enum cc_stat cc_queue_iter_replace(CC_QueueIter *iter, void *replacement, void *
+  */
+ void cc_queue_zip_iter_init(QueueZipIter *iter, CC_Queue *q1, CC_Queue *q2)
+ {
++    cc_deque_zip_iter_init(&(iter->i), q1->d, q2->d);
+-    queue_storage_zip_iter_init(&(iter->i), q1->d, q2->d);
+ }
+ 
+ /**
+@@ -335,31 +257,7 @@ void cc_queue_zip_iter_init(QueueZipIter *iter, CC_Queue *q1, CC_Queue *q2)
+  */
+ enum cc_stat cc_queue_zip_iter_next(QueueZipIter *iter, void **out1, void **out2)
+ {
++    return cc_deque_zip_iter_next(&(iter->i), out1, out2);
+-
+-    const size_t d1_capacity = ((&iter->i)->d1->capacity - 1);
+-    const size_t d1_last     = ((&iter->i)->d1->last) & d1_capacity;
+-    const size_t d1_first    = ((&iter->i)->d1->first) & d1_capacity;
+-
+-    if (d1_last == d1_first || (&iter->i)->index >= (&iter->i)->d1->size)
+-        return CC_ITER_END;
+-
+-    const size_t d2_capacity = ((&iter->i)->d2->capacity - 1);
+-    const size_t d2_last     = ((&iter->i)->d2->last) & d2_capacity;
+-    const size_t d2_first    = ((&iter->i)->d2->first) & d2_capacity;
+-
+-    if (d2_last == d2_first || (&iter->i)->index >= (&iter->i)->d2->size)
+-         return CC_ITER_END;
+-
+-    const size_t d1_index = ((&iter->i)->d1->first + (&iter->i)->index) & d1_capacity;
+-    const size_t d2_index = ((&iter->i)->d2->first + (&iter->i)->index) & d2_capacity;
+-
+-    *out1 = (&iter->i)->d1->buffer[d1_index];
+-    *out2 = (&iter->i)->d2->buffer[d2_index];
+-
+-    (&iter->i)->index++;
+-    (&iter->i)->last_removed = false;
+-
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -376,130 +274,11 @@ enum cc_stat cc_queue_zip_iter_next(QueueZipIter *iter, void **out1, void **out2
+  */
+ enum cc_stat cc_queue_zip_iter_replace(QueueZipIter *iter, void *e1, void *e2, void **out1, void **out2)
+ {
++    return cc_deque_zip_iter_replace(&(iter->i), e1, e2, out1, out2);
+-
+-    if (((&iter->i)->index - 1) >= (&iter->i)->d1->size || ((&iter->i)->index - 1) >= (&iter->i)->d2->size)
+-        return CC_ERR_OUT_OF_RANGE;
+-
+-    size_t index = iter->i.index - 1;
+-    size_t first = (iter->i.d1->first + index) & (iter->i.d1->capacity - 1);
+-    if (out1)
+-        *out1 = iter->i.d1->buffer[first];
+-    iter->i.d1->buffer[first] = e1;
+-    size_t second = (iter->i.d2->first + index) & (iter->i.d2->capacity - 1);
+-    if (out2)
+-        *out2 = iter->i.d2->buffer[second];
+-    iter->i.d2->buffer[second] = e2;
+-
+-    return CC_OK;
+ }
+ 
+ 
+ size_t cc_queue_struct_size()
+ {
+     return cc_deque_struct_size();
++}
+\ No newline at end of file
+-}
+-static void copy_buffer(CC_Deque const * const deque, void **buff, void *(*cp) (void *)) {
+-    if (cp == NULL) {
+-        if (deque->last > deque->first) {
+-            memcpy(buff,
+-                   &(deque->buffer[deque->first]),
+-                   deque->size * sizeof(void*));
+-        } else {
+-            size_t l = deque->last;
+-            size_t e = deque->capacity - deque->first;
+-
+-            memcpy(buff,
+-                   &(deque->buffer[deque->first]),
+-                   e * sizeof(void*));
+-
+-            memcpy(&(buff[e]),
+-                   deque->buffer,
+-                   l * sizeof(void*));
+-        }
+-    } else {
+-        size_t i;
+-        for (i = 0; i < deque->size; i++) {
+-            size_t p = (deque->first + i) & (deque->capacity - 1);
+-            buff[i]  = cp(deque->buffer[p]);
+-        }
+-    }
+-}
+-
+-static enum cc_stat expand_capacity(CC_Deque *deque, void ***buffer) {
+-    if (deque->capacity == MAX_POW_TWO)
+-        return CC_ERR_MAX_CAPACITY;
+-
+-    size_t new_capacity = deque->capacity << 1;
+-    void **new_buffer = deque->mem_calloc(new_capacity, sizeof(void*));
+-
+-    if (!new_buffer)
+-        return CC_ERR_ALLOC;
+-
+-    copy_buffer(deque, new_buffer, NULL);
+-    *buffer = new_buffer;
+-
+-    return CC_OK;
+-}
+-
+-
+-static INLINE size_t upper_pow_two(size_t n) {
+-    if (n >= MAX_POW_TWO)
+-        return MAX_POW_TWO;
+-
+-    if (n == 0)
+-        return 1;
+-
+-    /**
+-     * taken from:
+-     * http://graphics.stanford.edu/~seander/
+-     * bithacks.html#RoundUpPowerOf2
+-     */
+-    n--;
+-    n |= n >> 1;
+-    n |= n >> 2;
+-    n |= n >> 4;
+-    n |= n >> 8;
+-    n |= n >> 16;
+-#ifdef ARCH_64
+-    n |= n >> 32;
+-#endif /* ARCH_64 */
+-    n++;
+-
+-    return n;
+-}
+-
+-
+-
+-static enum cc_stat queue_storage_replace_at(CC_Deque *deque, void *element, size_t index, void **out) {
+-    if (index >= deque->size)
+-        return CC_ERR_OUT_OF_RANGE;
+-
+-    size_t i = (deque->first + index) & (deque->capacity - 1);
+-
+-    if (out)
+-        *out = deque->buffer[i];
+-
+-    deque->buffer[i] = element;
+-
+-    return CC_OK;
+-}
+-
+-static void queue_storage_iter_init(CC_DequeIter *iter, CC_Deque *deque) {
+-    iter->deque = deque;
+-    iter->index = 0;
+-    iter->last_removed = false;
+-}
+-
+-static void queue_storage_zip_iter_init(CC_DequeZipIter *iter, CC_Deque *d1, CC_Deque *d2) {
+-    iter->d1    = d1;
+-    iter->d2    = d2;
+-    iter->index = 0;
+-    iter->last_removed = false;
+-}
+-
+-
+-
+-static void queue_storage_destroy(CC_Deque *deque) {
+-    deque->mem_free(deque->buffer);
+-    deque->mem_free(deque);
+-}
+diff --git a/src/cc_stack.c b/src/cc_stack.c
+index d84b270..a801e53 100644
+--- a/src/cc_stack.c
++++ b/src/cc_stack.c
+@@ -20,17 +20,8 @@
+ 
+ #include "cc_array.h"
+ #include "cc_stack.h"
+-#define DEFAULT_EXPANSION_FACTOR 2
+-#include "cc_array_internal.h"
+ 
+ 
+-static enum cc_stat expand_capacity(CC_Array *ar, void ***buffer);
+-static enum cc_stat stack_storage_get_at(CC_Array *ar, size_t index, void **out);
+-static enum cc_stat stack_storage_remove_at(CC_Array *ar, size_t index, void **out);
+-static enum cc_stat stack_storage_replace_at(CC_Array *ar, void *element, size_t index, void **out);
+-static void stack_storage_iter_init(CC_ArrayIter *iter, CC_Array *ar);
+-static void stack_storage_zip_iter_init(CC_ArrayZipIter *iter, CC_Array *ar1, CC_Array *ar2);
+-static void stack_storage_destroy(CC_Array *ar);
+ struct cc_stack_s {
+     CC_Array *v;
+ 
+@@ -84,45 +75,22 @@ enum cc_stat cc_stack_new(CC_Stack **out)
+ enum cc_stat cc_stack_new_conf(CC_StackConf const * const conf, CC_Stack **out)
+ {
+     CC_Stack *stack = conf->mem_calloc(1, sizeof(CC_Stack));
+-    if (!stack) return CC_ERR_ALLOC;
+-    stack->mem_alloc = conf->mem_alloc;
+-    stack->mem_calloc = conf->mem_calloc;
+-    stack->mem_free = conf->mem_free;
+ 
++    if (!stack)
++        return CC_ERR_ALLOC;
+-    float ex;
+ 
++    stack->mem_alloc  = conf->mem_alloc;
++    stack->mem_calloc = conf->mem_calloc;
++    stack->mem_free   = conf->mem_free;
++
++    CC_Array *array;
++    enum cc_stat status;
++    if ((status = cc_array_new_conf(conf, &array)) == CC_OK) {
++        stack->v = array;
++    } else {
++        conf->mem_free(stack);
++        return status;
+-    /* The expansion factor must be greater than one for the
+-     * array to grow */
+-    if (conf->exp_factor <= 1)
+-        ex = DEFAULT_EXPANSION_FACTOR;
+-    else
+-        ex = conf->exp_factor;
+-
+-    /* Needed to avoid an integer overflow on the first resize and
+-     * to easily check for any future overflows. */
+-    if (!conf->capacity || ex >= CC_MAX_ELEMENTS / conf->capacity)
+-        { conf->mem_free(stack); return CC_ERR_INVALID_CAPACITY; }
+-
+-    CC_Array *ar = conf->mem_calloc(1, sizeof(CC_Array));
+-
+-    if (!ar)
+-        { conf->mem_free(stack); return CC_ERR_ALLOC; }
+-
+-    void **buff = conf->mem_alloc(conf->capacity * sizeof(void*));
+-
+-    if (!buff) {
+-        conf->mem_free(ar);
+-        { conf->mem_free(stack); return CC_ERR_ALLOC; }
+     }
+-
+-    ar->buffer     = buff;
+-    ar->exp_factor = ex;
+-    ar->capacity   = conf->capacity;
+-    ar->mem_alloc  = conf->mem_alloc;
+-    ar->mem_calloc = conf->mem_calloc;
+-    ar->mem_free   = conf->mem_free;
+-
+-    stack->v = ar;
+     *out = stack;
+     return CC_OK;
+ }
+@@ -135,9 +103,7 @@ enum cc_stat cc_stack_new_conf(CC_StackConf const * const conf, CC_Stack **out)
+  */
+ void cc_stack_destroy(CC_Stack *stack)
+ {
++    cc_array_destroy(stack->v);
+-    (stack->v)->mem_free((stack->v)->buffer);
+-    (stack->v)->mem_free((stack->v));
+-
+     stack->mem_free(stack);
+ }
+ 
+@@ -151,12 +117,7 @@ void cc_stack_destroy(CC_Stack *stack)
+  */
+ void cc_stack_destroy_cb(CC_Stack *stack, void (*cb) (void*))
+ {
++    cc_array_destroy_cb(stack->v, cb);
+-    size_t i;
+-    for (i = 0; i < (stack->v)->size; i++)
+-        cb((stack->v)->buffer[i]);
+-
+-    stack_storage_destroy((stack->v));
+-
+     free(stack);
+ }
+ 
+@@ -171,21 +132,7 @@ void cc_stack_destroy_cb(CC_Stack *stack, void (*cb) (void*))
+  */
+ enum cc_stat cc_stack_push(CC_Stack *stack, void *element)
+ {
++    return cc_array_add(stack->v, element);
+-
+-    if ((stack->v)->size >= (stack->v)->capacity) {
+-        void **buffer;
+-        enum cc_stat status = expand_capacity(stack->v, &buffer);
+-        if (status != CC_OK)
+-            return status;
+-        memcpy(buffer, stack->v->buffer, stack->v->size * sizeof(void*));
+-        stack->v->mem_free(stack->v->buffer);
+-        stack->v->buffer = buffer;
+-    }
+-
+-    (stack->v)->buffer[(stack->v)->size] = element;
+-    (stack->v)->size++;
+-
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -200,11 +147,7 @@ enum cc_stat cc_stack_push(CC_Stack *stack, void *element)
+  */
+ enum cc_stat cc_stack_peek(CC_Stack *stack, void **out)
+ {
++    return cc_array_get_last(stack->v, out);
+-
+-    if ((stack->v)->size == 0)
+-        return CC_ERR_VALUE_NOT_FOUND;
+-
+-    return stack_storage_get_at((stack->v), (stack->v)->size - 1, out);
+ }
+ 
+ /**
+@@ -220,8 +163,7 @@ enum cc_stat cc_stack_peek(CC_Stack *stack, void **out)
+  */
+ enum cc_stat cc_stack_pop(CC_Stack *stack, void **out)
+ {
++    return cc_array_remove_last(stack->v, out);
+-
+-    return stack_storage_remove_at((stack->v), (stack->v)->size - 1, out);
+ }
+ 
+ /**
+@@ -233,8 +175,7 @@ enum cc_stat cc_stack_pop(CC_Stack *stack, void **out)
+  */
+ size_t cc_stack_size(CC_Stack *stack)
+ {
++    return cc_array_size(stack->v);
+-
+-    return (stack->v)->size;
+ }
+ 
+ /**
+@@ -246,10 +187,7 @@ size_t cc_stack_size(CC_Stack *stack)
+  */
+ void cc_stack_map(CC_Stack *stack, void (*fn) (void *))
+ {
++    cc_array_map(stack->v, fn);
+-
+-    size_t i;
+-    for (i = 0; i < (stack->v)->size; i++)
+-        fn((stack->v)->buffer[i]);
+ }
+ 
+ /**
+@@ -266,42 +204,7 @@ void cc_stack_map(CC_Stack *stack, void (*fn) (void *))
+ 
+ enum cc_stat cc_stack_filter_mut(CC_Stack *stack, bool (*predicate)(const void *))
+ {
++    return cc_array_filter_mut(stack->v, predicate);
+-
+-    if ((stack->v)->size == 0)
+-        return CC_ERR_OUT_OF_RANGE;
+-
+-    size_t rm   = 0;
+-    size_t keep = 0;
+-
+-    /* Look for clusters of non matching elements before moving
+-     * in order to minimize the number of memmoves */
+-    for (size_t i = (stack->v)->size - 1; i != ((size_t) - 1); i--) {
+-        if (!predicate((stack->v)->buffer[i])) {
+-            rm++;
+-            continue;
+-        }
+-        if (rm > 0) {
+-            if (keep > 0) {
+-                size_t block_size = keep * sizeof(void*);
+-                memmove(&((stack->v)->buffer[i + 1]),
+-                        &((stack->v)->buffer[i + 1 + rm]),
+-                        block_size);
+-            }
+-            (stack->v)->size -= rm;
+-            rm = 0;
+-        }
+-        keep++;
+-    }
+-    /* Remove any remaining elements*/
+-    if (rm > 0) {
+-        size_t block_size = keep * sizeof(void*);
+-        memmove(&((stack->v)->buffer[0]),
+-                &((stack->v)->buffer[rm]),
+-                block_size);
+-
+-        (stack->v)->size -= rm;
+-    }
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -324,11 +227,14 @@ enum cc_stat cc_stack_filter(CC_Stack *stack, bool (*predicate)(const void *), C
+     if (cc_stack_size(stack) == 0)
+         return CC_ERR_OUT_OF_RANGE;
+ 
++    CC_StackIter iter;
++    cc_stack_iter_init(&iter, stack);
++
+-    size_t index = 0;
+     cc_stack_new(out);
++
++    void *e;
++    while (cc_stack_iter_next(&iter, &e) != CC_ITER_END)
+-    while (index < stack->v->size)
+     {
+-        void *e = stack->v->buffer[index++];
+         if (predicate(e))
+             cc_stack_push(*out, e);
+     }
+@@ -344,7 +250,7 @@ enum cc_stat cc_stack_filter(CC_Stack *stack, bool (*predicate)(const void *), C
+  */
+ void cc_stack_iter_init(CC_StackIter *iter, CC_Stack *s)
+ {
++    cc_array_iter_init(&(iter->i), s->v);
+-    stack_storage_iter_init(&(iter->i), s->v);
+ }
+ 
+ /**
+@@ -359,16 +265,7 @@ void cc_stack_iter_init(CC_StackIter *iter, CC_Stack *s)
+  */
+ enum cc_stat cc_stack_iter_next(CC_StackIter *iter, void **out)
+ {
++    return cc_array_iter_next(&(iter->i), out);
+-
+-    if ((&iter->i)->index >= (&iter->i)->ar->size)
+-        return CC_ITER_END;
+-
+-    *out = (&iter->i)->ar->buffer[(&iter->i)->index];
+-
+-    (&iter->i)->index++;
+-    (&iter->i)->last_removed = false;
+-
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -389,8 +286,7 @@ enum cc_stat cc_stack_iter_next(CC_StackIter *iter, void **out)
+  */
+ enum cc_stat cc_stack_iter_replace(CC_StackIter *iter, void *element, void **out)
+ {
++    return cc_array_iter_replace(&(iter->i), element, out);
+-
+-    return stack_storage_replace_at((&iter->i)->ar, element, (&iter->i)->index - 1, out);
+ }
+ 
+ /**
+@@ -402,7 +298,7 @@ enum cc_stat cc_stack_iter_replace(CC_StackIter *iter, void *element, void **out
+  */
+ void cc_stack_zip_iter_init(CC_StackZipIter *iter, CC_Stack *s1, CC_Stack *s2)
+ {
++    cc_array_zip_iter_init(&(iter->i), s1->v, s2->v);
+-    stack_storage_zip_iter_init(&(iter->i), s1->v, s2->v);
+ }
+ 
+ /**
+@@ -417,17 +313,7 @@ void cc_stack_zip_iter_init(CC_StackZipIter *iter, CC_Stack *s1, CC_Stack *s2)
+  */
+ enum cc_stat cc_stack_zip_iter_next(CC_StackZipIter *iter, void **out1, void **out2)
+ {
++    return cc_array_zip_iter_next(&(iter->i), out1, out2);
+-
+-    if ((&iter->i)->index >= (&iter->i)->ar1->size || (&iter->i)->index >= (&iter->i)->ar2->size)
+-        return CC_ITER_END;
+-
+-    *out1 = (&iter->i)->ar1->buffer[(&iter->i)->index];
+-    *out2 = (&iter->i)->ar2->buffer[(&iter->i)->index];
+-
+-    (&iter->i)->index++;
+-    (&iter->i)->last_removed = false;
+-
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -444,105 +330,11 @@ enum cc_stat cc_stack_zip_iter_next(CC_StackZipIter *iter, void **out1, void **o
+  */
+ enum cc_stat cc_stack_zip_iter_replace(CC_StackZipIter *iter, void *e1, void *e2, void **out1, void **out2)
+ {
++    return cc_array_zip_iter_replace(&(iter->i), e1, e2, out1, out2);
+-
+-    if (((&iter->i)->index - 1) >= (&iter->i)->ar1->size || ((&iter->i)->index - 1) >= (&iter->i)->ar2->size)
+-        return CC_ERR_OUT_OF_RANGE;
+-
+-    size_t index = iter->i.index - 1;
+-    if (out1)
+-        *out1 = iter->i.ar1->buffer[index];
+-    iter->i.ar1->buffer[index] = e1;
+-    if (out2)
+-        *out2 = iter->i.ar2->buffer[index];
+-    iter->i.ar2->buffer[index] = e2;
+-
+-    return CC_OK;
+ }
+ 
+ 
+ size_t cc_stack_struct_size()
+ {
+     return cc_array_struct_size();
++}
+\ No newline at end of file
+-}
+-static enum cc_stat expand_capacity(CC_Array *ar, void ***buffer) {
+-    if (ar->capacity == CC_MAX_ELEMENTS)
+-        return CC_ERR_MAX_CAPACITY;
+-
+-    size_t new_capacity = (size_t)(ar->capacity * ar->exp_factor);
+-
+-    /* As long as the capacity is greater that the expansion factor
+-     * at the point of overflow, this is check is valid. */
+-    if (new_capacity <= ar->capacity)
+-        ar->capacity = CC_MAX_ELEMENTS;
+-    else
+-        ar->capacity = new_capacity;
+-
+-    void **new_buff = ar->mem_alloc(ar->capacity * sizeof(void*));
+-
+-    if (!new_buff)
+-        return CC_ERR_ALLOC;
+-
+-    *buffer = new_buff;
+-
+-    return CC_OK;
+-}
+-
+-
+-
+-
+-static enum cc_stat stack_storage_get_at(CC_Array *ar, size_t index, void **out) {
+-    if (index >= ar->size)
+-        return CC_ERR_OUT_OF_RANGE;
+-
+-    *out = ar->buffer[index];
+-    return CC_OK;
+-}
+-
+-static enum cc_stat stack_storage_remove_at(CC_Array *ar, size_t index, void **out) {
+-    if (index >= ar->size)
+-        return CC_ERR_OUT_OF_RANGE;
+-
+-    if (out)
+-        *out = ar->buffer[index];
+-
+-    if (index != ar->size - 1) {
+-        size_t block_size = (ar->size - 1 - index) * sizeof(void*);
+-
+-        memmove(&(ar->buffer[index]),
+-                &(ar->buffer[index + 1]),
+-                block_size);
+-    }
+-    ar->size--;
+-
+-    return CC_OK;
+-}
+-
+-static enum cc_stat stack_storage_replace_at(CC_Array *ar, void *element, size_t index, void **out) {
+-    if (index >= ar->size)
+-        return CC_ERR_OUT_OF_RANGE;
+-
+-    if (out)
+-        *out = ar->buffer[index];
+-
+-    ar->buffer[index] = element;
+-
+-    return CC_OK;
+-}
+-
+-static void stack_storage_iter_init(CC_ArrayIter *iter, CC_Array *ar) {
+-    iter->ar    = ar;
+-    iter->index = 0;
+-    iter->last_removed = false;
+-}
+-
+-static void stack_storage_zip_iter_init(CC_ArrayZipIter *iter, CC_Array *ar1, CC_Array *ar2) {
+-    iter->ar1 = ar1;
+-    iter->ar2 = ar2;
+-    iter->index = 0;
+-    iter->last_removed = false;
+-}
+-
+-static void stack_storage_destroy(CC_Array *ar) {
+-    ar->mem_free(ar->buffer);
+-    ar->mem_free(ar);
+-}
+diff --git a/src/cc_treeset.c b/src/cc_treeset.c
+index 2f64498..2e702b8 100644
+--- a/src/cc_treeset.c
++++ b/src/cc_treeset.c
+@@ -19,22 +19,7 @@
+  */
+ 
+ #include "cc_treeset.h"
++
+-#include "cc_treetable_internal.h"
+-#define RB_BLACK 1
+-#define RB_RED 0
+-
+-static INLINE RBNode *tree_min(CC_TreeTable const * const table, RBNode *n);
+-static INLINE RBNode *tree_max(CC_TreeTable const * const table, RBNode *n);
+-static RBNode *get_tree_node_by_key(CC_TreeTable const * const table, const void *key);
+-static RBNode *get_successor_node(CC_TreeTable const * const table, RBNode *x);
+-static RBNode *get_predecessor_node(CC_TreeTable const * const table, RBNode *x);
+-static void rotate_left(CC_TreeTable *table, RBNode *x);
+-static void rotate_right(CC_TreeTable *table, RBNode *x);
+-static void rebalance_after_insert(CC_TreeTable *table, RBNode *z);
+-static void rebalance_after_delete(CC_TreeTable *table, RBNode *x);
+-static INLINE void transplant(CC_TreeTable *table, RBNode *u, RBNode *v);
+-static RBNode *remove_node(CC_TreeTable *table, RBNode *z, int *removed_color);
+-static void tree_destroy(CC_TreeTable *table, RBNode *n);
+ struct cc_treeset_s {
+     CC_TreeTable *t;
+     int       *dummy;
+@@ -87,35 +72,23 @@ enum cc_stat cc_treeset_new(int (*cmp) (const void*, const void*), CC_TreeSet **
+ enum cc_stat cc_treeset_new_conf(CC_TreeSetConf const * const conf, CC_TreeSet **tset)
+ {
+     CC_TreeSet *set = conf->mem_calloc(1, sizeof(CC_TreeSet));
+-    if (!set) return CC_ERR_ALLOC;
+ 
++    if (!set)
++        return CC_ERR_ALLOC;
+-    CC_TreeTable *table = conf->mem_calloc(1, sizeof(CC_TreeTable));
+ 
++    CC_TreeTable *table;
++    enum cc_stat s = cc_treetable_new_conf(conf, &table);
+-    if (!table)
+-        { conf->mem_free(set); return CC_ERR_ALLOC; }
+ 
++    if (s != CC_OK) {
++        conf->mem_free(set);
++        return s;
+-    RBNode *sentinel = conf->mem_calloc(1, sizeof(RBNode));
+-
+-    if (!sentinel) {
+-        conf->mem_free(table);
+-        { conf->mem_free(set); return CC_ERR_ALLOC; }
+     }
++    set->t          = table;
++    set->dummy      = (int*) 1;
++    set->mem_alloc  = conf->mem_alloc;
++    set->mem_calloc = conf->mem_calloc;
++    set->mem_free   = conf->mem_free;
+ 
+-    sentinel->color   = RB_BLACK;
+-
+-    table->size       = 0;
+-    table->cmp        = conf->cmp;
+-    table->mem_alloc  = conf->mem_alloc;
+-    table->mem_calloc = conf->mem_calloc;
+-    table->mem_free   = conf->mem_free;
+-    table->root       = sentinel;
+-    table->sentinel   = sentinel;
+-
+-    set->t = table;
+-    set->mem_alloc = conf->mem_alloc;
+-    set->mem_calloc = conf->mem_calloc;
+-    set->mem_free = conf->mem_free;
+-    set->dummy = (int*) 1;
+     *tset = set;
+     return CC_OK;
+ }
+@@ -127,11 +100,7 @@ enum cc_stat cc_treeset_new_conf(CC_TreeSetConf const * const conf, CC_TreeSet *
+  */
+ void cc_treeset_destroy(CC_TreeSet *set)
+ {
++    cc_treetable_destroy(set->t);
+-    tree_destroy((set->t), (set->t)->root);
+-
+-    (set->t)->mem_free((set->t)->sentinel);
+-    (set->t)->mem_free((set->t));
+-
+     set->mem_free(set);
+ }
+ 
+@@ -146,50 +115,7 @@ void cc_treeset_destroy(CC_TreeSet *set)
+  */
+ enum cc_stat cc_treeset_add(CC_TreeSet *set, void *element)
+ {
++    return cc_treetable_add(set->t, element, set->dummy);
+-
+-    RBNode *y = (set->t)->sentinel;
+-    RBNode *x = (set->t)->root;
+-
+-    int cmp;
+-    while (x != (set->t)->sentinel) {
+-        cmp = (set->t)->cmp(element, x->key);
+-        y   = x;
+-
+-        if (cmp < 0) {
+-            x = x->left;
+-        } else if (cmp > 0) {
+-            x = x->right;
+-        } else {
+-            x->value = set->dummy;
+-            return CC_OK;
+-        }
+-    }
+-    RBNode *n = (set->t)->mem_alloc(sizeof(RBNode));
+-
+-    if (!n)
+-        return CC_ERR_ALLOC;
+-
+-    n->value  = set->dummy;
+-    n->key    = element;
+-    n->parent = y;
+-    n->left   = (set->t)->sentinel;
+-    n->right  = (set->t)->sentinel;
+-
+-    (set->t)->size++;
+-
+-    if (y == (set->t)->sentinel) {
+-        (set->t)->root = n;
+-        n->color    = RB_BLACK;
+-    } else {
+-        n->color = RB_RED;
+-        if ((set->t)->cmp(element, y->key) < 0) {
+-            y->left = n;
+-        } else {
+-            y->right = n;
+-        }
+-        rebalance_after_insert((set->t), n);
+-    }
+-    return CC_OK;
+ }
+ 
+ /**
+@@ -206,21 +132,9 @@ enum cc_stat cc_treeset_add(CC_TreeSet *set, void *element)
+  */
+ enum cc_stat cc_treeset_remove(CC_TreeSet *set, void *element, void **out)
+ {
++    if (cc_treetable_remove(set->t, element, out) == CC_ERR_KEY_NOT_FOUND)
+-
+-    RBNode *node = get_tree_node_by_key((set->t), element);
+-
+-    if (!node)
+         return CC_ERR_VALUE_NOT_FOUND;
+ 
+-    if (out)
+-        *out = node->value;
+-
+-    int color;
+-    RBNode *replacement = remove_node(set->t, node, &color);
+-    if (color == RB_BLACK)
+-        rebalance_after_delete(set->t, replacement);
+-    set->t->mem_free(node);
+-    set->t->size--;
+     return CC_OK;
+ }
+ 
+@@ -231,10 +145,7 @@ enum cc_stat cc_treeset_remove(CC_TreeSet *set, void *element, void **out)
+  */
+ void cc_treeset_remove_all(CC_TreeSet *set)
+ {
++    cc_treetable_remove_all(set->t);
+-
+-    tree_destroy((set->t), (set->t)->root);
+-    (set->t)->size = 0;
+-    (set->t)->root = (set->t)->sentinel;
+ }
+ 
+ /**
+@@ -247,14 +158,10 @@ void cc_treeset_remove_all(CC_TreeSet *set)
+  */
+ enum cc_stat cc_treeset_get_first(CC_TreeSet *set, void **out)
+ {
++    if (cc_treetable_get_first_key(set->t, out) == CC_ERR_KEY_NOT_FOUND)
++        return CC_ERR_VALUE_NOT_FOUND;
+ 
++    return CC_OK;
+-    RBNode *node = tree_min((set->t), (set->t)->root);
+-
+-    if (node != (set->t)->sentinel) {
+-        *out = node->key;
+-        return CC_OK;
+-    }
+-    return CC_ERR_VALUE_NOT_FOUND;
+ }
+ 
+ /**
+@@ -267,14 +174,10 @@ enum cc_stat cc_treeset_get_first(CC_TreeSet *set, void **out)
+  */
+ enum cc_stat cc_treeset_get_last(CC_TreeSet *set, void **out)
+ {
++    if (cc_treetable_get_last_key(set->t, out) == CC_ERR_KEY_NOT_FOUND)
++        return CC_ERR_VALUE_NOT_FOUND;
+ 
++    return CC_OK;
+-    RBNode *node = tree_max((set->t), (set->t)->root);
+-
+-    if (node != (set->t)->sentinel) {
+-        *out = node->key;
+-        return CC_OK;
+-    }
+-    return CC_ERR_VALUE_NOT_FOUND;
+ }
+ 
+ /**
+@@ -288,15 +191,10 @@ enum cc_stat cc_treeset_get_last(CC_TreeSet *set, void **out)
+  */
+ enum cc_stat cc_treeset_get_greater_than(CC_TreeSet *set, void *element, void **out)
+ {
++    if (cc_treetable_get_greater_than(set->t, element, out) == CC_ERR_KEY_NOT_FOUND)
++        return CC_ERR_VALUE_NOT_FOUND;
+ 
++    return CC_OK;
+-    RBNode *n = get_tree_node_by_key((set->t), element);
+-    RBNode *s = get_successor_node((set->t), n);
+-
+-    if (n && s) {
+-        *out = s->key;
+-        return CC_OK;
+-    }
+-    return CC_ERR_VALUE_NOT_FOUND;
+ }
+ 
+ /**
+@@ -310,15 +208,10 @@ enum cc_stat cc_treeset_get_greater_than(CC_TreeSet *set, void *element, void **
+  */
+ enum cc_stat cc_treeset_get_lesser_than(CC_TreeSet *set, void *element, void **out)
+ {
++    if (cc_treetable_get_lesser_than(set->t, element, out) == CC_ERR_KEY_NOT_FOUND)
++        return CC_ERR_VALUE_NOT_FOUND;
+ 
++    return CC_OK;
+-    RBNode *n = get_tree_node_by_key((set->t), element);
+-    RBNode *s = get_predecessor_node((set->t), n);
+-
+-    if (n && s) {
+-        *out = s->key;
+-        return CC_OK;
+-    }
+-    return CC_ERR_VALUE_NOT_FOUND;
+ }
+ 
+ /**
+@@ -331,13 +224,7 @@ enum cc_stat cc_treeset_get_lesser_than(CC_TreeSet *set, void *element, void **o
+  */
+ bool cc_treeset_contains(CC_TreeSet *set, void *element)
+ {
++    return cc_treetable_contains_key(set->t, element);
+-
+-    RBNode *node = get_tree_node_by_key((set->t), element);
+-
+-    if (node)
+-        return true;
+-
+-    return false;
+ }
+ 
+ /**
+@@ -349,8 +236,7 @@ bool cc_treeset_contains(CC_TreeSet *set, void *element)
+  */
+ size_t cc_treeset_size(CC_TreeSet *set)
+ {
++    return cc_treetable_size(set->t);
+-
+-    return (set->t)->size;
+ }
+ 
+ /**
+@@ -362,13 +248,7 @@ size_t cc_treeset_size(CC_TreeSet *set)
+  */
+ void cc_treeset_foreach(CC_TreeSet *set, void (*fn) (const void*))
+ {
++    cc_treetable_foreach_key(set->t, fn);
+-
+-    RBNode *n = tree_min((set->t), (set->t)->root);
+-
+-    while (n != (set->t)->sentinel) {
+-        fn(n->key);
+-        n = get_successor_node((set->t), n);
+-    }
+ }
+ 
+ /**
+@@ -379,10 +259,7 @@ void cc_treeset_foreach(CC_TreeSet *set, void (*fn) (const void*))
+  */
+ void cc_treeset_iter_init(CC_TreeSetIter *iter, CC_TreeSet *set)
+ {
++    cc_treetable_iter_init(&(iter->i), set->t);
+-
+-    (&iter->i)->table   = (set->t);
+-    (&iter->i)->current = (set->t)->sentinel;
+-    (&iter->i)->next    = tree_min((set->t), (set->t)->root);
+ }
+ 
+ /**
+@@ -397,13 +274,12 @@ void cc_treeset_iter_init(CC_TreeSetIter *iter, CC_TreeSet *set)
+  */
+ enum cc_stat cc_treeset_iter_next(CC_TreeSetIter *iter, void **element)
+ {
++    CC_TreeTableEntry entry;
++
++    if (cc_treetable_iter_next(&(iter->i), &entry) != CC_OK)
+-    CC_TreeTableIter *storage = &iter->i;
+-    if (storage->next == storage->table->sentinel)
+         return CC_ITER_END;
++
++    *element = entry.key;
+-    RBNode *selected = storage->next;
+-    storage->current = selected;
+-    storage->next = get_successor_node(storage->table, selected);
+-    *element = selected->key;
+     return CC_OK;
+ }
+ 
+@@ -424,301 +300,11 @@ enum cc_stat cc_treeset_iter_next(CC_TreeSetIter *iter, void **element)
+  */
+ enum cc_stat cc_treeset_iter_remove(CC_TreeSetIter *iter, void **out)
+ {
++    return cc_treetable_iter_remove(&(iter->i), out);
+-
+-    if (!(&iter->i)->current)
+-        return CC_ERR_KEY_NOT_FOUND;
+-
+-    if (out)
+-        *out = (&iter->i)->current->value;
+-
+-    CC_TreeTable *table = iter->i.table;
+-    RBNode *removed = iter->i.current;
+-    int color;
+-    RBNode *replacement = remove_node(table, removed, &color);
+-    if (color == RB_BLACK)
+-        rebalance_after_delete(table, replacement);
+-    table->mem_free(removed);
+-    table->size--;
+-    (&iter->i)->current = NULL;
+-
+-    return CC_OK;
+ }
+ 
+ 
+ size_t cc_treeset_struct_size()
+ {
+     return cc_treetable_struct_size();
++}
+\ No newline at end of file
+-}
+-static INLINE RBNode *tree_min(CC_TreeTable const * const table, RBNode *n) {
+-    RBNode *s = table->sentinel;
+-    
+-    if (n == s)
+-        return s;
+-
+-    while (n->left != s)
+-        n = n->left;
+-    return n;
+-}
+-
+-static INLINE RBNode *tree_max(CC_TreeTable const * const table, RBNode *n) {
+-    RBNode *s = table->sentinel;
+-    
+-    if (n == s)
+-        return s;
+-
+-    while (n->right != s)
+-        n = n->right;
+-    return n;
+-}
+-
+-static RBNode *get_tree_node_by_key(CC_TreeTable const * const table, const void *key) {
+-    if (table->size == 0)
+-        return NULL;
+-
+-    RBNode *n = table->root;
+-    RBNode *s = table->sentinel;
+-
+-    int cmp;
+-    do {
+-        cmp = table->cmp(key, n->key);
+-
+-        if (cmp < 0)
+-            n = n->left;
+-        else if (cmp > 0)
+-            n = n->right;
+-        else
+-            return n;
+-    } while (n != s && cmp != 0);
+-
+-    return NULL;
+-}
+-
+-static RBNode *get_successor_node(CC_TreeTable const * const table, RBNode *x) {
+-    if (x == NULL)
+-        return NULL;
+-
+-    if (x->right != table->sentinel)
+-        return tree_min(table, x->right);
+-
+-    RBNode *y = x->parent;
+-
+-    while (y != table->sentinel && x == y->right) {
+-        x = y;
+-        y = y->parent;
+-    }
+-    return y;
+-}
+-
+-static RBNode *get_predecessor_node(CC_TreeTable const * const table, RBNode *x) {
+-    if (x == NULL)
+-        return NULL;
+-
+-    if (x->left != table->sentinel)
+-        return tree_max(table, x->left);
+-
+-    RBNode *y = x->parent;
+-
+-    while (y != table->sentinel && x == y->left) {
+-        x = y;
+-        y = y->parent;
+-    }
+-    return y;
+-}
+-
+-
+-static void rotate_left(CC_TreeTable *table, RBNode *x) {
+-    RBNode *y = x->right;
+-
+-    x->right = y->left;
+-
+-    if (y->left != table->sentinel)
+-        y->left->parent = x;
+-
+-    y->parent = x->parent;
+-
+-    if (x->parent == table->sentinel)
+-        table->root = y;
+-    else if (x == x->parent->left)
+-        x->parent->left = y;
+-    else
+-        x->parent->right = y;
+-
+-    y->left   = x;
+-    x->parent = y;
+-}
+-
+-static void rotate_right(CC_TreeTable *table, RBNode *x) {
+-    RBNode *y = x->left;
+-
+-    x->left = y->right;
+-
+-    if (y->right != table->sentinel)
+-        y->right->parent = x;
+-
+-    y->parent = x->parent;
+-
+-    if (x->parent == table->sentinel)
+-        table->root = y;
+-    else if (x == x->parent->right)
+-        x->parent->right = y;
+-    else
+-        x->parent->left = y;
+-
+-    y->right  = x;
+-    x->parent = y;
+-}
+-
+-static void rebalance_after_insert(CC_TreeTable *table, RBNode *z) {
+-    RBNode *y;
+-
+-    while (z->parent->color == RB_RED) {
+-        if (z->parent == z->parent->parent->left) {
+-            y = z->parent->parent->right;
+-            if (y->color == RB_RED) {
+-                z->parent->color         = RB_BLACK;
+-                y->color                 = RB_BLACK;
+-                z->parent->parent->color = RB_RED;
+-                z = z->parent->parent;
+-            } else {
+-                if (z == z->parent->right) {
+-                    z = z->parent;
+-                    rotate_left(table, z);
+-                }
+-                z->parent->color         = RB_BLACK;
+-                z->parent->parent->color = RB_RED;
+-                rotate_right(table, z->parent->parent);
+-            }
+-        } else {
+-            y = z->parent->parent->left;
+-            if (y->color == RB_RED) {
+-                z->parent->color         = RB_BLACK;
+-                y->color                 = RB_BLACK;
+-                z->parent->parent->color = RB_RED;
+-                z = z->parent->parent;
+-            } else {
+-                if (z == z->parent->left) {
+-                    z = z->parent;
+-                    rotate_right(table, z);
+-                }
+-                z->parent->color         = RB_BLACK;
+-                z->parent->parent->color = RB_RED;
+-                rotate_left(table, z->parent->parent);
+-            }
+-        }
+-    }
+-    table->root->color = RB_BLACK;
+-}
+-
+-static void rebalance_after_delete(CC_TreeTable *table, RBNode *x) {
+-    RBNode *w;
+-
+-    while (x != table->root && x->color == RB_BLACK) {
+-        if (x == x->parent->left) {
+-            w = x->parent->right;
+-            if (w->color == RB_RED) {
+-                w->color = RB_BLACK;
+-                x->parent->color = RB_RED;
+-                rotate_left(table, x->parent);
+-                w = x->parent->right;
+-            }
+-            if (w->left->color == RB_BLACK && w->right->color == RB_BLACK) {
+-                w->color = RB_RED;
+-                x = x->parent;
+-            } else {
+-                if (w->right->color == RB_BLACK) {
+-                    w->left->color = RB_BLACK;
+-                    w->color = RB_RED;
+-                    rotate_right(table, w);
+-                    w = x->parent->right;
+-                }
+-                w->color = x->parent->color;
+-                x->parent->color = RB_BLACK;
+-                w->right->color = RB_BLACK;
+-                rotate_left(table, x->parent);
+-                x = table->root;
+-            }
+-        } else {
+-            w = x->parent->left;
+-            if (w->color == RB_RED) {
+-                w->color = RB_BLACK;
+-                x->parent->color = RB_RED;
+-                rotate_right(table, x->parent);
+-                w = x->parent->left;
+-            }
+-            if (w->right->color == RB_BLACK && w->left->color == RB_BLACK) {
+-                w->color = RB_RED;
+-                x = x->parent;
+-            } else {
+-                if (w->left->color == RB_BLACK) {
+-                    w->right->color = RB_BLACK;
+-                    w->color = RB_RED;
+-                    rotate_left(table, w);
+-                    w = x->parent->left;
+-                }
+-                w->color = x->parent->color;
+-                x->parent->color = RB_BLACK;
+-                w->left->color = RB_BLACK;
+-                rotate_right(table, x->parent);
+-                x = table->root;
+-            }
+-        }
+-    }
+-    x->color = RB_BLACK;
+-}
+-
+-static INLINE void transplant(CC_TreeTable *table, RBNode *u, RBNode *v) {
+-    if (u->parent == table->sentinel)
+-        table->root = v;
+-    else if (u == u->parent->left)
+-        u->parent->left = v;
+-    else
+-        u->parent->right = v;
+-
+-    v->parent = u->parent;
+-}
+-
+-static RBNode *remove_node(CC_TreeTable *table, RBNode *z, int *removed_color) {
+-    RBNode *x;
+-    RBNode *y = z;
+-
+-    int y_color = y->color;
+-
+-    if (z->left == table->sentinel) {
+-        x = z->right;
+-        transplant(table, z, z->right);
+-    } else if (z->right == table->sentinel) {
+-        x = z->left;
+-        transplant(table, z, z->left);
+-    } else {
+-        y = tree_min(table, z->right);
+-        y_color = y->color;
+-        x = y->right;
+-        if (y->parent == z) {
+-            x->parent = y;
+-        } else {
+-            transplant(table, y, y->right);
+-            y->right = z->right;
+-            y->right->parent = y;
+-        }
+-        transplant(table, z, y);
+-        y->left = z->left;
+-        y->left->parent = y;
+-        y->color = z->color;
+-    }
+-    *removed_color = y_color;
+-    return x;
+-}
+-
+-static void tree_destroy(CC_TreeTable *table, RBNode *n) {
+-    if (n == table->sentinel)
+-        return;
+-
+-    tree_destroy(table, n->left);
+-    tree_destroy(table, n->right);
+-
+-    table->mem_free(n);
+-}
+-
+-
+-
+-
+diff --git a/src/cc_treetable.c b/src/cc_treetable.c
+index 816add8..0b155b4 100644
+--- a/src/cc_treetable.c
++++ b/src/cc_treetable.c
+@@ -27,7 +27,16 @@
+ #define RB_RED   0
+ 
+ 
++struct cc_treetable_s {
++    RBNode *root;
++    RBNode *sentinel;
++    size_t  size;
++
++    int    (*cmp)        (const void *k1, const void *k2);
++    void  *(*mem_alloc)  (size_t size);
++    void  *(*mem_calloc) (size_t blocks, size_t size);
++    void   (*mem_free)   (void *block);
++};
+-#include "cc_treetable_internal.h"
+ 
+ 
+ static void rotate_left            (CC_TreeTable *table, RBNode *n);
+diff --git a/src/cc_treetable_internal.h b/src/cc_treetable_internal.h
+deleted file mode 100644
+index 0e3877b..0000000
+--- a/src/cc_treetable_internal.h
++++ /dev/null
+@@ -1,15 +0,0 @@
+-#ifndef CC_TREETABLE_INTERNAL_H
+-#define CC_TREETABLE_INTERNAL_H
+-#include "cc_treetable.h"
+-struct cc_treetable_s {
+-    RBNode *root;
+-    RBNode *sentinel;
+-    size_t  size;
+-
+-    int    (*cmp)        (const void *k1, const void *k2);
+-    void  *(*mem_alloc)  (size_t size);
+-    void  *(*mem_calloc) (size_t blocks, size_t size);
+-    void   (*mem_free)   (void *block);
+-};
+-#endif
+-

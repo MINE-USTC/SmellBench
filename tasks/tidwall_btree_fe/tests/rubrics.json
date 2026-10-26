@@ -1,0 +1,438 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "tidwall_btree_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "insertion",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 root growth and split; stage2 projections.",
+      "baseline_defect": "Public adapters independently orchestrate backing insertion state.",
+      "criterion": "Consolidate insertion policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Preserve nil BTree item panic before lock, first-root init, replace without count growth, COW split/newroot/count followed by insertion retry. Set key-only behavior uses ordered Map policy; no forced generic wrapper types or shared implementation between distinct comparator models. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "SetHint",
+          "detail": "Public adapters independently orchestrate backing insertion state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Insert",
+          "detail": "Public adapters independently orchestrate backing insertion state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "point_lookup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 hinted/COW lookup, stage2 Set binary ordering.",
+      "baseline_defect": "Public adapters independently orchestrate backing point lookup state.",
+      "criterion": "Consolidate point lookup policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Nil BTree key returns nil before lock; hint depth and mutable path isolation maintained. Set ordered comparison uses two less-than directions rather than invented == equality. Missing/empty projection remains nil versus false. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "getHintMut",
+          "detail": "Public adapters independently orchestrate backing point lookup state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Contains",
+          "detail": "Public adapters independently orchestrate backing point lookup state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "key_deletion",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 stage2 root collapse/count.",
+      "baseline_defect": "Public adapters independently orchestrate backing key deletion state.",
+      "criterion": "Consolidate key deletion policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Only actual deletion decrements global count; collapse empty nonleaf root to first child and clear root at zero. Preserve hint, COW/mutation locks, BTree previous-value versus Set void projection. Balanced deletion and root cleanup may form one operation. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "DeleteHint",
+          "detail": "Public adapters independently orchestrate backing key deletion state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Delete",
+          "detail": "Public adapters independently orchestrate backing key deletion state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sorted_loading",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + retry recursive reservation/unwind.",
+      "baseline_defect": "Public adapters independently orchestrate backing sorted loading state.",
+      "criterion": "Consolidate sorted loading policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Right-spine COW count reservations succeed only leaf below max and strict greater key; failure restores each ancestor before normal insertion/replacement fallback. Global count increments only append/new insertion; duplicates retain projection. Iterative or recursive repair legal. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "Load",
+          "detail": "Public adapters independently orchestrate backing sorted loading state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Load",
+          "detail": "Public adapters independently orchestrate backing sorted loading state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "extreme_lookup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 leaf-edge selection.",
+      "baseline_defect": "Public adapters independently orchestrate backing extreme lookup state.",
+      "criterion": "Consolidate extreme lookup policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Select first/last leaf under correct isolation/lock mode; retain current MaxMut read-only behavior (it previously called Max), not assumed mutable-by-name. Empty nil or zero-key,false and successful key projection preserved. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "Min,MinMut,Max,MaxMut",
+          "detail": "Public adapters independently orchestrate backing extreme lookup state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Min,Max",
+          "detail": "Public adapters independently orchestrate backing extreme lookup state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rank_lookup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 subtree counts and rank translation.",
+      "baseline_defect": "Public adapters independently orchestrate backing rank lookup state.",
+      "criterion": "Consolidate rank lookup policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Negative/out-of-range/empty checked before descent. Child count equality selects interior separator, subtract childcount+1 to later children; mutable variant isolates visited path. No flattened snapshot requirement or change to result shape. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "GetAt,GetAtMut",
+          "detail": "Public adapters independently orchestrate backing rank lookup state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "GetAt",
+          "detail": "Public adapters independently orchestrate backing rank lookup state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "extreme_removal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + retry commit-versus-selected fallback.",
+      "baseline_defect": "Public adapters independently orchestrate backing extreme removal state.",
+      "criterion": "Consolidate extreme removal policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Optimistic node decrements survive successful leaf removal, rollback on min-occupancy path before balanced deletion. Retired item slots cleared, global count/root updated once; selected-but-not-removed cannot be reported as completed. Set fallback Map.Delete versus BTree direct deletion may be unified coherently. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "PopMin,PopMax",
+          "detail": "Public adapters independently orchestrate backing extreme removal state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "PopMin,PopMax",
+          "detail": "Public adapters independently orchestrate backing extreme removal state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rank_removal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + retry local rank/hint unwind.",
+      "baseline_defect": "Public adapters independently orchestrate backing rank removal state.",
+      "criterion": "Consolidate rank removal policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Interior separator hit and minimum leaf require restored counts then balanced deletion, no successful fast commit. BTree hint path records node-local positions/depth within fixed hint capacity after rollback; success skips hint reconstruction. Keep range checks, slot clearing and optional result projection. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "DeleteAt",
+          "detail": "Public adapters independently orchestrate backing rank removal state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "DeleteAt",
+          "detail": "Public adapters independently orchestrate backing rank removal state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tree_range_traversal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 nil pivot routes inside lock/root lifetime.",
+      "baseline_defect": "Public adapters independently orchestrate backing tree range traversal state.",
+      "criterion": "Consolidate tree range traversal policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Nil pivot scans full direction and ignores hint; nonnil inclusive pivot uses hint/depth and selected mut mode. Preserve early callback stop, callback under appropriate lock and COW path; broad whole-tree flattening is not required. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "Ascend,AscendMut,AscendHint,DescendHintMut",
+          "detail": "Public adapters independently orchestrate backing tree range traversal state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "set_range_traversal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 stage2 recursive key callbacks and sibling scans.",
+      "baseline_defect": "Public adapters independently orchestrate backing set range traversal state.",
+      "criterion": "Consolidate set range traversal policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Map ordering and inclusive pivot search followed by correctly directed subtree scan, immediate false propagation before further callback. Key-only callback adaptation legitimate; no forced nil pivot behavior for generic K or materialized traversal. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Scan,Ascend,Reverse,Descend",
+          "detail": "Public adapters independently orchestrate backing set range traversal state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "grouped_walk",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 stage2 void callbacks inside node walk.",
+      "baseline_defect": "Public adapters independently orchestrate backing grouped walk state.",
+      "criterion": "Consolidate grouped walk policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Keep full leaf slices and one-element interior slices in order, their borrowing/alias semantics and mutable COW isolation. Public void callback means traversal continues; neither per-element rewrite nor artificial boolean callback requirement. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "Walk,WalkMut",
+          "detail": "Public adapters independently orchestrate backing grouped walk state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "copy_isolation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 copy receiver correction, identity ownership.",
+      "baseline_defect": "Public adapters independently orchestrate backing copy isolation state.",
+      "criterion": "Consolidate copy isolation policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Shadow sharing with renewed source and copy identity prevents later mutation leakage. BTree conditional lock and fresh mutex only when locks enabled, preserve configured policies; Set copies value backing with distinct identities. No mandatory eager deep copy, wrapper-free API or public changes. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "Copy,IsoCopy",
+          "detail": "Public adapters independently orchestrate backing copy isolation state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Copy,IsoCopy",
+          "detail": "Public adapters independently orchestrate backing copy isolation state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cursor_lower_bound",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R4 + retry leaf miss unwinds candidate ancestors.",
+      "baseline_defect": "Public adapters independently orchestrate backing cursor lower bound state.",
+      "criterion": "Consolidate cursor lower bound policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Reset seeked/stack on live tree, locate exact or first greater candidate using hint depth/Map order, pop exhausted leaf/ancestor frames; only full exhaustion sets atend. Preserve existing endpoint/current-item behavior rather than rebuilding arbitrary cursor or stopping at leaf miss. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "Seek,SeekHint",
+          "detail": "Public adapters independently orchestrate backing cursor lower bound state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Seek",
+          "detail": "Public adapters independently orchestrate backing cursor lower bound state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cursor_endpoints",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R4 endpoint stack creation.",
+      "baseline_defect": "Public adapters independently orchestrate backing cursor endpoints state.",
+      "criterion": "Consolidate cursor endpoints policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "First resets both endpoint flags; Last preserves its existing flags, both set seeked/reset stack and descend correct edge with mut isolation. Empty/released return false and current-item behavior remains; no imposed symmetric flag reset. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "First,Last",
+          "detail": "Public adapters independently orchestrate backing cursor endpoints state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "First,Last",
+          "detail": "Public adapters independently orchestrate backing cursor endpoints state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cursor_bidirectional_steps",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R4 cursor state machine.",
+      "baseline_defect": "Public adapters independently orchestrate backing cursor bidirectional steps state.",
+      "criterion": "Consolidate cursor bidirectional steps policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Fresh Next invokes First while fresh Prev fails. Empty-stack atstart uses First then Next, atend uses Last then Prev; preserve these exact boundary reversal semantics. Interior/leaf traversal updates stack and item in order, sets only reached endpoint flag. Shared cursor implementation can cover seeking and endpoints too. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "Next,Prev",
+          "detail": "Public adapters independently orchestrate backing cursor bidirectional steps state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Next,Prev",
+          "detail": "Public adapters independently orchestrate backing cursor bidirectional steps state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cursor_release",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 lifetime/reset.",
+      "baseline_defect": "Public adapters independently orchestrate backing cursor release state.",
+      "criterion": "Consolidate cursor release policy with a cohesive backing operation while retaining public result adaptation.",
+      "acceptance": "Release nil tree is no-op; unlock once with stored mut mode if locked, reset state while retaining zero-length stack backing capacity. Reusable iterator and no stale tree/item reference preserved; internal storage can differ without mandatory assignment shape. Reconnecting existing BTreeG/Map/cursor APIs is sufficient; equivalent representation and operation designs qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving foreign choreography into another adapter-local helper without transferring policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "Release",
+          "detail": "Public adapters independently orchestrate backing cursor release state.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "tidwall_btree_fe",
+    "weighting": "equal per item",
+    "rubric_status": "ready",
+    "scoring_exclusions": [
+      "Pre-existing API behavior, passing tests, compilation, and behavior-only fixes earn no separate structural point.",
+      "The post.diff comment correction is non-structural and earns no point.",
+      "Unverified intentions in historical stage notes are excluded."
+    ]
+  }
+}

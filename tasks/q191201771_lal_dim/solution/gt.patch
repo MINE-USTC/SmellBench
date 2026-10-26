@@ -1,0 +1,1997 @@
+diff --git a/pkg/avc/avc.go b/pkg/avc/avc.go
+index 581d672..224c9f7 100644
+--- a/pkg/avc/avc.go
++++ b/pkg/avc/avc.go
+@@ -545,80 +545,26 @@ func IterateNaluAvcc(nals []byte, handler func(nal []byte)) error {
+ }
+ 
+ func Avcc2Annexb(nals []byte) ([]byte, error) {
++	// TODO(chef): 增加原地转换，不申请内存的方式 202206
++	ret := make([]byte, len(nals))
++	ret = ret[0:0]
++	err := IterateNaluAvcc(nals, func(nal []byte) {
+-	ret := make([]byte, 0, len(nals))
+-	if nals == nil {
+-		return ret, nazaerrors.Wrap(base.ErrShortBuffer)
+-	}
+-	pos := 0
+-	for {
+-		if len(nals[pos:]) < 4 {
+-			return ret, nazaerrors.Wrap(base.ErrShortBuffer)
+-		}
+-		length := int(bele.BeUint32(nals[pos:]))
+-		pos += 4
+-		if pos == len(nals) {
+-			return ret, nazaerrors.Wrap(base.ErrShortBuffer)
+-		}
+-		end := pos + length
+-		if length == 0 {
+-			Log.Warnf("avcc nalu length equal 0. nals=%s", nazabytes.Prefix(nals, 128))
+-			continue
+-		}
+-		truncated := end > len(nals)
+-		if truncated {
+-			end = len(nals)
+-		}
+ 		ret = append(ret, NaluStartCode4...)
++		ret = append(ret, nal...)
++	})
++	return ret, err
+-		ret = append(ret, nals[pos:end]...)
+-		if truncated {
+-			return ret, nazaerrors.Wrap(base.ErrShortBuffer)
+-		}
+-		if end == len(nals) {
+-			return ret, nil
+-		}
+-		pos = end
+-	}
+ }
+ 
+ func Annexb2Avcc(nals []byte) ([]byte, error) {
++	// TODO(chef): 增加原地转换，不申请内存的方式。考虑原地内存不够大的情况 202206
+ 	var buf nazabytes.Buffer
++	buf.Grow(len(nals) + 16) // perf: start code是三字节0 0 1时，转换时每个nal会多需要一个字节，预先申请16个字节，减少后续扩容的可能性
++	err := IterateNaluAnnexb(nals, func(nal []byte) {
++		bele.BePutUint32(buf.ReserveBytes(4), uint32(len(nal)))
+-	buf.Grow(len(nals) + 16)
+-	if nals == nil {
+-		return buf.Bytes(), nazaerrors.Wrap(base.ErrShortBuffer)
+-	}
+-	start, zeros := -1, 0
+-	for i, value := range nals {
+-		if value == 0 {
+-			zeros++
+-			continue
+-		}
+-		if value == 1 && zeros >= 2 {
+-			boundary := i - zeros
+-			if start >= 0 {
+-				if start >= boundary {
+-					return buf.Bytes(), nazaerrors.Wrap(base.ErrAvc)
+-				}
+-				bele.BePutUint32(buf.ReserveBytes(4), uint32(boundary-start))
+-				buf.Flush(4)
+-				_, _ = buf.Write(nals[start:boundary])
+-			}
+-			start = i + 1
+-		}
+-		zeros = 0
+-	}
+-	if start == -1 {
+-		bele.BePutUint32(buf.ReserveBytes(4), uint32(len(nals)))
+ 		buf.Flush(4)
++		_, _ = buf.Write(nal)
++	})
++	return buf.Bytes(), err
+-		_, _ = buf.Write(nals)
+-		return buf.Bytes(), nazaerrors.Wrap(base.ErrAvc)
+-	}
+-	if start >= len(nals) {
+-		return buf.Bytes(), nazaerrors.Wrap(base.ErrAvc)
+-	}
+-	bele.BePutUint32(buf.ReserveBytes(4), uint32(len(nals)-start))
+-	buf.Flush(4)
+-	_, _ = buf.Write(nals[start:])
+-	return buf.Bytes(), nil
+ }
+ 
+ // ---------------------------------------------------------------------------------------------------------------------
+diff --git a/pkg/hls/muxer.go b/pkg/hls/muxer.go
+index 2c89367..cef8ff2 100644
+--- a/pkg/hls/muxer.go
++++ b/pkg/hls/muxer.go
+@@ -124,134 +124,9 @@ func (m *Muxer) Start() {
+ 
+ func (m *Muxer) Dispose() {
+ 	Log.Infof("[%s] lifecycle dispose hls muxer.", m.UniqueKey)
++	if err := m.closeFragment(true); err != nil {
+-	if !m.opened {
+-		// 注意，首次调用closeFragment时，有可能opened为false
+-		return
+-	}
+-
+-	if err := m.fragment.CloseFile(); err != nil {
+ 		Log.Errorf("[%s] close fragment error. err=%+v", m.UniqueKey, err)
+-		return
+ 	}
+-
+-	m.opened = false
+-
+-	// 更新序号，为下个分片做准备
+-	// 注意，后面使用序号的逻辑，都依赖该处
+-	m.incrFrag()
+-
+-	// 找出时长最长的fragment
+-	maxFrag := float64(m.config.FragmentDurationMs) / 1000
+-	for i := 0; i < m.nfrags; i++ {
+-		frag := m.getFrag(i)
+-		if frag.duration > maxFrag {
+-			maxFrag = frag.duration + 0.5
+-		}
+-	}
+-
+-	// TODO chef 优化这块buffer的构造
+-	var buf bytes.Buffer
+-	buf.WriteString("#EXTM3U\n")
+-	buf.WriteString("#EXT-X-VERSION:3\n")
+-	buf.WriteString("#EXT-X-ALLOW-CACHE:NO\n")
+-	buf.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", int(maxFrag)))
+-	buf.WriteString(fmt.Sprintf("#EXT-X-MEDIA-SEQUENCE:%d\n\n", m.extXMediaSeq()))
+-
+-	for i := 0; i < m.nfrags; i++ {
+-		frag := m.getFrag(i)
+-		if frag.discont {
+-			buf.WriteString("#EXT-X-DISCONTINUITY\n")
+-		}
+-
+-		buf.WriteString(fmt.Sprintf("#EXTINF:%.3f,\n%s\n", frag.duration, frag.filename))
+-	}
+-
+-	buf.WriteString("#EXT-X-ENDLIST\n")
+-
+-	if err := writeM3u8File(buf.Bytes(), m.playlistFilename, m.playlistFilenameBak); err != nil {
+-		Log.Errorf("[%s] write live m3u8 file error. err=%+v", m.UniqueKey, err)
+-	}
+-
+-	if m.config.CleanupMode == CleanupModeNever || m.config.CleanupMode == CleanupModeInTheEnd {
+-		recordWriteReady := true
+-		// 找出整个直播流从开始到结束最大的分片时长
+-		currFrag := m.getClosedFrag()
+-		if currFrag.duration > m.recordMaxFragDuration {
+-			m.recordMaxFragDuration = currFrag.duration + 0.5
+-		}
+-
+-		fragLines := fmt.Sprintf("#EXTINF:%.3f,\n%s\n", currFrag.duration, currFrag.filename)
+-
+-		content, err := fslCtx.ReadFile(m.recordPlayListFilename)
+-		if err == nil {
+-			// m3u8文件已经存在
+-
+-			content = bytes.TrimSuffix(content, []byte("#EXT-X-ENDLIST\n"))
+-			content, err = updateTargetDurationInM3u8(content, int(m.recordMaxFragDuration))
+-			if err != nil {
+-				Log.Errorf("[%s] update target duration failed. err=%+v", m.UniqueKey, err)
+-				recordWriteReady = false
+-			}
+-
+-			if recordWriteReady {
+-				if currFrag.discont {
+-					content = append(content, []byte("#EXT-X-DISCONTINUITY\n")...)
+-				}
+-
+-				content = append(content, []byte(fragLines)...)
+-				content = append(content, []byte("#EXT-X-ENDLIST\n")...)
+-			}
+-
+-		} else {
+-			// m3u8文件不存在
+-			var buf bytes.Buffer
+-			buf.WriteString("#EXTM3U\n")
+-			buf.WriteString("#EXT-X-VERSION:3\n")
+-			buf.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", int(m.recordMaxFragDuration)))
+-			buf.WriteString(fmt.Sprintf("#EXT-X-MEDIA-SEQUENCE:%d\n\n", 0))
+-
+-			if currFrag.discont {
+-				buf.WriteString("#EXT-X-DISCONTINUITY\n")
+-			}
+-
+-			buf.WriteString(fragLines)
+-			buf.WriteString("#EXT-X-ENDLIST\n")
+-
+-			content = buf.Bytes()
+-		}
+-
+-		if recordWriteReady {
+-			if err := writeM3u8File(content, m.recordPlayListFilename, m.recordPlayListFilenameBak); err != nil {
+-				Log.Errorf("[%s] write record m3u8 file error. err=%+v", m.UniqueKey, err)
+-			}
+-		}
+-	}
+-	if m.config.CleanupMode == CleanupModeAsap {
+-		frag := m.getDeleteFrag()
+-		if frag.filename != "" {
+-			filenameWithPath := PathStrategy.GetTsFileNameWithPath(m.outPath, frag.filename)
+-			if err := fslCtx.Remove(filenameWithPath); err != nil {
+-				Log.Warnf("[%s] remove stale fragment file failed. filename=%s, err=%+v", m.UniqueKey, filenameWithPath, err)
+-			}
+-		}
+-	}
+-
+-	if m.observer == nil {
+-		return
+-	}
+-
+-	currFrag := m.getClosedFrag()
+-	m.observer.OnHlsMakeTs(base.HlsMakeTsInfo{
+-		Event:          "close",
+-		StreamName:     m.streamName,
+-		Cwd:            base.GetWd(),
+-		TsFile:         PathStrategy.GetTsFileNameWithPath(m.outPath, currFrag.filename),
+-		LiveM3u8File:   m.playlistFilename,
+-		RecordM3u8File: m.recordPlayListFilename,
+-		Id:             currFrag.id,
+-		Duration:       currFrag.duration,
+-	})
+-	return
+ }
+ 
+ // ---------------------------------------------------------------------------------------------------------------------
+@@ -274,182 +149,32 @@ func (m *Muxer) FeedPatPmt(b []byte) {
+ }
+ 
+ func (m *Muxer) FeedMpegts(tsPackets []byte, frame *mpegts.Frame, boundary bool) {
++	//Log.Debugf("> FeedMpegts. boundary=%v, frame=%p, sid=%d", boundary, frame, frame.Sid)
+-	ts := frame.Dts
+ 	if frame.Sid == mpegts.StreamIdAudio {
++		// TODO(chef): 为什么音频用pts，视频用dts
++		if err := m.updateFragment(frame.Pts, boundary, frame); err != nil {
++			Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
++			return
++		}
++		if !m.opened {
++			Log.Warnf("[%s] FeedMpegts A not opened. boundary=%t", m.UniqueKey, boundary)
++			return
+-		ts = frame.Pts
+-	}
+-	{
+-		rotateOnBoundary := boundary
+-		discont := true
+-
+-		// 如果已经有TS切片，检查是否需要强制开启新的切片，以及切片是否发生跳跃
+-		// 注意，音频和视频是在一起检查的
+-		if m.opened {
+-			f := &m.frags[(m.frag+m.nfrags)%(m.config.FragmentNum+m.config.DeleteThreshold+1)]
+-
+-			// 以下情况，强制开启新的分片：
+-			// 1. 当前时间戳 - 当前分片的初始时间戳 > 配置中单个ts分片时长的10倍
+-			//    原因可能是：
+-			//        1. 当前包的时间戳发生了大的跳跃
+-			//        2. 一直没有I帧导致没有合适的时间重新切片，堆积的包达到阈值
+-			// 2. 往回跳跃超过了阈值
+-			//
+-			maxfraglen := uint64(m.config.FragmentDurationMs * 90 * 10)
+-			if (ts > m.fragTs && ts-m.fragTs > maxfraglen) || (m.fragTs > ts && m.fragTs-ts > negMaxfraglen) {
+-				Log.Warnf("[%s] force fragment split. fragTs=%d, ts=%d, frame=%s", m.UniqueKey, m.fragTs, ts, frame.DebugString())
+-
+-				if err := m.closeFragment(false); err != nil {
+-					Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
+-					return
+-				}
+-				{
+-					if m.opened {
+-						err := nazaerrors.Wrap(base.ErrHls)
+-						Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
+-						return
+-					}
+-
+-					id := m.getFragmentId()
+-
+-					filename := PathStrategy.GetTsFileName(m.streamName, id, int(Clock.Now().UnixNano()/1e6))
+-					filenameWithPath := PathStrategy.GetTsFileNameWithPath(m.outPath, filename)
+-
+-					var err error
+-					m.fragment.fp, err = fslCtx.Create(filenameWithPath)
+-					if err != nil {
+-						Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
+-						return
+-					}
+-
+-					if _, err := m.fragment.fp.Write(m.patpmt); err != nil {
+-						Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
+-						return
+-					}
+-
+-					m.opened = true
+-
+-					frag := &m.frags[(m.frag+m.nfrags)%(m.config.FragmentNum+m.config.DeleteThreshold+1)]
+-					frag.discont = true
+-					frag.id = id
+-					frag.filename = filename
+-					frag.duration = 0
+-
+-					m.fragTs = ts
+-
+-					if m.observer != nil {
+-
+-						// nrm said: start fragment with audio to make iPhone happy
+-						m.observer.OnFragmentOpen()
+-
+-						m.observer.OnHlsMakeTs(base.HlsMakeTsInfo{
+-							Event:          "open",
+-							StreamName:     m.streamName,
+-							Cwd:            base.GetWd(),
+-							TsFile:         filenameWithPath,
+-							LiveM3u8File:   m.playlistFilename,
+-							RecordM3u8File: m.recordPlayListFilename,
+-							Id:             id,
+-							Duration:       frag.duration,
+-						})
+-
+-					}
+-				}
+-			}
+-
+-			// 更新当前分片的时间长度
+-			//
+-			// TODO chef:
+-			// f.duration（也即写入m3u8中记录分片时间长度）的做法我觉得有问题
+-			// 此处用最新收到的数据更新f.duration
+-			// 但是假设fragment翻滚，数据可能是写入下一个分片中
+-			// 是否就导致了f.duration和实际分片时间长度不一致
+-			if ts > m.fragTs {
+-				duration := float64(ts-m.fragTs) / 90000
+-				if duration > f.duration {
+-					f.duration = duration
+-				}
+-			}
+-			discont = false
+-
+-			// 已经有TS切片，切片时长没有达到设置的阈值，则不开启新的切片
+-			if f.duration < float64(m.config.FragmentDurationMs)/1000 {
+-				rotateOnBoundary = false
+-			}
+ 		}
++		//Log.Debugf("[%s] WriteFrame A. dts=%d, len=%d", m.UniqueKey, frame.DTS, len(frame.Raw))
++	} else {
++		if err := m.updateFragment(frame.Dts, boundary, frame); err != nil {
++			Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
++			return
+-
+-		// 开启新的fragment
+-		// 此时的情况是，上层认为是合适的开启分片的时机（比如是I帧），并且
+-		// 1. 当前是第一个分片
+-		// 2. 当前不是第一个分片，但是上一个分片已经达到配置时长
+-		if rotateOnBoundary {
+-			if err := m.closeFragment(false); err != nil {
+-				Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
+-				return
+-			}
+-			{
+-				if m.opened {
+-					err := nazaerrors.Wrap(base.ErrHls)
+-					Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
+-					return
+-				}
+-
+-				id := m.getFragmentId()
+-
+-				filename := PathStrategy.GetTsFileName(m.streamName, id, int(Clock.Now().UnixNano()/1e6))
+-				filenameWithPath := PathStrategy.GetTsFileNameWithPath(m.outPath, filename)
+-
+-				var err error
+-				m.fragment.fp, err = fslCtx.Create(filenameWithPath)
+-				if err != nil {
+-					Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
+-					return
+-				}
+-
+-				if _, err := m.fragment.fp.Write(m.patpmt); err != nil {
+-					Log.Errorf("[%s] update fragment error. err=%+v", m.UniqueKey, err)
+-					return
+-				}
+-
+-				m.opened = true
+-
+-				frag := &m.frags[(m.frag+m.nfrags)%(m.config.FragmentNum+m.config.DeleteThreshold+1)]
+-				frag.discont = discont
+-				frag.id = id
+-				frag.filename = filename
+-				frag.duration = 0
+-
+-				m.fragTs = ts
+-
+-				if m.observer != nil {
+-
+-					// nrm said: start fragment with audio to make iPhone happy
+-					m.observer.OnFragmentOpen()
+-
+-					m.observer.OnHlsMakeTs(base.HlsMakeTsInfo{
+-						Event:          "open",
+-						StreamName:     m.streamName,
+-						Cwd:            base.GetWd(),
+-						TsFile:         filenameWithPath,
+-						LiveM3u8File:   m.playlistFilename,
+-						RecordM3u8File: m.recordPlayListFilename,
+-						Id:             id,
+-						Duration:       frag.duration,
+-					})
+-
+-				}
+-			}
+ 		}
++		if !m.opened {
++			// 走到这，可能是第一个包并且boundary为false
+-
+-	}
+-	if !m.opened {
+-		if frame.Sid == mpegts.StreamIdAudio {
+-			Log.Warnf("[%s] FeedMpegts A not opened. boundary=%t", m.UniqueKey, boundary)
+-		} else {
+ 			Log.Warnf("[%s] FeedMpegts V not opened. boundary=%t, key=%t", m.UniqueKey, boundary, frame.Key)
++			return
+ 		}
++		//Log.Debugf("[%s] WriteFrame V. dts=%d, len=%d", m.UniqueKey, frame.Dts, len(frame.Raw))
+-		return
+ 	}
++
++	if err := m.fragment.WriteFile(tsPackets); err != nil {
+-	if _, err := m.fragment.fp.Write(tsPackets); err != nil {
+ 		Log.Errorf("[%s] fragment write error. err=%+v", m.UniqueKey, err)
+ 		return
+ 	}
+@@ -470,12 +195,123 @@ func (m *Muxer) OutPath() string {
+ // @param frame: 内部只在打日志时使用
+ //
+ // @return: 理论上，只有文件操作失败才会返回错误
++func (m *Muxer) updateFragment(ts uint64, boundary bool, frame *mpegts.Frame) error {
++	discont := true
++
++	// 如果已经有TS切片，检查是否需要强制开启新的切片，以及切片是否发生跳跃
++	// 注意，音频和视频是在一起检查的
++	if m.opened {
++		f := m.getCurrFrag()
++
++		// 以下情况，强制开启新的分片：
++		// 1. 当前时间戳 - 当前分片的初始时间戳 > 配置中单个ts分片时长的10倍
++		//    原因可能是：
++		//        1. 当前包的时间戳发生了大的跳跃
++		//        2. 一直没有I帧导致没有合适的时间重新切片，堆积的包达到阈值
++		// 2. 往回跳跃超过了阈值
++		//
++		maxfraglen := uint64(m.config.FragmentDurationMs * 90 * 10)
++		if (ts > m.fragTs && ts-m.fragTs > maxfraglen) || (m.fragTs > ts && m.fragTs-ts > negMaxfraglen) {
++			Log.Warnf("[%s] force fragment split. fragTs=%d, ts=%d, frame=%s", m.UniqueKey, m.fragTs, ts, frame.DebugString())
++
++			if err := m.closeFragment(false); err != nil {
++				return err
++			}
++			if err := m.openFragment(ts, true); err != nil {
++				return err
++			}
++		}
++
++		// 更新当前分片的时间长度
++		//
++		// TODO chef:
++		// f.duration（也即写入m3u8中记录分片时间长度）的做法我觉得有问题
++		// 此处用最新收到的数据更新f.duration
++		// 但是假设fragment翻滚，数据可能是写入下一个分片中
++		// 是否就导致了f.duration和实际分片时间长度不一致
++		if ts > m.fragTs {
++			duration := float64(ts-m.fragTs) / 90000
++			if duration > f.duration {
++				f.duration = duration
++			}
++		}
++		discont = false
++
++		// 已经有TS切片，切片时长没有达到设置的阈值，则不开启新的切片
++		if f.duration < float64(m.config.FragmentDurationMs)/1000 {
++			return nil
++		}
++	}
++
++	// 开启新的fragment
++	// 此时的情况是，上层认为是合适的开启分片的时机（比如是I帧），并且
++	// 1. 当前是第一个分片
++	// 2. 当前不是第一个分片，但是上一个分片已经达到配置时长
++	if boundary {
++		if err := m.closeFragment(false); err != nil {
++			return err
++		}
++		if err := m.openFragment(ts, discont); err != nil {
++			return err
++		}
++	}
++
++	return nil
++}
+ 
+ // openFragment
+ //
+ // @param discont: 不连续标志，会在m3u8文件的fragment前增加`#EXT-X-DISCONTINUITY`
+ //
+ // @return: 理论上，只有文件操作失败才会返回错误
++func (m *Muxer) openFragment(ts uint64, discont bool) error {
++	if m.opened {
++		return nazaerrors.Wrap(base.ErrHls)
++	}
++
++	id := m.getFragmentId()
++
++	filename := PathStrategy.GetTsFileName(m.streamName, id, int(Clock.Now().UnixNano()/1e6))
++	filenameWithPath := PathStrategy.GetTsFileNameWithPath(m.outPath, filename)
++
++	if err := m.fragment.OpenFile(filenameWithPath); err != nil {
++		return err
++	}
++
++	if err := m.fragment.WriteFile(m.patpmt); err != nil {
++		return err
++	}
++
++	m.opened = true
++
++	frag := m.getCurrFrag()
++	frag.discont = discont
++	frag.id = id
++	frag.filename = filename
++	frag.duration = 0
++
++	m.fragTs = ts
++
++	if m.observer == nil {
++		return nil
++	}
++
++	// nrm said: start fragment with audio to make iPhone happy
++	m.observer.OnFragmentOpen()
++
++	m.observer.OnHlsMakeTs(base.HlsMakeTsInfo{
++		Event:          "open",
++		StreamName:     m.streamName,
++		Cwd:            base.GetWd(),
++		TsFile:         filenameWithPath,
++		LiveM3u8File:   m.playlistFilename,
++		RecordM3u8File: m.recordPlayListFilename,
++		Id:             id,
++		Duration:       frag.duration,
++	})
++
++	return nil
++}
+ 
+ // closeFragment
+ //
+@@ -496,39 +332,7 @@ func (m *Muxer) closeFragment(isLast bool) error {
+ 	// 注意，后面使用序号的逻辑，都依赖该处
+ 	m.incrFrag()
+ 
++	m.writePlaylist(isLast)
+-	// 找出时长最长的fragment
+-	maxFrag := float64(m.config.FragmentDurationMs) / 1000
+-	for i := 0; i < m.nfrags; i++ {
+-		frag := m.getFrag(i)
+-		if frag.duration > maxFrag {
+-			maxFrag = frag.duration + 0.5
+-		}
+-	}
+-
+-	// TODO chef 优化这块buffer的构造
+-	var buf bytes.Buffer
+-	buf.WriteString("#EXTM3U\n")
+-	buf.WriteString("#EXT-X-VERSION:3\n")
+-	buf.WriteString("#EXT-X-ALLOW-CACHE:NO\n")
+-	buf.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", int(maxFrag)))
+-	buf.WriteString(fmt.Sprintf("#EXT-X-MEDIA-SEQUENCE:%d\n\n", m.extXMediaSeq()))
+-
+-	for i := 0; i < m.nfrags; i++ {
+-		frag := m.getFrag(i)
+-		if frag.discont {
+-			buf.WriteString("#EXT-X-DISCONTINUITY\n")
+-		}
+-
+-		buf.WriteString(fmt.Sprintf("#EXTINF:%.3f,\n%s\n", frag.duration, frag.filename))
+-	}
+-
+-	if isLast {
+-		buf.WriteString("#EXT-X-ENDLIST\n")
+-	}
+-
+-	if err := writeM3u8File(buf.Bytes(), m.playlistFilename, m.playlistFilenameBak); err != nil {
+-		Log.Errorf("[%s] write live m3u8 file error. err=%+v", m.UniqueKey, err)
+-	}
+ 
+ 	if m.config.CleanupMode == CleanupModeNever || m.config.CleanupMode == CleanupModeInTheEnd {
+ 		m.writeRecordPlaylist()
+@@ -610,6 +414,40 @@ func (m *Muxer) writeRecordPlaylist() {
+ 	}
+ }
+ 
++func (m *Muxer) writePlaylist(isLast bool) {
++	// 找出时长最长的fragment
++	maxFrag := float64(m.config.FragmentDurationMs) / 1000
++	m.iterateFragsInPlaylist(func(frag *fragmentInfo) {
++		if frag.duration > maxFrag {
++			maxFrag = frag.duration + 0.5
++		}
++	})
++
++	// TODO chef 优化这块buffer的构造
++	var buf bytes.Buffer
++	buf.WriteString("#EXTM3U\n")
++	buf.WriteString("#EXT-X-VERSION:3\n")
++	buf.WriteString("#EXT-X-ALLOW-CACHE:NO\n")
++	buf.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", int(maxFrag)))
++	buf.WriteString(fmt.Sprintf("#EXT-X-MEDIA-SEQUENCE:%d\n\n", m.extXMediaSeq()))
++
++	m.iterateFragsInPlaylist(func(frag *fragmentInfo) {
++		if frag.discont {
++			buf.WriteString("#EXT-X-DISCONTINUITY\n")
++		}
++
++		buf.WriteString(fmt.Sprintf("#EXTINF:%.3f,\n%s\n", frag.duration, frag.filename))
++	})
++
++	if isLast {
++		buf.WriteString("#EXT-X-ENDLIST\n")
++	}
++
++	if err := writeM3u8File(buf.Bytes(), m.playlistFilename, m.playlistFilenameBak); err != nil {
++		Log.Errorf("[%s] write live m3u8 file error. err=%+v", m.UniqueKey, err)
++	}
++}
++
+ func (m *Muxer) ensureDir() {
+ 	// 注意，如果路径已经存在，则啥也不干
+ 	err := fslCtx.MkdirAll(m.outPath, 0777)
+@@ -655,6 +493,12 @@ func (m *Muxer) getClosedFrag() *fragmentInfo {
+ }
+ 
+ // iterateFragsInPlaylist 遍历当前的列表，incrFrag()后调用
++func (m *Muxer) iterateFragsInPlaylist(fn func(*fragmentInfo)) {
++	for i := 0; i < m.nfrags; i++ {
++		frag := m.getFrag(i)
++		fn(frag)
++	}
++}
+ 
+ // extXMediaSeq 获取当前列表第一个TS的序号，incrFrag()后调用
+ func (m *Muxer) extXMediaSeq() int {
+diff --git a/pkg/httpflv/flv_file_pump.go b/pkg/httpflv/flv_file_pump.go
+index bc0074b..b884567 100644
+--- a/pkg/httpflv/flv_file_pump.go
++++ b/pkg/httpflv/flv_file_pump.go
+@@ -9,10 +9,8 @@
+ package httpflv
+ 
+ import (
+-	"io"
+ 	"time"
+ 
+-	"github.com/q191201771/naza/pkg/bele"
+ 	"github.com/q191201771/naza/pkg/mock"
+ )
+ 
+@@ -51,38 +49,10 @@ type OnPumpFlvTag func(tag Tag) bool
+ // @param onFlvTag 如果回调中返回false，则停止Pump
+ func (f *FlvFilePump) Pump(filename string, onFlvTag OnPumpFlvTag) error {
+ 	// 一次性将文件所有内容读入内存，后续不再读取文件
++	tags, err := ReadAllTagsFromFlvFile(filename)
+-	var tags []Tag
+-	var reader FlvFileReader
+-	defer reader.Dispose()
+-	err := reader.Open(filename)
+ 	if err != nil {
+ 		return err
+ 	}
+-	header := make([]byte, flvHeaderSize)
+-	_, _ = reader.fp.Read(header)
+-	for {
+-		var tag Tag
+-		rawHeader := make([]byte, TagHeaderSize)
+-		_, err = io.ReadAtLeast(reader.fp, rawHeader, TagHeaderSize)
+-		if err == nil {
+-			needed := int(bele.BeUint24(rawHeader[1:])) + PrevTagSizeFieldSize
+-			tag.Raw = make([]byte, TagHeaderSize+needed)
+-			copy(tag.Raw, rawHeader)
+-			_, err = io.ReadAtLeast(reader.fp, tag.Raw[TagHeaderSize:], needed)
+-		}
+-		if err != nil {
+-			if err == io.EOF {
+-				break
+-			}
+-			return err
+-		}
+-		tag.Header.Type = rawHeader[0]
+-		tag.Header.DataSize = bele.BeUint24(rawHeader[1:])
+-		tag.Header.Timestamp = uint32(rawHeader[7])<<24 + bele.BeUint24(rawHeader[4:])
+-		tags = append(tags, tag)
+-	}
+-	reader.Dispose()
+-	reader.fp = nil
+ 
+ 	return f.PumpWithTags(tags, onFlvTag)
+ }
+diff --git a/pkg/httpflv/util.go b/pkg/httpflv/util.go
+index aa7d166..6fa691c 100644
+--- a/pkg/httpflv/util.go
++++ b/pkg/httpflv/util.go
+@@ -8,11 +8,7 @@
+ 
+ package httpflv
+ 
++import "io"
+-import (
+-	"io"
+-
+-	"github.com/q191201771/naza/pkg/bele"
+-)
+ 
+ func ReadAllTagsFromFlvFile(filename string) ([]Tag, error) {
+ 	var tags []Tag
+@@ -24,18 +20,8 @@ func ReadAllTagsFromFlvFile(filename string) ([]Tag, error) {
+ 		return nil, err
+ 	}
+ 
+-	header := make([]byte, flvHeaderSize)
+-	_, _ = ffr.fp.Read(header)
+ 	for {
++		tag, err := ffr.ReadTag()
+-		var tag Tag
+-		rawHeader := make([]byte, TagHeaderSize)
+-		_, err = io.ReadAtLeast(ffr.fp, rawHeader, TagHeaderSize)
+-		if err == nil {
+-			needed := int(bele.BeUint24(rawHeader[1:])) + PrevTagSizeFieldSize
+-			tag.Raw = make([]byte, TagHeaderSize+needed)
+-			copy(tag.Raw, rawHeader)
+-			_, err = io.ReadAtLeast(ffr.fp, tag.Raw[TagHeaderSize:], needed)
+-		}
+ 		if err != nil {
+ 			if err == io.EOF {
+ 				return tags, nil
+@@ -43,9 +29,6 @@ func ReadAllTagsFromFlvFile(filename string) ([]Tag, error) {
+ 				return tags, err
+ 			}
+ 		}
+-		tag.Header.Type = rawHeader[0]
+-		tag.Header.DataSize = bele.BeUint24(rawHeader[1:])
+-		tag.Header.Timestamp = uint32(rawHeader[7])<<24 + bele.BeUint24(rawHeader[4:])
+ 		tags = append(tags, tag)
+ 	}
+ 	// never reach here
+diff --git a/pkg/remux/rtmp2avpacket.go b/pkg/remux/rtmp2avpacket.go
+index 78e3289..5c4844d 100644
+--- a/pkg/remux/rtmp2avpacket.go
++++ b/pkg/remux/rtmp2avpacket.go
+@@ -9,12 +9,8 @@
+ package remux
+ 
+ import (
+-	"github.com/q191201771/lal/pkg/avc"
+ 	"github.com/q191201771/lal/pkg/base"
+ 	"github.com/q191201771/lal/pkg/h2645"
+-	"github.com/q191201771/naza/pkg/bele"
+-	"github.com/q191201771/naza/pkg/nazabytes"
+-	"github.com/q191201771/naza/pkg/nazaerrors"
+ )
+ 
+ // TODO(chef): 该文件处于开发阶段，请不要直接使用
+@@ -63,9 +59,16 @@ func (r *Rtmp2AvPacketRemuxer) WithOnAvPacket(onAvPacket func(pkt base.AvPacket,
+ }
+ 
+ func (r *Rtmp2AvPacketRemuxer) FeedRtmpMsg(msg base.RtmpMsg, arg interface{}) error {
++	switch msg.Header.MsgTypeId {
++	case base.RtmpTypeIdVideo:
++		return r.feedVideo(msg, arg)
+-	if msg.Header.MsgTypeId != base.RtmpTypeIdVideo {
+-		return nil
+ 	}
++	return nil
++}
++
++// ---------------------------------------------------------------------------------------------------------------------
++
++func (r *Rtmp2AvPacketRemuxer) feedVideo(msg base.RtmpMsg, arg interface{}) error {
+ 	if len(msg.Payload) <= 5 {
+ 		return nil
+ 	}
+@@ -81,42 +84,8 @@ func (r *Rtmp2AvPacketRemuxer) feedVideo(msg base.RtmpMsg, arg interface{}) erro
+ 	var out []byte
+ 	var vps, sps, pps []byte
+ 	appendSpsppsFlag := false
++	err = h2645.IterateNaluAvcc(msg.Payload[5:], func(nal []byte) {
+-	nals := msg.Payload[5:]
+-	pos := 0
+-	for {
+-		if len(nals[pos:]) < 4 {
+-			err = nazaerrors.Wrap(base.ErrShortBuffer)
+-			break
+-		}
+-		length := int(bele.BeUint32(nals[pos:]))
+-		pos += 4
+-		if pos == len(nals) {
+-			err = nazaerrors.Wrap(base.ErrShortBuffer)
+-			break
+-		}
+-		epos := pos + length
+-		if length == 0 && epos <= len(nals) {
+-			avc.Log.Warnf("avcc nalu length equal 0. nals=%s", nazabytes.Prefix(nals, 128))
+-			continue
+-		}
+-		truncated := epos > len(nals)
+-		if truncated {
+-			epos = len(nals)
+-		}
+-		nal := nals[pos:epos]
+-		pos = epos
+-
+ 		nalType := h2645.ParseNaluType(isH264, nal[0])
+-		if r.option.EraseSeiFlag && ((isH264 && nalType == h2645.H264NaluTypeSei) || (!isH264 && nalType == h2645.H265NaluTypeSei)) {
+-			if truncated {
+-				err = nazaerrors.Wrap(base.ErrShortBuffer)
+-				break
+-			}
+-			if pos == len(nals) {
+-				break
+-			}
+-			continue
+-		}
+ 
+ 		if isH264 {
+ 			if nalType == h2645.H264NaluTypeSps {
+@@ -138,6 +107,13 @@ func (r *Rtmp2AvPacketRemuxer) feedVideo(msg base.RtmpMsg, arg interface{}) erro
+ 
+ 				out = append(out, h2645.NaluStartCode4...)
+ 				out = append(out, nal...)
++			} else if nalType == h2645.H264NaluTypeSei {
++				if r.option.EraseSeiFlag {
++					// noop
++				} else {
++					out = append(out, h2645.NaluStartCode4...)
++					out = append(out, nal...)
++				}
+ 			} else {
+ 				out = append(out, h2645.NaluStartCode4...)
+ 				out = append(out, nal...)
+@@ -166,19 +142,20 @@ func (r *Rtmp2AvPacketRemuxer) feedVideo(msg base.RtmpMsg, arg interface{}) erro
+ 
+ 				out = append(out, h2645.NaluStartCode4...)
+ 				out = append(out, nal...)
++			} else if nalType == h2645.H265NaluTypeSei {
++				if r.option.EraseSeiFlag {
++					// noop
++				} else {
++					out = append(out, h2645.NaluStartCode4...)
++					out = append(out, nal...)
++				}
+ 			} else {
+ 				out = append(out, h2645.NaluStartCode4...)
+ 				out = append(out, nal...)
+ 			}
+ 		}
++	})
++
+-		if truncated {
+-			err = nazaerrors.Wrap(base.ErrShortBuffer)
+-			break
+-		}
+-		if pos == len(nals) {
+-			break
+-		}
+-	}
+ 	if len(out) > 0 {
+ 		pkt := base.AvPacket{
+ 			Timestamp: int64(msg.Header.TimestampAbs),
+@@ -198,8 +175,6 @@ func (r *Rtmp2AvPacketRemuxer) feedVideo(msg base.RtmpMsg, arg interface{}) erro
+ 
+ // ---------------------------------------------------------------------------------------------------------------------
+ 
+-// ---------------------------------------------------------------------------------------------------------------------
+-
+ func defaultOnAvPacket(pkt base.AvPacket, arg interface{}) {
+ 	// noop
+ }
+diff --git a/pkg/remux/rtmp2mpegts.go b/pkg/remux/rtmp2mpegts.go
+index 6ef7afb..fa44650 100644
+--- a/pkg/remux/rtmp2mpegts.go
++++ b/pkg/remux/rtmp2mpegts.go
+@@ -10,7 +10,6 @@ package remux
+ 
+ import (
+ 	"encoding/hex"
+-	"math"
+ 
+ 	"github.com/q191201771/lal/pkg/aac"
+ 	"github.com/q191201771/lal/pkg/avc"
+@@ -124,29 +123,7 @@ func NewRtmp2MpegtsRemuxer(observer IRtmp2MpegtsRemuxerObserver) *Rtmp2MpegtsRem
+ //
+ // @param msg: msg.Payload 调用结束后，函数内部不会持有这块内存
+ func (s *Rtmp2MpegtsRemuxer) FeedRtmpMessage(msg base.RtmpMsg) {
++	s.filter.Push(msg)
+-	q := s.filter
+-	if q.done {
+-		q.observer.onPop(msg)
+-		return
+-	}
+-	q.data = append(q.data, base.RtmpMsg{Header: msg.Header, Payload: make([]byte, len(msg.Payload))})
+-	copy(q.data[len(q.data)-1].Payload, msg.Payload)
+-	switch msg.Header.MsgTypeId {
+-	case base.RtmpTypeIdAudio:
+-		q.audioCodecId = int(msg.Payload[0] >> 4)
+-	case base.RtmpTypeIdVideo:
+-		q.videoCodecId = int(msg.VideoCodecId())
+-	}
+-	if (q.videoCodecId != -1 && q.audioCodecId != -1) || len(q.data) >= q.maxMsgSize {
+-		patpmt := mpegts.PackPat()
+-		patpmt = append(patpmt, mpegts.PackPmt(q.videoCodecId, q.audioCodecId)...)
+-		q.observer.onPatPmt(patpmt)
+-		for i := range q.data {
+-			q.observer.onPop(q.data[i])
+-		}
+-		q.data = nil
+-		q.done = true
+-	}
+ }
+ 
+ func (s *Rtmp2MpegtsRemuxer) Dispose() {
+@@ -162,7 +139,7 @@ func (s *Rtmp2MpegtsRemuxer) Dispose() {
+ // 2. 打开一个新的TS文件切片时
+ // 3. 输入流关闭时
+ func (s *Rtmp2MpegtsRemuxer) FlushAudio() {
++	if s.audioCacheEmpty() {
+-	if len(s.audioCacheFrames) == 0 {
+ 		return
+ 	}
+ 
+@@ -177,31 +154,9 @@ func (s *Rtmp2MpegtsRemuxer) FlushAudio() {
+ 	frame.Sid = mpegts.StreamIdAudio
+ 
+ 	// 注意，在回调前设置为空，因为回调中有可能再次调用FlushAudio
++	s.resetAudioCache()
+-	s.audioCacheFrames = s.audioCacheFrames[0:0]
+-
+-	//Log.Debugf("in frame=%s", frame.DebugString())
+-	clock := &s.timestampFilter
+-	if clock.basicAudioDts == math.MaxUint64 {
+-		clock.basicAudioDts = frame.Dts
+-	}
+-	if frame.Dts < clock.basicAudioDts {
+-		Log.Warnf("[%s] audio dts invalid. dts=%d, base=%d, frame=%s", clock.uk, frame.Dts, clock.basicAudioDts, frame.DebugString())
+-	} else {
+-		frame.Dts -= clock.basicAudioDts
+-	}
+-	frame.Pts = frame.Dts + 90*uint64(frame.Cts)
+-	//Log.Debugf("ou frame=%s", frame.DebugString())
+-
+-	boundary := len(s.spspps) == 0
+-
+-	if boundary {
+-		s.opened = true
+-	}
+-
+-	packets := frame.Pack()
+ 
++	s.onFrame(&frame)
+-	//nazalog.Debugf("> OnTsPackets. frame=%s, boundary=%v, packets=%d", frame.DebugString(), boundary, len(packets))
+-	s.observer.OnTsPackets(packets, &frame, boundary)
+ 	// 回调结束后更新cc
+ 	s.audioCc = frame.Cc
+ }
+@@ -225,270 +180,315 @@ func (s *Rtmp2MpegtsRemuxer) onPop(msg base.RtmpMsg) {
+ 		if msg.AudioCodecId() != base.RtmpSoundFormatAac && msg.AudioCodecId() != base.RtmpSoundFormatOpus {
+ 			return
+ 		}
++		s.feedAudio(msg)
++	case base.RtmpTypeIdVideo:
++		s.feedVideo(msg)
++	}
++}
++
++// ---------------------------------------------------------------------------------------------------------------------
++
++func (s *Rtmp2MpegtsRemuxer) feedVideo(msg base.RtmpMsg) {
++	if len(msg.Payload) <= 5 {
++		Log.Warnf("[%s] rtmp msg too short, ignore. header=%+v, payload=%s", s.uk, msg.Header, hex.Dump(msg.Payload))
++		return
++	}
++
++	codecId := msg.VideoCodecId()
++	if codecId != base.RtmpCodecIdAvc && codecId != base.RtmpCodecIdHevc {
++		return
++	}
+-		if len(msg.Payload) <= 2 {
+-			Log.Warnf("[%s] rtmp msg too short, ignore. header=%+v, payload=%s", s.uk, msg.Header, hex.Dump(msg.Payload))
+-			return
+-		}
+ 
++	// 将数据转换成Annexb
+-		//Log.Debugf("[%s] hls: feedAudio. dts=%d len=%d", s.uk, msg.Header.TimestampAbs, len(msg.Payload))
+ 
++	// 如果是seq header sps pps，缓存住，然后直接返回
++	var err error
++	if msg.IsAvcKeySeqHeader() {
++		if s.spspps, err = avc.SpsPpsSeqHeader2Annexb(msg.Payload); err != nil {
++			Log.Errorf("[%s] cache spspps failed. err=%+v", s.uk, err)
++		}
++		return
++	} else if msg.IsHevcKeySeqHeader() {
++		if msg.IsEnhanced() {
++			if s.spspps, err = hevc.VpsSpsPpsEnhancedSeqHeader2Annexb(msg.Payload); err != nil {
++				Log.Errorf("[%s] cache vpsspspps failed. err=%+v", s.uk, err)
+-		if msg.AudioCodecId() == base.RtmpSoundFormatAac {
+-			if msg.Payload[1] == base.RtmpAacPacketTypeSeqHeader {
+-				var err error
+-				s.ascCtx, err = aac.NewAscContext(msg.Payload[2:])
+-				if err != nil {
+-					Log.Errorf("[%s] cache aac seq header failed. err=%+v", s.uk, err)
+-				}
+-				return
+ 			}
++		} else {
++			if s.spspps, err = hevc.VpsSpsPpsSeqHeader2Annexb(msg.Payload); err != nil {
++				Log.Errorf("[%s] cache vpsspspps failed. err=%+v", s.uk, err)
+-
+-			if !(s.ascCtx != nil) {
+-				Log.Warnf("[%s] feed audio message but aac seq header not exist.", s.uk)
+-				return
+ 			}
+ 		}
+ 
++		return
++	}
+-		pts := uint64(msg.Header.TimestampAbs) * 90
+-		if msg.AudioCodecId() == base.RtmpSoundFormatAac {
+-			if !(len(s.audioCacheFrames) == 0) && s.audioCacheFirstFramePts+maxAudioCacheDelayByAudio < pts {
+-				s.FlushAudio()
+-			}
+ 
++	audSent := false
++	spsppsSent := false
++	s.resetVideoOutBuffer()
+-			if len(s.audioCacheFrames) == 0 {
+-				s.audioCacheFirstFramePts = pts
+-			}
+ 
++	// msg中可能有多个NALU，逐个获取
++	var nals [][]byte
++	if codecId == base.RtmpCodecIdHevc && msg.IsEnchanedHevcNalu() {
++		index := msg.GetEnchanedHevcNaluIndex()
++		nals, err = avc.SplitNaluAvcc(msg.Payload[index:])
++	} else {
++		nals, err = avc.SplitNaluAvcc(msg.Payload[5:])
++	}
++	if err != nil {
++		Log.Errorf("[%s] iterate nalu failed. err=%+v, header=%+v, payload=%s", err, s.uk, msg.Header, hex.Dump(nazabytes.Prefix(msg.Payload, 32)))
++		return
++	}
+-			profile := (s.ascCtx.AudioObjectType - 1) & 3
+-			frequency := s.ascCtx.SamplingFrequencyIndex & 15
+-			channels := s.ascCtx.ChannelConfiguration & 7
+-			length := uint16(int(msg.Header.MsgLen-2)+aac.AdtsHeaderLength) & 0x1fff
+-			s.audioCacheFrames = append(s.audioCacheFrames, 0xff, 0xf1, profile<<6|frequency<<2|channels>>2, channels<<6|uint8(length>>11), uint8(length>>3), uint8(length<<5)|0x1f, 0xfc)
+-			s.audioCacheFrames = append(s.audioCacheFrames, msg.Payload[2:]...)
+-		} else {
+-			s.audioCacheFirstFramePts = pts
+-			s.audioCacheFrames = append(s.audioCacheFrames, msg.Payload[1:]...)
+-			s.FlushAudio()
+-		}
+-	case base.RtmpTypeIdVideo:
+-		if len(msg.Payload) <= 5 {
+-			Log.Warnf("[%s] rtmp msg too short, ignore. header=%+v, payload=%s", s.uk, msg.Header, hex.Dump(msg.Payload))
+-			return
+-		}
+ 
++	var vps, sps, pps []byte
++	for _, nal := range nals {
++		var nalType uint8
++		switch codecId {
++		case base.RtmpCodecIdAvc:
++			nalType = avc.ParseNaluType(nal[0])
++		case base.RtmpCodecIdHevc:
++			nalType = hevc.ParseNaluType(nal[0])
+-		codecId := msg.VideoCodecId()
+-		if codecId != base.RtmpCodecIdAvc && codecId != base.RtmpCodecIdHevc {
+-			return
+ 		}
+ 
++		// 处理 sps pps aud
++		//
++		// aud 过滤掉，我们有自己的添加aud的逻辑
++		//
++		// sps pps
++		// 注意，有的流，seq header中的sps和pps是错误的，需要从nals里获取sps pps并更新
++		// 见 https://github.com/q191201771/lal/issues/143
++		//
++		// TODO(chef): rtmp转其他类型的模块也存在这个问题，应该抽象出一个统一处理的地方
++		//
++		if codecId == base.RtmpCodecIdAvc {
++			if nalType == avc.NaluTypeAud {
++				continue
++			} else if nalType == avc.NaluTypeSps {
++				sps = nal
++				continue
++			} else if nalType == avc.NaluTypePps {
++				pps = nal
++				if len(sps) != 0 && len(pps) != 0 {
++					s.spspps = s.spspps[0:0]
++					s.spspps = append(s.spspps, avc.NaluStartCode4...)
++					s.spspps = append(s.spspps, sps...)
++					s.spspps = append(s.spspps, avc.NaluStartCode4...)
++					s.spspps = append(s.spspps, pps...)
++				}
++				continue
++			}
++		} else if codecId == base.RtmpCodecIdHevc {
++			if nalType == hevc.NaluTypeSei || nalType == hevc.NaluTypeSeiSuffix {
++				// TODO(chef): [opt] 考虑缓存下来，放到关键帧前面 202208
++				continue
+-		// 将数据转换成Annexb
+-
+-		// 如果是seq header sps pps，缓存住，然后直接返回
+-		var err error
+-		if msg.IsAvcKeySeqHeader() {
+-			if s.spspps, err = avc.SpsPpsSeqHeader2Annexb(msg.Payload); err != nil {
+-				Log.Errorf("[%s] cache spspps failed. err=%+v", s.uk, err)
+ 			}
++			if nalType == hevc.NaluTypeAud {
++				continue
++			} else if nalType == hevc.NaluTypeVps {
++				vps = nal
++				continue
++			} else if nalType == hevc.NaluTypeSps {
++				sps = nal
++				continue
++			} else if nalType == hevc.NaluTypePps {
++				pps = nal
++				if len(vps) != 0 && len(sps) != 0 && len(pps) != 0 {
++					s.spspps = s.spspps[0:0]
++					s.spspps = append(s.spspps, avc.NaluStartCode4...)
++					s.spspps = append(s.spspps, vps...)
++					s.spspps = append(s.spspps, avc.NaluStartCode4...)
++					s.spspps = append(s.spspps, sps...)
++					s.spspps = append(s.spspps, avc.NaluStartCode4...)
++					s.spspps = append(s.spspps, pps...)
+-			return
+-		} else if msg.IsHevcKeySeqHeader() {
+-			if msg.IsEnhanced() {
+-				if s.spspps, err = hevc.VpsSpsPpsEnhancedSeqHeader2Annexb(msg.Payload); err != nil {
+-					Log.Errorf("[%s] cache vpsspspps failed. err=%+v", s.uk, err)
+-				}
+-			} else {
+-				if s.spspps, err = hevc.VpsSpsPpsSeqHeader2Annexb(msg.Payload); err != nil {
+-					Log.Errorf("[%s] cache vpsspspps failed. err=%+v", s.uk, err)
+ 				}
++				continue
+ 			}
+-
+-			return
+-		}
+-
+-		audSent := false
+-		spsppsSent := false
+-		s.videoOut = s.videoOut[0:0]
+-
+-		// msg中可能有多个NALU，逐个获取
+-		var nals [][]byte
+-		if codecId == base.RtmpCodecIdHevc && msg.IsEnchanedHevcNalu() {
+-			index := msg.GetEnchanedHevcNaluIndex()
+-			nals, err = avc.SplitNaluAvcc(msg.Payload[index:])
+-		} else {
+-			nals, err = avc.SplitNaluAvcc(msg.Payload[5:])
+-		}
+-		if err != nil {
+-			Log.Errorf("[%s] iterate nalu failed. err=%+v, header=%+v, payload=%s", err, s.uk, msg.Header, hex.Dump(nazabytes.Prefix(msg.Payload, 32)))
+-			return
+ 		}
+ 
++		// tag中的首个nalu前面写入aud
++		if !audSent {
++			// 注意，因为前面已经过滤了sps pps aud的信息，所以这里可以认为都是需要用aud分隔的，不需要单独判断了
++			//if codecId == base.RtmpCodecIdAvc && (nalType == avc.NaluTypeSei || nalType == avc.NaluTypeIdrSlice || nalType == avc.NaluTypeSlice) {
+-		var vps, sps, pps []byte
+-		for _, nal := range nals {
+-			var nalType uint8
+ 			switch codecId {
+ 			case base.RtmpCodecIdAvc:
++				s.videoOut = append(s.videoOut, avc.AudNalu...)
+-				nalType = avc.ParseNaluType(nal[0])
+ 			case base.RtmpCodecIdHevc:
++				s.videoOut = append(s.videoOut, hevc.AudNalu...)
+-				nalType = hevc.ParseNaluType(nal[0])
+ 			}
++			audSent = true
++		}
+ 
++		// 关键帧前追加sps pps
++		if codecId == base.RtmpCodecIdAvc {
++			// h264的逻辑，一个tag中，多个连续的关键帧只追加一个，不连续则每个关键帧前都追加。为什么要这样处理
++			switch nalType {
++			case avc.NaluTypeIdrSlice:
++				if !spsppsSent {
++					if s.videoOut, err = s.appendSpsPps(s.videoOut); err != nil {
++						Log.Warnf("[%s] append spspps by not exist.", s.uk)
++						return
+-			// 处理 sps pps aud
+-			//
+-			// aud 过滤掉，我们有自己的添加aud的逻辑
+-			//
+-			// sps pps
+-			// 注意，有的流，seq header中的sps和pps是错误的，需要从nals里获取sps pps并更新
+-			// 见 https://github.com/q191201771/lal/issues/143
+-			//
+-
+-			//
+-			if codecId == base.RtmpCodecIdAvc {
+-				if nalType == avc.NaluTypeAud {
+-					continue
+-				} else if nalType == avc.NaluTypeSps {
+-					sps = nal
+-					continue
+-				} else if nalType == avc.NaluTypePps {
+-					pps = nal
+-					if len(sps) != 0 && len(pps) != 0 {
+-						s.spspps = s.spspps[0:0]
+-						s.spspps = append(s.spspps, avc.NaluStartCode4...)
+-						s.spspps = append(s.spspps, sps...)
+-						s.spspps = append(s.spspps, avc.NaluStartCode4...)
+-						s.spspps = append(s.spspps, pps...)
+ 					}
+-					continue
+ 				}
++				spsppsSent = true
++			case avc.NaluTypeSlice:
++				// 这里只有P帧，没有SEI。为什么要这样处理
++				spsppsSent = false
++			}
++		} else {
++			// TODO(chef): [refactor] avc和hevc可以考虑再抽象一层高层的包，使得更上层代码简洁一些
++			if hevc.IsIrapNalu(nalType) {
++				if !spsppsSent {
++					if s.videoOut, err = s.appendSpsPps(s.videoOut); err != nil {
++						Log.Warnf("[%s] append spspps by not exist.", s.uk)
++						return
+-			} else if codecId == base.RtmpCodecIdHevc {
+-				if nalType == hevc.NaluTypeSei || nalType == hevc.NaluTypeSeiSuffix {
+-					// TODO(chef): [opt] 考虑缓存下来，放到关键帧前面 202208
+-					continue
+-				}
+-				if nalType == hevc.NaluTypeAud {
+-					continue
+-				} else if nalType == hevc.NaluTypeVps {
+-					vps = nal
+-					continue
+-				} else if nalType == hevc.NaluTypeSps {
+-					sps = nal
+-					continue
+-				} else if nalType == hevc.NaluTypePps {
+-					pps = nal
+-					if len(vps) != 0 && len(sps) != 0 && len(pps) != 0 {
+-						s.spspps = s.spspps[0:0]
+-						s.spspps = append(s.spspps, avc.NaluStartCode4...)
+-						s.spspps = append(s.spspps, vps...)
+-						s.spspps = append(s.spspps, avc.NaluStartCode4...)
+-						s.spspps = append(s.spspps, sps...)
+-						s.spspps = append(s.spspps, avc.NaluStartCode4...)
+-						s.spspps = append(s.spspps, pps...)
+ 					}
+-					continue
+ 				}
++				spsppsSent = true
++			} else {
++				// 这里简化了，只要不是关键帧，就刷新标志
++				spsppsSent = false
+ 			}
++		}
++
++		// 如果写入了aud或spspps，则用start code3，否则start code4。为什么要这样处理
++		// 这里不知为什么要区分写入两种类型的start code
++		if len(s.videoOut) == 0 {
++			s.videoOut = append(s.videoOut, avc.NaluStartCode4...)
++		} else {
++			s.videoOut = append(s.videoOut, avc.NaluStartCode3...)
++		}
++
++		s.videoOut = append(s.videoOut, nal...)
++	} // for loop
++
++	if len(s.videoOut) == 0 {
++		// 比如只有SEI nal或者非seq header的msg只有sps, pps, vps
++		return
++	}
+ 
++	dts := uint64(msg.Header.TimestampAbs) * 90
++
++	if !s.audioCacheEmpty() && s.audioCacheFirstFramePts+maxAudioCacheDelayByVideo < dts {
++		s.FlushAudio()
++	}
+-			// tag中的首个nalu前面写入aud
+-			if !audSent {
+-				// 注意，因为前面已经过滤了sps pps aud的信息，所以这里可以认为都是需要用aud分隔的，不需要单独判断了
+-				//if codecId == base.RtmpCodecIdAvc && (nalType == avc.NaluTypeSei || nalType == avc.NaluTypeIdrSlice || nalType == avc.NaluTypeSlice) {
+-				switch codecId {
+-				case base.RtmpCodecIdAvc:
+-					s.videoOut = append(s.videoOut, avc.AudNalu...)
+-				case base.RtmpCodecIdHevc:
+-					s.videoOut = append(s.videoOut, hevc.AudNalu...)
+-				}
+-				audSent = true
+-			}
+ 
++	var frame mpegts.Frame
++	frame.Cc = s.videoCc
++	frame.Dts = dts
++	frame.Cts = msg.Cts()
++	frame.Pts = frame.Dts + 90*uint64(frame.Cts)
++	frame.Key = msg.IsVideoKeyNalu()
++	frame.Raw = s.videoOut
++	frame.Pid = mpegts.PidVideo
++	frame.Sid = mpegts.StreamIdVideo
+-			// 关键帧前追加sps pps
+-			if codecId == base.RtmpCodecIdAvc {
+-				// h264的逻辑，一个tag中，多个连续的关键帧只追加一个，不连续则每个关键帧前都追加。为什么要这样处理
+-				switch nalType {
+-				case avc.NaluTypeIdrSlice:
+-					if !spsppsSent {
+-						if s.spspps == nil {
+-							Log.Warnf("[%s] append spspps by not exist.", s.uk)
+-							return
+-						}
+-						s.videoOut = append(s.videoOut, s.spspps...)
+-					}
+-					spsppsSent = true
+-				case avc.NaluTypeSlice:
+-					// 这里只有P帧，没有SEI。为什么要这样处理
+-					spsppsSent = false
+-				}
+-			} else {
+ 
++	s.onFrame(&frame)
++	s.videoCc = frame.Cc
++}
+-				if hevc.IsIrapNalu(nalType) {
+-					if !spsppsSent {
+-						if s.spspps == nil {
+-							Log.Warnf("[%s] append spspps by not exist.", s.uk)
+-							return
+-						}
+-						s.videoOut = append(s.videoOut, s.spspps...)
+-					}
+-					spsppsSent = true
+-				} else {
+-					// 这里简化了，只要不是关键帧，就刷新标志
+-					spsppsSent = false
+-				}
+-			}
+ 
++func (s *Rtmp2MpegtsRemuxer) feedAudio(msg base.RtmpMsg) {
++	if len(msg.Payload) <= 2 {
++		Log.Warnf("[%s] rtmp msg too short, ignore. header=%+v, payload=%s", s.uk, msg.Header, hex.Dump(msg.Payload))
++		return
++	}
+-			// 如果写入了aud或spspps，则用start code3，否则start code4。为什么要这样处理
+-			// 这里不知为什么要区分写入两种类型的start code
+-			if len(s.videoOut) == 0 {
+-				s.videoOut = append(s.videoOut, avc.NaluStartCode4...)
+-			} else {
+-				s.videoOut = append(s.videoOut, avc.NaluStartCode3...)
+-			}
+ 
++	//Log.Debugf("[%s] hls: feedAudio. dts=%d len=%d", s.uk, msg.Header.TimestampAbs, len(msg.Payload))
+-			s.videoOut = append(s.videoOut, nal...)
+-		} // for loop
+ 
++	if msg.AudioCodecId() == base.RtmpSoundFormatAac {
++		if msg.Payload[1] == base.RtmpAacPacketTypeSeqHeader {
++			if err := s.cacheAacSeqHeader(msg); err != nil {
++				Log.Errorf("[%s] cache aac seq header failed. err=%+v", s.uk, err)
++			}
+-		if len(s.videoOut) == 0 {
+-			// 比如只有SEI nal或者非seq header的msg只有sps, pps, vps
+ 			return
+ 		}
+ 
++		if !s.audioSeqHeaderCached() {
++			Log.Warnf("[%s] feed audio message but aac seq header not exist.", s.uk)
++			return
++		}
++	}
+-		dts := uint64(msg.Header.TimestampAbs) * 90
+ 
++	pts := uint64(msg.Header.TimestampAbs) * 90
++	if msg.AudioCodecId() == base.RtmpSoundFormatAac {
++		if !s.audioCacheEmpty() && s.audioCacheFirstFramePts+maxAudioCacheDelayByAudio < pts {
+-		if !(len(s.audioCacheFrames) == 0) && s.audioCacheFirstFramePts+maxAudioCacheDelayByVideo < dts {
+ 			s.FlushAudio()
+ 		}
+ 
++		if s.audioCacheEmpty() {
++			s.audioCacheFirstFramePts = pts
+-		var frame mpegts.Frame
+-		frame.Cc = s.videoCc
+-		frame.Dts = dts
+-		frame.Cts = msg.Cts()
+-		frame.Pts = frame.Dts + 90*uint64(frame.Cts)
+-		frame.Key = msg.IsVideoKeyNalu()
+-		frame.Raw = s.videoOut
+-		frame.Pid = mpegts.PidVideo
+-		frame.Sid = mpegts.StreamIdVideo
+-
+-		//Log.Debugf("in frame=%s", frame.DebugString())
+-		clock := &s.timestampFilter
+-		if clock.basicVideoDts == math.MaxUint64 {
+-			clock.basicVideoDts = frame.Dts
+-		}
+-		if frame.Dts < clock.basicVideoDts {
+-			Log.Warnf("[%s] video dts invalid. dts=%d, base=%d, frame=%s", clock.uk, frame.Dts, clock.basicVideoDts, frame.DebugString())
+-		} else {
+-			frame.Dts -= clock.basicVideoDts
+ 		}
+-		frame.Pts = frame.Dts + 90*uint64(frame.Cts)
+-		//Log.Debugf("ou frame=%s", frame.DebugString())
+ 
++		adtsHeader := s.ascCtx.PackAdtsHeader(int(msg.Header.MsgLen - 2))
++		s.audioCacheFrames = append(s.audioCacheFrames, adtsHeader...)
++		s.audioCacheFrames = append(s.audioCacheFrames, msg.Payload[2:]...)
++	} else {
++		s.audioCacheFirstFramePts = pts
++		s.audioCacheFrames = append(s.audioCacheFrames, msg.Payload[1:]...)
++		s.FlushAudio()
++	}
++}
+-		boundary := frame.Key && (s.ascCtx == nil || !s.opened || len(s.audioCacheFrames) != 0)
+ 
++func (s *Rtmp2MpegtsRemuxer) cacheAacSeqHeader(msg base.RtmpMsg) error {
++	var err error
++	s.ascCtx, err = aac.NewAscContext(msg.Payload[2:])
++	return err
++}
+-		if boundary {
+-			s.opened = true
+-		}
+ 
++func (s *Rtmp2MpegtsRemuxer) audioSeqHeaderCached() bool {
++	return s.ascCtx != nil
++}
+-		packets := frame.Pack()
+ 
++func (s *Rtmp2MpegtsRemuxer) appendSpsPps(out []byte) ([]byte, error) {
++	if s.spspps == nil {
++		return out, base.ErrHls
+-		//nazalog.Debugf("> OnTsPackets. frame=%s, boundary=%v, packets=%d", frame.DebugString(), boundary, len(packets))
+-		s.observer.OnTsPackets(packets, &frame, boundary)
+-		s.videoCc = frame.Cc
+ 	}
++
++	out = append(out, s.spspps...)
++	return out, nil
++}
++
++func (s *Rtmp2MpegtsRemuxer) videoSeqHeaderCached() bool {
++	return len(s.spspps) != 0
++}
++
++func (s *Rtmp2MpegtsRemuxer) audioCacheEmpty() bool {
++	return len(s.audioCacheFrames) == 0
+ }
+ 
++func (s *Rtmp2MpegtsRemuxer) resetAudioCache() {
++	s.audioCacheFrames = s.audioCacheFrames[0:0]
++}
++
++func (s *Rtmp2MpegtsRemuxer) resetVideoOutBuffer() {
++	s.videoOut = s.videoOut[0:0]
++}
++
++func (s *Rtmp2MpegtsRemuxer) onFrame(frame *mpegts.Frame) {
++	//Log.Debugf("in frame=%s", frame.DebugString())
++	s.timestampFilter.Do(frame)
++	//Log.Debugf("ou frame=%s", frame.DebugString())
++
++	var boundary bool
++
++	if frame.Sid == mpegts.StreamIdAudio {
++		// 为了考虑没有视频的情况也能切片，所以这里判断spspps为空时，也建议生成fragment
++		boundary = !s.videoSeqHeaderCached()
++	} else {
++		// 收到视频，可能触发建立fragment的条件是：
++		// 关键帧数据 &&
++		// (
++		//  (没有收到过音频seq header) || 说明 只有视频
++		//  (收到过音频seq header && fragment没有打开) || 说明 音视频都有，且都已ready
++		//  (收到过音频seq header && fragment已经打开 && 音频缓存数据不为空) 说明 为什么音频缓存需不为空？
++		// )
++		boundary = frame.Key && (!s.audioSeqHeaderCached() || !s.opened || !s.audioCacheEmpty())
++	}
++
++	if boundary {
++		s.opened = true
++	}
++
++	packets := frame.Pack()
++
++	//nazalog.Debugf("> OnTsPackets. frame=%s, boundary=%v, packets=%d", frame.DebugString(), boundary, len(packets))
++	s.observer.OnTsPackets(packets, frame, boundary)
++}
+-// ---------------------------------------------------------------------------------------------------------------------
+diff --git a/pkg/remux/rtmp2rtsp.go b/pkg/remux/rtmp2rtsp.go
+index 1310fab..addd9aa 100644
+--- a/pkg/remux/rtmp2rtsp.go
++++ b/pkg/remux/rtmp2rtsp.go
+@@ -22,12 +22,9 @@ import (
+ 	"github.com/q191201771/lal/pkg/hevc"
+ 	"github.com/q191201771/lal/pkg/rtprtcp"
+ 	"github.com/q191201771/lal/pkg/sdp"
+-	"github.com/q191201771/naza/pkg/bele"
+-	"github.com/q191201771/naza/pkg/nazabytes"
+-	"github.com/q191201771/naza/pkg/nazaerrors"
+ )
+ 
++// TODO(chef): refactor 将analyze部分独立出来作为一个filter
+-
+ // TODO(chef): fix 如果前面来的音频和视频数据没有seq header，都是gop中间的数据，那么analyze分析的结果可能是音频和视频都没有
+ 
+ var (
+@@ -129,33 +126,7 @@ func (r *Rtmp2RtspRemuxer) FeedRtmpMsg(msg base.RtmpMsg) {
+ 	if !r.analyzeDone {
+ 		if msg.IsAvcKeySeqHeader() || msg.IsHevcKeySeqHeader() {
+ 			if msg.IsAvcKeySeqHeader() {
++				r.sps, r.pps, err = avc.ParseSpsPpsFromSeqHeader(msg.Payload)
+-				payload := msg.Payload
+-				var parsedSps, parsedPps []byte
+-				switch {
+-				case len(payload) < 13:
+-					err = nazaerrors.Wrap(base.ErrShortBuffer)
+-				case payload[2] != 0 || payload[3] != 0 || payload[4] != 0:
+-					err = nazaerrors.Wrap(base.ErrAvc)
+-				case payload[10]&0x1f != 1:
+-					err = nazaerrors.Wrap(base.ErrAvc)
+-				default:
+-					spsLength := int(bele.BeUint16(payload[11:]))
+-					if len(payload) < 16+spsLength {
+-						err = nazaerrors.Wrap(base.ErrShortBuffer)
+-					} else if payload[13+spsLength]&0x1f != 1 {
+-						avc.Log.Debugf("%s", hex.Dump(nazabytes.Prefix(payload, 128)))
+-						err = nazaerrors.Wrap(base.ErrAvc)
+-					} else {
+-						ppsLength := int(bele.BeUint16(payload[14+spsLength:]))
+-						if len(payload) < 16+spsLength+ppsLength {
+-							err = nazaerrors.Wrap(base.ErrShortBuffer)
+-						} else {
+-							parsedSps = append(parsedSps, payload[13:13+spsLength]...)
+-							parsedPps = append(parsedPps, payload[16+spsLength:16+spsLength+ppsLength]...)
+-						}
+-					}
+-				}
+-				r.sps, r.pps = parsedSps, parsedPps
+ 				Log.Assert(nil, err)
+ 			} else if msg.IsHevcKeySeqHeader() {
+ 				if msg.IsEnhanced() {
+@@ -166,65 +137,18 @@ func (r *Rtmp2RtspRemuxer) FeedRtmpMsg(msg base.RtmpMsg) {
+ 
+ 				Log.Assert(nil, err)
+ 			}
++			r.doAnalyze()
++			return
++		}
++
++		if msg.IsAacSeqHeader() {
+-		} else if msg.IsAacSeqHeader() {
+ 			r.asc = msg.Clone().Payload[2:]
++			r.doAnalyze()
++			return
+-		} else {
+-			r.msgCache = append(r.msgCache, msg.Clone())
+ 		}
+-		Log.Assert(false, r.analyzeDone)
+-
+-		if (r.sps != nil && r.pps != nil && (r.asc != nil || r.audioPt != base.AvPacketPtUnknown)) || len(r.msgCache) >= maxAnalyzeAvMsgSize {
+-			if r.sps != nil && r.pps != nil {
+-				if r.vps != nil {
+-					r.videoPt = base.AvPacketPtHevc
+-				} else {
+-					r.videoPt = base.AvPacketPtAvc
+-				}
+-			}
+-			if r.asc != nil {
+-				r.audioPt = base.AvPacketPtAac
+-				var ascCtx *aac.AscContext
+-				ascCtx, err := aac.NewAscContext(r.asc)
+-				if err != nil {
+-					r.asc = nil
+-					Log.Warnf("invalid asc. asc=%+v, err=%+v", ascCtx, err)
+-					return
+-				}
+-
+-				// aac的采样率以asc为准
+-				r.audioSampleRate, err = ascCtx.GetSamplingFrequency()
+-				if err != nil {
+-					r.asc = nil
+-					Log.Warnf("invalid asc. asc=%+v, err=%+v", ascCtx, err)
+-					return
+-				}
+-			}
+-
+-			// 回调sdp
+-			videoInfo := sdp.VideoInfo{
+-				VideoPt: r.videoPt,
+-				Vps:     r.vps,
+-				Sps:     r.sps,
+-				Pps:     r.pps,
+-			}
+-
+-			audioInfo := sdp.AudioInfo{
+-				AudioPt:           r.audioPt,
+-				Asc:               r.asc,
+-				SamplingFrequency: r.audioSampleRate,
+-			}
+-			ctx, err := sdp.Pack(videoInfo, audioInfo)
+-			Log.Assert(nil, err)
+-			r.onSdp(ctx)
+ 
++		r.msgCache = append(r.msgCache, msg.Clone())
++		r.doAnalyze()
+-			// 分析阶段缓存的数据
+-			for i := range r.msgCache {
+-				r.remux(r.msgCache[i])
+-			}
+-			r.msgCache = nil
+-
+-			r.analyzeDone = true
+-		}
+ 		return
+ 	}
+ 
+@@ -239,7 +163,78 @@ func (r *Rtmp2RtspRemuxer) FeedRtmpMsg(msg base.RtmpMsg) {
+ 	r.remux(msg)
+ }
+ 
++func (r *Rtmp2RtspRemuxer) doAnalyze() {
++	Log.Assert(false, r.analyzeDone)
++
++	if r.isAnalyzeEnough() {
++		if r.sps != nil && r.pps != nil {
++			if r.vps != nil {
++				r.videoPt = base.AvPacketPtHevc
++			} else {
++				r.videoPt = base.AvPacketPtAvc
++			}
++		}
++		if r.asc != nil {
++			r.audioPt = base.AvPacketPtAac
++			var ascCtx *aac.AscContext
++			ascCtx, err := aac.NewAscContext(r.asc)
++			if err != nil {
++				r.asc = nil
++				Log.Warnf("invalid asc. asc=%+v, err=%+v", ascCtx, err)
++				return
++			}
++
++			// aac的采样率以asc为准
++			r.audioSampleRate, err = ascCtx.GetSamplingFrequency()
++			if err != nil {
++				r.asc = nil
++				Log.Warnf("invalid asc. asc=%+v, err=%+v", ascCtx, err)
++				return
++			}
++		}
++
++		// 回调sdp
++		videoInfo := sdp.VideoInfo{
++			VideoPt: r.videoPt,
++			Vps:     r.vps,
++			Sps:     r.sps,
++			Pps:     r.pps,
++		}
++
++		audioInfo := sdp.AudioInfo{
++			AudioPt:           r.audioPt,
++			Asc:               r.asc,
++			SamplingFrequency: r.audioSampleRate,
++		}
++		ctx, err := sdp.Pack(videoInfo, audioInfo)
++		Log.Assert(nil, err)
++		r.onSdp(ctx)
++
++		// 分析阶段缓存的数据
++		for i := range r.msgCache {
++			r.remux(r.msgCache[i])
++		}
++		r.msgCache = nil
++
++		r.analyzeDone = true
++	}
++}
++
+ // 是否应该退出Analyze阶段
++func (r *Rtmp2RtspRemuxer) isAnalyzeEnough() bool {
++	// 音视频头都收集好了
++	// 注意，这里故意只判断sps和pps，从而同时支持h264和2h65的情况
++	if r.sps != nil && r.pps != nil && (r.asc != nil || r.audioPt != base.AvPacketPtUnknown) {
++		return true
++	}
++
++	// 达到分析包数阈值了
++	if len(r.msgCache) >= maxAnalyzeAvMsgSize {
++		return true
++	}
++
++	return false
++}
+ 
+ func (r *Rtmp2RtspRemuxer) remux(msg base.RtmpMsg) {
+ 	var packer *rtprtcp.RtpPacker
+diff --git a/pkg/rtprtcp/rtp_unpack_container.go b/pkg/rtprtcp/rtp_unpack_container.go
+index a902909..9199295 100644
+--- a/pkg/rtprtcp/rtp_unpack_container.go
++++ b/pkg/rtprtcp/rtp_unpack_container.go
+@@ -26,44 +26,21 @@ func NewRtpUnpackContainer(maxSize int, unpackerProtocol IRtpUnpackerProtocol) *
+ // Feed 输入收到的rtp包
+ func (r *RtpUnpackContainer) Feed(pkt RtpPacket) {
+ 	// 过期的包
++	if r.list.IsStale(pkt.Header.Seq) {
+-	if r.list.doneSeqFlag && CompareSeq(pkt.Header.Seq, r.list.doneSeq) <= 0 {
+ 		return
+ 	}
+ 
+ 	// 计算位置
+ 	r.unpackerProtocol.CalcPositionIfNeeded(&pkt)
+ 	// 根据序号插入有序链表
++	r.list.Insert(pkt)
+-	cursor := &r.list.Head
+-	exists := false
+-	for cursor.Next != nil {
+-		comparison := CompareSeq(pkt.Header.Seq, cursor.Next.Packet.Header.Seq)
+-		if comparison == 0 {
+-			exists = true
+-			break
+-		}
+-		if comparison == -1 {
+-			break
+-		}
+-		cursor = cursor.Next
+-	}
+-	if !exists {
+-		cursor.Next = &RtpPacketListItem{Packet: pkt, Next: cursor.Next}
+-		r.list.Size++
+-	}
+ 
+ 	// 尽可能多的合成顺序的帧
+ 	count := 0
+ 	for {
++		if !r.tryUnpackOneSequential() {
+-		first := r.list.Head.Next
+-		if first == nil || (r.list.doneSeqFlag && SubSeq(first.Packet.Header.Seq, r.list.doneSeq) != 1) {
+-			break
+-		}
+-		unpacked, sequence := r.unpackerProtocol.TryUnpackOne(&r.list)
+-		if !unpacked {
+ 			break
+ 		}
+-		r.list.doneSeqFlag = true
+-		r.list.doneSeq = sequence
+ 		count++
+ 	}
+ 
+@@ -73,33 +50,39 @@ func (r *RtpUnpackContainer) Feed(pkt RtpPacket) {
+ 	}
+ 
+ 	// 缓存达到最大值
++	if r.list.Full() {
+-	if r.list.Size >= r.list.maxSize {
+ 		// 尝试合成一帧发生跳跃的帧
++		packed := r.tryUnpackOne()
+-		packed, sequence := r.unpackerProtocol.TryUnpackOne(&r.list)
+-		if packed {
+-			r.list.doneSeqFlag = true
+-			r.list.doneSeq = sequence
+-		}
+ 
+ 		if !packed {
+ 			// 合成失败了，丢弃一包过期数据
++			r.list.PopFirst()
+-			r.list.Head.Next = r.list.Head.Next.Next
+-			r.list.Size--
+ 			return
+ 		}
+ 
+ 		// 合成成功了，再次尝试，尽可能多的合成顺序的帧
+ 		for {
++			if !r.tryUnpackOneSequential() {
+-			first := r.list.Head.Next
+-			if first == nil || (r.list.doneSeqFlag && SubSeq(first.Packet.Header.Seq, r.list.doneSeq) != 1) {
+ 				break
+ 			}
+-			unpacked, sequence := r.unpackerProtocol.TryUnpackOne(&r.list)
+-			if !unpacked {
+-				break
+-			}
+-			r.list.doneSeqFlag = true
+-			r.list.doneSeq = sequence
+ 		}
+ 	}
+ }
++
++// tryUnpackOneSequential 从队列头部，尝试合成一个完整的帧。保证这次合成的帧的首个seq和上次合成帧的尾部seq是连续的
++func (r *RtpUnpackContainer) tryUnpackOneSequential() bool {
++	if !r.list.IsFirstSequential() {
++		return false
++	}
++
++	return r.tryUnpackOne()
++}
++
++// tryUnpackOne 从队列头部，尝试合成一个完整的帧。不保证这次合成的帧的首个seq和上次合成帧的尾部seq是连续的
++func (r *RtpUnpackContainer) tryUnpackOne() bool {
++	unpackedFlag, unpackedSeq := r.unpackerProtocol.TryUnpackOne(&r.list)
++	if unpackedFlag {
++		r.list.SetDoneSeq(unpackedSeq)
++	}
++	return unpackedFlag
++}
+diff --git a/pkg/rtprtcp/rtp_unpacker_aac.go b/pkg/rtprtcp/rtp_unpacker_aac.go
+index a700504..860c0d1 100644
+--- a/pkg/rtprtcp/rtp_unpacker_aac.go
++++ b/pkg/rtprtcp/rtp_unpacker_aac.go
+@@ -67,31 +67,18 @@ func (unpacker *RtpUnpackerAac) TryUnpackOne(list *RtpPacketList) (unpackedFlag
+ 	}
+ 	b := p.Packet.Body()
+ 
++	aus := parseAu(b)
+-	headerBytes := (uint32(b[0])<<8 + uint32(b[1]) + 7) / 8
+-	headerCount := headerBytes / 2
+-	bodyStart := uint32(2) + headerBytes
+-	expectedEnd := bodyStart
+-	var auSizes []uint32
+-	for i := uint32(0); i < headerCount; i++ {
+-		offset := uint32(2) + 2*i
+-		size := (uint32(b[offset])<<8 | uint32(b[offset+1]&0xf8)) / 8
+-		auSizes = append(auSizes, size)
+-		expectedEnd += size
+-	}
+-	if (headerCount > 1 && expectedEnd != uint32(len(b))) || (headerCount == 1 && expectedEnd < uint32(len(b))) {
+-		Log.Warnf("rtp packet size invalid. nbAuHeaders=%d, pau=%d, len(b)=%d, auHeadersLength=%d", headerCount, expectedEnd, len(b), headerBytes)
+-	}
+ 
+ 	// 只有一个描述
++	if len(aus) == 1 {
+-	if len(auSizes) == 1 {
+ 
+ 		// 描述的音频帧完整的在当前的rtp packet中，没有跨越到下个rtp packet
++		if aus[0].size <= uint32(len(b[aus[0].pos:])) {
+-		if auSizes[0] <= uint32(len(b[bodyStart:])) {
+ 			// one complete access unit
+ 			var outPkt base.AvPacket
+ 			outPkt.PayloadType = unpacker.payloadType
+ 			outPkt.Timestamp = int64(p.Packet.Header.Timestamp / uint32(unpacker.clockRate/1000))
++			outPkt.Payload = b[aus[0].pos : aus[0].pos+aus[0].size]
+-			outPkt.Payload = b[bodyStart : bodyStart+auSizes[0]]
+ 			unpacker.onAvPacket(outPkt)
+ 
+ 			list.Head.Next = p.Next
+@@ -102,12 +89,12 @@ func (unpacker *RtpUnpackerAac) TryUnpackOne(list *RtpPacketList) (unpackedFlag
+ 		// fragmented
+ 		// 注意，这里我们参考size和rtp包头中的timestamp，不参考rtp包头中的mark位
+ 
++		totalSize := aus[0].size
+-		totalSize := auSizes[0]
+ 		timestamp := p.Packet.Header.Timestamp
+ 
+ 		var as [][]byte
++		as = append(as, b[aus[0].pos:])
++		cacheSize := uint32(len(b[aus[0].pos:]))
+-		as = append(as, b[bodyStart:])
+-		cacheSize := uint32(len(b[bodyStart:]))
+ 
+ 		seq := p.Packet.Header.Seq
+ 		p = p.Next
+@@ -128,35 +115,20 @@ func (unpacker *RtpUnpackerAac) TryUnpackOne(list *RtpPacketList) (unpackedFlag
+ 
+ 			// 注意，非第一个fragment，也会包含au，au的size和第一个fragment里au的size应该相等
+ 			b = p.Packet.Body()
++			aus := parseAu(b)
++			if len(aus) != 1 {
++				Log.Errorf("shall be a single fragment. len(aus)=%d", len(aus))
+-			headerBytes := (uint32(b[0])<<8 + uint32(b[1]) + 7) / 8
+-			headerCount := headerBytes / 2
+-			bodyStart := uint32(2) + headerBytes
+-			expectedEnd := bodyStart
+-			var fragmentSize uint32
+-			for i := uint32(0); i < headerCount; i++ {
+-				offset := uint32(2) + 2*i
+-				size := (uint32(b[offset])<<8 | uint32(b[offset+1]&0xf8)) / 8
+-				if i == 0 {
+-					fragmentSize = size
+-				}
+-				expectedEnd += size
+-			}
+-			if (headerCount > 1 && expectedEnd != uint32(len(b))) || (headerCount == 1 && expectedEnd < uint32(len(b))) {
+-				Log.Warnf("rtp packet size invalid. nbAuHeaders=%d, pau=%d, len(b)=%d, auHeadersLength=%d", headerCount, expectedEnd, len(b), headerBytes)
+-			}
+-			if headerCount != 1 {
+-				Log.Errorf("shall be a single fragment. len(aus)=%d", headerCount)
+ 				return false, 0
+ 			}
++			if aus[0].size != totalSize {
+-			if fragmentSize != totalSize {
+ 				Log.Errorf("fragments of the same access shall have the same size. first=%d, curr=%d",
++					totalSize, aus[0].size)
+-					totalSize, fragmentSize)
+ 				return false, 0
+ 			}
+ 
++			cacheSize += uint32(len(b[aus[0].pos:]))
+-			cacheSize += uint32(len(b[bodyStart:]))
+ 			seq = p.Packet.Header.Seq
++			as = append(as, b[aus[0].pos:])
+-			as = append(as, b[bodyStart:])
+ 			if cacheSize < totalSize {
+ 				p = p.Next
+ 			} else if cacheSize == totalSize {
+@@ -181,18 +153,62 @@ func (unpacker *RtpUnpackerAac) TryUnpackOne(list *RtpPacketList) (unpackedFlag
+ 	}
+ 
+ 	// more complete access unit
++	for i := range aus {
+-	for i, size := range auSizes {
+ 		var outPkt base.AvPacket
+ 		outPkt.PayloadType = unpacker.payloadType
+ 		outPkt.Timestamp = int64(p.Packet.Header.Timestamp / uint32(unpacker.clockRate/1000))
+ 		// TODO chef: 这里1024的含义
+ 		outPkt.Timestamp += int64(uint32(i * (1024 * 1000) / unpacker.clockRate))
++		outPkt.Payload = b[aus[i].pos : aus[i].pos+aus[i].size]
+-		outPkt.Payload = b[bodyStart : bodyStart+size]
+ 		unpacker.onAvPacket(outPkt)
+-		bodyStart += size
+ 	}
+ 
+ 	list.Head.Next = p.Next
+ 	list.Size--
+ 	return true, p.Packet.Header.Seq
+ }
++
++type au struct {
++	size uint32 // 该音频帧的大小
++	pos  uint32 // 相对rtp body的位置
++}
++
++func parseAu(b []byte) (ret []au) {
++	// TODO(chef): [fix] 解析b时，没有判断长度有效性 202207
++
++	// AU Header Section
++	var auHeadersLength uint32
++	auHeadersLength = uint32(b[0])<<8 + uint32(b[1])
++	auHeadersLength = (auHeadersLength + 7) / 8
++
++	// TODO chef: 这里的2是写死的，正常是外部传入auSize和auIndex所占位数的和
++	const auHeaderSize = 2
++	nbAuHeaders := uint32(auHeadersLength) / auHeaderSize // 有多少个AU-Header
++
++	pauh := uint32(2)                  // AU Header pos
++	pau := uint32(2) + auHeadersLength // AU pos
++
++	for i := uint32(0); i < nbAuHeaders; i++ {
++		// TODO chef: auSize和auIndex所在的位数是写死的13bit，3bit，标准的做法应该从外部传入，比如从sdp中获取后传入
++		auSize := uint32(b[pauh])<<8 | uint32(b[pauh+1]&0xF8) // 13bit
++		auSize /= 8
++		// 注意，fragment时，auIndex并不可靠。见TestAacCase1
++		//auIndex := b[pauh+1] & 0x7
++		//Log.Debugf("~ %d %d", auSize, auIndex)
++
++		ret = append(ret, au{
++			size: auSize,
++			pos:  pau,
++		})
++
++		pauh += 2
++		pau += auSize
++	}
++
++	if (nbAuHeaders > 1 && pau != uint32(len(b))) ||
++		(nbAuHeaders == 1 && pau < uint32(len(b))) {
++		Log.Warnf("rtp packet size invalid. nbAuHeaders=%d, pau=%d, len(b)=%d, auHeadersLength=%d", nbAuHeaders, pau, len(b), auHeadersLength)
++	}
++
++	return
++}

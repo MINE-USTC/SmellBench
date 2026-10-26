@@ -1,0 +1,383 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "hashicorp_serf_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "gossip_decode",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 ordinary gossip parse admission.",
+      "baseline_defect": "Acceptance requires m.err==nil and fixes concrete value to original kind; no mutation precedes ordinary dispatch.",
+      "criterion": "Remove obsolete decode-error guards in leave, join, user event, query and query-response cases.",
+      "acceptance": "Keep empty buffer and messageDropper controls, one malformed diagnostic per message, handler results, broadcast byte copy and queue selection. All five ordinary cases must be covered; errors at admission remain live. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/delegate.go",
+          "symbol": "NotifyMsg,readMessage,acceptMessage",
+          "detail": "Acceptance requires m.err==nil and fixes concrete value to original kind; no mutation precedes ordinary dispatch.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/receive.go",
+          "symbol": "NotifyMsg,readMessage,acceptMessage",
+          "detail": "Acceptance requires m.err==nil and fixes concrete value to original kind; no mutation precedes ordinary dispatch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "gossip_unknown",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage-two admission rejects nil decoded values.",
+      "baseline_defect": "Unknown kinds produce nil value and are rejected before switch; consumer default cannot execute.",
+      "criterion": "Remove the unreachable second unknown-message fallback without weakening input validation.",
+      "acceptance": "Unknown kinds still warn once and stop; known message handling and relay route remain. This is independent from decode errors, since unknown kind has no failed decoder invocation. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/delegate.go",
+          "symbol": "NotifyMsg,acceptMessage",
+          "detail": "Unknown kinds produce nil value and are rejected before switch; consumer default cannot execute.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/receive.go",
+          "symbol": "NotifyMsg,acceptMessage",
+          "detail": "Unknown kinds produce nil value and are rejected before switch; consumer default cannot execute.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "relay_decode",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1 relay admission and retry nested forwarding branch.",
+      "baseline_defect": "Accepted relay has nil m.err; live SendToAddress failure cannot make that stored decode error nonnil.",
+      "criterion": "Remove only the stale relay decode fallback inside forwarding failure handling.",
+      "acceptance": "Keep raw tail extracted after successful header decode, destination/name, forwarding debug log, failure log and break. Failed transport remains live; do not delete its outer branch or assume acceptance implies delivery. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/delegate.go",
+          "symbol": "NotifyMsg,forwardRelay",
+          "detail": "Accepted relay has nil m.err; live SendToAddress failure cannot make that stored decode error nonnil.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/receive.go",
+          "symbol": "NotifyMsg,forwardRelay",
+          "detail": "Accepted relay has nil m.err; live SendToAddress failure cannot make that stored decode error nonnil.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "remote_decode",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 push/pull admission.",
+      "baseline_defect": "acceptRemoteState returns false on decoder error before state is copied into merge.",
+      "criterion": "Remove duplicate remote-state decoder rejection after successful admission.",
+      "acceptance": "Keep header/type/dropper controls before decode, exact malformed diagnostic, clock witnessing, eventMinTime locking and user-event/member processing. Direct equivalent validation can replace producer plus duplicate, but malformed state must not reach mutation. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/delegate.go",
+          "symbol": "MergeRemoteState,acceptRemoteState",
+          "detail": "acceptRemoteState returns false on decoder error before state is copied into merge.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/receive.go",
+          "symbol": "MergeRemoteState,acceptRemoteState",
+          "detail": "acceptRemoteState returns false on decoder error before state is copied into merge.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "membership_partition",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage-two leave/join key-set invariant.",
+      "baseline_defect": "Producer deletes every left name from joins, so leftMap membership rejection in join iteration is always false.",
+      "criterion": "Remove redundant join exclusion and storage used only by it.",
+      "acceptance": "Keep every leave occurrence including duplicate names, status+1 Lamport wrap and absent-name behavior, and all remaining joins. Old wording once each was too restrictive: duplicate leaves are not deduplicated. Producer partition may be replaced by one equivalent live filter; no fixed map representation. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/delegate.go",
+          "symbol": "membershipFromState,MergeRemoteState",
+          "detail": "Producer deletes every left name from joins, so leftMap membership rejection in join iteration is always false.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/receive.go",
+          "symbol": "membershipFromState,MergeRemoteState",
+          "detail": "Producer deletes every left name from joins, so leftMap membership rejection in join iteration is always false.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "node_filter_decode",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 node-filter admission.",
+      "baseline_defect": "Accepted node filter has nil parsed.err before consumer lookup.",
+      "criterion": "Remove obsolete node-filter decoder guard while preserving live node matching.",
+      "acceptance": "Process one filter at a time; empty filters reject, nonmatching node short-circuits later filters, malformed node input logs once. Do not eagerly decode all filters or remove node membership checks. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "shouldProcessQuery,acceptFilter",
+          "detail": "Accepted node filter has nil parsed.err before consumer lookup.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query_filter.go",
+          "symbol": "shouldProcessQuery,acceptFilter",
+          "detail": "Accepted node filter has nil parsed.err before consumer lookup.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tag_filter_decode",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 tag-filter admission.",
+      "baseline_defect": "Accepted tag filter has nil decode error before matching.",
+      "criterion": "Remove obsolete tag-filter decode rejection while retaining its independent validation and match behavior.",
+      "acceptance": "Preserve tag lookup and regex matching with current configuration, malformed tag log and per-filter short circuit. A unified cleaned filter path may satisfy both node and tag items; no separate parser requirement. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "shouldProcessQuery,acceptFilter",
+          "detail": "Accepted tag filter has nil decode error before matching.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query_filter.go",
+          "symbol": "shouldProcessQuery,acceptFilter",
+          "detail": "Accepted tag filter has nil decode error before matching.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "regex_failure",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 compiled pattern validation.",
+      "baseline_defect": "acceptFilter rejects patternErr before accepted expression MatchString; copied consumer err is nil.",
+      "criterion": "Eliminate the unreachable consumer regex-error arm, retaining one effective pattern validation path.",
+      "acceptance": "Invalid expression diagnostics still happen before matching; a valid nonmatching pattern remains a live false result. Keep regexp semantics and source order. No compulsory precompiled cache or interface. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "readFilter,acceptFilter,shouldProcessQuery",
+          "detail": "acceptFilter rejects patternErr before accepted expression MatchString; copied consumer err is nil.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query_filter.go",
+          "symbol": "readFilter,acceptFilter,shouldProcessQuery",
+          "detail": "acceptFilter rejects patternErr before accepted expression MatchString; copied consumer err is nil.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "filter_unknown",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage-two unknown filter rejection.",
+      "baseline_defect": "Only node/tag kinds are accepted and kind cannot change before switch.",
+      "criterion": "Remove the unreachable consumer unknown-filter default.",
+      "acceptance": "Unknown kind still warns and rejects once at an effective boundary; empty input control stays before buf[0] and later filters are not processed after failure. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "acceptFilter,shouldProcessQuery",
+          "detail": "Only node/tag kinds are accepted and kind cannot change before switch.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query_filter.go",
+          "symbol": "acceptFilter,shouldProcessQuery",
+          "detail": "Only node/tag kinds are accepted and kind cannot change before switch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ping_decode",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R3 ping admission and retry nested update failure.",
+      "baseline_defect": "accepted update means packet decode error nil even when coordinate client Update returns a live error.",
+      "criterion": "Remove stale packet-decode rejection inside coordinate-update failure handling.",
+      "acceptance": "Preserve empty payload, version/decode diagnostics, peer.Name evaluation only after packet validation, dimensionality/NaN/RTT update failures with rejection metrics/log, and no cache update after failure. Do not assume valid msgpack implies valid coordinate. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/coordinate_payload.go",
+          "symbol": "updateCoordinate,NotifyPingComplete",
+          "detail": "accepted update means packet decode error nil even when coordinate client Update returns a live error.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/ping_delegate.go",
+          "symbol": "updateCoordinate,NotifyPingComplete",
+          "detail": "accepted update means packet decode error nil even when coordinate client Update returns a live error.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ping_version",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R3 version admission; retry cache lock placement.",
+      "baseline_defect": "Accepted packet has PingVersion; late cache-scope version fallback is unreachable.",
+      "criterion": "Remove late version check and only its branch-local cleanup.",
+      "acceptance": "Keep live cache lock and final unlock, peer/local cache writes and adjustment metric. Remove unreachable branch-specific unlock/log/return together; deleting outer synchronization is invalid. Preserve coordinate pointer/cache identity. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/coordinate_payload.go",
+          "symbol": "updateCoordinate,NotifyPingComplete",
+          "detail": "Accepted packet has PingVersion; late cache-scope version fallback is unreachable.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/ping_delegate.go",
+          "symbol": "updateCoordinate,NotifyPingComplete",
+          "detail": "Accepted packet has PingVersion; late cache-scope version fallback is unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "user_epoch",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage-two producer epoch publication.",
+      "baseline_defect": "Producer ensures name exists with LTime >= incoming; old missing/newer allocation arm cannot run.",
+      "criterion": "Remove obsolete user epoch fallback while retaining one effective initialization/replacement decision.",
+      "acceptance": "New/replaced epoch begins empty then live equality appends first event exactly once, equal epochs append, older events suppress and Flush order/reset remains. Preserve maps/event identity; no change to supported Handle/Coalesce controls. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/coalesce_user.go",
+          "symbol": "prepareUserEpoch,Coalesce",
+          "detail": "Producer ensures name exists with LTime >= incoming; old missing/newer allocation arm cannot run.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/coalesce_state.go",
+          "symbol": "prepareUserEpoch,Coalesce",
+          "detail": "Producer ensures name exists with LTime >= incoming; old missing/newer allocation arm cannot run.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "member_groups",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage-two eligible-group prepublication.",
+      "baseline_defect": "Producer creates groups for every event passing same suppression predicate; unchanged iteration state guarantees group at consumer.",
+      "criterion": "Remove unreachable eligible-group allocation fallback.",
+      "acceptance": "Preserve repeat MemberUpdate eligibility, identical-status suppression for other types, lastEvents update, member append and group output; no fake deletion of live producer groups or suppression. Equivalent one-pass grouping with one effective creation route is valid. Equivalent concise cleanup may retain the migrated producer or replace it with a single effective direct path; no prescribed admission/helper architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing live producer validation or hiding the unreachable branch behind another wrapper does not establish a safe cleanup."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/coalesce_member.go",
+          "symbol": "prepareMemberGroups,Flush",
+          "detail": "Producer creates groups for every event passing same suppression predicate; unchanged iteration state guarantees group at consumer.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/coalesce_state.go",
+          "symbol": "prepareMemberGroups,Flush",
+          "detail": "Producer creates groups for every event passing same suppression predicate; unchanged iteration state guarantees group at consumer.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "hashicorp_serf_dce",
+    "schema_version": "source_grounded_four_dimensions.v1",
+    "aggregation": "equal_weight_per_item",
+    "rubric_status": "ready",
+    "excluded_from_scoring": [
+      "The empty post.diff introduces no defect.",
+      "Existing handler, forwarding, matching, clock, metric, and cache behavior is a control, not standalone repair credit.",
+      "The stage-two relay forwarding helper is mainly relocation; it receives no separate helper-introduction credit."
+    ]
+  }
+}

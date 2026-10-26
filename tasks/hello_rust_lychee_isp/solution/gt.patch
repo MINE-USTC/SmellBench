@@ -1,0 +1,1128 @@
+diff --git a/lychee-bin/src/commands/check.rs b/lychee-bin/src/commands/check.rs
+index 24708aa..94bbf27 100644
+--- a/lychee-bin/src/commands/check.rs
++++ b/lychee-bin/src/commands/check.rs
+@@ -123,7 +123,8 @@ pub(crate) async fn check(
+ 
+     // Increment stats and extract recursive uris from responses.
+     let recursive_uris = responses.map(|(_guard, response)| -> Vec<(WaitGuard, Request)> {
++        progress.update(Some(response.body()));
++        stats.add(response);
+-        progress.record_response(&mut stats, response);
+ 
+         let recursive_uris = vec![]; // currently unused.
+ 
+diff --git a/lychee-bin/src/formatters/host_stats/compact.rs b/lychee-bin/src/formatters/host_stats/compact.rs
+index fb2c178..97259ce 100644
+--- a/lychee-bin/src/formatters/host_stats/compact.rs
++++ b/lychee-bin/src/formatters/host_stats/compact.rs
+@@ -1,15 +1,14 @@
+ use std::fmt::{self, Display};
+ 
++use super::{host_heading, status_summary};
+-use super::{host_heading, status_summary_counts};
+ use crate::formatters::color::{NORMAL, color};
+ use lychee_lib::ratelimit::HostStatsMap;
+ 
++pub(crate) struct CompactHostStats {
+-pub(crate) struct CompactHostStats<'a> {
+     pub(crate) host_stats: Option<HostStatsMap>,
+-    pub(crate) counts: &'a dyn Fn(&lychee_lib::ratelimit::HostStats) -> (u64, u64),
+ }
+ 
++impl Display for CompactHostStats {
+-impl Display for CompactHostStats<'_> {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         let Some(host_stats) = &self.host_stats else {
+             return Ok(());
+@@ -26,8 +25,7 @@ impl Display for CompactHostStats {
+             .max(10);
+ 
+         for (hostname, stats) in sorted_hosts {
++            let status_summary = status_summary(&stats);
+-            let (failed, unknown) = (self.counts)(&stats);
+-            let status_summary = status_summary_counts(&stats, failed, unknown);
+             let cache_summary = stats.cache_summary();
+ 
+             color!(
+diff --git a/lychee-bin/src/formatters/host_stats/detailed.rs b/lychee-bin/src/formatters/host_stats/detailed.rs
+index a5ea223..8700298 100644
+--- a/lychee-bin/src/formatters/host_stats/detailed.rs
++++ b/lychee-bin/src/formatters/host_stats/detailed.rs
+@@ -3,12 +3,11 @@ use std::fmt::{self, Display};
+ use super::host_heading;
+ use lychee_lib::ratelimit::HostStatsMap;
+ 
++pub(crate) struct DetailedHostStats {
+-pub(crate) struct DetailedHostStats<'a> {
+     pub(crate) host_stats: Option<HostStatsMap>,
+-    pub(crate) rates: &'a dyn Fn(&lychee_lib::ratelimit::HostStats) -> (f64, f64),
+ }
+ 
++impl Display for DetailedHostStats {
+-impl Display for DetailedHostStats<'_> {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         let Some(host_stats) = &self.host_stats else {
+             return Ok(());
+@@ -19,14 +18,13 @@ impl Display for DetailedHostStats {
+         writeln!(f, "{}", "-".repeat(heading.chars().count()))?;
+ 
+         for (hostname, stats) in host_stats.sorted() {
+-            let (success_rate, cache_hit_rate) = (self.rates)(&stats);
+             writeln!(f, "\nHost: {hostname}")?;
+             writeln!(f, "  Total requests: {}", stats.total_requests)?;
+             writeln!(
+                 f,
+                 "  Successful: {} ({:.1}%)",
+                 stats.successful_requests,
++                stats.success_rate() * 100.0
+-                success_rate
+             )?;
+ 
+             if stats.rate_limited > 0 {
+@@ -54,8 +52,9 @@ impl Display for DetailedHostStats {
+                 )?;
+             }
+ 
++            let cache_hit_rate = stats.cache_hit_rate();
+             if cache_hit_rate > 0.0 {
++                writeln!(f, "  Cache hit rate: {:.1}%", cache_hit_rate * 100.0)?;
+-                writeln!(f, "  Cache hit rate: {:.1}%", cache_hit_rate)?;
+                 writeln!(
+                     f,
+                     "  Cache hits: {}, misses: {}",
+diff --git a/lychee-bin/src/formatters/host_stats/markdown.rs b/lychee-bin/src/formatters/host_stats/markdown.rs
+index 431f5af..3c5b8a4 100644
+--- a/lychee-bin/src/formatters/host_stats/markdown.rs
++++ b/lychee-bin/src/formatters/host_stats/markdown.rs
+@@ -7,12 +7,11 @@ use tabled::{
+     settings::{Alignment, Modify, Style, object::Segment},
+ };
+ 
++pub(crate) struct MarkdownHostStats {
+-pub(crate) struct MarkdownHostStats<'a> {
+     pub(crate) host_stats: Option<HostStatsMap>,
+-    pub(crate) rates: &'a dyn Fn(&lychee_lib::ratelimit::HostStats) -> (f64, f64),
+ }
+ 
++impl Display for MarkdownHostStats {
+-impl Display for MarkdownHostStats<'_> {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         let Some(host_stats) = &self.host_stats else {
+             return Ok(());
+@@ -20,7 +19,7 @@ impl Display for MarkdownHostStats {
+ 
+         writeln!(f, "{}", host_heading("\n## ", host_stats))?;
+         writeln!(f)?;
++        writeln!(f, "{}", host_stats_table(host_stats))?;
+-        writeln!(f, "{}", host_stats_table(host_stats, self.rates))?;
+ 
+         Ok(())
+     }
+@@ -42,12 +41,11 @@ struct HostStatsTableEntry {
+     cache_hit_rate: String,
+ }
+ 
++fn host_stats_table(host_stats: &HostStatsMap) -> String {
+-fn host_stats_table(host_stats: &HostStatsMap, rates: &dyn Fn(&lychee_lib::ratelimit::HostStats) -> (f64, f64)) -> String {
+     let entries: Vec<HostStatsTableEntry> = host_stats
+         .sorted()
+         .into_iter()
+         .map(|(hostname, stats)| {
+-            let (success_rate, cache_hit_rate) = rates(&stats);
+             let median_time = stats
+                 .median_request_time()
+                 .map_or_else(|| "N/A".to_string(), |d| format!("{:.0}ms", d.as_millis()));
+@@ -55,10 +53,10 @@ fn host_stats_table(host_stats: &HostStatsMap) -> String {
+             HostStatsTableEntry {
+                 host: hostname,
+                 requests: stats.total_requests,
++                success_rate: format!("{:.1}%", stats.success_rate() * 100.0),
+-                success_rate: format!("{success_rate:.1}%"),
+                 network_errors: stats.network_errors,
+                 median_time,
++                cache_hit_rate: format!("{:.1}%", stats.cache_hit_rate() * 100.0),
+-                cache_hit_rate: format!("{cache_hit_rate:.1}%"),
+             }
+         })
+         .collect();
+diff --git a/lychee-bin/src/formatters/host_stats/mod.rs b/lychee-bin/src/formatters/host_stats/mod.rs
+index c68081b..62617c9 100644
+--- a/lychee-bin/src/formatters/host_stats/mod.rs
++++ b/lychee-bin/src/formatters/host_stats/mod.rs
+@@ -27,12 +27,11 @@ fn host_heading(prefix: &str, host_stats: &HostStatsMap) -> String {
+ /// - `✗` indicates failed requests,
+ /// - `?` indicates unknown requests.
+ fn status_summary(stats: &HostStats) -> String {
++    let failed_requests = stats.rate_limited + stats.client_errors + stats.server_errors;
++    let unknown_requests = stats
++        .total_requests
++        .saturating_sub(stats.successful_requests + failed_requests);
+-    let output = super::get_response_formatter(&crate::config::OutputMode::Plain);
+-    let (failed_requests, unknown_requests) = output.host_counts(stats);
+-    status_summary_counts(stats, failed_requests, unknown_requests)
+-}
+ 
+-fn status_summary_counts(stats: &HostStats, failed_requests: u64, unknown_requests: u64) -> String {
+     let mut parts = Vec::new();
+     if stats.successful_requests > 0 {
+         parts.push(format!("✓ {}", stats.successful_requests));
+diff --git a/lychee-bin/src/formatters/mod.rs b/lychee-bin/src/formatters/mod.rs
+index 4cf3e21..c34f092 100644
+--- a/lychee-bin/src/formatters/mod.rs
++++ b/lychee-bin/src/formatters/mod.rs
+@@ -2,13 +2,11 @@ pub(crate) mod color;
+ pub(crate) mod duration;
+ pub(crate) mod host_stats;
+ pub(crate) mod log;
+-pub(crate) mod output;
+ pub(crate) mod response;
+ pub(crate) mod stats;
+ pub(crate) mod suggestion;
+ 
+ use self::{response::ResponseFormatter, stats::StatsFormatter};
+-use self::output::{Output, OutputFormatter};
+ use crate::config::{OutputMode, StatsFormat};
+ use supports_color::Stream;
+ 
+@@ -22,14 +20,7 @@ fn supports_color() -> bool {
+ pub(crate) fn get_stats_formatter(
+     format: &StatsFormat,
+     mode: &OutputMode,
++) -> Box<dyn StatsFormatter> {
+-) -> Box<dyn OutputFormatter> {
+-    Box::new(Output::new(format, mode))
+-}
+-
+-fn select_stats_formatter(
+-    format: &StatsFormat,
+-    mode: &OutputMode,
+-) -> Box<dyn StatsFormatter + Send + Sync> {
+     match format {
+         StatsFormat::Compact => Box::new(stats::Compact::new(mode.clone())),
+         StatsFormat::Detailed => Box::new(stats::Detailed::new(mode.clone())),
+@@ -40,20 +31,19 @@ pub(crate) fn get_stats_formatter(
+ }
+ 
+ /// Create a progress formatter based on the given format option
++pub(crate) fn get_progress_formatter(mode: &OutputMode) -> Box<dyn ResponseFormatter> {
++    let mode = match mode {
++        OutputMode::Plain => OutputMode::Plain,
++        OutputMode::Color => OutputMode::Color,
++        OutputMode::Emoji => OutputMode::Emoji,
++        OutputMode::Task => OutputMode::default(),
++    };
++
++    get_response_formatter(&mode)
+-pub(crate) fn get_progress_formatter(
+-    mode: &OutputMode,
+-    bar: Option<indicatif::ProgressBar>,
+-    log_level: ::log::Level,
+-) -> Box<dyn OutputFormatter> {
+-    Box::new(Output::progress(mode, bar, log_level))
+ }
+ 
+ /// Create a response formatter based on the given format option
++pub(crate) fn get_response_formatter(mode: &OutputMode) -> Box<dyn ResponseFormatter> {
+-pub(crate) fn get_response_formatter(mode: &OutputMode) -> Box<dyn OutputFormatter> {
+-    Box::new(Output::new(&StatsFormat::Compact, mode))
+-}
+-
+-fn select_response_formatter(mode: &OutputMode) -> Box<dyn ResponseFormatter> {
+     // Checks if color is supported in current environment or NO_COLOR is set (https://no-color.org)
+     if !supports_color() {
+         // To fix `TaskFormatter` not working if color is not supported
+diff --git a/lychee-bin/src/formatters/output.rs b/lychee-bin/src/formatters/output.rs
+deleted file mode 100644
+index 9c822aa..0000000
+--- a/lychee-bin/src/formatters/output.rs
++++ /dev/null
+@@ -1,224 +0,0 @@
+-use anyhow::{Context, Result};
+-use lychee_lib::ResponseBody;
+-use indicatif::ProgressBar;
+-use log::Level;
+-use std::{fs, io::{Write, stdout}, path::Path};
+-
+-use super::{response::ResponseFormatter, stats::{OutputStats, StatsFormatter}};
+-use crate::config::{OutputMode, StatsFormat};
+-
+-pub(crate) enum HostFormat {
+-    Compact,
+-    Detailed,
+-    Markdown,
+-}
+-
+-pub(crate) trait OutputFormatter: Send + Sync {
+-    fn mode(&self) -> &OutputMode;
+-    fn format_response(&self, body: &ResponseBody) -> String;
+-    fn format(&self, stats: OutputStats) -> Result<String>;
+-    fn bar(&self) -> Option<&ProgressBar>;
+-    fn log_level(&self) -> Level;
+-
+-    fn response_groups<'a>(
+-        &self,
+-        stats: &'a super::stats::ResponseStats,
+-        include_ignored: bool,
+-    ) -> Vec<(&'a lychee_lib::InputSource, Vec<&'a ResponseBody>)> {
+-        let mut entries: Vec<_> = stats.error_map.iter().chain(stats.timeout_map.iter()).collect();
+-        if include_ignored {
+-            entries.extend(stats.unsupported_map.iter());
+-        }
+-        super::stats::sort_stats_iter(entries)
+-    }
+-
+-    fn response_annotation(&self, response: &ResponseBody) -> (Option<String>, Option<String>) {
+-        let location = response.span.map(|span| format!(" (at {span})"));
+-        let details = if matches!(response.status, lychee_lib::Status::Ok(http::StatusCode::OK)) {
+-            None
+-        } else {
+-            Some(response.status.details())
+-        };
+-        (location, details)
+-    }
+-
+-    fn host_counts(&self, stats: &lychee_lib::ratelimit::HostStats) -> (u64, u64) {
+-        let failed = stats.rate_limited + stats.client_errors + stats.server_errors;
+-        (failed, stats.total_requests.saturating_sub(stats.successful_requests + failed))
+-    }
+-
+-    fn host_rates(&self, stats: &lychee_lib::ratelimit::HostStats) -> (f64, f64) {
+-        (stats.success_rate() * 100.0, stats.cache_hit_rate() * 100.0)
+-    }
+-
+-    fn collect_hints(&self, stats: &super::stats::ResponseStats, config: &crate::config::Config) {
+-        use crate::hints;
+-        if config.hosts.is_empty() {
+-            hints::rate_limit(stats);
+-        }
+-        if config.github_token.is_none() {
+-            hints::github_rate_limit(stats);
+-        }
+-        if config.verbose().log_level() < Level::Info {
+-            hints::any_redirects(stats);
+-        }
+-        if config.accept() == lychee_lib::StatusCodeSelector::default_accepted() {
+-            hints::rejected_status_codes(stats);
+-        }
+-        if config.max_redirects() <= lychee_lib::DEFAULT_MAX_REDIRECTS {
+-            hints::unfollowed_redirects(stats);
+-        }
+-        hints::root_relative_links(stats);
+-        hints::fragment_checks_with_non_get_method(config);
+-    }
+-
+-    fn record_response(&self, stats: &mut super::stats::ResponseStats, response: lychee_lib::Response) {
+-        self.update(Some(response.body()));
+-        self.record_statistics(stats, response);
+-    }
+-
+-    fn record_statistics(&self, stats: &mut super::stats::ResponseStats, response: lychee_lib::Response) {
+-        if stats.seen_uris.insert(response.body().uri.clone()) {
+-            stats.unique += 1;
+-        }
+-        stats.total += 1;
+-        if let Some(redirects) = response.redirects() {
+-            stats.redirects += 1;
+-            if stats.detailed_stats {
+-                stats.redirect_map.entry(response.source().clone()).or_default().insert(redirects.clone());
+-            }
+-        }
+-        if response.remap().is_some() {
+-            stats.remaps += 1;
+-        }
+-        stats.increment_status_counters(response.status());
+-        stats.add_response_status(response);
+-    }
+-
+-    fn format_progress_response(&self, body: &ResponseBody) -> String {
+-        match self.mode() {
+-            OutputMode::Task => super::select_response_formatter(&OutputMode::default()).format_response(body),
+-            _ => self.format_response(body),
+-        }
+-    }
+-
+-    fn format_hosts(&self, hosts: Option<lychee_lib::ratelimit::HostStatsMap>, format: HostFormat) -> String {
+-        use super::host_stats::{CompactHostStats, DetailedHostStats, MarkdownHostStats};
+-        let counts = |stats: &lychee_lib::ratelimit::HostStats| self.host_counts(stats);
+-        let rates = |stats: &lychee_lib::ratelimit::HostStats| self.host_rates(stats);
+-        match format {
+-            HostFormat::Compact => CompactHostStats { host_stats: hosts, counts: &counts }.to_string(),
+-            HostFormat::Detailed => DetailedHostStats { host_stats: hosts, rates: &rates }.to_string(),
+-            HostFormat::Markdown => MarkdownHostStats { host_stats: hosts, rates: &rates }.to_string(),
+-        }
+-    }
+-
+-    fn update(&self, response: Option<&ResponseBody>) {
+-        let response_message = response.map(|r| (r, self.format_progress_response(r)));
+-        if self.log_level() >= Level::Info {
+-            if let Some((response, message)) = response_message.as_ref() {
+-                if !response.status.is_success() || self.log_level() > Level::Info {
+-                    eprintln!("{message}");
+-                }
+-            }
+-        }
+-        if let Some(bar) = self.bar() {
+-            bar.inc(1);
+-            if let Some((_, message)) = response_message {
+-                bar.set_message(message);
+-            }
+-        }
+-    }
+-
+-    fn set_length(&self, n: u64) {
+-        if let Some(bar) = self.bar() {
+-            bar.set_length(n);
+-        }
+-    }
+-
+-    fn inc_length(&self, n: u64) {
+-        if let Some(bar) = self.bar() {
+-            bar.inc_length(n);
+-        }
+-    }
+-
+-    fn finish(&self, message: &'static str) {
+-        if let Some(bar) = self.bar() {
+-            bar.finish_with_message(message);
+-        }
+-    }
+-
+-    fn write_statistics(&self, stats: OutputStats, output: Option<&Path>) -> Result<()> {
+-        let formatted_stats = self.format(stats)?;
+-        if let Some(output) = output {
+-            fs::write(output, formatted_stats).context("Cannot write status output to file")?;
+-        } else {
+-            writeln!(stdout(), "{formatted_stats}")?;
+-        }
+-        Ok(())
+-    }
+-
+-    fn output_hints(&self, level: log::Level) {
+-        let hints = lychee_lib::get_hints();
+-        if level <= log::Level::Error {
+-            return;
+-        }
+-        let prefix = match self.mode() {
+-            OutputMode::Emoji => "💡".into(),
+-            OutputMode::Color => super::color::YELLOW.apply_to("Hint").to_string() + ":",
+-            OutputMode::Plain | OutputMode::Task => "Hint:".into(),
+-        };
+-        for hint in hints {
+-            eprintln!("{prefix} {hint}");
+-        }
+-    }
+-}
+-
+-pub(crate) struct Output {
+-    mode: OutputMode,
+-    bar: Option<ProgressBar>,
+-    log_level: Level,
+-    response: Box<dyn ResponseFormatter>,
+-    statistics: Box<dyn StatsFormatter + Send + Sync>,
+-}
+-
+-impl Output {
+-    pub(crate) fn new(format: &StatsFormat, mode: &OutputMode) -> Self {
+-        Self {
+-            mode: mode.clone(),
+-            bar: None,
+-            log_level: Level::Error,
+-            response: super::select_response_formatter(mode),
+-            statistics: super::select_stats_formatter(format, mode),
+-        }
+-    }
+-
+-    pub(crate) fn progress(mode: &OutputMode, bar: Option<ProgressBar>, log_level: Level) -> Self {
+-        let mut output = Self::new(&StatsFormat::Compact, mode);
+-        output.bar = bar;
+-        output.log_level = log_level;
+-        output
+-    }
+-}
+-
+-impl OutputFormatter for Output {
+-    fn bar(&self) -> Option<&ProgressBar> {
+-        self.bar.as_ref()
+-    }
+-
+-    fn log_level(&self) -> Level {
+-        self.log_level
+-    }
+-
+-    fn mode(&self) -> &OutputMode {
+-        &self.mode
+-    }
+-
+-    fn format_response(&self, body: &ResponseBody) -> String {
+-        self.response.format_response(body)
+-    }
+-
+-    fn format(&self, stats: OutputStats) -> Result<String> {
+-        self.statistics.format_with_output(stats, self)
+-    }
+-}
+diff --git a/lychee-bin/src/formatters/stats/compact.rs b/lychee-bin/src/formatters/stats/compact.rs
+index 5e26782..86ef9b1 100644
+--- a/lychee-bin/src/formatters/stats/compact.rs
++++ b/lychee-bin/src/formatters/stats/compact.rs
+@@ -2,7 +2,7 @@ use anyhow::Result;
+ use console::Style;
+ use humantime::FormattedDuration;
+ use std::{
++    fmt::{self, Display, Formatter},
+-    fmt::{self, Display},
+     sync::LazyLock,
+     time::Duration,
+ };
+@@ -11,7 +11,8 @@ use crate::config;
+ use crate::formatters::{
+     color::{BOLD_GREEN, BOLD_PINK, BOLD_YELLOW, DIM, NORMAL, color},
+     get_response_formatter,
++    host_stats::CompactHostStats,
++    response::ResponseFormatter,
+-    output::{HostFormat, OutputFormatter},
+     stats::{OutputStats, ResponseStats},
+ };
+ 
+@@ -24,12 +25,6 @@ struct CompactResponseStats {
+ 
+ impl Display for CompactResponseStats {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        self.write(f, &*get_response_formatter(&self.mode))
+-    }
+-}
+-
+-impl CompactResponseStats {
+-    fn write(&self, f: &mut dyn fmt::Write, response_formatter: &dyn OutputFormatter) -> fmt::Result {
+         let stats = &self.stats;
+         let issues = stats
+             .error_map
+@@ -48,9 +43,17 @@ impl Display for CompactResponseStats {
+             )?;
+         }
+ 
++        let response_formatter = get_response_formatter(&self.mode);
++
++        for (source, responses) in super::sort_stats_iter(
++            stats
++                .error_map
++                .iter()
++                .chain(stats.timeout_map.iter())
++                .chain(stats.unsupported_map.iter()),
++        ) {
+-        for (source, responses) in response_formatter.response_groups(stats, true) {
+             color!(f, BOLD_YELLOW, "[{}]:\n", source)?;
++            write_responses(f, &*response_formatter, responses)?;
+-            write_responses(f, response_formatter, responses)?;
+             write_suggestions(f, stats, source)?;
+             writeln!(f)?;
+         }
+@@ -84,8 +87,8 @@ fn format_duration(d: Duration) -> FormattedDuration {
+ }
+ 
+ fn write_responses(
++    f: &mut Formatter<'_>,
++    response_formatter: &dyn ResponseFormatter,
+-    f: &mut dyn fmt::Write,
+-    response_formatter: &dyn OutputFormatter,
+     responses: Vec<&lychee_lib::ResponseBody>,
+ ) -> Result<(), fmt::Error> {
+     for response in responses {
+@@ -96,7 +99,7 @@ fn write_responses(
+ }
+ 
+ fn write_suggestions(
++    f: &mut Formatter<'_>,
+-    f: &mut dyn fmt::Write,
+     stats: &ResponseStats,
+     source: &lychee_lib::InputSource,
+ ) -> Result<(), fmt::Error> {
+@@ -122,7 +125,7 @@ fn write_if_any(
+     symbol: &str,
+     text: &str,
+     style: &LazyLock<Style>,
++    f: &mut fmt::Formatter<'_>,
+-    f: &mut dyn fmt::Write,
+ ) -> Result<(), fmt::Error> {
+     if value > 0 {
+         color!(f, style, " {} {} {}", symbol, value, text)?;
+@@ -142,19 +145,15 @@ impl Compact {
+ 
+ impl StatsFormatter for Compact {
+     fn format(&self, stats: OutputStats) -> Result<String> {
+-        self.format_with_output(stats, &*get_response_formatter(&self.mode))
+-    }
+-
+-    fn format_with_output(&self, stats: OutputStats, output: &dyn OutputFormatter) -> Result<String> {
+         let response_stats = CompactResponseStats {
+             stats: stats.response_stats,
+             mode: self.mode.clone(),
+         };
++        let host_stats = CompactHostStats {
++            host_stats: stats.host_stats,
++        };
++
++        Ok(format!("{response_stats}\n{host_stats}"))
+-        let mut report = String::new();
+-        response_stats.write(&mut report, output)?;
+-        report.push('\n');
+-        report.push_str(&output.format_hosts(stats.host_stats, HostFormat::Compact));
+-        Ok(report)
+     }
+ }
+ 
+diff --git a/lychee-bin/src/formatters/stats/detailed.rs b/lychee-bin/src/formatters/stats/detailed.rs
+index a612856..2ec8083 100644
+--- a/lychee-bin/src/formatters/stats/detailed.rs
++++ b/lychee-bin/src/formatters/stats/detailed.rs
+@@ -3,7 +3,7 @@ use crate::{
+     config,
+     formatters::{
+         get_response_formatter,
++        host_stats::DetailedHostStats,
+-        output::{HostFormat, OutputFormatter},
+         stats::{OutputStats, ResponseStats},
+     },
+ };
+@@ -17,7 +17,7 @@ use std::{
+ // Maximum padding for each entry in the final statistics output
+ const WIDTH: usize = 20;
+ 
++fn write_stat(f: &mut fmt::Formatter, title: &str, stat: usize, newline: bool) -> fmt::Result {
+-fn write_stat(f: &mut dyn fmt::Write, title: &str, stat: usize, newline: bool) -> fmt::Result {
+     f.write_str(title)?;
+ 
+     let spacing = WIDTH.saturating_sub(title.chars().count());
+@@ -40,12 +40,6 @@ struct DetailedResponseStats {
+ 
+ impl Display for DetailedResponseStats {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        self.write(f, &*get_response_formatter(&self.mode))
+-    }
+-}
+-
+-impl DetailedResponseStats {
+-    fn write(&self, f: &mut dyn fmt::Write, response_formatter: &dyn OutputFormatter) -> fmt::Result {
+         let stats = &self.stats;
+         let separator = "-".repeat(WIDTH + 1);
+ 
+@@ -61,7 +55,11 @@ impl Display for DetailedResponseStats {
+         write_stat(f, "🚫 Errors", stats.errors, true)?;
+         write_stat(f, "⛔ Unsupported", stats.unsupported, false)?;
+ 
++        let response_formatter = get_response_formatter(&self.mode);
++
++        for (source, responses) in
++            super::sort_stats_iter(stats.error_map.iter().chain(stats.timeout_map.iter()))
++        {
+-        for (source, responses) in response_formatter.response_groups(stats, false) {
+             // Using leading newlines over trailing ones (e.g. `writeln!`)
+             // lets us avoid extra newlines without any additional logic.
+             write!(f, "\n\nErrors in {source}")?;
+@@ -90,7 +88,7 @@ impl Display for DetailedResponseStats {
+ }
+ 
+ fn write_stats<T: Display>(
++    f: &mut fmt::Formatter<'_>,
+-    f: &mut dyn fmt::Write,
+     title: &str,
+     source: &InputSource,
+     set: Option<&HashSet<T>>,
+@@ -122,19 +120,15 @@ impl Detailed {
+ 
+ impl StatsFormatter for Detailed {
+     fn format(&self, stats: OutputStats) -> Result<String> {
+-        self.format_with_output(stats, &*get_response_formatter(&self.mode))
+-    }
+-
+-    fn format_with_output(&self, stats: OutputStats, output: &dyn OutputFormatter) -> Result<String> {
+         let response_stats = DetailedResponseStats {
+             stats: stats.response_stats,
+             mode: self.mode.clone(),
+         };
++        let host_stats = DetailedHostStats {
++            host_stats: stats.host_stats,
++        };
++
++        Ok(format!("{response_stats}\n{host_stats}"))
+-        let mut report = String::new();
+-        response_stats.write(&mut report, output)?;
+-        report.push('\n');
+-        report.push_str(&output.format_hosts(stats.host_stats, HostFormat::Detailed));
+-        Ok(report)
+     }
+ }
+ 
+diff --git a/lychee-bin/src/formatters/stats/markdown.rs b/lychee-bin/src/formatters/stats/markdown.rs
+index fe7db13..7399da5 100644
+--- a/lychee-bin/src/formatters/stats/markdown.rs
++++ b/lychee-bin/src/formatters/stats/markdown.rs
+@@ -5,15 +5,16 @@ use std::{
+ 
+ use super::StatsFormatter;
+ use anyhow::Result;
++use http::StatusCode;
++use lychee_lib::{InputSource, ResponseBody, Status};
++use std::fmt::Write;
+-use lychee_lib::{InputSource, ResponseBody};
+ use tabled::{
+     Table, Tabled,
+     settings::{Alignment, Modify, Style, object::Segment},
+ };
+ 
+ use crate::formatters::{
++    host_stats::MarkdownHostStats,
+-    get_response_formatter,
+-    output::{HostFormat, OutputFormatter},
+     stats::{OutputStats, ResponseStats},
+ };
+ 
+@@ -76,32 +77,35 @@ fn stats_table(stats: &ResponseStats) -> String {
+ ///
+ /// Optional details get added if available.
+ fn markdown_response(response: &ResponseBody) -> Result<String> {
++    let mut formatted = format!(
++        "* [{}] <{}>",
++        response.status.code_as_string(),
++        response.uri,
++    );
++
++    if let Some(span) = response.span {
++        formatted = format!("{formatted} (at {span})");
++    }
+-    markdown_response_with_output(response, &*get_response_formatter(&crate::config::OutputMode::Plain))
+-}
+ 
++    if let Status::Ok(StatusCode::OK) = response.status {
++        // Don't print anything else if the status code is 200.
++        // The output gets too verbose then.
++        return Ok(formatted);
+-fn markdown_response_with_output(response: &ResponseBody, formatter: &dyn OutputFormatter) -> Result<String> {
+-    use std::fmt::Write;
+-    let (location, details) = formatter.response_annotation(response);
+-    let mut result = format!("* [{}] <{}>", response.status.code_as_string(), response.uri);
+-    if let Some(location) = location {
+-        result.push_str(&location);
+     }
++
++    // Add a separator between the URI and the additional details below.
++    // Note: To make the links clickable in some terminals,
++    // we add a space before the separator.
++    let details = response.status.details();
++    write!(formatted, " | {details}")?;
++
++    Ok(formatted)
+-    if let Some(details) = details {
+-        write!(result, " | {details}")?;
+-    }
+-    Ok(result)
+ }
+ 
+ struct MarkdownResponseStats(ResponseStats);
+ 
+ impl Display for MarkdownResponseStats {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        self.write(f, &*get_response_formatter(&crate::config::OutputMode::Plain))
+-    }
+-}
+-
+-impl MarkdownResponseStats {
+-    fn write(&self, f: &mut dyn fmt::Write, output: &dyn OutputFormatter) -> fmt::Result {
+         let stats = &self.0;
+ 
+         writeln!(f, "# Summary")?;
+@@ -109,15 +113,15 @@ impl Display for MarkdownResponseStats {
+         writeln!(f, "{}", stats_table(&self.0))?;
+ 
+         write_stats_per_input(f, "Errors", &stats.error_map, |response| {
++            markdown_response(response).map_err(|_| fmt::Error)
+-            markdown_response_with_output(response, output).map_err(|_| fmt::Error)
+         })?;
+ 
+         write_stats_per_input(f, "Timeouts", &stats.timeout_map, |response| {
++            markdown_response(response).map_err(|_| fmt::Error)
+-            markdown_response_with_output(response, output).map_err(|_| fmt::Error)
+         })?;
+ 
+         write_stats_per_input(f, "Ignored", &stats.unsupported_map, |response| {
++            markdown_response(response).map_err(|_| fmt::Error)
+-            markdown_response_with_output(response, output).map_err(|_| fmt::Error)
+         })?;
+ 
+         write_stats_per_input(f, "Redirects", &stats.redirect_map, |redirects| {
+@@ -133,7 +137,7 @@ impl Display for MarkdownResponseStats {
+ }
+ 
+ fn write_stats_per_input<T, F>(
++    f: &mut fmt::Formatter<'_>,
+-    f: &mut dyn fmt::Write,
+     name: &'static str,
+     map: &HashMap<InputSource, HashSet<T>>,
+     write_stat: F,
+@@ -165,16 +169,12 @@ impl Markdown {
+ 
+ impl StatsFormatter for Markdown {
+     fn format(&self, stats: OutputStats) -> Result<String> {
++        let response_stats = MarkdownResponseStats(stats.response_stats);
++        let host_stats = MarkdownHostStats {
++            host_stats: stats.host_stats,
++        };
+-        self.format_with_output(stats, &*get_response_formatter(&crate::config::OutputMode::Plain))
+-    }
+ 
++        Ok(format!("{response_stats}\n{host_stats}"))
+-    fn format_with_output(&self, stats: OutputStats, output: &dyn OutputFormatter) -> Result<String> {
+-        let response_stats = MarkdownResponseStats(stats.response_stats);
+-        let mut report = String::new();
+-        response_stats.write(&mut report, output)?;
+-        report.push('\n');
+-        report.push_str(&output.format_hosts(stats.host_stats, HostFormat::Markdown));
+-        Ok(report)
+     }
+ }
+ 
+diff --git a/lychee-bin/src/formatters/stats/mod.rs b/lychee-bin/src/formatters/stats/mod.rs
+index 08e6b02..df821ed 100644
+--- a/lychee-bin/src/formatters/stats/mod.rs
++++ b/lychee-bin/src/formatters/stats/mod.rs
+@@ -18,14 +18,16 @@ use std::{
+     cmp::Eq,
+     collections::{HashMap, HashSet},
+     fmt::Display,
++    fs,
+     hash::Hash,
++    io::{Write, stdout},
+ };
+ 
+ use crate::{
++    config::{Config, OutputMode},
++    formatters::{color::YELLOW, get_stats_formatter},
+-    config::Config,
+-    formatters::get_stats_formatter,
+ };
++use anyhow::{Context, Result};
+-use anyhow::Result;
+ use lychee_lib::{InputSource, ratelimit::HostStatsMap};
+ 
+ #[derive(Default, Serialize)]
+@@ -39,22 +41,39 @@ pub(crate) struct OutputStats {
+ pub(crate) trait StatsFormatter {
+     /// Format the stats of all responses and write them to stdout
+     fn format(&self, stats: OutputStats) -> Result<String>;
+-
+-    fn format_with_output(&self, stats: OutputStats, _output: &dyn super::output::OutputFormatter) -> Result<String> {
+-        self.format(stats)
+-    }
+ }
+ 
+ /// Output response statistics to stdout or the specified output file.
+ pub(crate) fn output_statistics(stats: OutputStats, config: &Config) -> Result<()> {
+     let formatter = get_stats_formatter(&config.format(), &config.mode());
++    let formatted_stats = formatter.format(stats)?;
++
++    if let Some(output) = &config.output {
++        fs::write(output, formatted_stats).context("Cannot write status output to file")?;
++    } else {
++        // we assume that the formatted stats don't have a final newline
++        writeln!(stdout(), "{formatted_stats}")?;
++    }
++    Ok(())
+-    formatter.write_statistics(stats, config.output.as_deref())
+ }
+ 
+ /// Output hints to stderr.
+ pub(crate) fn output_hints(config: &Config) {
++    let hints = lychee_lib::get_hints();
++
++    if config.verbose().log_level() <= log::Level::Error {
++        return; // log level is too low
++    }
++
++    let prefix = match &config.mode() {
++        OutputMode::Emoji => "💡".into(),
++        OutputMode::Color => YELLOW.apply_to("Hint").to_string() + ":",
++        OutputMode::Plain | OutputMode::Task => "Hint:".into(),
++    };
++
++    for hint in hints {
++        eprintln!("{prefix} {hint}");
++    }
+-    get_stats_formatter(&config.format(), &config.mode())
+-        .output_hints(config.verbose().log_level());
+ }
+ 
+ /// Convert a `ResponseStats` `HashMap` to a sorted Vec of key-value pairs.
+@@ -84,7 +103,7 @@ where
+ /// In the above example, we also see that although this function takes an
+ /// iterable of *borrowed* items, it can still be called with an owned iterable
+ /// because `.iter()` will borrow for us.
++fn sort_stats_iter<'a, K, V, Entries, Vals>(it: Entries) -> Vec<(&'a K, Vec<&'a V>)>
+-pub(super) fn sort_stats_iter<'a, K, V, Entries, Vals>(it: Entries) -> Vec<(&'a K, Vec<&'a V>)>
+ where
+     K: Display + Hash + Eq + 'a,
+     V: Display + 'a,
+diff --git a/lychee-bin/src/formatters/stats/response.rs b/lychee-bin/src/formatters/stats/response.rs
+index deb3e4d..e8b7376 100644
+--- a/lychee-bin/src/formatters/stats/response.rs
++++ b/lychee-bin/src/formatters/stats/response.rs
+@@ -105,10 +105,19 @@ impl ResponseStats {
+     }
+ 
+     /// Add a response status to the appropriate map (success, fail, excluded)
++    fn add_response_status(&mut self, response: Response) {
+-    pub(crate) fn add_response_status(&mut self, response: Response) {
+         let status = response.status();
+         let source: InputSource = response.source().clone();
+ 
++        if self.detailed_stats
++            && let Some(redirects) = response.redirects()
++        {
++            self.redirect_map
++                .entry(source.clone())
++                .or_default()
++                .insert(redirects.clone());
++        }
++
+         let status_map_entry = if status.is_timeout() {
+             self.timeout_map.entry(source).or_default()
+         } else if status.is_error() {
+@@ -128,8 +137,19 @@ impl ResponseStats {
+ 
+     /// Update the stats with a new response
+     pub(crate) fn add(&mut self, response: Response) {
++        if self.seen_uris.insert(response.body().uri.clone()) {
++            self.unique += 1;
++        }
++
++        self.total += 1;
++        if response.redirects().is_some() {
++            self.redirects += 1;
++        }
++        if response.remap().is_some() {
++            self.remaps += 1;
++        }
++        self.increment_status_counters(response.status());
++        self.add_response_status(response);
+-        crate::formatters::get_response_formatter(&crate::config::OutputMode::Plain)
+-            .record_statistics(self, response);
+     }
+ 
+     #[inline]
+diff --git a/lychee-bin/src/hints.rs b/lychee-bin/src/hints.rs
+index 55deba3..0ed400b 100644
+--- a/lychee-bin/src/hints.rs
++++ b/lychee-bin/src/hints.rs
+@@ -1,15 +1,21 @@
+ use http::{Method, StatusCode};
++use lychee_lib::{ErrorKind, RequestError, Status, StatusCodeSelector, hint};
+-use lychee_lib::{ErrorKind, RequestError, Status, hint};
+ 
+ use crate::{config::Config, formatters::stats::ResponseStats};
+ 
+ /// Collect [`lychee_lib::Hint`]s based on the resulting statistics.
+ pub(crate) fn handle_stats(stats: &ResponseStats, config: &Config) {
++    rate_limit(stats, config);
++    github_rate_limit(stats, config);
++    any_redirects(stats, config);
++    rejected_status_codes(stats, config);
++    unfollowed_redirects(stats, config);
++    root_relative_links(stats);
++    fragment_checks_with_non_get_method(config);
+-    crate::formatters::get_stats_formatter(&config.format(), &config.mode())
+-        .collect_hints(stats, config);
+ }
+ 
++fn rate_limit(stats: &ResponseStats, config: &Config) {
++    let default_host_config = config.hosts.is_empty();
+-pub(crate) fn rate_limit(stats: &ResponseStats) {
+     let first_rate_limited_domain = stats
+         .error_map
+         .values()
+@@ -22,7 +28,7 @@ fn rate_limit(stats: &ResponseStats, config: &Config) {
+         })
+         .and_then(|b| b.uri.domain());
+ 
++    if default_host_config && let Some(domain) = first_rate_limited_domain {
+-    if let Some(domain) = first_rate_limited_domain {
+         hint!(
+             "Encountered rate limit responses. \
+             You might be able to work around this by adding `[hosts.\"{domain}\"]` to the TOML config \
+@@ -37,7 +43,7 @@ fn rate_limit(stats: &ResponseStats, config: &Config) {
+ /// > If you exceed your primary rate limit, you will receive a 403 or 429 response
+ ///
+ /// [docs]: https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10#exceeding-the-rate-limit
++fn github_rate_limit(stats: &ResponseStats, config: &Config) {
+-pub(crate) fn github_rate_limit(stats: &ResponseStats) {
+     let any_github_errors = stats.error_map.values().flatten().any(|body| {
+         let is_github = body
+             .uri
+@@ -52,7 +58,7 @@ fn github_rate_limit(stats: &ResponseStats, config: &Config) {
+         is_github && is_rate_limited
+     });
+ 
++    if config.github_token.is_none() && any_github_errors {
+-    if any_github_errors {
+         hint!(
+             "GitHub seems to be rate limiting us. \
+              You could try setting a GitHub token with `--github-token`"
+@@ -60,11 +66,12 @@ fn github_rate_limit(stats: &ResponseStats, config: &Config) {
+     }
+ }
+ 
++fn any_redirects(stats: &ResponseStats, config: &Config) {
+-pub(crate) fn any_redirects(stats: &ResponseStats) {
+     let count = stats.redirects;
+     let has_redirects = count > 0;
++    let hides_redirects = config.verbose().log_level() < log::Level::Info;
+ 
++    if has_redirects && hides_redirects {
+-    if has_redirects {
+         let noun = if count == 1 { "redirect" } else { "redirects" };
+         hint!(
+             "Followed {count} {noun}. \
+@@ -74,19 +81,21 @@ fn any_redirects(stats: &ResponseStats, config: &Config) {
+     }
+ }
+ 
++fn rejected_status_codes(stats: &ResponseStats, config: &Config) {
++    let is_default = config.accept() == StatusCodeSelector::default_accepted();
+-pub(crate) fn rejected_status_codes(stats: &ResponseStats) {
+     let any_rejected_codes = stats
+         .error_map
+         .values()
+         .flatten()
+         .any(|r| matches!(r.status, Status::Error(ErrorKind::RejectedStatusCode(_))));
+ 
++    if is_default && any_rejected_codes {
+-    if any_rejected_codes {
+         hint!("You can configure accepted/rejected response codes with `-a` or `--accept`");
+     }
+ }
+ 
++fn unfollowed_redirects(stats: &ResponseStats, config: &Config) {
++    let is_small_limit = config.max_redirects() <= lychee_lib::DEFAULT_MAX_REDIRECTS;
+-pub(crate) fn unfollowed_redirects(stats: &ResponseStats) {
+     let any_rejected_redirection_codes = stats.error_map.values().flatten().any(|r| {
+         matches!(
+             r.status,
+@@ -94,7 +103,7 @@ fn unfollowed_redirects(stats: &ResponseStats, config: &Config) {
+         )
+     });
+ 
++    if is_small_limit && any_rejected_redirection_codes {
+-    if any_rejected_redirection_codes {
+         hint!(
+             "Rejected redirectional status codes. \
+              This means some redirects were not followed. \
+@@ -106,7 +115,7 @@ fn unfollowed_redirects(stats: &ResponseStats, config: &Config) {
+ /// Fragment checks need the response body, which lychee only fetches for `GET`
+ /// requests. If the primary (first) request method is not `GET`, links that
+ /// succeed with that method skip fragment checking, which is easy to miss.
++fn fragment_checks_with_non_get_method(config: &Config) {
+-pub(crate) fn fragment_checks_with_non_get_method(config: &Config) {
+     let fragments = config.fragment_checker_options();
+     let checks_fragments = fragments.check_anchor_fragments || fragments.check_text_fragments;
+ 
+@@ -118,7 +127,7 @@ fn fragment_checks_with_non_get_method(config: &Config) {
+     }
+ }
+ 
++fn root_relative_links(stats: &ResponseStats) {
+-pub(crate) fn root_relative_links(stats: &ResponseStats) {
+     let any_root_relative_links = stats.error_map.values().flatten().any(|r| match &r.status {
+         Status::RequestError(RequestError::CreateRequestItem(_, _, e)) => {
+             matches!(**e, ErrorKind::RootRelativeLinkWithoutRoot(_))
+diff --git a/lychee-bin/src/progress.rs b/lychee-bin/src/progress.rs
+index 86a3452..2de8b99 100644
+--- a/lychee-bin/src/progress.rs
++++ b/lychee-bin/src/progress.rs
+@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock};
+ 
+ use crate::{
+     config::OutputMode,
++    formatters::{get_progress_formatter, response::ResponseFormatter},
+-    formatters::{get_progress_formatter, output::OutputFormatter},
+ };
+ 
+ #[derive(Clone)]
+@@ -28,7 +28,10 @@ static STYLE: LazyLock<ProgressStyle> = LazyLock::new(|| {
+ #[derive(Clone)]
+ /// Report link check progress on stderr.
+ pub(crate) struct Progress {
++    /// Optional progress bar to visualize progress
++    bar: Option<Bar>,
++    log_level: Level,
++    formatter: Arc<Box<dyn ResponseFormatter>>,
+-    formatter: Arc<Box<dyn OutputFormatter>>,
+ }
+ 
+ impl Progress {
+@@ -49,29 +52,60 @@ impl Progress {
+         };
+ 
+         Progress {
++            bar,
++            log_level,
++            formatter: Arc::new(get_progress_formatter(mode)),
+-            formatter: Arc::new(get_progress_formatter(mode, bar, log_level)),
+         }
+     }
+ 
+     /// If a bar is configured it is advanced by one and optionally updated with `response`.
+     /// Progress output depends on the provided log level.
+     pub(crate) fn update(&self, response: Option<&ResponseBody>) {
++        let response_message = response.map(|r| (r, self.formatter.format_response(r)));
++        self.print_progress(response_message.as_ref());
++        self.with_bar(|bar| {
++            bar.inc(1);
++            if let Some((_, message)) = response_message {
++                bar.set_message(message);
++            }
++        });
+-        self.formatter.update(response);
+     }
+ 
++    fn print_progress(&self, response_message: Option<&(&ResponseBody, String)>) {
++        if self.log_level < Level::Info {
++            return;
++        }
++
++        let Some((response, message)) = response_message else {
++            return;
++        };
++
++        let should_show_success = self.log_level > Level::Info;
++        let is_success = response.status.is_success();
++
++        if !is_success || should_show_success {
++            eprintln!("{message}");
++        }
+-    pub(crate) fn record_response(&self, stats: &mut crate::formatters::stats::ResponseStats, response: lychee_lib::Response) {
+-        self.formatter.record_response(stats, response);
+     }
+ 
+     pub(crate) fn set_length(&self, n: u64) {
++        self.with_bar(|b| b.set_length(n));
+-        self.formatter.set_length(n);
+     }
+ 
+     pub(crate) fn inc_length(&self, n: u64) {
++        self.with_bar(|b| b.inc_length(n));
+-        self.formatter.inc_length(n);
+     }
+ 
+     pub(crate) fn finish(&self, message: &'static str) {
++        self.with_bar(|b| b.finish_with_message(message));
++    }
++
++    fn with_bar<F>(&self, action: F)
++    where
++        F: FnOnce(&Bar),
++    {
++        if let Some(bar) = &self.bar {
++            action(bar);
++        }
+-        self.formatter.finish(message);
+     }
+ }

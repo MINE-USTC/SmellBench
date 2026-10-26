@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/burntsushi_fst_dc"
+version = "1.0.0"
+description = "Refactor an injected data_clumps smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "data_clumps", "rust"]
+
+[metadata]
+repo_name = "fst"
+repo_url = "https://github.com/BurntSushi/fst"
+git_commit = "5907b4739793b3d5d7061eaa3f85274e09769d6a"
+language = "Rust"
+smell_type = "data_clumps"
+prompt_mode = "explicit"
+apt_packages = []
+smell_checker_match_count = 27
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 4
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"  # baseline; agent defaults to public networking
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/BurntSushi/fst", CC_FORBIDDEN_REPO_URL = "fst", CC_FORBIDDEN_REPO_NAME = "fst" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

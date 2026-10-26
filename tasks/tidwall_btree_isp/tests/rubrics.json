@@ -1,0 +1,478 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "tidwall_btree_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "comparison",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 search-only consumer.",
+      "baseline_defect": "The comparison consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope comparison dependencies to the capabilities actually consumed.",
+      "acceptance": "Comparator-only providers need no allocation/root/clone/cursor/lock methods. Retain upper-bound binary search then reverse less-than equality, overflow-safe midpoint and BTree hints; ordered map keys compare keys only, not values. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "access.go",
+          "symbol": "searchItems",
+          "detail": "The comparison consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "bsearch,hintsearch",
+          "detail": "The comparison consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "search",
+          "detail": "The comparison consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "observation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R3 count/height broad dependency.",
+      "baseline_defect": "The observation consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope observation dependencies to the capabilities actually consumed.",
+      "acceptance": "Length remains live count without new lock side effects; height follows root/child chain with existing optional tree read lock. No initialization/cloning or mutable node access requirement; count/root may be separate or coherent observer view. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "Len,Height",
+          "detail": "The observation consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "Len,Height",
+          "detail": "The observation consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "Len",
+          "detail": "The observation consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Len",
+          "detail": "The observation consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "lookup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 adapters and shared readers.",
+      "baseline_defect": "The lookup consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope lookup dependencies to the capabilities actually consumed.",
+      "acceptance": "Ordinary lookup needs search/read, optional tree locking and zero result, not construction or cursor lifecycle. Preserve nil erased-key bypass, Set bool projection, hint depth and empty/missing results. Mutable variants may receive needed isolation without burdening read-only clients. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "access.go",
+          "symbol": "readTree,readMap",
+          "detail": "The lookup consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btree.go",
+          "symbol": "getHintMut",
+          "detail": "The lookup consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Contains",
+          "detail": "The lookup consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mutable_selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 COW before comparison fused in locate.",
+      "baseline_defect": "The mutable selection consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope mutable selection dependencies to the capabilities actually consumed.",
+      "acceptance": "When mutable and identity differs publish copied node before comparison/hint selection, keeping clone callback order. Max-delete selects final slot after load without ordinary key comparison. Narrowing must not search stale pre-copy node; combined focused locate is legal, separation into two methods not required. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "access.go",
+          "symbol": "locateNode,locateHint",
+          "detail": "The mutable selection consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "nodeSet,delete",
+          "detail": "The mutable selection consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "nodeSet,delete",
+          "detail": "The mutable selection consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "optional_item_copy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 clone consumers widened.",
+      "baseline_defect": "The optional item copy consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope optional item copy dependencies to the capabilities actually consumed.",
+      "acceptance": "Copy takes precedence over IsoCopy; absent hooks no copying, Map copies values only and retains keys. Node copy preserves capacities/children/count and isolation. Existing public Copy-only/IsoCopy-only/both/neither item types need no new methods; no aggregate deletion mandate. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "access.go",
+          "symbol": "cloneEnabled,cloneItem",
+          "detail": "The optional item copy consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "copy",
+          "detail": "The optional item copy consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "copy",
+          "detail": "The optional item copy consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "insertion_structure",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 construction/split clients.",
+      "baseline_defect": "The insertion structure consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope insertion structure dependencies to the capabilities actually consumed.",
+      "acceptance": "Focused write capability can combine root/init/limits/zero/allocate/load/search where used, without cursor lifecycle or unrelated optional-copy methods exposed to every client. Preserve replacement counts, initialization, median split and recursive retry; no required separate interface per helper. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "setHint,nodeSet,nodeSplit",
+          "detail": "The insertion structure consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "Set,nodeSet,nodeSplit",
+          "detail": "The insertion structure consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "deletion_structure",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 deletion/rebalance consumers.",
+      "baseline_defect": "The deletion structure consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope deletion structure dependencies to the capabilities actually consumed.",
+      "acceptance": "Structural repair needs mutable children, occupancy and zeroing, not constructor/cursor umbrella. Preserve borrowed predecessor replacement, merge/rotation counts and COW siblings, root shrink and missing outputs. Shared coherent write contract may also serve insertion. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "deleteHint,delete,nodeRebalance",
+          "detail": "The deletion structure consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "Delete,delete,nodeRebalance",
+          "detail": "The deletion structure consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "bulk_rank_extreme_mutation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 remaining mutation families.",
+      "baseline_defect": "The bulk rank extreme mutation consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope bulk rank extreme mutation dependencies to the capabilities actually consumed.",
+      "acceptance": "Keep optimistic counts/restoration before fallback, local rank/path hints, sorted strict append, range endpoint/NoReturn and action callback semantics. These clients may consume a focused write view while avoiding unused cloning/cursor/initialization obligations; no algorithm rewrite required. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "Load,PopMin,PopMax,DeleteAt,DeleteAscend,DeleteRangeReuse",
+          "detail": "The bulk rank extreme mutation consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "Load,PopMin,PopMax,DeleteAt",
+          "detail": "The bulk rank extreme mutation consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ordinary_traversal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R2 read/callback aggregation.",
+      "baseline_defect": "The ordinary traversal consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope ordinary traversal dependencies to the capabilities actually consumed.",
+      "acceptance": "Read traversals need loading, ordering where used and tree read lease, not allocation or lifecycle; mutable traversal retains COW. Preserve callback early termination, grouped Walk slices and item/value pairing. Do not make key/value collection invoke optional clones on nonmutating paths. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "scan,ascend,reverse,descend,walk,items",
+          "detail": "The ordinary traversal consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "scan,ascend,reverse,descend,values,keyValues",
+          "detail": "The ordinary traversal consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "key_only_traversal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 independent key-only stand-in burden.",
+      "baseline_defect": "The key only traversal consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope key only traversal dependencies to the capabilities actually consumed.",
+      "acceptance": "Key-only traversal can run with node reading alone; root/count setup must not force copy/allocate/cursor implementation. Ordered keys, empty nonnil slices and key-only Set projection stay intact. A one-signature narrowing is valid even if other providers implement a larger set. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "Keys,keysFrom",
+          "detail": "The key only traversal consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Keys",
+          "detail": "The key only traversal consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "owner_binding",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 cached owner guard/ordinary value copies.",
+      "baseline_defect": "The owner binding consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope owner binding dependencies to the capabilities actually consumed.",
+      "acceptance": "Zero-value and value-copied objects resolve their own root slot, not cached original owner. Read-only retrieval must not mutate object simply to repair cache; transient binding, no cache or safely rebound scoped view all valid. Do not ban cached backing objects categorically. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "access.go",
+          "symbol": "binding",
+          "detail": "The owner binding consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "init",
+          "detail": "The owner binding consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "init",
+          "detail": "The owner binding consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "snapshot_rebinding",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 copy and embedded Map root address.",
+      "baseline_defect": "The snapshot rebinding consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope snapshot rebinding dependencies to the capabilities actually consumed.",
+      "acceptance": "Source/copy identities stay separate, tree optional lock/fresh mutex behavior preserved. Embedded Set value must not retain binding to temporary heap Map; later reads/writes operate current embedded owner. Existing copy methods and direct owner access acceptable; no mandatory persistent back-reference removal. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "IsoCopy",
+          "detail": "The snapshot rebinding consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "IsoCopy",
+          "detail": "The snapshot rebinding consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "set.go",
+          "symbol": "Copy,IsoCopy",
+          "detail": "The snapshot rebinding consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cursor_mode",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 captured mutable default.",
+      "baseline_defect": "The cursor mode consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope cursor mode dependencies to the capabilities actually consumed.",
+      "acceptance": "Iterator reads/locates consistently use mode captured at creation/reinit, preserving COW and hinted path. Cursor clients need root/load/selection, not initialize/allocate/clone policy. A captured reader/writer closure or combined scoped cursor valid; ignoring redundant method parameter is not itself forbidden. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "access.go",
+          "symbol": "cursor,treeCursorBinding,mapCursorBinding",
+          "detail": "The cursor mode consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "iter,seek,First,Last,Next,Prev",
+          "detail": "The cursor mode consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "iter,Seek",
+          "detail": "The cursor mode consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cursor_lease",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 broad dynamic assertion and held lock.",
+      "baseline_defect": "The cursor lease consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+      "criterion": "Scope cursor lease dependencies to the capabilities actually consumed.",
+      "acceptance": "Acquire once with chosen tree/mode, release same owner/mode once, reinit releases prior lease before binding new tree, preserve reusable stack backing and zero/released behavior. Map remains lock-free. Remove need to assert an omnibus returned node view into treeAccess; scoped combined cursor+lease is legal. Direct owner operations, callbacks, focused views or composed contracts qualify; a shared implementation/backing object may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A smaller name or facade which still requires unrelated methods does not narrow the actual client contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "access.go",
+          "symbol": "openIteration,treeCursorBinding.release",
+          "detail": "The cursor lease consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "Init,Release,iter",
+          "detail": "The cursor lease consumer requires nodeAccess/treeAccess operations unrelated to its work.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "tidwall_btree_isp",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "aggregation": "equal_weight_per_item",
+    "excluded_from_scoring": [
+      "The empty post.diff introduces no defect.",
+      "Preserving output, compilation, and tests is a constraint, not a separate rubric point.",
+      "No unmatched historical design intention or cosmetic name change is scored."
+    ]
+  }
+}

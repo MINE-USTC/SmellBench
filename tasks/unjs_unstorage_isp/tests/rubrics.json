@@ -1,0 +1,495 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "unjs_unstorage_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "U01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Single-item reads and membership queries use only the driver operations needed by those paths.",
+      "baseline_defect": "getMount returns a mandatory DriverSession with write, metadata, watch and disposal members even to hasItem and getItem.",
+      "criterion": "Single-item read clients depend on a read-specific capability boundary instead of the entire driver session.",
+      "acceptance": "Trace hasItem and getItem through mount selection and find that unrelated mutation and lifecycle capabilities are not required to satisfy their internal contract. Keep public Driver optional shape unchanged; shared concrete session is legal behind focused read contract. Mount lookup returns source identity via getMount/getMounts. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming DriverSession or moving all its members to a different file leaves these readers coupled to it."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "DriverSession",
+          "detail": null,
+          "raw": "expanded.diff:src/_driver-session.ts:DriverSession"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "src/storage.ts",
+          "symbol": "getMount",
+          "detail": null,
+          "raw": "expanded.diff:src/storage.ts:getMount"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "hasItem/getItem",
+          "detail": "Location of the final injected responsibility or call-site change.",
+          "raw": "src/storage.ts:hasItem/getItem"
+        }
+      ]
+    },
+    {
+      "id": "U02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch dispatch groups items by mount; the driver may supply a batch read or use individual reads.",
+      "baseline_defect": "The mandatory session owns getItems fallback while runBatch and storage.getItems separately own mount grouping and result key mapping.",
+      "criterion": "Batch-read fallback and mount/result translation have coherent narrow owners without making every driver consumer carry batch behavior.",
+      "acceptance": "Native and fallback batch reads can be traced from runBatch to their owner, while unrelated single-operation consumers do not require the batch contract. Native getItems or scalar Promise.all retain per-item options, mount-relative mapping and destr conversion; dynamic source methods not eagerly captured. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Keeping getItems on an otherwise complete DriverSession and changing only the caller name does not resolve the broad dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "getItems",
+          "detail": null,
+          "raw": "expanded.diff:src/_driver-session.ts:getItems"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "runBatch/getItems",
+          "detail": "Location of the final injected responsibility or call-site change.",
+          "raw": "src/storage.ts:runBatch/getItems"
+        }
+      ]
+    },
+    {
+      "id": "U03",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Drivers already vary between native raw reads and a serialized ordinary-read fallback.",
+      "baseline_defect": "The raw-read alternative is a mandatory member of the all-purpose DriverSession consumed by all mounted operations.",
+      "criterion": "A driver with or without native getItemRaw can be accommodated at the raw-read boundary without editing unrelated write, metadata, or lifecycle consumers.",
+      "acceptance": "The existing getItemRaw versus getItem plus deserializeRaw variation is localized in a narrow raw-read capability or its client. Raw native result bypasses deserialize; fallback invokes ordinary source then decodes. Normal storage invocation detached, overlay bound to source; preserve method receiver distinctions. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Preserving the fallback inside an unchanged all-method session does not isolate this variation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "getItemRaw",
+          "detail": null,
+          "raw": "expanded.diff:src/_driver-session.ts:getItemRaw"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "getItemRaw",
+          "detail": "Location of the final injected responsibility or call-site change.",
+          "raw": "src/storage.ts:getItemRaw"
+        }
+      ]
+    },
+    {
+      "id": "U04",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Ordinary and raw writes have optional driver methods and synthetic update notifications when native watch is absent.",
+      "baseline_defect": "Both setItem and setItemRaw plus mutation notification defaults live in the same mandatory session used by readers and overlay enumeration.",
+      "criterion": "Write capability checks, raw fallback, and update notification form a write-focused boundary that is not a required dependency of read-only consumers.",
+      "acceptance": "Follow ordinary and raw writes through native/fallback paths and see their mutation-specific dependency without carrying the complete session contract into readers. Readonly setItem returns before stringify; undefined delegates remove with existing options behavior; source presence checked dynamically, not inferred from mandatory adapter method. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the intact setItem and setItemRaw block to another all-purpose adapter, or merely making its methods optional, retains the coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "setItem/setItemRaw",
+          "detail": null,
+          "raw": "expanded.diff:src/_driver-session.ts:setItem/setItemRaw"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "Mutation/setItemRaw",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/_driver-session.ts:Mutation/setItemRaw"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/storage.ts",
+          "symbol": "setItemRaw",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/storage.ts:setItemRaw"
+        }
+      ]
+    },
+    {
+      "id": "U05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "A raw write without native setItemRaw falls through the ordinary writer; the existing storage API has one update event per successful logical write.",
+      "baseline_defect": "The session now routes raw fallback through session.setItem with a per-call Mutation callback, mixing encoding, capability dispatch, and event policy in the broad adapter.",
+      "criterion": "Raw fallback and ordinary-write event policy have a coherent mutation owner that emits one logical update and does not impose callback policy on unrelated capabilities.",
+      "acceptance": "A native raw writer and the serializeRaw-to-setItem path each reach one write-specific event decision after completion; the broad read/list/watch contract is not needed to implement it. After successful native raw write or serialized ordinary fallback, check CURRENT watch availability then exactly one synthetic update; never precheck watch or duplicate fallback event. Scoped helper may implement both ordinary/raw. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Adding a second notification in storage.setItemRaw while retaining the session callback, or passing callbacks through a renamed global adapter, does not meet the boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "setItemRaw/setItem",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/_driver-session.ts:setItemRaw/setItem"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/storage.ts",
+          "symbol": "setItemRaw",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/storage.ts:setItemRaw"
+        }
+      ]
+    },
+    {
+      "id": "U06",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "removeItem may delete the metadata companion key and then issue one remove event for the requested item.",
+      "baseline_defect": "The broad session's removeItem now recursively removes the companion key while accepting notification policy and a removeMeta flag from storage.",
+      "criterion": "Item removal and optional metadata cleanup are owned by a focused mutation path that keeps the companion operation subordinate to the logical removal.",
+      "acceptance": "The caller's legacy removeMeta/removeMata interpretation, companion-key deletion, and one parent notification can be traced without requiring read/batch/overlay clients to depend on removal policy. Remove main then key+$ only for removeMeta/removeMata, child receives no mutation context; only parent event after both success. Failure suppresses event; absent remove remains readonly. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming the recursive method or emitting a separate child notification leaves the broad ownership or logical removal defect unresolved."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "removeItem",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/_driver-session.ts:removeItem"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/storage.ts",
+          "symbol": "removeItem",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/storage.ts:removeItem"
+        }
+      ]
+    },
+    {
+      "id": "U07",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Mount selection produces a relative key and base, and storage watchers consume a full-key change event.",
+      "baseline_defect": "A WeakMap-cached session is shared by driver identity while storage passes a per-operation closure that adds the selected mount base to session-emitted relative keys.",
+      "criterion": "The mount producer, mutation boundary, and watcher consumer coordinate key attribution without storing a mount-specific base on a shared driver capability object.",
+      "acceptance": "When one driver is mounted under two bases, each logical update/remove reaches onChange with its own full key through a scoped handoff; the capability split retains that relation. WeakMap caches per Driver, so capture mount base per call rather than mutable session-global base. Equivalent design without cache valid; watch callback adds its own mount prefix exactly once. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Putting base on the cached session can attribute both mounts' events to the wrong path even if tests pass for one mount."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/storage.ts",
+          "symbol": "sessionFor/getMount",
+          "detail": null,
+          "raw": "expanded.diff:src/storage.ts:sessionFor/getMount"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/storage.ts",
+          "symbol": "setItem/setItemRaw/removeItem",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/storage.ts:setItem/setItemRaw/removeItem"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "Mutation",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/_driver-session.ts:Mutation"
+        }
+      ]
+    },
+    {
+      "id": "U08",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Metadata reads combine optional native metadata with the separate stored `$` value when nativeOnly is false.",
+      "baseline_defect": "The complete metadata merge was moved into a required DriverSession.metadata member, so every session consumer depends on metadata behavior.",
+      "criterion": "Metadata interpretation has a metadata-specific boundary; ordinary item reads, listing, mutations, and overlay operations do not require it.",
+      "acceptance": "Trace getMeta to native and custom sources and see their merge at a focused owner while non-metadata operations avoid the metadata contract. Native meta first then custom key+$ unless nativeOnly; null-prototype result, custom overwrites native; string atime/mtime become Dates. Current method/source capabilities and async order preserved. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Copying the intact metadata block into a renamed universal session does not segregate it."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "metadata/getMeta",
+          "detail": null,
+          "raw": "expanded.diff:src/_driver-session.ts:metadata/getMeta"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "src/storage.ts",
+          "symbol": "getMeta",
+          "detail": null,
+          "raw": "expanded.diff:src/storage.ts:getMeta"
+        }
+      ]
+    },
+    {
+      "id": "U09",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Mounted drivers already vary in native clear support; fallback enumerates and removes keys when clear is absent.",
+      "baseline_defect": "clear and its getKeys/removeItem fallback are mandatory on DriverSession even for clients that only read or watch.",
+      "criterion": "Native-clear versus enumerate-and-remove variation changes at a focused clear capability boundary without changing unrelated storage or overlay consumers.",
+      "acceptance": "Both current clear alternatives remain available, and the internal contract needed for hasItem/getItem does not include clear or its fallback dependencies. Native clear uses detached adapter call; fallback getKeys/removeItem retain source receiver-bound calls, base||empty and concurrent removal; absent remover readonly, no invented per-item synthetic notifications. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Retaining an all-method session with a default clear implementation is insufficient even when both clear alternatives work."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "clear",
+          "detail": null,
+          "raw": "expanded.diff:src/_driver-session.ts:clear"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "src/storage.ts",
+          "symbol": "clear",
+          "detail": null,
+          "raw": "expanded.diff:src/storage.ts:clear"
+        }
+      ]
+    },
+    {
+      "id": "U10",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Watch subscriptions and disposal occur on storage start/stop, mount/unmount, and overlay layer cleanup.",
+      "baseline_defect": "Watch and dispose defaults are mandatory members of the same DriverSession used for ordinary reads and writes, while storage independently tracks mount subscription lifetimes.",
+      "criterion": "Separate subscription capabilities from ordinary item-access requirements while retaining per-mount watcher ownership.",
+      "acceptance": "Trace startWatch, mount, unmount, and dispose through focused lifecycle dependencies; a read-only path need not supply watcher or disposal behavior. Watch source call retains source receiver, per-mount unwatch and mount/unmount bookkeeping. No requirement that a query-only provider implement synthetic no-op watch. Shared lifecycle implementation allowed. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A no-op watch/dispose wrapper on every read adapter retains the broad dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "watch/dispose",
+          "detail": null,
+          "raw": "expanded.diff:src/_driver-session.ts:watch/dispose"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "src/storage.ts",
+          "symbol": "startWatch/mount/unmount/dispose",
+          "detail": null,
+          "raw": "expanded.diff:src/storage.ts:startWatch/mount/unmount/dispose"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "src/drivers/overlay.ts",
+          "symbol": "dispose",
+          "detail": null,
+          "raw": "expanded.diff:src/drivers/overlay.ts:dispose"
+        }
+      ]
+    },
+    {
+      "id": "U11",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Overlay hasItem/getItem read ordered layers and interpret a top-layer tombstone.",
+      "baseline_defect": "src/drivers/overlay.ts constructs full receiver-bound DriverSession objects for layer reads, which import the same mutation, metadata, clear, watch and disposal surface used by storage.",
+      "criterion": "Overlay layer read and tombstone consumers coordinate with a narrow receiver-aware read capability rather than the full storage session.",
+      "acceptance": "The producer of layer capabilities and overlay's hasItem/getItem can be traced through ordered layers and tombstone checks without requiring unrelated session methods. Layer order, first successful has and current top tombstone, get stops at any tombstone; bound source methods and live options.layers/top lookups preserved. Narrow capability need not cache methods. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Replacing layers() with another function that still constructs the full adapter does not meet this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/drivers/overlay.ts",
+          "symbol": "layers/top/hasItem/getItem",
+          "detail": null,
+          "raw": "expanded.diff:src/drivers/overlay.ts:layers/top/hasItem/getItem"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "driverSession",
+          "detail": null,
+          "raw": "expanded.diff:src/_driver-session.ts:driverSession"
+        }
+      ]
+    },
+    {
+      "id": "U12",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Overlay writes and tombstone removal target the first layer, whereas key enumeration reads all layers and masks tombstoned keys.",
+      "baseline_defect": "Both top-layer mutations and all-layer key enumeration obtain the same full session despite distinct capability needs and overlay-specific tombstone policy.",
+      "criterion": "Give overlay top-layer mutation a focused capability while preserving tombstone and precedence policy.",
+      "acceptance": "Trace setItem/removeItem and getKeys from overlay to their driver handoffs; changing an existing layer's native write or key-list implementation does not require modifying the unrelated capability family. First-layer optional write only, deletion writes tombstone not source remove; absent top/write no-op. Keep receiver and current layer selection. Enumeration assessed separately below. Shared implementations and coherent combined contracts are valid; only actual client requirements must narrow. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the complete overlay body behind DriverSession or merely splitting layers() and top() while both return full sessions preserves the coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/drivers/overlay.ts",
+          "symbol": "top/setItem/removeItem/layers/getKeys",
+          "detail": null,
+          "raw": "expanded.diff:src/drivers/overlay.ts:top/setItem/removeItem/layers/getKeys"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "DriverSession",
+          "detail": null,
+          "raw": "expanded.diff:src/_driver-session.ts:DriverSession"
+        }
+      ]
+    },
+    {
+      "id": "batch_write",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion rounds1-3 retained internal capability clients.",
+      "baseline_defect": "The batch_write client depends on full DriverSession.",
+      "criterion": "Narrow batch write dependencies to the capabilities consumed.",
+      "acceptance": "Preserve native bulk versus per-item write selection, serialization/options and readonly handling. Mandatory adapter default must not be mistaken for native source support; accurately retain documented event behavior and dynamic capability decisions. Shared helpers/views/direct calls and existing implementation storage qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Mandatory unrelated read/write/meta/watch defaults still burden the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "setItems",
+          "detail": "The batch_write client depends on full DriverSession.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "setItems,runBatch",
+          "detail": "The batch_write client depends on full DriverSession.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "storage_listing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion rounds1-3 retained internal capability clients.",
+      "baseline_defect": "The storage_listing client depends on full DriverSession.",
+      "criterion": "Narrow storage listing dependencies to the capabilities consumed.",
+      "acceptance": "Mounted key precedence, live source maxDepth flag, normalized returned keys, child masking and final base/depth filtering remain; listing clients need no writer/metadata/lifecycle implementations. Shared helpers/views/direct calls and existing implementation storage qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Mandatory unrelated read/write/meta/watch defaults still burden the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "getKeys",
+          "detail": "The storage_listing client depends on full DriverSession.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "getKeys",
+          "detail": "The storage_listing client depends on full DriverSession.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "overlay_listing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion rounds1-3 retained internal capability clients.",
+      "baseline_defect": "The overlay_listing client depends on full DriverSession.",
+      "criterion": "Narrow overlay listing dependencies to the capabilities consumed.",
+      "acceptance": "Parallel per-layer keys normalized, stable first-occurrence Set union, current top tombstone checks per key and existing falsy-key filtering retained; no full session required. Shared helpers/views/direct calls and existing implementation storage qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Mandatory unrelated read/write/meta/watch defaults still burden the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/drivers/overlay.ts",
+          "symbol": "getKeys",
+          "detail": "The overlay_listing client depends on full DriverSession.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "disposal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion rounds1-3 retained internal capability clients.",
+      "baseline_defect": "The disposal client depends on full DriverSession.",
+      "criterion": "Narrow disposal dependencies to the capabilities consumed.",
+      "acceptance": "Optional callable disposal only, per-mount/storage and per-layer overlay effects remain parallel with existing error propagation; detached storage versus bound overlay receiver preserved. No watching/input requirement for disposer. Shared helpers/views/direct calls and existing implementation storage qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Mandatory unrelated read/write/meta/watch defaults still burden the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/_driver-session.ts",
+          "symbol": "dispose",
+          "detail": "The disposal client depends on full DriverSession.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/storage.ts",
+          "symbol": "dispose,unmount",
+          "detail": "The disposal client depends on full DriverSession.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/drivers/overlay.ts",
+          "symbol": "dispose",
+          "detail": "The disposal client depends on full DriverSession.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "unjs_unstorage_isp",
+    "rubric_status": "ready",
+    "scoring": "Each item has equal weight; score one point only when its structural criterion is met.",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "Unchanged public Driver breadth is pre-existing",
+      "Passing tests, build and behavior restoration are controls",
+      "Source notes' unresolved speculative deepening directions are not independent injected defects"
+    ]
+  }
+}

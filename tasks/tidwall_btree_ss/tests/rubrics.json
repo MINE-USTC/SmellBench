@@ -1,0 +1,381 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "tidwall_btree_ss",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "SS01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion log R1-R3: node isolation was dispersed through mutation and traversal callers.",
+      "baseline_defect": "Generic tree mutation, mutable lookup, scan, and ordinal paths each decide node generation and publish a copied root or child locally.",
+      "criterion": "Centralize the generic tree's copy-on-write eligibility and slot publication across mutation, mutable reads, scans, and ordinal operations while retaining their distinct traversal results.",
+      "acceptance": "A shared boundary determines whether each visited node needs isolation and publishes it to the actual root or child slot across those paths. Existing owner methods, shared policy data, or complete-operation reconnection qualify; do not require an extra abstraction or exact historical helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extracting only nodeSet's repeated block while getHint, nodeScan, and getAt retain independent generation decisions."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "setHint,nodeSet,nodeScan,getHint,getAt,DeleteAt",
+          "detail": null,
+          "raw": "environment/smell.diff:btreeg.go:setHint,nodeSet,nodeScan,getHint,getAt,DeleteAt"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "btreeg.go",
+          "symbol": "nodeSet,nodeScan,getAt",
+          "detail": null,
+          "raw": "expanded.diff:btreeg.go:nodeSet,nodeScan,getAt"
+        }
+      ]
+    },
+    {
+      "id": "SS02",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion log R1-R3: map isolation was independently spread over its operation families.",
+      "baseline_defect": "Map mutation, mutable traversal, extrema, rank, and iterator code repeat generation checks and slot replacement.",
+      "criterion": "Give map node isolation a shared decision and publication boundary used across its mutation, mutable traversal, extrema, rank, and iterator paths.",
+      "acceptance": "The affected map callers use one coherent rule for isolating a shared node at its root or child location; read-only access remains read-only. Existing owner methods, shared policy data, or complete-operation reconnection qualify; do not require an extra abstraction or exact historical helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consolidating map Set and Delete while mutable scans, getAt, and MapIter still embed the same policy."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "nodeSet,nodeScan,getAt,MapIter.Seek,MapIter.Next",
+          "detail": null,
+          "raw": "environment/smell.diff:map.go:nodeSet,nodeScan,getAt,MapIter.Seek,MapIter.Next"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "map.go",
+          "symbol": "nodeSet,nodeScan,getAt",
+          "detail": null,
+          "raw": "expanded.diff:map.go:nodeSet,nodeScan,getAt"
+        }
+      ]
+    },
+    {
+      "id": "SS03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening batch 2 split node allocation from copy callbacks, child storage, and publication.",
+      "baseline_defect": "Both copy methods allocate metadata and item arrays only; individual callers choose Copy versus IsoCopy, duplicate child arrays, and publish the isolated node.",
+      "criterion": "Make optional payload-copy precedence and invocation a coherent policy across node isolation consumers.",
+      "acceptance": "Copy takes precedence over IsoCopy; generic items and Map values invoke their applicable hooks in stored order only on eligible isolation. Map keys remain unchanged. Metadata/item allocation alone is not complete isolation; child topology preparation is assessed independently below. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving only the item callback loop to a helper while callers still independently determine precedence or child copying."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "btreeg.go",
+          "symbol": "copy,nodeSet,nodeScan",
+          "detail": null,
+          "raw": "interaction_delta.diff:btreeg.go:copy,nodeSet,nodeScan"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "map.go",
+          "symbol": "copy,nodeSet,nodeScan",
+          "detail": null,
+          "raw": "interaction_delta.diff:map.go:copy,nodeSet,nodeScan"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "init,copy",
+          "detail": null,
+          "raw": "environment/smell.diff:btreeg.go:init,copy"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "init,copy",
+          "detail": null,
+          "raw": "environment/smell.diff:map.go:init,copy"
+        }
+      ]
+    },
+    {
+      "id": "SS04",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion log R1 identified duplicate default and minimum degree normalization.",
+      "baseline_defect": "BTreeG.init and Map.init each implement the same degree default, degree-one promotion, and min/max arithmetic.",
+      "criterion": "Make changes to the currently supported default, degree-one, and explicit-degree occupancy rules possible at one boundary used by both tree implementations.",
+      "acceptance": "Default, degree-one, and ordinary degree bounds have one maintainable rule used by both initializers; changing the default or minimum rule does not require parallel edits. Existing owner methods, shared policy data, or complete-operation reconnection qualify; do not require an extra abstraction or exact historical helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Adding a wrapper around either initializer while leaving two independent arithmetic branches."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "btreeg.go",
+          "symbol": "init",
+          "detail": null,
+          "raw": "expanded.diff:btreeg.go:init"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "map.go",
+          "symbol": "init",
+          "detail": null,
+          "raw": "expanded.diff:map.go:init"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "init",
+          "detail": null,
+          "raw": "environment/smell.diff:btreeg.go:init"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "init",
+          "detail": null,
+          "raw": "environment/smell.diff:map.go:init"
+        }
+      ]
+    },
+    {
+      "id": "SS05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion scattered split accounting; deepening batch 1 coupled right aggregation, left subtraction, and root publication.",
+      "baseline_defect": "Generic and map splits calculate right counts locally, then parent and root callers separately derive left counts from an incoming total and separator contribution.",
+      "criterion": "Give subtree-count conservation during node split a coherent owner across right, left, separator, and new-root publication for both implementations.",
+      "acceptance": "A split's count update is governed by one consistent conservation rule, including the one separator item and unchanged total container count. Existing owner methods, shared policy data, or complete-operation reconnection qualify; do not require an extra abstraction or exact historical helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Centralizing right-child aggregation only while parent/root callers still perform unrelated left-count subtraction."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "btreeg.go",
+          "symbol": "nodeSplit,setHint,nodeSet",
+          "detail": null,
+          "raw": "interaction_delta.diff:btreeg.go:nodeSplit,setHint,nodeSet"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "map.go",
+          "symbol": "nodeSplit,Set,nodeSet",
+          "detail": null,
+          "raw": "interaction_delta.diff:map.go:nodeSplit,Set,nodeSet"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "nodeSplit,setHint,nodeSet",
+          "detail": null,
+          "raw": "environment/smell.diff:btreeg.go:nodeSplit,setHint,nodeSet"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "nodeSplit,Set,nodeSet",
+          "detail": null,
+          "raw": "environment/smell.diff:map.go:nodeSplit,Set,nodeSet"
+        }
+      ]
+    },
+    {
+      "id": "SS06",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Both generic and map implementations maintain subtree totals used by rank and deletion paths.",
+      "baseline_defect": "Delete callers in both files compute a sibling-pair total and repair a child's count after nodeRebalance, while the rebalance branches separately alter right counts during merge or rotation.",
+      "criterion": "Coordinate deletion's sibling-count handoff with merge and rotation count updates in btreeg.go and map.go, independently of insertion split accounting.",
+      "acceptance": "Each file has one consistent rebalance-count contract for merge and both rotation directions, so delete callers do not duplicate branch-specific arithmetic. Existing owner methods, shared policy data, or complete-operation reconnection qualify; do not require an extra abstraction or exact historical helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consolidating insertion split counts while delete and nodeRebalance still divide sibling-count arithmetic between caller and callee."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "delete,nodeRebalance",
+          "detail": null,
+          "raw": "environment/smell.diff:btreeg.go:delete,nodeRebalance"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "delete,nodeRebalance",
+          "detail": null,
+          "raw": "environment/smell.diff:map.go:delete,nodeRebalance"
+        }
+      ]
+    },
+    {
+      "id": "SS07",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion R4 dispersed ordinary versus hinted generic search selection.",
+      "baseline_defect": "Generic point, mutation, pivot, range, and iterator paths locally choose ordinary binary search or hinted probing and repeat ordinary search logic.",
+      "criterion": "Consolidate generic node-local search selection and binary-search policy across point, mutation, pivot, range, and iterator entry points.",
+      "acceptance": "Those paths use a coherent lookup decision that preserves their individual return and cursor contracts. Existing owner methods, shared policy data, or complete-operation reconnection qualify; do not require an extra abstraction or exact historical helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extracting binary search from nodeSet only while getHint and iterator seek retain independent search selection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "btreeg.go",
+          "symbol": "nodeSet,getHint,nodeAscend,IterG.seek",
+          "detail": null,
+          "raw": "expanded.diff:btreeg.go:nodeSet,getHint,nodeAscend,IterG.seek"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "nodeSet,getHint,IterG.seek",
+          "detail": null,
+          "raw": "environment/smell.diff:btreeg.go:nodeSet,getHint,IterG.seek"
+        }
+      ]
+    },
+    {
+      "id": "SS08",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening batch 1 separated hint probing from publication of path positions and invalidation.",
+      "baseline_defect": "hintProbe returns an index, while nodeSet, delete, lookup, pivot walks, and iterator seek independently encode leaf matches as index+1 and clear deeper cache entries after path changes.",
+      "criterion": "Give hint-path publication and descendant invalidation a coherent owner across all generic hint consumers, paired with probing's depth contract.",
+      "acceptance": "One protocol governs branch or miss positions, matched leaf positions, and deeper-used invalidation for mutation, lookup, traversal, and iterator hints. Existing owner methods, shared policy data, or complete-operation reconnection qualify; do not require an extra abstraction or exact historical helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Updating only SeekHint's cache write or adding a helper whose callers still each choose their own leaf encoding."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "btreeg.go",
+          "symbol": "hintProbe,nodeSet,getHint,IterG.seek",
+          "detail": null,
+          "raw": "interaction_delta.diff:btreeg.go:hintProbe,nodeSet,getHint,IterG.seek"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "hintProbe,nodeSet,getHint,IterG.seek",
+          "detail": null,
+          "raw": "environment/smell.diff:btreeg.go:hintProbe,nodeSet,getHint,IterG.seek"
+        }
+      ]
+    },
+    {
+      "id": "SS09",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening batch 3 distributed ordered-key comparison results among map access paths.",
+      "baseline_defect": "Map get, ascending and descending pivot walks, and iterator Seek separately interpret equal keys, insertion positions, and predecessor cursors.",
+      "criterion": "Unify map ordered-key comparison and position interpretation across point lookup, pivot traversal, and iterator seek while retaining their different result effects.",
+      "acceptance": "A single maintainable ordering policy supplies equality/insertion information and each consumer derives the correct inclusive or predecessor cursor from it. Existing owner methods, shared policy data, or complete-operation reconnection qualify; do not require an extra abstraction or exact historical helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing equality in map get alone while ascend, descend, and Seek still use separate comparison loops."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "map.go",
+          "symbol": "get,nodeAscend,nodeDescend,MapIter.Seek",
+          "detail": null,
+          "raw": "interaction_delta.diff:map.go:get,nodeAscend,nodeDescend,MapIter.Seek"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "get,nodeAscend,nodeDescend,MapIter.Seek",
+          "detail": null,
+          "raw": "environment/smell.diff:map.go:get,nodeAscend,nodeDescend,MapIter.Seek"
+        }
+      ]
+    },
+    {
+      "id": "SS10",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion R1 distributed node creation to insertion and split callers in both implementations.",
+      "baseline_defect": "Initial root, split right sibling, and replacement root sites each construct node identity and child-array shape directly in btreeg.go and map.go.",
+      "criterion": "Give node creation and leaf-versus-internal child-storage setup a coherent owner across initial insertion and split publication in both implementations.",
+      "acceptance": "New node generation identity and internal child-array initialization are supplied through a consistent construction boundary used at those sites. Existing owner methods, shared policy data, or complete-operation reconnection qualify; do not require an extra abstraction or exact historical helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Wrapping only initial-root allocation while split siblings and replacement roots still assemble node shape independently."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "btreeg.go",
+          "symbol": "setHint,nodeSplit",
+          "detail": null,
+          "raw": "expanded.diff:btreeg.go:setHint,nodeSplit"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "map.go",
+          "symbol": "Set,nodeSplit",
+          "detail": null,
+          "raw": "expanded.diff:map.go:Set,nodeSplit"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "setHint,nodeSplit",
+          "detail": null,
+          "raw": "environment/smell.diff:btreeg.go:setHint,nodeSplit"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "Set,nodeSplit",
+          "detail": null,
+          "raw": "environment/smell.diff:map.go:Set,nodeSplit"
+        }
+      ]
+    },
+    {
+      "id": "SS11",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Deepening batch2 and retry traversal lifecycle split.",
+      "baseline_defect": "nodeScan/nodeReverse/nodeWalk/nodeItems publish payload-only clones and branch using original topology before completing child-vector isolation.",
+      "criterion": "Give mutable traversal a coherent complete-isolation contract before descending or delivering callbacks.",
+      "acceptance": "Original topology, replacement identity and child-array preparation must agree: copied internal nodes are not mistaken for leaves, original snapshot child slices remain isolated, and leaf paths never dereference missing children. Read-only and already-owned nodes avoid optional copy hooks. A complete loader or redesigned traversal may satisfy both this item and payload policy SS03. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consolidating only entry eligibility while leaving independent topology/preparation decisions in each traversal is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "btreeg.go",
+          "symbol": "nodeScan,nodeReverse,nodeWalk,nodeItems",
+          "detail": "nodeScan/nodeReverse/nodeWalk/nodeItems publish payload-only clones and branch using original topology before completing child-vector isolation.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "map.go",
+          "symbol": "nodeScan,nodeReverse",
+          "detail": "nodeScan/nodeReverse/nodeWalk/nodeItems publish payload-only clones and branch using original topology before completing child-vector isolation.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "tidwall_btree_ss",
+    "aggregation": "equal_weight_per_item",
+    "excluded_from_scoring": [
+      "Deleted private adapters by themselves",
+      "Pre-existing test passage, callback behavior, ordering, and API preservation alone",
+      "Empty post.diff and historical intentions not evidenced by final diff"
+    ]
+  }
+}

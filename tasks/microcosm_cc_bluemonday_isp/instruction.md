@@ -1,0 +1,5 @@
+Refactor the sanitizer's internal contracts so each client depends on the capabilities it uses. The shared sanitizerStream combines token input, writer adaptation, element selection, attribute admission, CSS defaults, URL authorization and security attributes. Recover suitable boundaries across clients and default implementations.
+
+The sanitizer's broad stream contract joins token input, writer adaptation, element/attribute admission, CSS defaults and URL/security policy. Refactor the dependencies of actual clients and default implementations, including optional writers and live policy updates, without weakening sanitization order.
+
+Preserve public APIs and observable behavior, including Reader/Writer substitution, optional string writing, errors, exact and pattern rule precedence, CSS handler order and live policy updates, URL callbacks and security transformations. Keep original tests and configuration unchanged. Shared helpers and concise interface splits are valid; no particular architecture or names are required. Run the original Go suite.

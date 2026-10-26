@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd /workspace/repo
+bash -c 'set -e; export DEEPL_SERVER_URL=http://localhost:3000 DEEPL_MOCK_SERVER_PORT=3000 DEEPL_PROXY_URL=http://localhost:3001 DEEPL_MOCK_PROXY_SERVER_PORT=3001 DEEPL_AUTH_KEY=mock_server; code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://localhost:3000/v2/usage 2>/dev/null || true); if [ "$code" = "000" ] || [ -z "$code" ]; then (cd /workspace/deepl-mock && setsid nohup npm start >/tmp/mock.log 2>&1 </dev/null &); fi; ready=0; for i in $(seq 1 60); do code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://localhost:3000/v2/usage 2>/dev/null || true); if [ -n "$code" ] && [ "$code" != "000" ]; then ready=1; break; fi; sleep 1; done; if [ "$ready" != 1 ]; then echo "mock server not ready after 60s" >&2; exit 1; fi; .venv/bin/pytest -p no:cacheprovider'

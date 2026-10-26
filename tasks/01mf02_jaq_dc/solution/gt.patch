@@ -1,0 +1,864 @@
+diff -ruN repo/jaq-core/src/compile.rs clean/jaq-core/src/compile.rs
+--- repo/jaq-core/src/compile.rs	2026-10-23 20:34:24
++++ clean/jaq-core/src/compile.rs	2026-10-23 20:32:27
+@@ -211,7 +211,7 @@
+ ///
+ /// This contains strings of type `S` and native functions of type `F`.
+ pub struct Compiler<S, F> {
++    lut: Lut<(Sig<S>, F)>,
+-    lut: Lut<(S, Arity, Box<[usize]>, F)>,
+ 
+     /// `mod_map[mid]` yields all top-level definitions contained inside a module with ID `mid`
+     mod_map: Vec<Vec<Def<S>>>,
+@@ -227,7 +227,7 @@
+     errs: Vec<Error<S>>,
+ }
+ 
++type Def<S> = (Sig<S>, TermId, Tr);
+-type Def<S> = (S, Arity, Box<[usize]>, TermId, Tr);
+ 
+ impl<S, F> Default for Compiler<S, F> {
+     fn default() -> Self {
+@@ -247,6 +247,14 @@
+     }
+ }
+ 
++#[derive(Clone, Debug)]
++struct Sig<S, A = Arg> {
++    name: S,
++    // TODO: we could analyse for each argument whether it is TR, and
++    // use this when converting args at callsite
++    args: Box<[A]>,
++}
++
+ fn bind_from<T>(s: &str, x: T) -> Arg<T> {
+     if s.starts_with('$') {
+         Arg::Var(x)
+@@ -255,17 +263,54 @@
+     }
+ }
+ 
++fn binds<T, U: Copy>(binds: &[Arg<T>], args: &[U]) -> Box<[Arg<U>]> {
++    assert!(binds.len() == args.len());
++    let args = binds.iter().zip(args);
++    args.map(|(bind, id)| bind.as_ref().map(|_| *id)).collect()
+-fn binds<U: Copy>(values: &[usize], args: &[U]) -> Box<[Arg<U>]> {
+-    args.iter().enumerate().map(|(i, id)| {
+-        if values.binary_search(&i).is_ok() { Arg::Var(*id) } else { Arg::Fun(*id) }
+-    }).collect()
+ }
+ 
++impl<S: Eq, A> Sig<S, A> {
++    fn matches(&self, name: S, args: &[TermId]) -> bool {
++        name == self.name && args.len() == self.args.len()
++    }
++}
++
++/// Store a map of vectors plus the sum of the lengths of all vectors.
++struct MapVecLen<S> {
++    bound: MapVec<S, usize>,
++    total: usize,
++}
++
++impl<S> Default for MapVecLen<S> {
++    fn default() -> Self {
++        Self {
++            bound: MapVec::default(),
++            total: 0,
++        }
++    }
++}
++
++impl<S: Ord> MapVecLen<S> {
++    fn push(&mut self, name: S) {
++        self.total += 1;
++        self.bound.push(name, self.total)
++    }
++
++    fn pop(&mut self, name: &S) {
++        assert_eq!(self.bound.pop(name), Some(self.total));
++        self.total -= 1;
++    }
++
++    fn is_empty(&self) -> bool {
++        self.bound.is_empty() && self.total == 0
++    }
++}
++
+ enum Fun<S> {
+     Arg,
++    Parent(Box<[Arg<S>]>, TermId),
+-    Parent(Box<[S]>, Box<[usize]>, TermId),
+     /// Tr stores which tail-recursive calls the sibling can return
++    Sibling(Box<[Arg<S>]>, TermId, Tr),
+-    Sibling(Box<[usize]>, TermId, Tr),
+ }
+ 
+ /// Single binding.
+@@ -282,16 +327,14 @@
+ struct Locals<S> {
+     // usize = number of vars
+     funs: MapVec<(S, Arity), (Fun<S>, usize)>,
++    vars: MapVecLen<Bind<S>>,
+-    bound: MapVec<Bind<S>, usize>,
+-    total: usize,
+ }
+ 
+ impl<S> Default for Locals<S> {
+     fn default() -> Self {
+         Self {
+             funs: MapVec::default(),
++            vars: MapVecLen::default(),
+-            bound: MapVec::default(),
+-            total: 0,
+         }
+     }
+ }
+@@ -329,59 +372,54 @@
+ }
+ 
+ impl<S: Copy + Ord> Locals<S> {
++    fn push_sibling(&mut self, name: S, args: Box<[Arg<S>]>, id: TermId, tr: Tr) {
+-    fn push_sibling(&mut self, name: S, arity: Arity, values: Box<[usize]>, id: TermId, tr: Tr) {
+         self.funs.push(
++            (name, args.len()),
++            (Fun::Sibling(args, id, tr), self.vars.total),
+-            (name, arity),
+-            (Fun::Sibling(values, id, tr), self.total),
+         );
+     }
+ 
++    fn pop_sibling(&mut self, name: S, arity: Arity) -> (Box<[Arg<S>]>, TermId, Tr) {
+-    fn pop_sibling(&mut self, name: S, arity: Arity) -> (Box<[usize]>, TermId, Tr) {
+         let (y, vars) = match self.funs.pop(&(name, arity)) {
+             Some((Fun::Sibling(args, id, tr), vars)) => ((args, id, tr), vars),
+             _ => panic!(),
+         };
++        assert_eq!(self.vars.total, vars);
+-        assert_eq!(self.total, vars);
+         y
+     }
+ 
++    fn push_parent(&mut self, name: S, args: Box<[Arg<S>]>, id: TermId) {
++        let vars = self.vars.total;
+-    fn push_parent(&mut self, name: S, args: Box<[S]>, values: Box<[usize]>, id: TermId) {
+-        let vars = self.total;
+ 
++        for arg in args.iter() {
++            match arg {
++                Arg::Var(v) => self.vars.push(Bind::Var(*v)),
++                Arg::Fun(f) => self.push_arg(*f),
+-        for (i, arg) in args.iter().enumerate() {
+-            if values.binary_search(&i).is_ok() {
+-                self.total += 1;
+-                self.bound.push(Bind::Var(*arg), self.total);
+-            } else {
+-                self.push_arg(*arg);
+             }
+         }
+ 
+         self.funs
++            .push((name, args.len()), (Fun::Parent(args, id), vars));
+-            .push((name, args.len()), (Fun::Parent(args, values, id), vars));
+     }
+ 
++    fn pop_parent(&mut self, name: S, arity: Arity) -> TermId {
++        let (args, id, vars) = match self.funs.pop(&(name, arity)) {
++            Some((Fun::Parent(args, def), vars)) => (args, def, vars),
+-    fn pop_parent(&mut self, name: S, arity: Arity) -> (TermId, Box<[usize]>) {
+-        let (args, values, id, vars) = match self.funs.pop(&(name, arity)) {
+-            Some((Fun::Parent(args, values, def), vars)) => (args, values, def, vars),
+             _ => panic!(),
+         };
++        for arg in args.iter().rev() {
++            match arg {
++                Arg::Var(v) => self.vars.pop(&Bind::Var(*v)),
++                Arg::Fun(f) => self.pop_arg(*f),
+-        for (i, arg) in args.iter().enumerate().rev() {
+-            if values.binary_search(&i).is_ok() {
+-                assert_eq!(self.bound.pop(&Bind::Var(*arg)), Some(self.total));
+-                self.total -= 1;
+-            } else {
+-                self.pop_arg(*arg);
+             }
+         }
++        assert_eq!(self.vars.total, vars);
++        id
+-        assert_eq!(self.total, vars);
+-        (id, values)
+     }
+ 
+     fn push_arg(&mut self, name: S) {
++        self.vars.push(Bind::Fun(name));
++        self.funs.push((name, 0), (Fun::Arg, self.vars.total));
+-        self.total += 1;
+-        self.bound.push(Bind::Fun(name), self.total);
+-        self.funs.push((name, 0), (Fun::Arg, self.total));
+     }
+ 
+     fn pop_arg(&mut self, name: S) {
+@@ -389,15 +427,14 @@
+             Some((Fun::Arg, vars)) => vars,
+             _ => panic!(),
+         };
++        assert_eq!(self.vars.total, vars);
++        self.vars.pop(&Bind::Fun(name));
+-        assert_eq!(self.total, vars);
+-        assert_eq!(self.bound.pop(&Bind::Fun(name)), Some(self.total));
+-        self.total -= 1;
+     }
+ 
+     /// Call `f(f_1; ...; f_n)`, allowing tail-recursive calls to `tr`.
+     fn call(&self, name: S, args: &[TermId], tr: &Tr) -> Option<(Term, Tr)> {
+         Some(match self.funs.get_last(&(name, args.len()))? {
++            (Fun::Arg, vars) => (Term::Var(self.vars.total - *vars), Tr::new()),
+-            (Fun::Arg, vars) => (Term::Var(self.total - *vars), Tr::new()),
+             // we   may only return tail-recursive calls to `tr` and call a sibling
+             // that may only return tail-recursive calls to `tr_`
+             (Fun::Sibling(args_, id, tr_), vars) => {
+@@ -415,24 +452,24 @@
+                     tr_ = Tr::new();
+                     CallType::CatchAll
+                 };
++                let vars = self.vars.total - *vars;
+-                let vars = self.total - *vars;
+                 (Term::CallDef(*id, binds(args_, args), vars, typ), tr_)
+             }
++            (Fun::Parent(args_, id), vars) => {
+-            (Fun::Parent(_, args_, id), vars) => {
+                 // if we can return a tail-recursive call to the parent
+                 let (typ, tr_) = if tr.contains(id) {
+                     (CallType::Throw, Tr::from([*id]))
+                 } else {
+                     (CallType::CatchAll, Tr::new())
+                 };
++                let vars = self.vars.total - *vars;
+-                let vars = self.total - *vars;
+                 (Term::CallDef(*id, binds(args_, args), vars, typ), tr_)
+             }
+         })
+     }
+ 
+     fn is_empty(&self) -> bool {
++        self.funs.is_empty() && self.vars.is_empty()
+-        self.funs.is_empty() && self.bound.is_empty() && self.total == 0
+     }
+ }
+ 
+@@ -445,13 +482,7 @@
+     pub fn with_funs(mut self, funs: impl IntoIterator<Item = (&'s str, Box<[Arg]>, F)>) -> Self {
+         self.lut.funs = funs
+             .into_iter()
++            .map(|(name, args, f)| (Sig { name, args }, f))
+-            .map(|(name, args, f)| {
+-                let arity = args.len();
+-                let values = args.iter().enumerate().filter_map(|(i, arg)| {
+-                    matches!(arg, Arg::Var(_)).then_some(i)
+-                }).collect();
+-                (name, arity, values, f)
+-            })
+             .collect();
+         self
+     }
+@@ -496,31 +527,24 @@
+         }
+         */
+ 
++        let lut = self.lut.map_funs(|(_sig, f)| f);
+-        let lut = self.lut.map_funs(|(_name, _arity, _values, f)| f);
+         errs.is_empty().then(|| Filter { id, lut }).ok_or(errs)
+     }
+ 
+     fn with_label<T>(&mut self, label: &'s str, f: impl FnOnce(&mut Self) -> T) -> T {
++        self.locals.vars.push(Bind::Label(label));
+-        self.locals.total += 1;
+-        self.locals.bound.push(Bind::Label(label), self.locals.total);
+         let y = f(self);
++        self.locals.vars.pop(&Bind::Label(label));
+-        assert_eq!(self.locals.bound.pop(&Bind::Label(label)), Some(self.locals.total));
+-        self.locals.total -= 1;
+         y
+     }
+ 
+     fn with_vars<T>(&mut self, vars: &[&'s str], f: impl FnOnce(&mut Self) -> T) -> T {
++        vars.iter()
++            .for_each(|v| self.locals.vars.push(Bind::Var(v)));
+-        let base = self.locals.total;
+-        for (i, v) in vars.iter().enumerate() {
+-            self.locals.bound.push(Bind::Var(v), base + i + 1);
+-        }
+-        self.locals.total = base + vars.len();
+         let y = f(self);
++        vars.iter()
++            .rev()
++            .for_each(|v| self.locals.vars.pop(&Bind::Var(v)));
+-        for (i, v) in vars.iter().enumerate().rev() {
+-            assert_eq!(self.locals.bound.pop(&Bind::Var(v)), Some(base + i + 1));
+-        }
+-        assert_eq!(self.locals.total, base + vars.len());
+-        self.locals.total = base;
+         y
+     }
+ 
+@@ -543,19 +567,22 @@
+         assert!(self.locals.is_empty());
+     }
+ 
++    fn open_def(&mut self, def: parse::Def<&'s str>, tr: &Tr) -> (&'s str, usize) {
++        let args: Box<[_]> = def.args.iter().map(|a| bind_from(a, *a)).collect();
++        let arity = args.len();
++        let (sig, def, tr_) = self.def(def, tr);
++        self.locals.push_sibling(sig.name, args, def, tr_);
++        (sig.name, arity)
+-    fn open_def(&mut self, name: &'s str, params: Vec<&'s str>, body: parse::Term<&'s str>, tr: &Tr) -> (&'s str, usize) {
+-        let (name, arity, values, def, tr_) = self.def(name, &params, body, tr);
+-        self.locals.push_sibling(name, arity, values, def, tr_);
+-        (name, arity)
+     }
+ 
+     fn close_def(&mut self, (name, arity): (&'s str, usize)) -> Def<&'s str> {
++        let (args, id, tr) = self.locals.pop_sibling(name, arity);
++        let args = args.into_vec().into_iter().map(|a| a.map(|_| ())).collect();
++        (Sig { name, args }, id, tr)
+-        let (values, id, tr) = self.locals.pop_sibling(name, arity);
+-        (name, arity, values, id, tr)
+     }
+ 
+     fn module(&mut self, defs: Vec<parse::Def<&'s str>>) -> Vec<Def<&'s str>> {
++        let siblings = defs.into_iter().map(|def| self.open_def(def, &Tr::new()));
+-        let siblings = defs.into_iter().map(|def| self.open_def(def.name, def.args, def.body, &Tr::new()));
+         let siblings: Vec<_> = siblings.collect();
+ 
+         let defs = siblings.into_iter().rev().map(|sig| self.close_def(sig));
+@@ -566,22 +593,23 @@
+     }
+ 
+     /// Compile a definition LHS.
++    fn def(&mut self, d: parse::Def<&'s str>, tr: &Tr) -> (Sig<&'s str>, TermId, Tr) {
+-    fn def(&mut self, name: &'s str, params: &[&'s str], body: parse::Term<&'s str>, tr: &Tr) -> Def<&'s str> {
+         // insert placeholder
+         let id = self.lut.insert_term(Term::default());
++        let args = d.args.iter().map(|a| bind_from(a, *a)).collect();
+-        let values = params.iter().enumerate().filter_map(|(i, a)| {
+-            matches!(bind_from(a, ()), Arg::Var(_)).then_some(i)
+-        }).collect();
+ 
++        self.locals.push_parent(d.name, args, id);
+-        self.locals.push_parent(name, params.into(), values, id);
+         let mut tr = tr.clone();
+         // any function can call itself tail-recursively
+         assert!(tr.insert(id));
++        let (body, tr_) = self.term(d.body, &tr);
+-        let (body, tr_) = self.term(body, &tr);
+         self.lut.terms[id.0] = body;
++        assert_eq!(self.locals.pop_parent(d.name, d.args.len()), id);
++        let sig = Sig {
++            name: d.name,
++            args: d.args.iter().map(|a| bind_from(a, ())).collect(),
++        };
++        (sig, id, tr_)
+-        let (closed, values) = self.locals.pop_parent(name, params.len());
+-        assert_eq!(closed, id);
+-        (name, params.len(), values, id, tr_)
+     }
+ 
+     /// Compile a term that may call any function in `tr` tail-recursively.
+@@ -629,7 +657,7 @@
+                 }
+             }
+             Def(defs, t) => {
++                let siblings: Vec<_> = defs.into_iter().map(|def| self.open_def(def, tr)).collect();
+-                let siblings: Vec<_> = defs.into_iter().map(|def| self.open_def(def.name, def.args, def.body, tr)).collect();
+                 let (t, tr_) = self.term(*t, tr);
+                 siblings.into_iter().rev().for_each(|sig| {
+                     self.close_def(sig);
+@@ -766,17 +794,15 @@
+ 
+     fn call_mod_id(&self, mid: ModId, name: &'s str, args: &[TermId]) -> Option<Term> {
+         let mut sig_defs = self.mod_map[mid].iter().rev();
++        let (sig, id, tr) = sig_defs.find(|(sig, ..)| sig.matches(name, args))?;
+-        let (_name, _arity, params, id, tr) = sig_defs.find(|(declared, arity, ..)| {
+-            *declared == name && *arity == args.len()
+-        })?;
+         debug_assert!(tr.len() <= 1);
+         let typ = if tr.contains(id) {
+             CallType::CatchOne
+         } else {
+             CallType::Inline
+         };
++        let vars = self.locals.vars.total;
++        Some(Term::CallDef(*id, binds(&sig.args, args), vars, typ))
+-        let vars = self.locals.total;
+-        Some(Term::CallDef(*id, binds(params, args), vars, typ))
+     }
+ 
+     /// Resolve call to `mod::filter(a1, ..., an)`.
+@@ -802,21 +828,19 @@
+                 return (call, Tr::new());
+             }
+         }
++        for (nid, (sig, _f)) in self.lut.funs.iter().enumerate() {
++            if sig.matches(name, args) {
++                return (Term::Native(nid, binds(&sig.args, args)), Tr::new());
+-        for (nid, (declared, arity, params, _f)) in self.lut.funs.iter().enumerate() {
+-            if *declared != name || *arity != args.len() {
+-                continue;
+             }
+-            let args = binds(params, args);
+-            return (Term::Native(nid, args), Tr::new());
+         }
+ 
+         (self.fail(name, Undefined::Filter(args.len())), Tr::new())
+     }
+ 
+     fn var(&mut self, x: &'s str) -> Term {
++        let mut i = self.locals.vars.total;
+-        let mut i = self.locals.total;
+ 
++        if let Some(v) = self.locals.vars.bound.get_last(&Bind::Var(x)) {
+-        if let Some(v) = self.locals.bound.get_last(&Bind::Var(x)) {
+             return Term::Var(i - v);
+         }
+         for (x_, mid) in self.imported_vars.iter().rev() {
+@@ -837,8 +861,8 @@
+     }
+ 
+     fn break_(&mut self, x: &'s str) -> Term {
++        if let Some(l) = self.locals.vars.bound.get_last(&Bind::Label(x)) {
++            return Term::Var(self.locals.vars.total - l);
+-        if let Some(l) = self.locals.bound.get_last(&Bind::Label(x)) {
+-            return Term::Var(self.locals.total - l);
+         }
+         self.fail(x, Undefined::Label)
+     }
+diff -ruN repo/jaq-core/src/filter.rs clean/jaq-core/src/filter.rs
+--- repo/jaq-core/src/filter.rs	2026-10-23 20:35:39
++++ clean/jaq-core/src/filter.rs	2026-10-23 20:32:27
+@@ -84,12 +84,26 @@
+         self
+     }
+ 
++    /// Add a new filter binding.
++    fn cons_fun(mut self, (f, ctx): (Id, Self)) -> Self {
++        self.vars.0 = self.vars.0.cons(Bind::Fun((f, ctx.vars)));
++        self
++    }
++
+     fn cons_label(mut self) -> Self {
+         self.labels += 1;
+         self.vars.0 = self.vars.0.cons(Bind::Label(self.labels));
+         self
+     }
+ 
++    /// Remove the `skip` most recent variable bindings.
++    fn skip_vars(mut self, skip: usize) -> Self {
++        if skip > 0 {
++            self.vars.0 = self.vars.0.skip(skip).clone();
++        }
++        self
++    }
++
+     /// Replace variables in context with given ones.
+     fn with_vars(&self, vars: Vars<D::V<'a>>) -> Self {
+         Self {
+@@ -141,45 +155,26 @@
+ /// This is used when we call filters with variable arguments.
+ fn bind_vars<'a, D: DataT, T: 'a + Clone>(
+     args: &'a [Arg<Id>],
++    ctx: Ctx<'a, D>,
+-    vars: Vars<D::V<'a>>,
+-    skip: usize,
+-    data: D::Data<'a>,
+-    labels: usize,
+     cv: Cv<'a, D, T>,
+     proj: fn(&T) -> D::V<'a>,
+ ) -> ValXs<'a, Cv<'a, D, T>, D::V<'a>> {
+     match args.split_first() {
+         Some((Arg::Var(arg), [])) => map_with(
+             arg.run((cv.0.clone(), proj(&cv.1))),
++            (ctx, cv.1),
++            |y, (ctx, v)| Ok((ctx.cons_var(y?), v)),
+-            (vars, data, labels, cv.1),
+-            move |y, (vars, data, labels, v)| {
+-                let value = y?;
+-                let vars = Vars(vars.0.skip(skip).clone().cons(Bind::Var(value)));
+-                Ok((Ctx { vars, data, labels }, v))
+-            },
+         ),
++        Some((Arg::Fun(arg), [])) => box_once(Ok((ctx.cons_fun((*arg, cv.0)), cv.1))),
+-        Some((Arg::Fun(arg), [])) => {
+-            let captured = cv.0.vars;
+-            let vars = Vars(vars.0.skip(skip).clone().cons(Bind::Fun((*arg, captured))));
+-            box_once(Ok((Ctx { vars, data, labels }, cv.1)))
+-        }
+         Some((Arg::Var(arg), rest)) => flat_map_then_with(
+             arg.run((cv.0.clone(), proj(&cv.1))),
++            (ctx, cv),
++            move |y, (ctx, cv)| bind_vars(rest, ctx.cons_var(y), cv, proj),
+-            (vars, data, labels, cv),
+-            move |y, (vars, data, labels, cv)| {
+-                let vars = Vars(vars.0.skip(skip).clone().cons(Bind::Var(y)));
+-                bind_vars(rest, vars, 0, data, labels, cv, proj)
+-            },
+         ),
+         Some((Arg::Fun(arg), rest)) => {
++            bind_vars(rest, ctx.cons_fun((*arg, cv.0.clone())), cv, proj)
+-            let captured = cv.0.vars.clone();
+-            let vars = Vars(vars.0.skip(skip).clone().cons(Bind::Fun((*arg, captured))));
+-            bind_vars(rest, vars, 0, data, labels, cv, proj)
+         }
++        None => box_once(Ok((ctx, cv.1))),
+-        None => {
+-            let vars = Vars(vars.0.skip(skip).clone());
+-            box_once(Ok((Ctx { vars, data, labels }, cv.1)))
+-        }
+     }
+ }
+ 
+@@ -563,13 +558,12 @@
+                     data: data.clone(),
+                     labels: cv.0.labels,
+                 };
++                let cvs = bind_vars(args, cv.0.clone().skip_vars(*skip), cv, Clone::clone);
+-                let vars = cv.0.vars.clone();
+-                let cvs = bind_vars(args, vars, *skip, cv.0.data.clone(), cv.0.labels, cv, Clone::clone);
+                 let (into, from) = (exn::CallInput::Run, exn::CallInput::unwrap_run);
+                 def_run(id, call_typ, cvs, Id::run, with_vars, into, from)
+             }
+             Ast::Native(id, args) => {
++                let cvs = bind_vars(args, cv.0.with_vars(Vars::new([])), cv, Clone::clone);
+-                let cvs = bind_vars(args, Vars::new([]), 0, cv.0.data.clone(), cv.0.labels, cv, Clone::clone);
+                 flat_map_then(cvs, |cv| (cv.0.lut().funs[*id].run)(cv))
+             }
+             Ast::Label(id) => label_run(cv, |cv| id.run(cv)),
+@@ -650,14 +644,13 @@
+                     data: data.clone(),
+                     labels: cv.0.labels,
+                 };
++                let cvs = bind_vars(args, cv.0.clone().skip_vars(*skip), cv, proj_val);
+-                let vars = cv.0.vars.clone();
+-                let cvs = bind_vars(args, vars, *skip, cv.0.data.clone(), cv.0.labels, cv, proj_val);
+                 let (into, from) = (exn::CallInput::Paths, exn::CallInput::unwrap_paths);
+                 def_run(id, call_typ, cvs, Id::paths, with_vars, into, from)
+             }
+             Ast::Label(id) => label_run(cv, |cv| id.paths(cv)),
+             Ast::Native(id, args) => {
++                let cvs = bind_vars(args, cv.0.with_vars(Vars::new([])), cv, proj_val);
+-                let cvs = bind_vars(args, Vars::new([]), 0, cv.0.data.clone(), cv.0.labels, cv, proj_val);
+                 flat_map_then(cvs, |cv| (cv.0.lut().funs[*id].paths)(cv))
+             }
+         }
+@@ -727,13 +720,12 @@
+             },
+             Ast::CallDef(id, args, skip, _call_typ) => {
+                 let init = cv.1.clone();
++                let cvs = bind_vars(args, cv.0.clone().skip_vars(*skip), cv, Clone::clone);
+-                let vars = cv.0.vars.clone();
+-                let cvs = bind_vars(args, vars, *skip, cv.0.data.clone(), cv.0.labels, cv, Clone::clone);
+                 reduce(cvs, init, move |cv, v| id.update((cv.0, v), f.clone()))
+             }
+             Ast::Native(id, args) => {
+                 let init = cv.1.clone();
++                let cvs = bind_vars(args, cv.0.with_vars(Vars::new([])), cv, Clone::clone);
+-                let cvs = bind_vars(args, Vars::new([]), 0, cv.0.data.clone(), cv.0.labels, cv, Clone::clone);
+                 reduce(cvs, init, move |cv, v| {
+                     (cv.0.lut().funs[*id].update)((cv.0, v), f.clone())
+                 })
+diff -ruN repo/jaq-core/src/load/mod.rs clean/jaq-core/src/load/mod.rs
+--- repo/jaq-core/src/load/mod.rs	2026-10-23 20:38:26
++++ clean/jaq-core/src/load/mod.rs	2026-10-23 20:32:27
+@@ -230,8 +230,9 @@
+ }
+ 
+ #[cfg(feature = "std")]
++impl<'a> Import<'a, &'a str, PathBuf> {
++    fn meta_paths(&self) -> impl Iterator<Item = PathBuf> + '_ {
++        let paths = self.meta.as_ref().and_then(|meta| {
+-fn meta_paths<'a>(meta: &'a Option<Term<&'a str>>, parent: &'a Path) -> impl Iterator<Item = PathBuf> + 'a {
+-        let paths = meta.as_ref().and_then(|meta| {
+             let v = meta.obj_key("search")?;
+             let iter = if let Term::Arr(Some(a)) = v {
+                 Box::new(a.unconcat().filter_map(|v| v.as_str()))
+@@ -240,41 +241,21 @@
+             } else {
+                 Box::new(core::iter::empty()) as Box<dyn Iterator<Item = _>>
+             };
++            Some(iter.map(|s| Path::new(*s).to_path_buf()))
+-            Some(iter.map(move |s| parent.join(expand_search(Path::new(*s)))))
+         });
+         paths.into_iter().flatten()
++    }
+-}
+ 
+-#[cfg(feature = "std")]
+-impl<'a> Import<'a, &'a str, PathBuf> {
+     /// Try to find a file with given extension in the given search paths.
+     pub fn find(self, paths: &[PathBuf], ext: &str) -> Result<PathBuf, String> {
++        let parent = Path::new(self.parent).parent().unwrap_or(Path::new("."));
+-        let parent = self.parent.parent().unwrap_or(Path::new("."));
+-        let mut relative = Path::new(self.path).to_path_buf();
+-        if !relative.is_relative() {
+-            return Err("non-relative path".into());
+-        }
+-        relative.set_extension(ext);
+-        let metadata = meta_paths(self.meta, parent);
+-        resolve_import(&relative, metadata, paths)
+-    }
+ 
++        let mut rel = Path::new(self.path).to_path_buf();
++        if !rel.is_relative() {
++            Err("non-relative path")?
+-    fn read(self, paths: &[PathBuf], ext: &str) -> ReadResult<PathBuf> {
+-        use alloc::string::ToString;
+-        let raw = Path::new(self.path);
+-        if !raw.is_relative() {
+-            return Err("non-relative path".into());
+         }
++        rel.set_extension(ext);
+-        let parent = self.parent.parent().unwrap_or(Path::new("."));
+-        let metadata = meta_paths(self.meta, parent);
+-        let path = resolve_import(&raw.with_extension(ext), metadata, paths)?;
+-        let code = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+-        Ok(File { code, path })
+-    }
+-}
+ 
+-#[cfg(feature = "std")]
+-fn expand_search(path: &Path) -> PathBuf {
+         #[cfg(target_os = "windows")]
+         let home = "USERPROFILE";
+         #[cfg(not(target_os = "windows"))]
+@@ -283,18 +264,28 @@
+         use std::env;
+         let home = || env::var_os(home).map(PathBuf::from);
+         let origin = || env::current_exe().ok()?.parent().map(PathBuf::from);
++        let expand = |path: &PathBuf| {
++            let home = expand_prefix(path, "~", home);
++            let orig = expand_prefix(path, "$ORIGIN", origin);
++            home.or(orig).unwrap_or_else(|| path.clone())
++        };
+-        let home = expand_prefix(path, "~", home);
+-        let orig = expand_prefix(path, "$ORIGIN", origin);
+-        home.or(orig).unwrap_or_else(|| path.to_path_buf())
+-}
+ 
++        // search paths given in the metadata are relative to the parent file, whereas
++        // search paths given on the command-line (`paths`, via `-L`) are not
++        let meta = self.meta_paths().map(|p| parent.join(expand(&p)));
++        meta.chain(paths.iter().map(expand))
++            .map(|path| path.join(&rel))
+-#[cfg(feature = "std")]
+-fn resolve_import(relative: &Path, metadata: impl Iterator<Item = PathBuf>, paths: &[PathBuf]) -> Result<PathBuf, String> {
+-        metadata.chain(paths.iter().map(|path| expand_search(path)))
+-            .map(|path| path.join(relative))
+             .filter_map(|path| path.canonicalize().ok())
+             .find(|path| path.is_file())
+             .ok_or_else(|| "file not found".into())
++    }
++
++    fn read(self, paths: &[PathBuf], ext: &str) -> ReadResult<PathBuf> {
++        use alloc::string::ToString;
++        let path = self.find(paths, ext)?;
++        let code = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
++        Ok(File { code, path })
++    }
+ }
+ 
+ /// Apply function to path of every imported data file, accumulating errors.
+@@ -352,7 +343,8 @@
+     ) -> Result<Modules<&'s str, P>, Errors<&'s str, P>> {
+         let result = parse_main(file.code).and_then(|m| {
+             m.map(|path, meta| {
++                let (parent, meta) = (&file.path, &meta);
++                self.find(arena, Import { parent, path, meta })
+-                self.find(arena, &file.path, path, &meta)
+             })
+         });
+ 
+@@ -377,28 +369,29 @@
+         }
+     }
+ 
++    fn find(&mut self, arena: &'s Arena, import: Import<&'s str, P>) -> Result<usize, String> {
++        let file = (self.read)(import)?;
+-    fn find(&mut self, arena: &'s Arena, parent: &P, path: &&'s str, meta: &Option<Term<&'s str>>) -> Result<usize, String> {
+-        let File { code, path: resolved } = (self.read)(Import { parent, path, meta })?;
+ 
+         let mut mods = self.mods.iter();
++        if let Some(id) = mods.position(|(file_, _)| file.path == file_.path) {
+-        if let Some(id) = mods.position(|(file_, _)| resolved == file_.path) {
+             return Ok(id);
+         };
++        if self.open.contains(&file.path) {
+-        if self.open.contains(&resolved) {
+             return Err("circular include/import".into());
+         }
+ 
++        let code = &**arena.alloc(file.code);
++        self.open.push(file.path.clone());
+-        let code = &**arena.alloc(code);
+-        self.open.push(resolved.clone());
+         let defs = parse_defs(code).and_then(|m| {
+             m.map(|path, meta| {
++                let (parent, meta) = (&file.path, &meta);
++                self.find(arena, Import { parent, path, meta })
+-                self.find(arena, &resolved, path, &meta)
+             })
+         });
++        assert!(self.open.pop().as_ref() == Some(&file.path));
+-        assert!(self.open.pop().as_ref() == Some(&resolved));
+ 
+         let id = self.mods.len();
++        let path = file.path;
+-        let path = resolved;
+         self.mods.push((File { path, code }, defs));
+         Ok(id)
+     }
+diff -ruN repo/jaq-core/src/path.rs clean/jaq-core/src/path.rs
+--- repo/jaq-core/src/path.rs	2026-10-23 20:36:33
++++ clean/jaq-core/src/path.rs	2026-10-23 20:32:27
+@@ -76,24 +76,11 @@
+ 
+ impl<'a, V: ValT + 'a> Path<V> {
+     pub(crate) fn run(self, v: V) -> ValRs<'a, V> {
++        run(self.0.into_iter(), v, |part, v| part.run(v))
+-        run(self.0.into_iter(), v, |part, opt, v| {
+-            let (index, from, upto) = part.components();
+-            read_part(index, from, upto, matches!(opt, Opt::Essential), v)
+-        })
+     }
+ 
+     pub(crate) fn paths(self, vp: (V, RcList<V>)) -> ValRs<'a, (V, RcList<V>), V> {
++        run(self.0.into_iter(), vp, |part, vp| part.paths(vp))
+-        run(self.0.into_iter(), vp, |part, opt, (v, p)| {
+-            let (index, from, upto) = part.components();
+-            let (values, fixed_key) = trace_part(index, from, upto, v);
+-            let values = values.filter(move |result| match opt {
+-                Opt::Optional => result.is_ok(),
+-                Opt::Essential => true,
+-            });
+-            map_with(values, (p, fixed_key), |result, (p, fixed_key)| {
+-                result.map(|(v, key)| (v, p.cons(key.or(fixed_key).unwrap())))
+-            })
+-        })
+     }
+ 
+     pub(crate) fn update<F>(mut self, v: V, f: F) -> ValX<'a, V>
+@@ -112,10 +99,11 @@
+ fn run<'a, V: 'a, T: 'a>(
+     mut iter: impl Iterator<Item = (Part<V>, Opt)> + Clone + 'a,
+     val: T,
++    f: fn(Part<V>, T) -> ValRs<'a, T, V>,
+-    f: fn(Part<V>, Opt, T) -> ValRs<'a, T, V>,
+ ) -> ValRs<'a, T, V> {
+     if let Some((part, opt)) = iter.next() {
++        let essential = matches!(opt, Opt::Essential);
++        let ys = f(part, val).filter(move |v| essential || v.is_ok());
+-        let ys = f(part, opt, val);
+         flat_map_with(ys, iter, move |v, iter| then(v, |v| run(iter, v, f)))
+     } else {
+         box_once(Ok(val))
+@@ -131,57 +119,46 @@
+         use core::iter::once;
+         part.update(v, opt, |v| once(update(iter.clone(), last.clone(), v, f)))
+     } else {
++        last.0.update(v, last.1, f)
+-        let (index, from, upto) = last.0.components_ref();
+-        update_part(index, from, upto, v, last.1, f)
+     }
+ }
+ 
++impl<'a, V: ValT + 'a> Part<V> {
++    fn run(&self, v: V) -> ValRs<'a, V> {
++        match self {
++            Self::Index(idx) => box_once(v.index(idx)),
++            Self::Range(None, None) => Box::new(v.values()),
++            Self::Range(from, upto) => box_once(v.range(from.as_ref()..upto.as_ref())),
++        }
++    }
+-fn read_part<'a, V: ValT + 'a>(index: Option<V>, from: Option<V>, upto: Option<V>, essential: bool, v: V) -> ValRs<'a, V> {
+-    let values: ValRs<'a, V> = match (index, from, upto) {
+-        (Some(idx), _, _) => box_once(v.index(&idx)),
+-        (None, None, None) => Box::new(v.values()),
+-        (None, from, upto) => box_once(v.range(from.as_ref()..upto.as_ref())),
+-    };
+-    Box::new(values.filter(move |result| essential || result.is_ok()))
+-}
+ 
++    fn paths(&self, (v, p): (V, RcList<V>)) -> ValRs<'a, (V, RcList<V>), V> {
++        match self {
++            Self::Index(idx) => box_once(v.index(idx).map(|v| (v, p.cons(idx.clone())))),
++            Self::Range(None, None) => Box::new(
+-fn trace_part<'a, V: ValT + 'a>(index: Option<V>, from: Option<V>, upto: Option<V>, v: V) -> (ValRs<'a, (V, Option<V>), V>, Option<V>) {
+-        match (index, from, upto) {
+-            (Some(idx), _, _) => (box_once(v.index(&idx).map(|v| (v, None))), Some(idx)),
+-            (None, None, None) => (Box::new(
+                 v.key_values()
++                    .map(move |kv| kv.map(|(k, v)| (v, p.clone().cons(k)))),
++            ),
++            Self::Range(from, upto) => box_once(
++                v.range(from.as_ref()..upto.as_ref())
++                    .map(|v| (v, p.cons(V::from(from.clone()..upto.clone())))),
++            ),
+-                    .map(move |kv| kv.map(|(k, v)| (v, Some(k)))),
+-            ), None),
+-            (None, from, upto) => {
+-                let value = v.range(from.as_ref()..upto.as_ref());
+-                match value {
+-                    Ok(value) => (box_once(Ok((value, None))), Some(V::from(from..upto))),
+-                    Err(error) => (box_once(Err(error)), None),
+-                }
+-            }
+         }
++    }
+-}
+ 
+-impl<'a, V: ValT + 'a> Part<V> {
+     fn update<F, I>(&self, v: V, opt: Opt, f: F) -> ValX<'a, V>
+     where
+         F: Fn(V) -> I,
+         I: Iterator<Item = ValX<'a, V>>,
+     {
++        match self {
++            Self::Index(idx) => v.map_index(idx, opt, f),
++            Self::Range(None, None) => v.map_values(opt, f),
++            Self::Range(from, upto) => v.map_range(from.as_ref()..upto.as_ref(), opt, f),
++        }
+-        let (index, from, upto) = self.components_ref();
+-        update_part(index, from, upto, v, opt, f)
+     }
+ }
+ 
+-fn update_part<'a, V: ValT + 'a, F, I>(index: Option<&V>, from: Option<&V>, upto: Option<&V>, v: V, opt: Opt, f: F) -> ValX<'a, V>
+-where F: Fn(V) -> I, I: Iterator<Item = ValX<'a, V>> {
+-    match (index, from, upto) {
+-        (Some(idx), _, _) => v.map_index(idx, opt, f),
+-        (None, None, None) => v.map_values(opt, f),
+-        (None, from, upto) => v.map_range(from..upto, opt, f),
+-    }
+-}
+-
+ impl<'a, U: Clone + 'a, F: IntoIterator<Item = U> + Clone + 'a> Part<F> {
+     fn into_iter(self) -> BoxIter<'a, Part<U>> {
+         use Part::{Index, Range};
+@@ -214,20 +191,6 @@
+ }
+ 
+ impl<T> Part<T> {
+-    fn components_ref(&self) -> (Option<&T>, Option<&T>, Option<&T>) {
+-        match self {
+-            Self::Index(i) => (Some(i), None, None),
+-            Self::Range(from, upto) => (None, from.as_ref(), upto.as_ref()),
+-        }
+-    }
+-
+-    fn components(self) -> (Option<T>, Option<T>, Option<T>) {
+-        match self {
+-            Self::Index(i) => (Some(i), None, None),
+-            Self::Range(from, upto) => (None, from, upto),
+-        }
+-    }
+-
+     /// Apply a function to the contained indices.
+     pub(crate) fn map<U, F: FnMut(T) -> U>(self, mut f: F) -> Part<U> {
+         use Part::{Index, Range};

@@ -1,0 +1,574 @@
+--- a/site/content/chapter4/code/sim/misc/alu-dispatch.h
++++ /dev/null
+@@ -1,54 +0,0 @@
+-typedef struct {
+-  alu_t operation;
+-  word_t (*value)(word_t, word_t);
+-  bool_t (*overflow)(word_t, word_t, word_t);
+-} alu_recipe;
+-
+-typedef struct {
+-  word_t value;
+-  cc_t flags;
+-} alu_result;
+-
+-static word_t add_value(word_t a, word_t b) { return a + b; }
+-static word_t sub_value(word_t a, word_t b) { return b - a; }
+-static word_t and_value(word_t a, word_t b) { return a & b; }
+-static word_t xor_value(word_t a, word_t b) { return a ^ b; }
+-
+-static bool_t add_overflow(word_t a, word_t b, word_t v)
+-{
+-  return ((a < 0) == (b < 0)) && ((v < 0) != (a < 0));
+-}
+-
+-static bool_t sub_overflow(word_t a, word_t b, word_t v)
+-{
+-  return ((a > 0) == (b < 0)) && ((v < 0) != (b < 0));
+-}
+-
+-static bool_t logical_overflow(word_t a, word_t b, word_t v)
+-{
+-  return FALSE;
+-}
+-
+-static const alu_recipe *lookup_alu_recipe(alu_t operation)
+-{
+-  static const alu_recipe recipes[] = {
+-    { A_ADD, add_value, add_overflow },
+-    { A_SUB, sub_value, sub_overflow },
+-    { A_AND, and_value, logical_overflow },
+-    { A_XOR, xor_value, logical_overflow }
+-  };
+-  unsigned i;
+-  for (i = 0; i < sizeof(recipes)/sizeof(recipes[0]); ++i)
+-    if (recipes[i].operation == operation)
+-      return &recipes[i];
+-  return NULL;
+-}
+-
+-static alu_result evaluate_recipe(const alu_recipe *recipe, word_t a, word_t b)
+-{
+-  alu_result result;
+-  result.value = recipe->value(a, b);
+-  result.flags = PACK_CC(result.value == 0, result.value < 0,
+-                         recipe->overflow(a, b, result.value));
+-  return result;
+-}
+--- a/site/content/chapter4/code/sim/misc/instruction-execute.h
++++ /dev/null
+@@ -1,27 +0,0 @@
+-static bool_t prepare_arithmetic(state_ptr state, itype_t instruction,
+-                                 alu_t function, bool_t registers_read,
+-                                 bool_t immediate_read, reg_id_t source,
+-                                 reg_id_t destination, word_t immediate,
+-                                 alu_result *result)
+-{
+-  const alu_recipe *recipe;
+-  word_t a, b;
+-  if (!registers_read)
+-    return FALSE;
+-  if (instruction == I_ALU) {
+-    recipe = lookup_alu_recipe(function);
+-    if (!recipe)
+-      return FALSE;
+-    a = get_reg_val(state->r, source);
+-  } else if (instruction == I_IADDQ) {
+-    if (!immediate_read || !reg_valid(destination))
+-      return FALSE;
+-    recipe = lookup_alu_recipe(A_ADD);
+-    a = immediate;
+-  } else {
+-    return FALSE;
+-  }
+-  b = get_reg_val(state->r, destination);
+-  *result = evaluate_recipe(recipe, a, b);
+-  return TRUE;
+-}
+--- a/site/content/chapter4/code/sim/misc/isa.c
++++ b/site/content/chapter4/code/sim/misc/isa.c
+@@ -3,8 +3,6 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include "isa.h"
+-#include "alu-dispatch.h"
+-#include "memory-span.h"
+ 
+ 
+ /* Are we running in GUI mode? */
+@@ -60,9 +58,6 @@
+ {
+   return id >= 0 && id < REG_NONE && reg_table[id].id == id;
+ }
+-
+-#include "instruction-execute.h"
+-#include "memory-execute.h"
+ 
+ instr_t instruction_set[] =
+ {
+@@ -306,11 +301,6 @@
+ 
+ bool_t get_byte_val(mem_t m, word_t pos, byte_t *dest)
+ {
+-  byte_t *bytes = memory_span(m, pos, 1);
+-  if (bytes) {
+-    *dest = *bytes;
+-    return TRUE;
+-  }
+   if (pos < 0 || pos >= m->len)
+     return FALSE;
+   *dest = m->contents[pos];
+@@ -321,11 +311,6 @@
+ {
+   int i;
+   word_t val;
+-  byte_t *bytes = memory_span(m, pos, 8);
+-  if (bytes) {
+-    *dest = span_word(bytes);
+-    return TRUE;
+-  }
+   if (pos < 0 || pos + 8 > m->len)
+     return FALSE;
+   val = 0;
+@@ -339,11 +324,6 @@
+ 
+ bool_t set_byte_val(mem_t m, word_t pos, byte_t val)
+ {
+-  byte_t *bytes = memory_span(m, pos, 1);
+-  if (bytes) {
+-    *bytes = val;
+-    return TRUE;
+-  }
+   if (pos < 0 || pos >= m->len)
+     return FALSE;
+   m->contents[pos] = val;
+@@ -353,11 +333,6 @@
+ bool_t set_word_val(mem_t m, word_t pos, word_t val)
+ {
+   int i;
+-  byte_t *bytes = memory_span(m, pos, 8);
+-  if (bytes) {
+-    store_span_word(bytes, val);
+-    return TRUE;
+-  }
+   if (pos < 0 || pos + 8 > m->len)
+     return FALSE;
+   for (i = 0; i < 8; i++) {
+@@ -485,9 +460,6 @@
+ word_t compute_alu(alu_t op, word_t argA, word_t argB)
+ {
+   word_t val;
+-  const alu_recipe *recipe = lookup_alu_recipe(op);
+-  if (recipe)
+-    return recipe->value(argA, argB);
+   switch(op) {
+     case A_ADD:
+       val = argA+argB;
+@@ -509,20 +481,10 @@
+ 
+ cc_t compute_cc(alu_t op, word_t argA, word_t argB)
+ {
++  word_t val = compute_alu(op, argA, argB);
+-  const alu_recipe *recipe = lookup_alu_recipe(op);
+-  alu_result evaluated;
+-  word_t val;
+-  if (recipe) {
+-    evaluated = evaluate_recipe(recipe, argA, argB);
+-    val = evaluated.value;
+-  } else {
+-    val = compute_alu(op, argA, argB);
+-  }
+   bool_t zero = (val == 0);
+   bool_t sign = ((word_t)val < 0);
+   bool_t ovf;
+-  if (recipe)
+-    return evaluated.flags;
+   switch(op) {
+     case A_ADD:
+       ovf = (((word_t) argA < 0) == ((word_t) argB < 0)) &&
+@@ -678,10 +640,6 @@
+   bool_t need_regids;
+   bool_t need_imm;
+   word_t ftpc = s->pc;  /* Fall-through PC */
+-  memory_request request;
+-  stat_t memory_status;
+-  alu_result arithmetic;
+-  bool_t arithmetic_ready;
+ 
+   if (!get_byte_val(s->m, ftpc, &byte0)) {
+     if (error_file)
+@@ -715,13 +673,6 @@
+     ftpc += 8;
+   }
+ 
+-  arithmetic_ready = prepare_arithmetic(s, hi0, lo0, ok1, okc,
+-                                         hi1, lo1, cval, &arithmetic);
+-  request = prepare_memory(s, hi0, ok1, okc, hi1, lo1, cval, ftpc);
+-  memory_status = issue_memory(s, &request, error_file);
+-  if (memory_status != STAT_AOK)
+-    return memory_status;
+-
+   switch (hi0) {
+     case I_NOP:
+       s->pc = ftpc;
+@@ -799,7 +750,6 @@
+               s->pc, hi1);
+         return STAT_INS;
+       }
+-      if (!request.write) {
+       if (reg_valid(lo1))
+         cval += get_reg_val(s->r, lo1);
+       val = get_reg_val(s->r, hi1);
+@@ -810,7 +760,6 @@
+               s->pc, cval);
+         return STAT_ADR;
+       }
+-      }
+       s->pc = ftpc;
+       break;
+     case I_MRMOVQ:
+@@ -833,13 +782,10 @@
+               s->pc, hi1);
+         return STAT_INS;
+       }
+-      val = request.value;
+-      if (!request.read) {
+       if (reg_valid(lo1))
+         cval += get_reg_val(s->r, lo1);
+       if (!get_word_val(s->m, cval, &val))
+         return STAT_ADR;
+-      }
+       set_reg_val(s->r, hi1, val);
+       s->pc = ftpc;
+       break;
+@@ -850,16 +796,11 @@
+               "PC = 0x%llx, Invalid instruction address\n", s->pc);
+         return STAT_ADR;
+       }
++      argA = get_reg_val(s->r, hi1);
++      argB = get_reg_val(s->r, lo1);
++      val = compute_alu(lo0, argA, argB);
+-      if (arithmetic_ready) {
+-        val = arithmetic.value;
+-        s->cc = arithmetic.flags;
+-      } else {
+-        argA = get_reg_val(s->r, hi1);
+-        argB = get_reg_val(s->r, lo1);
+-        val = compute_alu(lo0, argA, argB);
+-        s->cc = compute_cc(lo0, argA, argB);
+-      }
+       set_reg_val(s->r, lo1, val);
++      s->cc = compute_cc(lo0, argA, argB);
+       s->pc = ftpc;
+       break;
+     case I_JMP:
+@@ -893,7 +834,6 @@
+               "PC = 0x%llx, Invalid instruction address\n", s->pc);
+         return STAT_ADR;
+       }
+-      if (!request.write) {
+       val = get_reg_val(s->r, REG_RSP) - 8;
+       set_reg_val(s->r, REG_RSP, val);
+       if (!set_word_val(s->m, val, ftpc)) {
+@@ -902,14 +842,10 @@
+               "PC = 0x%llx, Invalid stack address 0x%llx\n", s->pc, val);
+         return STAT_ADR;
+       }
+-      }
+       s->pc = cval;
+       break;
+     case I_RET:
+       /* Return Instruction.  Pop address from stack */
+-      dval = request.address;
+-      val = request.value;
+-      if (!request.read) {
+       dval = get_reg_val(s->r, REG_RSP);
+       if (!get_word_val(s->m, dval, &val)) {
+         if (error_file)
+@@ -918,7 +854,6 @@
+               s->pc, dval);
+         return STAT_ADR;
+       }
+-      }
+       set_reg_val(s->r, REG_RSP, dval + 8);
+       s->pc = val;
+       break;
+@@ -935,7 +870,6 @@
+               "PC = 0x%llx, Invalid register ID 0x%.1x\n", s->pc, hi1);
+         return STAT_INS;
+       }
+-      if (!request.write) {
+       val = get_reg_val(s->r, hi1);
+       dval = get_reg_val(s->r, REG_RSP) - 8;
+       set_reg_val(s->r, REG_RSP, dval);
+@@ -945,7 +879,6 @@
+               "PC = 0x%llx, Invalid stack address 0x%llx\n", s->pc, dval);
+         return STAT_ADR;
+       }
+-      }
+       s->pc = ftpc;
+       break;
+     case I_POPQ:
+@@ -961,8 +894,6 @@
+               "PC = 0x%llx, Invalid register ID 0x%.1x\n", s->pc, hi1);
+         return STAT_INS;
+       }
+-      val = request.value;
+-      if (!request.read) {
+       dval = get_reg_val(s->r, REG_RSP);
+       set_reg_val(s->r, REG_RSP, dval+8);
+       if (!get_word_val(s->m, dval, &val)) {
+@@ -972,7 +903,6 @@
+               s->pc, dval);
+         return STAT_ADR;
+       }
+-      }
+       set_reg_val(s->r, hi1, val);
+       s->pc = ftpc;
+       break;
+@@ -997,15 +927,10 @@
+               s->pc, lo1);
+         return STAT_INS;
+       }
++      argB = get_reg_val(s->r, lo1);
++      val = argB + cval;
+-      if (arithmetic_ready) {
+-        val = arithmetic.value;
+-        s->cc = arithmetic.flags;
+-      } else {
+-        argB = get_reg_val(s->r, lo1);
+-        val = argB + cval;
+-        s->cc = compute_cc(A_ADD, cval, argB);
+-      }
+       set_reg_val(s->r, lo1, val);
++      s->cc = compute_cc(A_ADD, cval, argB);
+       s->pc = ftpc;
+       break;
+     default:
+--- a/site/content/chapter4/code/sim/misc/memory-execute.h
++++ /dev/null
+@@ -1,82 +0,0 @@
+-typedef struct {
+-  word_t address;
+-  word_t value;
+-  bool_t (*read)(mem_t, word_t, word_t *);
+-  bool_t (*write)(mem_t, word_t, word_t);
+-  int stack_adjustment;
+-  bool_t stack_address;
+-  bool_t report_address;
+-} memory_request;
+-
+-static memory_request prepare_memory(state_ptr state, itype_t instruction,
+-                                     bool_t registers_read, bool_t immediate_read,
+-                                     reg_id_t source, reg_id_t base,
+-                                     word_t immediate, word_t next_pc)
+-{
+-  memory_request request = {0};
+-  if (!registers_read || !immediate_read)
+-    return request;
+-  switch (instruction) {
+-    case I_RMMOVQ:
+-    case I_MRMOVQ:
+-      if (!reg_valid(source))
+-        return request;
+-      request.address = immediate;
+-      if (reg_valid(base))
+-        request.address += get_reg_val(state->r, base);
+-      if (instruction == I_RMMOVQ) {
+-        request.value = get_reg_val(state->r, source);
+-        request.write = set_word_val;
+-        request.report_address = TRUE;
+-      } else {
+-        request.read = get_word_val;
+-      }
+-      break;
+-    case I_PUSHQ:
+-    case I_POPQ:
+-      if (!reg_valid(source))
+-        return request;
+-      /* Stack instructions use the address from RSP. */
+-    case I_CALL:
+-    case I_RET:
+-      request.stack_address = TRUE;
+-      request.report_address = TRUE;
+-      request.address = get_reg_val(state->r, REG_RSP);
+-      if (instruction == I_CALL || instruction == I_PUSHQ) {
+-        request.address -= 8;
+-        request.stack_adjustment = -8;
+-        request.value = instruction == I_CALL ? next_pc :
+-                        get_reg_val(state->r, source);
+-        request.write = set_word_val;
+-      } else {
+-        request.stack_adjustment = instruction == I_POPQ ? 8 : 0;
+-        request.read = get_word_val;
+-      }
+-      break;
+-    default:
+-      break;
+-  }
+-  return request;
+-}
+-
+-static stat_t issue_memory(state_ptr state, memory_request *request,
+-                           FILE *error_file)
+-{
+-  bool_t ok;
+-  if (!request->read && !request->write)
+-    return STAT_AOK;
+-  if (request->stack_adjustment)
+-    set_reg_val(state->r, REG_RSP,
+-                get_reg_val(state->r, REG_RSP) + request->stack_adjustment);
+-  if (request->read)
+-    ok = request->read(state->m, request->address, &request->value);
+-  else
+-    ok = request->write(state->m, request->address, request->value);
+-  if (ok)
+-    return STAT_AOK;
+-  if (error_file && request->report_address)
+-    fprintf(error_file, "PC = 0x%llx, Invalid %s address 0x%llx\n",
+-            state->pc, request->stack_address ? "stack" : "data",
+-            request->address);
+-  return STAT_ADR;
+-}
+--- a/site/content/chapter4/code/sim/misc/memory-span.h
++++ /dev/null
+@@ -1,29 +0,0 @@
+-/* Return the requested bytes when they are in bounds. */
+-static byte_t *memory_span(mem_t memory, word_t pos, int width)
+-{
+-  if (width == 1) {
+-    if (pos < 0 || pos >= memory->len)
+-      return NULL;
+-  } else if (pos < 0 || pos + width > memory->len) {
+-    return NULL;
+-  }
+-  return memory->contents + pos;
+-}
+-
+-static word_t span_word(const byte_t *bytes)
+-{
+-  int i;
+-  word_t value = 0;
+-  for (i = 0; i < 8; ++i)
+-    value |= ((word_t)(bytes[i] & 0xff)) << (8*i);
+-  return value;
+-}
+-
+-static void store_span_word(byte_t *bytes, word_t value)
+-{
+-  int i;
+-  for (i = 0; i < 8; ++i) {
+-    bytes[i] = (byte_t)value & 0xff;
+-    value >>= 8;
+-  }
+-}
+--- a/site/content/chapter4/code/sim/misc/operand-dispatch.h
++++ /dev/null
+@@ -1,50 +0,0 @@
+-typedef struct {
+-  arg_t kind;
+-  void (*read)(int, int);
+-} operand_reader;
+-
+-static void read_register_operand(int pos, int width)
+-{
+-  get_reg(pos, width);
+-}
+-
+-static void read_memory_operand(int pos, int width)
+-{
+-  get_mem(pos);
+-}
+-
+-static void read_immediate_operand(int pos, int width)
+-{
+-  get_num(pos, width, 0);
+-}
+-
+-static const operand_reader *operand_handler(arg_t kind)
+-{
+-  static const operand_reader readers[] = {
+-    { R_ARG, read_register_operand },
+-    { M_ARG, read_memory_operand },
+-    { I_ARG, read_immediate_operand }
+-  };
+-  unsigned i;
+-  for (i = 0; i < sizeof(readers)/sizeof(readers[0]); ++i) {
+-    if (readers[i].kind == kind) {
+-      return &readers[i];
+-    }
+-  }
+-  return NULL;
+-}
+-
+-typedef struct {
+-  const operand_reader *handler;
+-  int position;
+-  int width;
+-} operand_binding;
+-
+-static operand_binding bind_operand(instr_ptr instruction, int second)
+-{
+-  operand_binding binding;
+-  binding.handler = operand_handler(second ? instruction->arg2 : instruction->arg1);
+-  binding.position = second ? instruction->arg2pos : instruction->arg1pos;
+-  binding.width = second ? instruction->arg2hi : instruction->arg1hi;
+-  return binding;
+-}
+--- a/site/content/chapter4/code/sim/misc/yas.c
++++ b/site/content/chapter4/code/sim/misc/yas.c
+@@ -290,8 +290,6 @@
+ 	code[codepos+i] = (val >> (i*8)) & 0xFF;
+ }
+ 
+-#include "operand-dispatch.h"
+-
+ void start_line()
+ {
+     int t;
+@@ -307,7 +305,6 @@
+ void finish_line()
+ {
+     int size;
+-    operand_binding operand;
+     instr_ptr instr;
+     int savebytepos = bytepos;
+     tpos = 0;
+@@ -400,10 +397,6 @@
+     /* Here's where we really process the instructions */
+     code[0] = instr->code;
+     code[1] = HPACK(REG_NONE, REG_NONE);
+-    operand = bind_operand(instr, 0);
+-    if (operand.handler)
+-      operand.handler->read(operand.position, operand.width);
+-    else {
+     switch(instr->arg1) {
+     case R_ARG:
+ 	get_reg(instr->arg1pos, instr->arg1hi);
+@@ -417,7 +410,6 @@
+     case NO_ARG:
+     default:
+ 	break;
+-    }
+     }
+     if (instr->arg2 != NO_ARG) {
+ 	/* Get comma  */
+@@ -430,10 +422,6 @@
+ 	tpos++;
+     
+ 	/* Get second argument */ 
+-        operand = bind_operand(instr, 1);
+-        if (operand.handler)
+-          operand.handler->read(operand.position, operand.width);
+-        else {
+ 	switch(instr->arg2) {
+ 	case R_ARG:
+ 	    get_reg(instr->arg2pos, instr->arg2hi);
+@@ -450,7 +438,6 @@
+ 	}
+     }
+ 
+-    }
+     print_code(outfile, savebytepos);
+     start_line();
+ }

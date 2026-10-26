@@ -1,0 +1,5 @@
+Remove obsolete, unreachable implementation code from the Y86-64 assembler and shared ISA implementation. Preserve assembler, interpreter, sequential simulator and pipeline simulator behavior, including instruction encodings, operand parsing, register and memory effects, condition codes, diagnostics and error ordering.
+
+Reachability spans Y86 instruction preparation and decoding shared by the assembler, interpreter and sequential/pipeline simulators. A removal must respect the producer state and the later register, memory and condition-code consumers; unsupported encodings are not evidence that adjacent validation is dead.
+
+Retain supported invalid-input and boundary behavior, public interfaces, optional GUI behavior and the original tests and build configuration. Shared helpers and initialization or commit effects that remain live must be preserved. Any clear, behavior-preserving cleanup is acceptable; no particular architecture or patch size is required. Run relevant original tests and report pre-existing environment limitations.

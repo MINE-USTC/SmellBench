@@ -1,0 +1,1593 @@
+diff --git a/packages/language-service/lib/features/provideAutoInsertSnippet.ts b/packages/language-service/lib/features/provideAutoInsertSnippet.ts
+index 602d71f..01d620c 100644
+--- a/packages/language-service/lib/features/provideAutoInsertSnippet.ts
++++ b/packages/language-service/lib/features/provideAutoInsertSnippet.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getGeneratedPositions, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getGeneratedPositionsParts, languageFeatureWorker } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return (
+@@ -17,7 +17,7 @@ export function register(context: LanguageServiceContext) {
+ 			uri,
+ 			() => ({ selection, change }),
+ 			function*(docs) {
++				for (const mappedPosition of getGeneratedPositions(docs, selection, isAutoInsertEnabled)) {
+-				for (const mappedPosition of getGeneratedPositionsParts(docs[1], docs[2], docs[0].offsetAt(selection), isAutoInsertEnabled)) {
+ 					for (const mapped of docs[2].toGeneratedLocation(change.rangeOffset)) {
+ 						yield {
+ 							selection: mappedPosition,
+diff --git a/packages/language-service/lib/features/provideCallHierarchyItems.ts b/packages/language-service/lib/features/provideCallHierarchyItems.ts
+index cdc83f4..6992a93 100644
+--- a/packages/language-service/lib/features/provideCallHierarchyItems.ts
++++ b/packages/language-service/lib/features/provideCallHierarchyItems.ts
+@@ -6,7 +6,8 @@ import { NoneCancellationToken } from '../utils/cancellation';
+ import * as dedupe from '../utils/dedupe';
+ import {
+ 	type DocumentsAndMap,
++	getGeneratedPositions,
++	getSourceRange,
+-	getSourceRangeParts,
+ 	languageFeatureWorker,
+ } from '../utils/featureWorkers';
+ 
+@@ -28,12 +29,7 @@ export function register(context: LanguageServiceContext) {
+ 				context,
+ 				uri,
+ 				() => position,
++				docs => getGeneratedPositions(docs, position, isCallHierarchyEnabled),
+-				function*(docs) {
+-				const sourceOffset = docs[0].offsetAt(position);
+-				for (const mapped of docs[2].toGeneratedLocation(sourceOffset, isCallHierarchyEnabled)) {
+-					yield docs[1].positionAt(mapped[0]);
+-				}
+-			},
+ 				async (plugin, document, position, map) => {
+ 					if (token.isCancellationRequested) {
+ 						return;
+@@ -72,12 +68,7 @@ export function register(context: LanguageServiceContext) {
+ 				context,
+ 				uri,
+ 				() => position,
++				docs => getGeneratedPositions(docs, position, isTypeHierarchyEnabled),
+-				function*(docs) {
+-				const sourceOffset = docs[0].offsetAt(position);
+-				for (const mapped of docs[2].toGeneratedLocation(sourceOffset, isTypeHierarchyEnabled)) {
+-					yield docs[1].positionAt(mapped[0]);
+-				}
+-			},
+ 				async (plugin, document, position, map) => {
+ 					if (token.isCancellationRequested) {
+ 						return;
+@@ -302,19 +293,7 @@ export function register(context: LanguageServiceContext) {
+ 			const sourceDocument = context.documents.get(sourceScript.id, sourceScript.languageId, sourceScript.snapshot);
+ 			const docs: DocumentsAndMap = [sourceDocument, embeddedDocument, map];
+ 
++			let range = getSourceRange(docs, tsItem.range);
+-			const rangeStartOffset = docs[1].offsetAt(tsItem.range.start);
+-
+-			const rangeEndOffset = docs[1].offsetAt(tsItem.range.end);
+-
+-			let range: typeof tsItem.range | undefined;
+-
+-			for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, undefined)) {
+-
+-				range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-
+-				break;
+-
+-			}
+ 			if (!range) {
+ 				// TODO: <script> range
+ 				range = {
+@@ -323,24 +302,12 @@ export function register(context: LanguageServiceContext) {
+ 				};
+ 			}
+ 
++			const selectionRange = getSourceRange(docs, tsItem.selectionRange);
+-			const selectionRangeStartOffset = docs[1].offsetAt(tsItem.selectionRange.start);
+-
+-			const selectionRangeEndOffset = docs[1].offsetAt(tsItem.selectionRange.end);
+-
+-			let selectionRange: typeof tsItem.selectionRange | undefined;
+-
+-			for (const [startOffset, endOffset] of docs[2].toSourceRange(selectionRangeStartOffset, selectionRangeEndOffset, true, undefined)) {
+-
+-				selectionRange = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-
+-				break;
+-
+-			}
+ 			if (!selectionRange) {
+ 				continue;
+ 			}
+ 
++			const vueRanges = tsRanges.map(tsRange => getSourceRange(docs, tsRange)).filter(range => !!range);
+-			const vueRanges = tsRanges.map(tsRange => getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((tsRange).start), docs[1].offsetAt((tsRange).end))).filter(range => !!range);
+ 			const vueItem: T = {
+ 				...tsItem,
+ 				name: tsItem.name === embeddedDocument.uri.substring(embeddedDocument.uri.lastIndexOf('/') + 1)
+diff --git a/packages/language-service/lib/features/provideCodeActions.ts b/packages/language-service/lib/features/provideCodeActions.ts
+index 5063087..ce5c938 100644
+--- a/packages/language-service/lib/features/provideCodeActions.ts
++++ b/packages/language-service/lib/features/provideCodeActions.ts
+@@ -4,7 +4,7 @@ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import * as dedupe from '../utils/dedupe';
++import { getGeneratedRange, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getGeneratedRangeParts, languageFeatureWorker } from '../utils/featureWorkers';
+ import { transformLocations, transformWorkspaceEdit } from '../utils/transform';
+ import type { ServiceDiagnosticData } from './provideDiagnostics';
+ 
+@@ -37,7 +37,7 @@ export function register(context: LanguageServiceContext) {
+ 				const _codeActionContext: vscode.CodeActionContext = {
+ 					diagnostics: transformLocations(
+ 						codeActionContext.diagnostics,
++						range => getGeneratedRange(docs, range),
+-						range => getGeneratedRangeParts(docs[1], docs[2], docs[0].offsetAt((range).start), docs[0].offsetAt((range).end)),
+ 					),
+ 					only: codeActionContext.only,
+ 				};
+diff --git a/packages/language-service/lib/features/provideCodeLenses.ts b/packages/language-service/lib/features/provideCodeLenses.ts
+index 61947c6..2bd5b29 100644
+--- a/packages/language-service/lib/features/provideCodeLenses.ts
++++ b/packages/language-service/lib/features/provideCodeLenses.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { documentFeatureWorker, getSourceRange } from '../utils/featureWorkers';
+-import { documentFeatureWorker, } from '../utils/featureWorkers';
+ 
+ export interface ServiceCodeLensData {
+ 	kind: 'normal';
+@@ -75,13 +75,7 @@ export function register(context: LanguageServiceContext) {
+ 				}
+ 				return data
+ 					.map(codeLens => {
++						const range = getSourceRange(docs, codeLens.range, isCodeLensEnabled);
+-						const rangeStartOffset = docs[1].offsetAt(codeLens.range.start);
+-						const rangeEndOffset = docs[1].offsetAt(codeLens.range.end);
+-						let range: typeof codeLens.range | undefined;
+-						for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, isCodeLensEnabled)) {
+-							range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-							break;
+-						}
+ 						if (range) {
+ 							return {
+ 								...codeLens,
+diff --git a/packages/language-service/lib/features/provideColorPresentations.ts b/packages/language-service/lib/features/provideColorPresentations.ts
+index 21c0c4a..6a41e81 100644
+--- a/packages/language-service/lib/features/provideColorPresentations.ts
++++ b/packages/language-service/lib/features/provideColorPresentations.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getGeneratedRanges, getSourceRange, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getGeneratedRangesParts, languageFeatureWorker } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return (uri: URI, color: vscode.Color, range: vscode.Range, token = NoneCancellationToken) => {
+@@ -12,7 +12,7 @@ export function register(context: LanguageServiceContext) {
+ 			uri,
+ 			() => range,
+ 			function*(docs) {
++				for (const mappedRange of getGeneratedRanges(docs, range, isColorEnabled)) {
+-				for (const mappedRange of getGeneratedRangesParts(docs[1], docs[2], docs[0].offsetAt((range).start), docs[0].offsetAt((range).end), isColorEnabled)) {
+ 					yield mappedRange;
+ 				}
+ 			},
+@@ -29,13 +29,7 @@ export function register(context: LanguageServiceContext) {
+ 				return data
+ 					.map(colorPresentation => {
+ 						if (colorPresentation.textEdit) {
++							const range = getSourceRange(docs, colorPresentation.textEdit.range);
+-							const rangeStartOffset = docs[1].offsetAt(colorPresentation.textEdit.range.start);
+-							const rangeEndOffset = docs[1].offsetAt(colorPresentation.textEdit.range.end);
+-							let range: typeof colorPresentation.textEdit.range | undefined;
+-							for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, undefined)) {
+-								range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-								break;
+-							}
+ 							if (!range) {
+ 								return undefined;
+ 							}
+@@ -43,13 +37,7 @@ export function register(context: LanguageServiceContext) {
+ 						}
+ 						if (colorPresentation.additionalTextEdits) {
+ 							for (const textEdit of colorPresentation.additionalTextEdits) {
++								const range = getSourceRange(docs, textEdit.range);
+-								const rangeStartOffset = docs[1].offsetAt(textEdit.range.start);
+-								const rangeEndOffset = docs[1].offsetAt(textEdit.range.end);
+-								let range: typeof textEdit.range | undefined;
+-								for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, undefined)) {
+-									range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-									break;
+-								}
+ 								if (!range) {
+ 									return undefined;
+ 								}
+diff --git a/packages/language-service/lib/features/provideCompletionItems.ts b/packages/language-service/lib/features/provideCompletionItems.ts
+index aef67f9..a8cb3c1 100644
+--- a/packages/language-service/lib/features/provideCompletionItems.ts
++++ b/packages/language-service/lib/features/provideCompletionItems.ts
+@@ -7,8 +7,8 @@ import { NoneCancellationToken } from '../utils/cancellation';
+ import {
+ 	type DocumentsAndMap,
+ 	forEachEmbeddedDocument,
++	getGeneratedPositions,
++	getSourceRange,
+-	getGeneratedPositionsParts,
+-	getSourceRangeParts,
+ } from '../utils/featureWorkers';
+ import { transformCompletionList } from '../utils/transform';
+ 
+@@ -22,9 +22,11 @@ export interface ServiceCompletionData {
+ export function register(context: LanguageServiceContext) {
+ 	let lastResult: {
+ 		uri: URI;
++		results: {
++			embeddedDocumentUri: URI | undefined;
++			plugin: LanguageServicePluginInstance;
++			list: vscode.CompletionList | undefined | null;
++		}[];
+-		embeddedUris: (URI | undefined)[];
+-		plugins: LanguageServicePluginInstance[];
+-		lists: (vscode.CompletionList | undefined | null)[];
+ 	} | undefined;
+ 
+ 	return async (
+@@ -57,16 +59,15 @@ export function register(context: LanguageServiceContext) {
+ 			completionContext?.triggerKind === 3 satisfies typeof vscode.CompletionTriggerKind.TriggerForIncompleteCompletions
+ 			&& lastResult?.uri.toString() === uri.toString()
+ 		) {
++			for (const cacheData of lastResult.results) {
++				if (!cacheData.list?.isIncomplete) {
+-			const cached = lastResult;
+-			for (let cacheIndex = 0; cacheIndex < cached.lists.length; cacheIndex++) {
+-				if (!cached.lists[cacheIndex]?.isIncomplete) {
+ 					continue;
+ 				}
+ 
++				const pluginIndex = context.plugins.findIndex(plugin => plugin[1] === cacheData.plugin);
+-				const pluginIndex = context.plugins.findIndex(plugin => plugin[1] === cached.plugins[cacheIndex]);
+ 
++				if (cacheData.embeddedDocumentUri) {
++					const decoded = context.decodeEmbeddedDocumentUri(cacheData.embeddedDocumentUri);
+-				if (cached.embeddedUris[cacheIndex]) {
+-					const decoded = context.decodeEmbeddedDocumentUri(cached.embeddedUris[cacheIndex]!);
+ 					const sourceScript = decoded && context.language.scripts.get(decoded[0]);
+ 					const virtualCode = decoded && sourceScript?.generated?.embeddedCodes.get(decoded[1]);
+ 
+@@ -87,24 +88,24 @@ export function register(context: LanguageServiceContext) {
+ 						);
+ 						const docs: DocumentsAndMap = [sourceDocument, embeddedDocument, map];
+ 
++						for (const mapped of getGeneratedPositions(docs, position, data => isCompletionEnabled(data))) {
++							if (!cacheData.plugin.provideCompletionItems) {
+-						for (const mapped of getGeneratedPositionsParts(docs[1], docs[2], docs[0].offsetAt(position), data => isCompletionEnabled(data))) {
+-							if (!cached.plugins[cacheIndex].provideCompletionItems) {
+ 								continue;
+ 							}
+ 
++							cacheData.list = await cacheData.plugin.provideCompletionItems(
+-							cached.lists[cacheIndex] = await cached.plugins[cacheIndex].provideCompletionItems!(
+ 								embeddedDocument,
+ 								mapped,
+ 								completionContext,
+ 								token,
+ 							);
+ 
++							if (!cacheData.list) {
+-							if (!cached.lists[cacheIndex]) {
+ 								continue;
+ 							}
+ 
++							for (const item of cacheData.list.items) {
++								if (cacheData.plugin.resolveCompletionItem) {
+-							for (const item of cached.lists[cacheIndex]!.items) {
+-								if (cached.plugins[cacheIndex].resolveCompletionItem) {
+ 									item.data = {
+ 										uri: uri.toString(),
+ 										original: {
+@@ -121,9 +122,9 @@ export function register(context: LanguageServiceContext) {
+ 								}
+ 							}
+ 
++							cacheData.list = transformCompletionList(
++								cacheData.list,
++								range => getSourceRange(docs, range),
+-							cached.lists[cacheIndex] = transformCompletionList(
+-								cached.lists[cacheIndex]!,
+-								range => getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((range).start), docs[1].offsetAt((range).end)),
+ 								embeddedDocument,
+ 								context,
+ 							);
+@@ -131,19 +132,19 @@ export function register(context: LanguageServiceContext) {
+ 					}
+ 				}
+ 				else {
++					if (!cacheData.plugin.provideCompletionItems) {
+-					if (!cached.plugins[cacheIndex].provideCompletionItems) {
+ 						continue;
+ 					}
+ 
+ 					const document = context.documents.get(uri, langaugeIdAndSnapshot.languageId, langaugeIdAndSnapshot.snapshot);
++					cacheData.list = await cacheData.plugin.provideCompletionItems(document, position, completionContext, token);
+-					cached.lists[cacheIndex] = await cached.plugins[cacheIndex].provideCompletionItems!(document, position, completionContext, token);
+ 
++					if (!cacheData.list) {
+-					if (!cached.lists[cacheIndex]) {
+ 						continue;
+ 					}
+ 
++					for (const item of cacheData.list.items) {
++						if (cacheData.plugin.resolveCompletionItem) {
+-					for (const item of cached.lists[cacheIndex]!.items) {
+-						if (cached.plugins[cacheIndex].resolveCompletionItem) {
+ 							item.data = {
+ 								uri: uri.toString(),
+ 								original: {
+@@ -165,9 +166,7 @@ export function register(context: LanguageServiceContext) {
+ 		else {
+ 			lastResult = {
+ 				uri,
++				results: [],
+-				embeddedUris: [],
+-				plugins: [],
+-				lists: [],
+ 			};
+ 
+ 			// monky fix https://github.com/johnsoncodehk/volar/issues/1358
+@@ -214,7 +213,7 @@ export function register(context: LanguageServiceContext) {
+ 					}
+ 
+ 					// avoid duplicate items with .vue and .vue.html
++					if (plugin[1].isAdditionalCompletion && lastResult?.results.some(data => data.plugin === plugin[1])) {
+-					if (plugin[1].isAdditionalCompletion && lastResult?.plugins.some(data => data === plugin[1])) {
+ 						continue;
+ 					}
+ 
+@@ -255,17 +254,17 @@ export function register(context: LanguageServiceContext) {
+ 					if (docs) {
+ 						completionList = transformCompletionList(
+ 							completionList,
++							range => getSourceRange(docs, range, isCompletionEnabled),
+-							range => getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((range).start), docs[1].offsetAt((range).end), isCompletionEnabled),
+ 							document,
+ 							context,
+ 						);
+ 					}
+ 
++					lastResult?.results.push({
++						embeddedDocumentUri: docs ? URI.parse(document.uri) : undefined,
++						plugin: plugin[1],
++						list: completionList,
++					});
+-					if (lastResult) {
+-						lastResult.embeddedUris.push(docs ? URI.parse(document.uri) : undefined);
+-						lastResult.plugins.push(plugin[1]);
+-						lastResult.lists.push(completionList);
+-					}
+ 				}
+ 
+ 				isFirstMapping = false;
+@@ -276,7 +275,7 @@ export function register(context: LanguageServiceContext) {
+ 					let _data: CodeInformation | undefined;
+ 
+ 					for (
++						const mappedPosition of getGeneratedPositions(docs, position, data => {
+-						const mappedPosition of getGeneratedPositionsParts(docs[1], docs[2], docs[0].offsetAt(position), data => {
+ 							_data = data;
+ 							return isCompletionEnabled(data);
+ 						})
+@@ -292,7 +291,7 @@ export function register(context: LanguageServiceContext) {
+ 			}
+ 		}
+ 
++		return combineCompletionList(lastResult.results.map(cacheData => cacheData.list));
+-		return combineCompletionList(lastResult.lists);
+ 
+ 		function sortServices(a: LanguageServicePluginInstance, b: LanguageServicePluginInstance) {
+ 			return (b.isAdditionalCompletion ? -1 : 1) - (a.isAdditionalCompletion ? -1 : 1);
+diff --git a/packages/language-service/lib/features/provideDefinition.ts b/packages/language-service/lib/features/provideDefinition.ts
+index 666b371..6470441 100644
+--- a/packages/language-service/lib/features/provideDefinition.ts
++++ b/packages/language-service/lib/features/provideDefinition.ts
+@@ -7,8 +7,10 @@ import { NoneCancellationToken } from '../utils/cancellation';
+ import * as dedupe from '../utils/dedupe';
+ import {
+ 	type DocumentsAndMap,
++	getGeneratedPositions,
+ 	getLinkedCodePositions,
++	getSourceRange,
++	getSourceRanges,
+-	getSourceRangesParts,
+ 	languageFeatureWorker,
+ } from '../utils/featureWorkers';
+ 
+@@ -22,12 +24,7 @@ export function register(
+ 			context,
+ 			uri,
+ 			() => position,
++			docs => getGeneratedPositions(docs, position, isValidPosition),
+-			function*(docs) {
+-				const sourceOffset = docs[0].offsetAt(position);
+-				for (const mapped of docs[2].toGeneratedLocation(sourceOffset, isValidPosition)) {
+-					yield docs[1].positionAt(mapped[0]);
+-				}
+-			},
+ 			async (plugin, document, position) => {
+ 				if (token.isCancellationRequested) {
+ 					return;
+@@ -146,38 +143,14 @@ export function register(
+ 							);
+ 							const docs: DocumentsAndMap = [sourceDocument, embeddedDocument, targetSourceMap];
+ 
++							const targetSelectionRange = getSourceRange(docs, link.targetSelectionRange);
+-							const targetSelectionRangeStartOffset = docs[1].offsetAt(link.targetSelectionRange.start);
+-
+-							const targetSelectionRangeEndOffset = docs[1].offsetAt(link.targetSelectionRange.end);
+-
+-							let targetSelectionRange: typeof link.targetSelectionRange | undefined;
+-
+-							for (const [startOffset, endOffset] of docs[2].toSourceRange(targetSelectionRangeStartOffset, targetSelectionRangeEndOffset, true, undefined)) {
+-
+-								targetSelectionRange = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-
+-								break;
+-
+-							}
+ 							if (!targetSelectionRange) {
+ 								continue;
+ 							}
+ 
+ 							foundTargetSelectionRange = true;
+ 
++							let targetRange = getSourceRange(docs, link.targetRange);
+-							const targetRangeStartOffset = docs[1].offsetAt(link.targetRange.start);
+-
+-							const targetRangeEndOffset = docs[1].offsetAt(link.targetRange.end);
+-
+-							let targetRange: typeof link.targetRange | undefined;
+-
+-							for (const [startOffset, endOffset] of docs[2].toSourceRange(targetRangeStartOffset, targetRangeEndOffset, true, undefined)) {
+-
+-								targetRange = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-
+-								break;
+-
+-							}
+ 
+ 							link.targetUri = sourceDocument.uri;
+ 							// loose range mapping to for template slots, slot properties
+@@ -220,7 +193,7 @@ function toSourcePositionPreferSurroundedPosition(
+ ) {
+ 	let result: vscode.Range | undefined;
+ 
++	for (const range of getSourceRanges(docs, mappedRange)) {
+-	for (const range of getSourceRangesParts(docs[0], docs[2], docs[1].offsetAt((mappedRange).start), docs[1].offsetAt((mappedRange).end))) {
+ 		if (!result) {
+ 			result = range;
+ 		}
+diff --git a/packages/language-service/lib/features/provideDiagnostics.ts b/packages/language-service/lib/features/provideDiagnostics.ts
+index 6e88939..45746e6 100644
+--- a/packages/language-service/lib/features/provideDiagnostics.ts
++++ b/packages/language-service/lib/features/provideDiagnostics.ts
+@@ -12,7 +12,7 @@ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import { sleep } from '../utils/common';
+ import * as dedupe from '../utils/dedupe';
++import { documentFeatureWorker, type DocumentsAndMap, getSourceRange } from '../utils/featureWorkers';
+-import { documentFeatureWorker, type DocumentsAndMap, getSourceRange, } from '../utils/featureWorkers';
+ import { createUriMap } from '../utils/uriMap';
+ 
+ export interface ServiceDiagnosticData {
+@@ -101,24 +101,18 @@ export function register(context: LanguageServiceContext) {
+ 			cache.document = document;
+ 
+ 			if (!updateCacheRangeFailed && oldDocument && change) {
++				const changeRange = {
++					range: {
++						start: oldDocument.positionAt(change.span.start),
++						end: oldDocument.positionAt(change.span.start + change.span.length),
++					},
++					newEnd: document.positionAt(change.span.start + change.newLength),
++				};
+-				const oldEnd = oldDocument.positionAt(change.span.start + change.span.length);
+-				const newEnd = document.positionAt(change.span.start + change.newLength);
+-				const lineDelta = newEnd.line - oldEnd.line;
+-				const characterDelta = newEnd.character - oldEnd.character;
+ 				for (const error of cache.errors) {
++					if (!updateRange(error.range, changeRange)) {
+-					const startUpdated = updatePosition(error.range.start, oldEnd.line, oldEnd.character, lineDelta, characterDelta);
+-					const retainEnd = lineDelta === 0 && characterDelta > 0
+-						&& error.range.end.line === oldEnd.line && error.range.end.character === oldEnd.character;
+-					if (!startUpdated || !updatePosition(error.range.end, oldEnd.line, oldEnd.character, lineDelta, characterDelta)) {
+ 						updateCacheRangeFailed = true;
+ 						break;
+ 					}
+-					if (retainEnd) {
+-						error.range.end.character = oldEnd.character;
+-					}
+-					if (error.range.end.line === error.range.start.line && error.range.end.character <= error.range.start.character) {
+-						error.range.end.character++;
+-					}
+ 				}
+ 			}
+ 		}
+@@ -219,13 +213,7 @@ export function transformDiagnostic(
+ 	let _error: vscode.Diagnostic = { ...error };
+ 
+ 	if (docs) {
++		const range = getSourceRange(docs, error.range, data => shouldReportDiagnostics(data, error.source, error.code));
+-		const rangeStartOffset = docs[1].offsetAt(error.range.start);
+-		const rangeEndOffset = docs[1].offsetAt(error.range.end);
+-		let range: typeof error.range | undefined;
+-		for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, data => shouldReportDiagnostics(data, error.source, error.code))) {
+-			range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-			break;
+-		}
+ 		if (!range) {
+ 			return;
+ 		}
+@@ -283,21 +271,12 @@ export function updateRange(
+ 		newEnd: vscode.Position;
+ 	},
+ ) {
++	if (!updatePosition(range.start, change, false)) {
+-	const oldEndLine = change.range.end.line;
+-	const oldEndCharacter = change.range.end.character;
+-	const lineDelta = change.newEnd.line - oldEndLine;
+-	const characterDelta = change.newEnd.character - oldEndCharacter;
+-	if (!updatePosition(range.start, oldEndLine, oldEndCharacter, lineDelta, characterDelta)) {
+ 		return;
+ 	}
++	if (!updatePosition(range.end, change, true)) {
+-	const retainEnd = lineDelta === 0 && characterDelta > 0
+-		&& range.end.line === oldEndLine && range.end.character === oldEndCharacter;
+-	if (!updatePosition(range.end, oldEndLine, oldEndCharacter, lineDelta, characterDelta)) {
+ 		return;
+ 	}
+-	if (retainEnd) {
+-		range.end.character = oldEndCharacter;
+-	}
+ 	if (range.end.line === range.start.line && range.end.character <= range.start.character) {
+ 		range.end.character++;
+ 	}
+@@ -306,50 +285,61 @@ export function updateRange(
+ 
+ function updatePosition(
+ 	position: vscode.Position,
++	change: {
++		range: vscode.Range;
++		newEnd: vscode.Position;
++	},
++	isEnd: boolean,
+-	oldEndLine: number,
+-	oldEndCharacter: number,
+-	lineDelta: number,
+-	characterDelta: number,
+ ) {
++	if (change.range.end.line > position.line) {
++		if (change.newEnd.line > position.line) {
+-	const newEndLine = oldEndLine + lineDelta;
+-	const newEndCharacter = oldEndCharacter + characterDelta;
+-	if (oldEndLine > position.line) {
+-		if (newEndLine > position.line) {
+ 			// No change
+ 			return true;
+ 		}
++		else if (change.newEnd.line === position.line) {
++			position.character = Math.min(position.character, change.newEnd.character);
+-		else if (newEndLine === position.line) {
+-			position.character = Math.min(position.character, newEndCharacter);
+ 			return true;
+ 		}
++		else if (change.newEnd.line < position.line) {
++			position.line = change.newEnd.line;
++			position.character = change.newEnd.character;
+-		else if (newEndLine < position.line) {
+-			position.line = newEndLine;
+-			position.character = newEndCharacter;
+ 			return true;
+ 		}
+ 	}
++	else if (change.range.end.line === position.line) {
++		const characterDiff = change.newEnd.character - change.range.end.character;
++		if (position.character >= change.range.end.character) {
++			if (change.newEnd.line !== change.range.end.line) {
++				position.line = change.newEnd.line;
++				position.character = change.newEnd.character + position.character - change.range.end.character;
+-	else if (oldEndLine === position.line) {
+-		const characterDiff = newEndCharacter - oldEndCharacter;
+-		if (position.character >= oldEndCharacter) {
+-			if (newEndLine !== oldEndLine) {
+-				position.line = newEndLine;
+-				position.character = newEndCharacter + position.character - oldEndCharacter;
+ 			}
+ 			else {
++				if (
++					isEnd
++						? change.range.end.character < position.character
++						: change.range.end.character <= position.character
++				) {
++					position.character += characterDiff;
++				}
++				else {
++					const offset = change.range.end.character - position.character;
++					if (-characterDiff > offset) {
++						position.character += characterDiff + offset;
++					}
++				}
+-				position.character += characterDiff;
+ 			}
+ 			return true;
+ 		}
+ 		else {
++			if (change.newEnd.line === change.range.end.line) {
++				const offset = change.range.end.character - position.character;
+-			if (newEndLine === oldEndLine) {
+-				const offset = oldEndCharacter - position.character;
+ 				if (-characterDiff > offset) {
+ 					position.character += characterDiff + offset;
+ 				}
+ 			}
++			else if (change.newEnd.line < change.range.end.line) {
++				position.line = change.newEnd.line;
++				position.character = change.newEnd.character;
+-			else if (newEndLine < oldEndLine) {
+-				position.line = newEndLine;
+-				position.character = newEndCharacter;
+ 			}
+ 			else {
+ 				// No change
+@@ -357,8 +347,8 @@ function updatePosition(
+ 			return true;
+ 		}
+ 	}
++	else if (change.range.end.line < position.line) {
++		position.line += change.newEnd.line - change.range.end.line;
+-	else if (oldEndLine < position.line) {
+-		position.line += newEndLine - oldEndLine;
+ 		return true;
+ 	}
+ 	return false;
+diff --git a/packages/language-service/lib/features/provideDocumentColors.ts b/packages/language-service/lib/features/provideDocumentColors.ts
+index d692ad5..5277797 100644
+--- a/packages/language-service/lib/features/provideDocumentColors.ts
++++ b/packages/language-service/lib/features/provideDocumentColors.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { documentFeatureWorker, getSourceRange } from '../utils/featureWorkers';
+-import { documentFeatureWorker, } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return (uri: URI, token = NoneCancellationToken) => {
+@@ -23,13 +23,7 @@ export function register(context: LanguageServiceContext) {
+ 				}
+ 				return data
+ 					.map<vscode.ColorInformation | undefined>(color => {
++						const range = getSourceRange(docs, color.range, isColorEnabled);
+-						const rangeStartOffset = docs[1].offsetAt(color.range.start);
+-						const rangeEndOffset = docs[1].offsetAt(color.range.end);
+-						let range: typeof color.range | undefined;
+-						for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, isColorEnabled)) {
+-							range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-							break;
+-						}
+ 						if (range) {
+ 							return {
+ 								range,
+diff --git a/packages/language-service/lib/features/provideDocumentDropEdits.ts b/packages/language-service/lib/features/provideDocumentDropEdits.ts
+index 40323f5..6e0d527 100644
+--- a/packages/language-service/lib/features/provideDocumentDropEdits.ts
++++ b/packages/language-service/lib/features/provideDocumentDropEdits.ts
+@@ -2,7 +2,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { DataTransferItem, LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getGeneratedPositions, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getGeneratedPositionsParts, languageFeatureWorker } from '../utils/featureWorkers';
+ import { transformWorkspaceEdit } from '../utils/transform';
+ 
+ export function register(context: LanguageServiceContext) {
+@@ -17,7 +17,7 @@ export function register(context: LanguageServiceContext) {
+ 			uri,
+ 			() => position,
+ 			function*(docs) {
++				for (const mappedPosition of getGeneratedPositions(docs, position)) {
+-				for (const mappedPosition of getGeneratedPositionsParts(docs[1], docs[2], docs[0].offsetAt(position))) {
+ 					yield mappedPosition;
+ 				}
+ 			},
+diff --git a/packages/language-service/lib/features/provideDocumentFormattingEdits.ts b/packages/language-service/lib/features/provideDocumentFormattingEdits.ts
+index e61e4a0..cb111a5 100644
+--- a/packages/language-service/lib/features/provideDocumentFormattingEdits.ts
++++ b/packages/language-service/lib/features/provideDocumentFormattingEdits.ts
+@@ -11,7 +11,7 @@ import { URI } from 'vscode-uri';
+ import type { EmbeddedCodeFormattingOptions, LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import { stringToSnapshot } from '../utils/common';
++import { type DocumentsAndMap, getGeneratedPositions, getSourceRange } from '../utils/featureWorkers';
+-import { type DocumentsAndMap, getGeneratedPositionsParts, } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return async (
+@@ -43,8 +43,7 @@ export function register(context: LanguageServiceContext) {
+ 				: (await tryFormat(document, document, sourceScript, undefined, 0, range, undefined))?.edits;
+ 		}
+ 
++		const embeddedRanges = new Map<string, { start: number; end: number }>(); // TODO: Formatting of upper-level virtual code may cause offset of lower-level selection range
+-		const embeddedStarts = new Map<string, number>(); // TODO: Formatting of upper-level virtual code may cause offset of lower-level selection range
+-		const embeddedLengths = new Map<string, number>();
+ 		const startOffset = document.offsetAt(range.start);
+ 		const endOffset = document.offsetAt(range.end);
+ 
+@@ -53,19 +52,18 @@ export function register(context: LanguageServiceContext) {
+ 			if (map) {
+ 				const embeddedRange = findOverlapCodeRange(startOffset, endOffset, map, isFormattingEnabled);
+ 				if (embeddedRange) {
++					if (embeddedRange.start === map.mappings[0].generatedOffsets[0]) {
++						embeddedRange.start = 0;
++					}
+-					const start = embeddedRange.start === map.mappings[0].generatedOffsets[0] ? 0 : embeddedRange.start;
+-					embeddedStarts.set(code.id, start);
+ 					const lastMapping = map.mappings[map.mappings.length - 1];
+ 					if (
+ 						embeddedRange.end
+ 							=== lastMapping.generatedOffsets[lastMapping.generatedOffsets.length - 1]
+ 								+ (lastMapping.generatedLengths ?? lastMapping.lengths)[lastMapping.lengths.length - 1]
+ 					) {
++						embeddedRange.end = code.snapshot.getLength();
+-						embeddedLengths.set(code.id, code.snapshot.getLength() - start);
+-					}
+-					else {
+-						embeddedLengths.set(code.id, embeddedRange.end - start);
+ 					}
++					embeddedRanges.set(code.id, embeddedRange);
+ 				}
+ 			}
+ 		}
+@@ -98,9 +96,8 @@ export function register(context: LanguageServiceContext) {
+ 						continue;
+ 					}
+ 
++					const currentRange = embeddedRanges.get(code.id);
++					if (!currentRange) {
+-					const currentStart = embeddedStarts.get(code.id);
+-					const currentLength = embeddedLengths.get(code.id);
+-					if (currentStart === undefined || currentLength === undefined) {
+ 						continue;
+ 					}
+ 
+@@ -108,9 +105,8 @@ export function register(context: LanguageServiceContext) {
+ 						if (child === code) {
+ 							return false;
+ 						}
++						const childRange = embeddedRanges.get(child.id);
++						return childRange && childRange.end - childRange.start >= currentRange.end - currentRange.start;
+-						const childStart = embeddedStarts.get(child.id);
+-						const childLength = embeddedLengths.get(child.id);
+-						return childStart !== undefined && childLength !== undefined && childLength >= currentLength;
+ 					});
+ 					if (isChildRange) {
+ 						continue;
+@@ -129,7 +125,7 @@ export function register(context: LanguageServiceContext) {
+ 					let embeddedResult: Awaited<ReturnType<typeof tryFormat>> | undefined;
+ 
+ 					if (onTypeParams) {
++						for (const embeddedPosition of getGeneratedPositions(docs, onTypeParams.position)) {
+-						for (const embeddedPosition of getGeneratedPositionsParts(docs[1], docs[2], docs[0].offsetAt(onTypeParams.position))) {
+ 							embeddedResult = await tryFormat(
+ 								docs[0],
+ 								docs[1],
+@@ -142,7 +138,7 @@ export function register(context: LanguageServiceContext) {
+ 							break;
+ 						}
+ 					}
++					else if (currentRange) {
+-					else {
+ 						embeddedResult = await tryFormat(
+ 							docs[0],
+ 							docs[1],
+@@ -150,8 +146,8 @@ export function register(context: LanguageServiceContext) {
+ 							code,
+ 							depth,
+ 							{
++								start: docs[1].positionAt(currentRange.start),
++								end: docs[1].positionAt(currentRange.end),
+-								start: docs[1].positionAt(currentStart),
+-								end: docs[1].positionAt(currentStart + currentLength),
+ 							},
+ 						);
+ 					}
+@@ -161,13 +157,7 @@ export function register(context: LanguageServiceContext) {
+ 					}
+ 
+ 					for (const textEdit of embeddedResult.edits) {
++						const range = getSourceRange(docs, textEdit.range);
+-						const rangeStartOffset = docs[1].offsetAt(textEdit.range.start);
+-						const rangeEndOffset = docs[1].offsetAt(textEdit.range.end);
+-						let range: typeof textEdit.range | undefined;
+-						for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, undefined)) {
+-							range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-							break;
+-						}
+ 						if (range) {
+ 							edits.push({
+ 								newText: textEdit.newText,
+diff --git a/packages/language-service/lib/features/provideDocumentHighlights.ts b/packages/language-service/lib/features/provideDocumentHighlights.ts
+index 5bcb61b..ec45124 100644
+--- a/packages/language-service/lib/features/provideDocumentHighlights.ts
++++ b/packages/language-service/lib/features/provideDocumentHighlights.ts
+@@ -6,7 +6,9 @@ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import * as dedupe from '../utils/dedupe';
+ import {
++	getGeneratedPositions,
+ 	getLinkedCodePositions,
++	getSourceRange,
+ 	languageFeatureWorker,
+ } from '../utils/featureWorkers';
+ 
+@@ -16,12 +18,7 @@ export function register(context: LanguageServiceContext) {
+ 			context,
+ 			uri,
+ 			() => position,
++			docs => getGeneratedPositions(docs, position, isHighlightEnabled),
+-			function*(docs) {
+-				const sourceOffset = docs[0].offsetAt(position);
+-				for (const mapped of docs[2].toGeneratedLocation(sourceOffset, isHighlightEnabled)) {
+-					yield docs[1].positionAt(mapped[0]);
+-				}
+-			},
+ 			async (plugin, document, position) => {
+ 				if (token.isCancellationRequested) {
+ 					return;
+@@ -91,13 +88,7 @@ export function register(context: LanguageServiceContext) {
+ 						if (!docs) {
+ 							return highlight;
+ 						}
++						const range = getSourceRange(docs, highlight.range, isHighlightEnabled);
+-						const rangeStartOffset = docs[1].offsetAt(highlight.range.start);
+-						const rangeEndOffset = docs[1].offsetAt(highlight.range.end);
+-						let range: typeof highlight.range | undefined;
+-						for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, isHighlightEnabled)) {
+-							range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-							break;
+-						}
+ 						if (range) {
+ 							return {
+ 								...highlight,
+diff --git a/packages/language-service/lib/features/provideDocumentLinks.ts b/packages/language-service/lib/features/provideDocumentLinks.ts
+index afa5c4a..50ca299 100644
+--- a/packages/language-service/lib/features/provideDocumentLinks.ts
++++ b/packages/language-service/lib/features/provideDocumentLinks.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { documentFeatureWorker, getSourceRange } from '../utils/featureWorkers';
+-import { documentFeatureWorker, } from '../utils/featureWorkers';
+ import { transformDocumentLinkTarget } from '../utils/transform';
+ 
+ export interface DocumentLinkData {
+@@ -48,13 +48,7 @@ export function register(context: LanguageServiceContext) {
+ 				}
+ 				return links
+ 					.map(link => {
++						const range = getSourceRange(docs, link.range, isDocumentLinkEnabled);
+-						const rangeStartOffset = docs[1].offsetAt(link.range.start);
+-						const rangeEndOffset = docs[1].offsetAt(link.range.end);
+-						let range: typeof link.range | undefined;
+-						for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, isDocumentLinkEnabled)) {
+-							range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-							break;
+-						}
+ 						if (!range) {
+ 							return;
+ 						}
+diff --git a/packages/language-service/lib/features/provideDocumentSemanticTokens.ts b/packages/language-service/lib/features/provideDocumentSemanticTokens.ts
+index 9c007d4..111e70e 100644
+--- a/packages/language-service/lib/features/provideDocumentSemanticTokens.ts
++++ b/packages/language-service/lib/features/provideDocumentSemanticTokens.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext, SemanticToken } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getSourceRange, languageFeatureWorker } from '../utils/featureWorkers';
+-import { languageFeatureWorker } from '../utils/featureWorkers';
+ import { SemanticTokensBuilder } from '../utils/SemanticTokensBuilder';
+ 
+ export function register(context: LanguageServiceContext) {
+@@ -63,18 +63,15 @@ export function register(context: LanguageServiceContext) {
+ 				}
+ 				return tokens
+ 					.map<SemanticToken | undefined>(_token => {
++						const range = getSourceRange(docs, {
++							start: { line: _token[0], character: _token[1] },
++							end: { line: _token[0], character: _token[1] + _token[2] },
++						}, isSemanticTokensEnabled);
++						if (range) {
+-						const embeddedLine = _token[0];
+-						const embeddedCharacter = _token[1];
+-						const embeddedLength = _token[2];
+-						const startOffset = docs[1].offsetAt({ line: embeddedLine, character: embeddedCharacter });
+-						const endOffset = docs[1].offsetAt({ line: embeddedLine, character: embeddedCharacter + embeddedLength });
+-						for (const [sourceStart, sourceEnd] of docs[2].toSourceRange(startOffset, endOffset, true, isSemanticTokensEnabled)) {
+-							const start = docs[0].positionAt(sourceStart);
+-							const end = docs[0].positionAt(sourceEnd);
+ 							return [
++								range.start.line,
++								range.start.character,
++								range.end.character - range.start.character,
+-								start.line,
+-								start.character,
+-								end.character - start.character,
+ 								_token[3],
+ 								_token[4],
+ 							];
+diff --git a/packages/language-service/lib/features/provideDocumentSymbols.ts b/packages/language-service/lib/features/provideDocumentSymbols.ts
+index a229ec1..7fb82ee 100644
+--- a/packages/language-service/lib/features/provideDocumentSymbols.ts
++++ b/packages/language-service/lib/features/provideDocumentSymbols.ts
+@@ -4,7 +4,7 @@ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import { isInsideRange } from '../utils/common';
++import { documentFeatureWorker, getSourceRange } from '../utils/featureWorkers';
+-import { documentFeatureWorker, getSourceRangeParts } from '../utils/featureWorkers';
+ import { transformDocumentSymbol } from '../utils/transform';
+ 
+ export function register(context: LanguageServiceContext) {
+@@ -27,7 +27,7 @@ export function register(context: LanguageServiceContext) {
+ 					.map(symbol =>
+ 						transformDocumentSymbol(
+ 							symbol,
++							range => getSourceRange(docs, range, isSymbolsEnabled),
+-							range => getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((range).start), docs[1].offsetAt((range).end), isSymbolsEnabled),
+ 						)
+ 					)
+ 					.filter(symbol => !!symbol);
+diff --git a/packages/language-service/lib/features/provideFileReferences.ts b/packages/language-service/lib/features/provideFileReferences.ts
+index 96c24b4..b49043a 100644
+--- a/packages/language-service/lib/features/provideFileReferences.ts
++++ b/packages/language-service/lib/features/provideFileReferences.ts
+@@ -4,7 +4,7 @@ import { URI } from 'vscode-uri';
+ import type { LanguageServiceContext, NullableProviderResult } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import * as dedupe from '../utils/dedupe';
++import { documentFeatureWorker, type DocumentsAndMap, getSourceRange } from '../utils/featureWorkers';
+-import { documentFeatureWorker, type DocumentsAndMap, } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return (uri: URI, token = NoneCancellationToken): NullableProviderResult<vscode.Location[]> => {
+@@ -41,13 +41,7 @@ export function register(context: LanguageServiceContext) {
+ 								sourceScript.snapshot,
+ 							);
+ 							const docs: DocumentsAndMap = [sourceDocument, embeddedDocument, map];
++							const range = getSourceRange(docs, reference.range, isReferencesEnabled);
+-							const rangeStartOffset = docs[1].offsetAt(reference.range.start);
+-							const rangeEndOffset = docs[1].offsetAt(reference.range.end);
+-							let range: typeof reference.range | undefined;
+-							for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, isReferencesEnabled)) {
+-								range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-								break;
+-							}
+ 							if (range) {
+ 								reference.uri = sourceDocument.uri;
+ 								reference.range = range;
+diff --git a/packages/language-service/lib/features/provideFoldingRanges.ts b/packages/language-service/lib/features/provideFoldingRanges.ts
+index 643079e..1035457 100644
+--- a/packages/language-service/lib/features/provideFoldingRanges.ts
++++ b/packages/language-service/lib/features/provideFoldingRanges.ts
+@@ -2,7 +2,8 @@ import { isFoldingRangesEnabled } from '@volar/language-core';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { documentFeatureWorker, getSourceRange } from '../utils/featureWorkers';
++import { transformFoldingRanges } from '../utils/transform';
+-import { documentFeatureWorker } from '../utils/featureWorkers';
+ 
+ import type * as _ from 'vscode-languageserver-protocol';
+ 
+@@ -22,28 +23,10 @@ export function register(context: LanguageServiceContext) {
+ 				if (!docs) {
+ 					return data;
+ 				}
++				return transformFoldingRanges(
++					data,
++					range => getSourceRange(docs, range, isFoldingRangesEnabled),
++				);
+-				const result: _.FoldingRange[] = [];
+-				for (const range of data) {
+-					const startCharacter = range.startCharacter;
+-					const endCharacter = range.endCharacter;
+-					const startOffset = docs[1].offsetAt({ line: range.startLine, character: startCharacter ?? 0 });
+-					const endOffset = docs[1].offsetAt({ line: range.endLine, character: endCharacter ?? 0 });
+-					for (const [start, end] of docs[2].toSourceRange(startOffset, endOffset, true, isFoldingRangesEnabled)) {
+-						const sourceStart = docs[0].positionAt(start);
+-						const sourceEnd = docs[0].positionAt(end);
+-						range.startLine = sourceStart.line;
+-						range.endLine = sourceEnd.line;
+-						if (startCharacter !== undefined) {
+-							range.startCharacter = sourceStart.character;
+-						}
+-						if (endCharacter !== undefined) {
+-							range.endCharacter = sourceEnd.character;
+-						}
+-						result.push(range);
+-						break;
+-					}
+-				}
+-				return result;
+ 			},
+ 			arr => arr.flat(),
+ 		);
+diff --git a/packages/language-service/lib/features/provideHover.ts b/packages/language-service/lib/features/provideHover.ts
+index 988b801..ebfd16e 100644
+--- a/packages/language-service/lib/features/provideHover.ts
++++ b/packages/language-service/lib/features/provideHover.ts
+@@ -4,7 +4,7 @@ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import { isInsideRange } from '../utils/common';
++import { getGeneratedPositions, getSourceRange, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getSourceRangeParts, languageFeatureWorker } from '../utils/featureWorkers';
+ import { transformMarkdown } from '../utils/transform';
+ import { errorMarkups } from './provideDiagnostics';
+ 
+@@ -14,12 +14,7 @@ export function register(context: LanguageServiceContext) {
+ 			context,
+ 			uri,
+ 			() => position,
++			docs => getGeneratedPositions(docs, position, isHoverEnabled),
+-			function*(docs) {
+-				const sourceOffset = docs[0].offsetAt(position);
+-				for (const mapped of docs[2].toGeneratedLocation(sourceOffset, isHoverEnabled)) {
+-					yield docs[1].positionAt(mapped[0]);
+-				}
+-			},
+ 			(plugin, document, position) => {
+ 				if (token.isCancellationRequested) {
+ 					return;
+@@ -30,7 +25,7 @@ export function register(context: LanguageServiceContext) {
+ 				if (!docs || !item.range) {
+ 					return item;
+ 				}
++				item.range = getSourceRange(docs, item.range, isHoverEnabled);
+-				item.range = getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((item.range).start), docs[1].offsetAt((item.range).end), isHoverEnabled);
+ 				return item;
+ 			},
+ 			(hovers): vscode.Hover => ({
+diff --git a/packages/language-service/lib/features/provideInlayHints.ts b/packages/language-service/lib/features/provideInlayHints.ts
+index 5eee8ce..7a44bd6 100644
+--- a/packages/language-service/lib/features/provideInlayHints.ts
++++ b/packages/language-service/lib/features/provideInlayHints.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getSourcePositions, getSourceRange, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getSourcePositionsParts, getSourceRangeParts, languageFeatureWorker } from '../utils/featureWorkers';
+ import { transformTextEdit } from '../utils/transform';
+ 
+ export interface InlayHintData {
+@@ -66,10 +66,10 @@ export function register(context: LanguageServiceContext) {
+ 				return inlayHints
+ 					.map((_inlayHint): vscode.InlayHint | undefined => {
+ 						const edits = _inlayHint.textEdits
++							?.map(textEdit => transformTextEdit(textEdit, range => getSourceRange(docs, range), docs[1]))
+-							?.map(textEdit => transformTextEdit(textEdit, range => getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((range).start), docs[1].offsetAt((range).end)), docs[1]))
+ 							.filter(textEdit => !!textEdit);
+ 
++						for (const position of getSourcePositions(docs, _inlayHint.position, isInlayHintsEnabled)) {
+-						for (const position of getSourcePositionsParts(docs[0], docs[2], docs[1].offsetAt(_inlayHint.position), isInlayHintsEnabled)) {
+ 							return {
+ 								..._inlayHint,
+ 								position,
+diff --git a/packages/language-service/lib/features/provideInlineValue.ts b/packages/language-service/lib/features/provideInlineValue.ts
+index a9023c9..8f3ae70 100644
+--- a/packages/language-service/lib/features/provideInlineValue.ts
++++ b/packages/language-service/lib/features/provideInlineValue.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getGeneratedRanges, getSourceRange, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getGeneratedRangesParts, languageFeatureWorker } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return (uri: URI, range: vscode.Range, ivContext: vscode.InlineValueContext, token = NoneCancellationToken) => {
+@@ -11,7 +11,7 @@ export function register(context: LanguageServiceContext) {
+ 			context,
+ 			uri,
+ 			() => range,
++			docs => getGeneratedRanges(docs, range, isInlineValueEnabled),
+-			docs => getGeneratedRangesParts(docs[1], docs[2], docs[0].offsetAt((range).start), docs[0].offsetAt((range).end), isInlineValueEnabled),
+ 			(plugin, document, range) => {
+ 				if (token.isCancellationRequested) {
+ 					return;
+@@ -24,13 +24,7 @@ export function register(context: LanguageServiceContext) {
+ 				}
+ 				return items
+ 					.map(item => {
++						const mappedRange = getSourceRange(docs, item.range, isInlineValueEnabled);
+-						const mappedRangeStartOffset = docs[1].offsetAt(item.range.start);
+-						const mappedRangeEndOffset = docs[1].offsetAt(item.range.end);
+-						let mappedRange: typeof item.range | undefined;
+-						for (const [startOffset, endOffset] of docs[2].toSourceRange(mappedRangeStartOffset, mappedRangeEndOffset, true, isInlineValueEnabled)) {
+-							mappedRange = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-							break;
+-						}
+ 						if (mappedRange) {
+ 							item.range = mappedRange;
+ 							return item;
+diff --git a/packages/language-service/lib/features/provideLinkedEditingRanges.ts b/packages/language-service/lib/features/provideLinkedEditingRanges.ts
+index eecf83d..ade8fb5 100644
+--- a/packages/language-service/lib/features/provideLinkedEditingRanges.ts
++++ b/packages/language-service/lib/features/provideLinkedEditingRanges.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getGeneratedPositions, getSourceRange, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getGeneratedPositionsParts, getSourceRangeParts, languageFeatureWorker } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return (uri: URI, position: vscode.Position, token = NoneCancellationToken) => {
+@@ -12,7 +12,7 @@ export function register(context: LanguageServiceContext) {
+ 			uri,
+ 			() => position,
+ 			function*(docs) {
++				for (const pos of getGeneratedPositions(docs, position, isLinkedEditingEnabled)) {
+-				for (const pos of getGeneratedPositionsParts(docs[1], docs[2], docs[0].offsetAt(position), isLinkedEditingEnabled)) {
+ 					yield pos;
+ 				}
+ 			},
+@@ -30,7 +30,7 @@ export function register(context: LanguageServiceContext) {
+ 				return {
+ 					wordPattern: ranges.wordPattern,
+ 					ranges: ranges.ranges
++						.map(range => getSourceRange(docs, range, isLinkedEditingEnabled))
+-						.map(range => getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((range).start), docs[1].offsetAt((range).end), isLinkedEditingEnabled))
+ 						.filter(range => !!range),
+ 				};
+ 			},
+diff --git a/packages/language-service/lib/features/provideMoniker.ts b/packages/language-service/lib/features/provideMoniker.ts
+index 960051a..a7aae65 100644
+--- a/packages/language-service/lib/features/provideMoniker.ts
++++ b/packages/language-service/lib/features/provideMoniker.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getGeneratedPositions, languageFeatureWorker } from '../utils/featureWorkers';
+-import { languageFeatureWorker } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return (uri: URI, position: vscode.Position, token = NoneCancellationToken) => {
+@@ -11,12 +11,7 @@ export function register(context: LanguageServiceContext) {
+ 			context,
+ 			uri,
+ 			() => position,
++			docs => getGeneratedPositions(docs, position, isMonikerEnabled),
+-			function*(docs) {
+-				const sourceOffset = docs[0].offsetAt(position);
+-				for (const mapped of docs[2].toGeneratedLocation(sourceOffset, isMonikerEnabled)) {
+-					yield docs[1].positionAt(mapped[0]);
+-				}
+-			},
+ 			(plugin, document, position) => {
+ 				if (token.isCancellationRequested) {
+ 					return;
+diff --git a/packages/language-service/lib/features/provideReferences.ts b/packages/language-service/lib/features/provideReferences.ts
+index 37e28fd..6f2ab72 100644
+--- a/packages/language-service/lib/features/provideReferences.ts
++++ b/packages/language-service/lib/features/provideReferences.ts
+@@ -7,7 +7,9 @@ import { NoneCancellationToken } from '../utils/cancellation';
+ import * as dedupe from '../utils/dedupe';
+ import {
+ 	type DocumentsAndMap,
++	getGeneratedPositions,
+ 	getLinkedCodePositions,
++	getSourceRange,
+ 	languageFeatureWorker,
+ } from '../utils/featureWorkers';
+ 
+@@ -22,12 +24,7 @@ export function register(context: LanguageServiceContext) {
+ 			context,
+ 			uri,
+ 			() => position,
++			docs => getGeneratedPositions(docs, position, isReferencesEnabled),
+-			function*(docs) {
+-				const sourceOffset = docs[0].offsetAt(position);
+-				for (const mapped of docs[2].toGeneratedLocation(sourceOffset, isReferencesEnabled)) {
+-					yield docs[1].positionAt(mapped[0]);
+-				}
+-			},
+ 			async (plugin, document, position) => {
+ 				if (token.isCancellationRequested) {
+ 					return;
+@@ -112,13 +109,7 @@ export function register(context: LanguageServiceContext) {
+ 								sourceScript.snapshot,
+ 							);
+ 							const docs: DocumentsAndMap = [sourceDocument, embeddedDocument, map];
++							const range = getSourceRange(docs, reference.range, isReferencesEnabled);
+-							const rangeStartOffset = docs[1].offsetAt(reference.range.start);
+-							const rangeEndOffset = docs[1].offsetAt(reference.range.end);
+-							let range: typeof reference.range | undefined;
+-							for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, isReferencesEnabled)) {
+-								range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-								break;
+-							}
+ 							if (range) {
+ 								results.push({
+ 									uri: sourceDocument.uri,
+diff --git a/packages/language-service/lib/features/provideRenameEdits.ts b/packages/language-service/lib/features/provideRenameEdits.ts
+index 3669542..bf24b9b 100644
+--- a/packages/language-service/lib/features/provideRenameEdits.ts
++++ b/packages/language-service/lib/features/provideRenameEdits.ts
+@@ -5,7 +5,7 @@ import { URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import * as dedupe from '../utils/dedupe';
++import { getGeneratedPositions, getLinkedCodePositions, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getGeneratedPositionsParts, getLinkedCodePositions, languageFeatureWorker } from '../utils/featureWorkers';
+ import { pushEditToDocumentChanges, transformWorkspaceEdit } from '../utils/transform';
+ 
+ export function register(context: LanguageServiceContext) {
+@@ -17,7 +17,7 @@ export function register(context: LanguageServiceContext) {
+ 			function*(docs) {
+ 				let _data!: CodeInformation;
+ 				for (
++					const mappedPosition of getGeneratedPositions(docs, position, data => {
+-					const mappedPosition of getGeneratedPositionsParts(docs[1], docs[2], docs[0].offsetAt(position), data => {
+ 						_data = data;
+ 						return isRenameEnabled(data);
+ 					})
+diff --git a/packages/language-service/lib/features/provideRenameRange.ts b/packages/language-service/lib/features/provideRenameRange.ts
+index a5d78ac..7404aa1 100644
+--- a/packages/language-service/lib/features/provideRenameRange.ts
++++ b/packages/language-service/lib/features/provideRenameRange.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getGeneratedPositions, getSourceRange, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getSourceRangeParts, languageFeatureWorker } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return (uri: URI, position: vscode.Position, token = NoneCancellationToken) => {
+@@ -11,12 +11,7 @@ export function register(context: LanguageServiceContext) {
+ 			context,
+ 			uri,
+ 			() => position,
++			docs => getGeneratedPositions(docs, position, isRenameEnabled),
+-			function*(docs) {
+-				const sourceOffset = docs[0].offsetAt(position);
+-				for (const mapped of docs[2].toGeneratedLocation(sourceOffset, isRenameEnabled)) {
+-					yield docs[1].positionAt(mapped[0]);
+-				}
+-			},
+ 			(plugin, document, position) => {
+ 				if (token.isCancellationRequested) {
+ 					return;
+@@ -28,7 +23,7 @@ export function register(context: LanguageServiceContext) {
+ 					return item;
+ 				}
+ 				if ('start' in item && 'end' in item) {
++					return getSourceRange(docs, item);
+-					return getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((item).start), docs[1].offsetAt((item).end));
+ 				}
+ 				return item;
+ 			},
+diff --git a/packages/language-service/lib/features/provideSelectionRanges.ts b/packages/language-service/lib/features/provideSelectionRanges.ts
+index 096ab0f..b3e23bb 100644
+--- a/packages/language-service/lib/features/provideSelectionRanges.ts
++++ b/packages/language-service/lib/features/provideSelectionRanges.ts
+@@ -4,7 +4,7 @@ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import { isEqualRange, isInsideRange } from '../utils/common';
++import { getGeneratedPositions, getSourceRange, languageFeatureWorker } from '../utils/featureWorkers';
+-import { getGeneratedPositionsParts, getSourceRangeParts, languageFeatureWorker } from '../utils/featureWorkers';
+ import { transformSelectionRanges } from '../utils/transform';
+ 
+ export function register(context: LanguageServiceContext) {
+@@ -16,7 +16,7 @@ export function register(context: LanguageServiceContext) {
+ 			function*(docs) {
+ 				const result = positions
+ 					.map(position => {
++						for (const mappedPosition of getGeneratedPositions(docs, position, isSelectionRangesEnabled)) {
+-						for (const mappedPosition of getGeneratedPositionsParts(docs[1], docs[2], docs[0].offsetAt(position), isSelectionRangesEnabled)) {
+ 							return mappedPosition;
+ 						}
+ 					})
+@@ -49,7 +49,7 @@ export function register(context: LanguageServiceContext) {
+ 				}
+ 				return transformSelectionRanges(
+ 					data,
++					range => getSourceRange(docs, range, isSelectionRangesEnabled),
+-					range => getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((range).start), docs[1].offsetAt((range).end), isSelectionRangesEnabled),
+ 				);
+ 			},
+ 			results => {
+diff --git a/packages/language-service/lib/features/provideSignatureHelp.ts b/packages/language-service/lib/features/provideSignatureHelp.ts
+index 9ea6370..cf2ffb8 100644
+--- a/packages/language-service/lib/features/provideSignatureHelp.ts
++++ b/packages/language-service/lib/features/provideSignatureHelp.ts
+@@ -3,7 +3,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { getGeneratedPositions, languageFeatureWorker } from '../utils/featureWorkers';
+-import { languageFeatureWorker } from '../utils/featureWorkers';
+ 
+ export function register(context: LanguageServiceContext) {
+ 	return (
+@@ -19,12 +19,7 @@ export function register(context: LanguageServiceContext) {
+ 			context,
+ 			uri,
+ 			() => position,
++			docs => getGeneratedPositions(docs, position, isSignatureHelpEnabled),
+-			function*(docs) {
+-				const sourceOffset = docs[0].offsetAt(position);
+-				for (const mapped of docs[2].toGeneratedLocation(sourceOffset, isSignatureHelpEnabled)) {
+-					yield docs[1].positionAt(mapped[0]);
+-				}
+-			},
+ 			(plugin, document, position) => {
+ 				if (token.isCancellationRequested) {
+ 					return;
+diff --git a/packages/language-service/lib/features/provideWorkspaceSymbols.ts b/packages/language-service/lib/features/provideWorkspaceSymbols.ts
+index 4e54fd4..49bcf2a 100644
+--- a/packages/language-service/lib/features/provideWorkspaceSymbols.ts
++++ b/packages/language-service/lib/features/provideWorkspaceSymbols.ts
+@@ -2,7 +2,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { type DocumentsAndMap, getSourceRange } from '../utils/featureWorkers';
+-import { type DocumentsAndMap, } from '../utils/featureWorkers';
+ import { transformWorkspaceSymbol } from '../utils/transform';
+ 
+ export interface WorkspaceSymbolData {
+@@ -48,13 +48,7 @@ export function register(context: LanguageServiceContext) {
+ 									sourceScript.snapshot,
+ 								);
+ 								const docs: DocumentsAndMap = [sourceDocument, embeddedDocument, map];
++								const range = getSourceRange(docs, loc.range);
+-								const rangeStartOffset = docs[1].offsetAt(loc.range.start);
+-								const rangeEndOffset = docs[1].offsetAt(loc.range.end);
+-								let range: typeof loc.range | undefined;
+-								for (const [startOffset, endOffset] of docs[2].toSourceRange(rangeStartOffset, rangeEndOffset, true, undefined)) {
+-									range = { start: docs[0].positionAt(startOffset), end: docs[0].positionAt(endOffset) };
+-									break;
+-								}
+ 								if (range) {
+ 									return { uri: sourceDocument.uri, range };
+ 								}
+diff --git a/packages/language-service/lib/features/resolveCompletionItem.ts b/packages/language-service/lib/features/resolveCompletionItem.ts
+index 7231ec8..9f921e3 100644
+--- a/packages/language-service/lib/features/resolveCompletionItem.ts
++++ b/packages/language-service/lib/features/resolveCompletionItem.ts
+@@ -2,7 +2,7 @@ import type * as vscode from 'vscode-languageserver-protocol';
+ import { URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
++import { type DocumentsAndMap, getSourceRange } from '../utils/featureWorkers';
+-import { type DocumentsAndMap, getSourceRangeParts } from '../utils/featureWorkers';
+ import { transformCompletionItem } from '../utils/transform';
+ import type { ServiceCompletionData } from './provideCompletionItems';
+ 
+@@ -41,7 +41,7 @@ export function register(context: LanguageServiceContext) {
+ 						item = await plugin[1].resolveCompletionItem(item, token);
+ 						item = plugin[1].transformCompletionItem?.(item) ?? transformCompletionItem(
+ 							item,
++							embeddedRange => getSourceRange(docs, embeddedRange),
+-							embeddedRange => getSourceRangeParts(docs[0], docs[2], docs[1].offsetAt((embeddedRange).start), docs[1].offsetAt((embeddedRange).end)),
+ 							embeddedDocument,
+ 							context,
+ 						);
+diff --git a/packages/language-service/lib/utils/featureWorkers.ts b/packages/language-service/lib/utils/featureWorkers.ts
+index ea5b9d2..6f1e728 100644
+--- a/packages/language-service/lib/utils/featureWorkers.ts
++++ b/packages/language-service/lib/utils/featureWorkers.ts
+@@ -269,88 +269,3 @@ export function* getLinkedCodePositions(document: TextDocument, linkedMap: Linke
+ 		yield document.positionAt(linkedPosition);
+ 	}
+ }
+-
+-export function getSourceRangeParts(
+-	sourceDocument: TextDocument,
+-	map: Mapper,
+-	startOffset: number,
+-	endOffset: number,
+-	filter?: (data: CodeInformation) => boolean,
+-) {
+-	for (const result of getSourceRangesParts(sourceDocument, map, startOffset, endOffset, filter)) {
+-		return result;
+-	}
+-}
+-
+-export function getGeneratedRangeParts(
+-	embeddedDocument: TextDocument,
+-	map: Mapper,
+-	startOffset: number,
+-	endOffset: number,
+-	filter?: (data: CodeInformation) => boolean,
+-) {
+-	for (const result of getGeneratedRangesParts(embeddedDocument, map, startOffset, endOffset, filter)) {
+-		return result;
+-	}
+-}
+-
+-export function* getSourceRangesParts(
+-	sourceDocument: TextDocument,
+-	map: Mapper,
+-	startOffset: number,
+-	endOffset: number,
+-	filter?: (data: CodeInformation) => boolean,
+-) {
+-	for (
+-		const [mappedStart, mappedEnd] of map.toSourceRange(
+-			startOffset,
+-			endOffset,
+-			true,
+-			filter,
+-		)
+-	) {
+-		yield { start: sourceDocument.positionAt(mappedStart), end: sourceDocument.positionAt(mappedEnd) };
+-	}
+-}
+-
+-export function* getGeneratedRangesParts(
+-	embeddedDocument: TextDocument,
+-	map: Mapper,
+-	startOffset: number,
+-	endOffset: number,
+-	filter?: (data: CodeInformation) => boolean,
+-) {
+-	for (
+-		const [mappedStart, mappedEnd] of map.toGeneratedRange(
+-			startOffset,
+-			endOffset,
+-			true,
+-			filter,
+-		)
+-	) {
+-		yield { start: embeddedDocument.positionAt(mappedStart), end: embeddedDocument.positionAt(mappedEnd) };
+-	}
+-}
+-
+-export function* getSourcePositionsParts(
+-	sourceDocument: TextDocument,
+-	map: Mapper,
+-	offset: number,
+-	filter: (data: CodeInformation) => boolean = () => true,
+-) {
+-	for (const mapped of map.toSourceLocation(offset, filter)) {
+-		yield sourceDocument.positionAt(mapped[0]);
+-	}
+-}
+-
+-export function* getGeneratedPositionsParts(
+-	embeddedDocument: TextDocument,
+-	map: Mapper,
+-	offset: number,
+-	filter: (data: CodeInformation) => boolean = () => true,
+-) {
+-	for (const mapped of map.toGeneratedLocation(offset, filter)) {
+-		yield embeddedDocument.positionAt(mapped[0]);
+-	}
+-}
+-
+diff --git a/packages/language-service/lib/utils/transform.ts b/packages/language-service/lib/utils/transform.ts
+index e095060..8b6bb42 100644
+--- a/packages/language-service/lib/utils/transform.ts
++++ b/packages/language-service/lib/utils/transform.ts
+@@ -262,17 +262,12 @@ export function transformTextEdit<T extends vscode.TextEdit | vscode.InsertRepla
+ 			};
+ 		}
+ 
++		const cover = tryRecoverTextEdit(getOtherRange, textEdit.range, textEdit.newText, document);
+-		const startLine = textEdit.range.start.line;
+-		const startCharacter = textEdit.range.start.character;
+-		const endCharacter = textEdit.range.end.character;
+-		const cover = startLine === textEdit.range.end.line && endCharacter > startCharacter
+-			? tryRecoverTextEdit(getOtherRange, textEdit.range.start, textEdit.range.end, textEdit.newText, document)
+-			: undefined;
+ 		if (cover) {
+ 			return {
+ 				...textEdit,
++				range: cover.range,
++				newText: cover.newText,
+-				range: cover[0],
+-				newText: textEdit.newText.slice(cover[1]),
+ 			};
+ 		}
+ 	}
+@@ -287,24 +282,16 @@ export function transformTextEdit<T extends vscode.TextEdit | vscode.InsertRepla
+ 			};
+ 		}
+ 
++		const recoverInsert = tryRecoverTextEdit(getOtherRange, textEdit.insert, textEdit.newText, document);
++		const recoverReplace = recoverInsert
++			? tryRecoverTextEdit(getOtherRange, textEdit.replace, textEdit.newText, document)
+-		const insertLine = textEdit.insert.start.line;
+-		const insertCharacter = textEdit.insert.start.character;
+-		const insertEndCharacter = textEdit.insert.end.character;
+-		const recoverInsert = insertLine === textEdit.insert.end.line && insertEndCharacter > insertCharacter
+-			? tryRecoverTextEdit(getOtherRange, textEdit.insert.start, textEdit.insert.end, textEdit.newText, document)
+-			: undefined;
+-		const replaceLine = textEdit.replace.start.line;
+-		const replaceCharacter = textEdit.replace.start.character;
+-		const replaceEndCharacter = textEdit.replace.end.character;
+-		const recoverReplace = recoverInsert && replaceLine === textEdit.replace.end.line && replaceEndCharacter > replaceCharacter
+-			? tryRecoverTextEdit(getOtherRange, textEdit.replace.start, textEdit.replace.end, textEdit.newText, document)
+ 			: undefined;
++		if (recoverInsert && recoverReplace && recoverInsert.newText === recoverReplace.newText) {
+-		if (recoverInsert && recoverReplace && recoverInsert[1] === recoverReplace[1]) {
+ 			return {
+ 				...textEdit,
++				insert: recoverInsert.range,
++				replace: recoverReplace.range,
++				newText: recoverInsert.newText,
+-				insert: recoverInsert[0],
+-				replace: recoverReplace[0],
+-				newText: textEdit.newText.slice(recoverInsert[1]),
+ 			};
+ 		}
+ 	}
+@@ -316,21 +303,29 @@ export function transformTextEdit<T extends vscode.TextEdit | vscode.InsertRepla
+  */
+ function tryRecoverTextEdit(
+ 	getOtherRange: (range: vscode.Range) => vscode.Range | undefined,
++	replaceRange: vscode.Range,
+-	start: vscode.Position,
+-	end: vscode.Position,
+ 	newText: string,
+ 	document: vscode.TextDocument,
++): vscode.TextEdit | undefined {
++	if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++		let character = replaceRange.start.character;
++
++		while (newText.length && replaceRange.end.character > character) {
++			const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++			if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++				newText = newText.slice(1);
++				character++;
++				const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++				if (otherRange) {
++					return {
++						newText,
++						range: otherRange,
++					};
++				}
++			}
++			else {
++				break;
++			}
+-): [vscode.Range, number] | undefined {
+-	let consumed = 0;
+-	while (consumed < newText.length && start.character + consumed < end.character) {
+-		const newStart = { line: start.line, character: start.character + 1 };
+-		if (document.getText({ start, end: newStart }) !== newText[consumed]) {
+-			break;
+-		}
+-		consumed++;
+-		const otherRange = getOtherRange({ start: newStart, end });
+-		if (otherRange) {
+-			return [otherRange, consumed];
+ 		}
+ 	}
+ }

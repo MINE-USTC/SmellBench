@@ -1,0 +1,1612 @@
+diff --git a/internal/fileops/service.go b/internal/fileops/service.go
+index 83701e3..6d733e8 100644
+--- a/internal/fileops/service.go
++++ b/internal/fileops/service.go
+@@ -36,7 +36,7 @@ type Service struct {
+ 	queries  *sqlcgen.Queries
+ 	catalog  *catalog.Service
+ 	channels *channels.Service
+-	storage  telegramstore.Storage
++	storage  telegramstore.Backend
+ }
+ 
+ type CopyInput struct {
+@@ -88,7 +88,7 @@ func NewService(pool *pgxpool.Pool, catalogService *catalog.Service, channelServ
+ 	if pool == nil || catalogService == nil || channelService == nil || storage == nil {
+ 		return nil, ErrInvalidInput
+ 	}
+-	return &Service{pool: pool, queries: sqlcgen.New(pool), catalog: catalogService, channels: channelService, storage: storage}, nil
++	return &Service{pool: pool, queries: sqlcgen.New(pool), catalog: catalogService, channels: channelService, storage: telegramstore.BindBackend(storage)}, nil
+ }
+ 
+ func (s *Service) Copy(ctx context.Context, in CopyInput) (*sqlcgen.File, error) {
+@@ -155,17 +155,9 @@ func (s *Service) Copy(ctx context.Context, in CopyInput) (*sqlcgen.File, error)
+ 		return nil, err
+ 	}
+ 	copied := make(map[uuid.UUID][]copiedPart, len(sourceFileIDs))
+-	cleanup := make([]telegramstore.StoredPart, 0)
++	storage := telegramstore.BindCopy(s.storage)
+ 	compensate := func() {
+-		grouped := make(map[int64][]int64)
+-		for _, part := range cleanup {
+-			if part.ChannelID != 0 && part.MessageID > 0 {
+-				grouped[part.ChannelID] = append(grouped[part.ChannelID], part.MessageID)
+-			}
+-		}
+-		for channelID, messageIDs := range grouped {
+-			_ = s.storage.DeleteMessages(context.Background(), in.UserID, channelID, messageIDs)
+-		}
++		storage.RollbackCopies(context.Background(), in.UserID)
+ 	}
+ 
+ 	for index, part := range parts {
+@@ -174,17 +166,15 @@ func (s *Service) Copy(ctx context.Context, in CopyInput) (*sqlcgen.File, error)
+ 			compensate()
+ 			return nil, ErrNotFound
+ 		}
+-		stored, err := s.storage.CopyPart(ctx, in.UserID, part.ChannelID, part.MessageID, destinationChannels[index])
++		stored, err := storage.CopyPart(ctx, in.UserID, part.ChannelID, part.MessageID, destinationChannels[index])
+ 		if err != nil {
+ 			compensate()
+ 			return nil, fmt.Errorf("copy Telegram part %d: %w", part.PartNo, err)
+ 		}
+ 		if !part.StoredSize.Valid || stored.Size != part.StoredSize.Int64 {
+-			cleanup = append(cleanup, stored)
+ 			compensate()
+ 			return nil, telegramstore.ErrSizeMismatch
+ 		}
+-		cleanup = append(cleanup, stored)
+ 		copied[oldID] = append(copied[oldID], copiedPart{Part: *part, Stored: stored})
+ 	}
+ 
+diff --git a/internal/jobs/cleanup.go b/internal/jobs/cleanup.go
+index 6681cae..2987b7b 100644
+--- a/internal/jobs/cleanup.go
++++ b/internal/jobs/cleanup.go
+@@ -3,7 +3,6 @@ package jobs
+ import (
+ 	"cmp"
+ 	"context"
+-	"encoding/json"
+ 	"errors"
+ 	"fmt"
+ 	"slices"
+@@ -49,7 +48,7 @@ type UploadCleanupWorker struct {
+ 	river.WorkerDefaults[UploadCleanupSweepArgs]
+ 	pool    *pgxpool.Pool
+ 	queries *sqlcgen.Queries
+-	storage telegramstore.Storage
++	storage telegramstore.Backend
+ }
+ 
+ type cleanupChannel struct {
+@@ -64,7 +63,7 @@ type cleanupPartRecord struct {
+ }
+ 
+ func NewUploadCleanupWorker(pool *pgxpool.Pool, storage telegramstore.Storage) *UploadCleanupWorker {
+-	return &UploadCleanupWorker{pool: pool, queries: sqlcgen.New(pool), storage: storage}
++	return &UploadCleanupWorker{pool: pool, queries: sqlcgen.New(pool), storage: telegramstore.BindBackend(storage)}
+ }
+ 
+ func (w *UploadCleanupWorker) Timeout(*river.Job[UploadCleanupSweepArgs]) time.Duration {
+@@ -143,19 +142,8 @@ func (w *UploadCleanupWorker) cleanupUploads(ctx context.Context, sessions []*sq
+ 			uploadID, _ := dbtypes.GoogleUUID(part.UploadID)
+ 			records = append(records, cleanupPartRecord{UploadID: uploadID, PartNo: part.PartNo, MessageID: part.MessageID.Int64})
+ 		}
+-		if err := w.storage.DeleteMessages(ctx, channel.userID, channel.channelID, messageIDs); err != nil {
+-			return fmt.Errorf("delete Telegram upload messages for user %d channel %d: %w", channel.userID, channel.channelID, err)
+-		}
+-		encoded, err := json.Marshal(records)
+-		if err != nil {
+-			return fmt.Errorf("encode cleaned upload parts: %w", err)
+-		}
+-		deleted, err := w.queries.DeleteUploadPartsForCleanup(ctx, encoded)
+-		if err != nil {
+-			return fmt.Errorf("delete upload parts after Telegram cleanup: %w", err)
+-		}
+-		if deleted != int64(len(records)) {
+-			return fmt.Errorf("%d upload parts changed during cleanup", int64(len(records))-deleted)
++		if err := bindCleanup(w.storage, w.queries, records).DeleteMessages(ctx, channel.userID, channel.channelID, messageIDs); err != nil {
++			return err
+ 		}
+ 	}
+ 	return nil
+diff --git a/internal/jobs/cleanup_backend.go b/internal/jobs/cleanup_backend.go
+new file mode 100644
+index 0000000..50bd9f7
+--- /dev/null
++++ b/internal/jobs/cleanup_backend.go
+@@ -0,0 +1,37 @@
++package jobs
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"github.com/tgdrive/teldrive/v2/internal/db/sqlcgen"
++	"github.com/tgdrive/teldrive/v2/internal/telegramstore"
++)
++
++type cleanupBackend struct {
++	telegramstore.Backend
++	queries *sqlcgen.Queries
++	records []cleanupPartRecord
++}
++
++func bindCleanup(storage telegramstore.Backend, queries *sqlcgen.Queries, records []cleanupPartRecord) telegramstore.Backend {
++	return cleanupBackend{Backend: storage, queries: queries, records: records}
++}
++
++func (b cleanupBackend) DeleteMessages(ctx context.Context, userID, channelID int64, ids []int64) error {
++	if err := b.Backend.DeleteMessages(ctx, userID, channelID, ids); err != nil {
++		return fmt.Errorf("delete Telegram upload messages for user %d channel %d: %w", userID, channelID, err)
++	}
++	encoded, err := json.Marshal(b.records)
++	if err != nil {
++		return fmt.Errorf("encode cleaned upload parts: %w", err)
++	}
++	deleted, err := b.queries.DeleteUploadPartsForCleanup(ctx, encoded)
++	if err != nil {
++		return fmt.Errorf("delete upload parts after Telegram cleanup: %w", err)
++	}
++	if deleted != int64(len(b.records)) {
++		return fmt.Errorf("%d upload parts changed during cleanup", int64(len(b.records))-deleted)
++	}
++	return nil
++}
+diff --git a/internal/jobs/orphan_cleanup.go b/internal/jobs/orphan_cleanup.go
+index 1451b87..448389e 100644
+--- a/internal/jobs/orphan_cleanup.go
++++ b/internal/jobs/orphan_cleanup.go
+@@ -119,13 +119,12 @@ func limitBrokenFilesSize(output OrphanCleanupOutput, maxBytes int) OrphanCleanu
+ type OrphanedTelegramPartsCleanupWorker struct {
+ 	river.WorkerDefaults[OrphanCleanupArgs]
+ 	queries    *sqlcgen.Queries
+-	lister     telegramstore.DocumentMessageLister
+-	storage    telegramstore.Storage
++	storage    telegramstore.Backend
+ 	minimumAge time.Duration
+ }
+ 
+ func NewOrphanedTelegramPartsCleanupWorker(pool *pgxpool.Pool, storage telegramstore.Storage, lister telegramstore.DocumentMessageLister, minimumAge time.Duration) *OrphanedTelegramPartsCleanupWorker {
+-	return &OrphanedTelegramPartsCleanupWorker{queries: sqlcgen.New(pool), storage: storage, lister: lister, minimumAge: minimumAge}
++	return &OrphanedTelegramPartsCleanupWorker{queries: sqlcgen.New(pool), storage: telegramstore.BindInventory(storage, lister), minimumAge: minimumAge}
+ }
+ 
+ func (w *OrphanedTelegramPartsCleanupWorker) Timeout(*river.Job[OrphanCleanupArgs]) time.Duration {
+@@ -143,14 +142,9 @@ func (w *OrphanedTelegramPartsCleanupWorker) Work(ctx context.Context, job *rive
+ 	for _, channel := range channels {
+ 		channelScanned, channelDeleted, channelBroken := 0, 0, 0
+ 		seen := make(map[int64]struct{})
+-		beforeID := int64(0)
+-		for {
+-			page, err := w.lister.ListDocumentMessages(ctx, telegramstore.ListDocumentMessagesRequest{
+-				UserID: channel.UserID, ChannelID: channel.ChannelID, BeforeID: beforeID, Limit: 100,
+-			})
+-			if err != nil {
+-				return fmt.Errorf("list Telegram documents for channel %d: %w", channel.ChannelID, err)
+-			}
++		removed, err := w.storage.WalkDocuments(ctx, telegramstore.ListDocumentMessagesRequest{
++			UserID: channel.UserID, ChannelID: channel.ChannelID, Limit: 100,
++		}, func(page telegramstore.DocumentMessagePage) ([]int64, error) {
+ 			scanned += len(page.Messages)
+ 			channelScanned += len(page.Messages)
+ 			for _, message := range page.Messages {
+@@ -162,39 +156,32 @@ func (w *OrphanedTelegramPartsCleanupWorker) Work(ctx context.Context, job *rive
+ 					candidateIDs = append(candidateIDs, message.ID)
+ 				}
+ 			}
++			var orphans []int64
+ 			if len(candidateIDs) > 0 {
+ 				referenced, err := w.queries.ListReferencedMessageIDs(ctx, sqlcgen.ListReferencedMessageIDsParams{
+ 					TargetChannelID: channel.ChannelID, MessageIds: candidateIDs,
+ 				})
+ 				if err != nil {
+-					return fmt.Errorf("list referenced messages for channel %d: %w", channel.ChannelID, err)
++					return nil, fmt.Errorf("list referenced messages for channel %d: %w", channel.ChannelID, err)
+ 				}
+ 				refs := make(map[int64]struct{}, len(referenced))
+ 				for _, id := range referenced {
+ 					refs[id] = struct{}{}
+ 				}
+-				orphans := candidateIDs[:0]
++				orphans = candidateIDs[:0]
+ 				for _, id := range candidateIDs {
+ 					if _, ok := refs[id]; !ok {
+ 						orphans = append(orphans, id)
+ 					}
+ 				}
+-				if len(orphans) > 0 {
+-					if err := w.storage.DeleteMessages(ctx, channel.UserID, channel.ChannelID, orphans); err != nil {
+-						return fmt.Errorf("delete orphaned Telegram documents from channel %d: %w", channel.ChannelID, err)
+-					}
+-					deleted += len(orphans)
+-					channelDeleted += len(orphans)
+-				}
+-			}
+-			if page.Exhausted {
+-				break
+ 			}
+-			if page.BeforeID <= 0 || page.BeforeID == beforeID {
+-				return fmt.Errorf("list Telegram documents for channel %d: pagination did not advance", channel.ChannelID)
+-			}
+-			beforeID = page.BeforeID
++			return orphans, nil
++		})
++		if err != nil {
++			return err
+ 		}
++		deleted += removed
++		channelDeleted += removed
+ 		referenced, err := w.queries.ListChannelReferencedParts(ctx, sqlcgen.ListChannelReferencedPartsParams{
+ 			TargetChannelID: channel.ChannelID, TargetUserID: channel.UserID,
+ 		})
+diff --git a/internal/jobs/runtime.go b/internal/jobs/runtime.go
+index 21eaf23..7f035ac 100644
+--- a/internal/jobs/runtime.go
++++ b/internal/jobs/runtime.go
+@@ -110,7 +110,14 @@ func newRuntimeWithSchema(pool *pgxpool.Pool, storage telegramstore.Storage, sch
+ 			return nil, fmt.Errorf("register trash cleanup worker: %w", err)
+ 		}
+ 	}
+-	lister, orphanCleanupEnabled := storage.(telegramstore.DocumentMessageLister)
++	backend := telegramstore.BindBackend(storage)
++	var lister telegramstore.DocumentMessageLister
++	var inviter telegramstore.BotInviter
++	if backend != nil {
++		lister = backend.DocumentInventory()
++		inviter = backend.BotAdministration()
++	}
++	orphanCleanupEnabled := lister != nil
+ 	if orphanCleanupEnabled {
+ 		minimumAge := 7 * 24 * time.Hour
+ 		if uploadSessionTTL > 0 {
+@@ -120,8 +127,7 @@ func newRuntimeWithSchema(pool *pgxpool.Pool, storage telegramstore.Storage, sch
+ 			return nil, fmt.Errorf("register orphan cleanup worker: %w", err)
+ 		}
+ 	}
+-	inviter, hasInviter := storage.(telegramstore.BotInviter)
+-	botProvisionEnabled := hasInviter && botService != nil && encryptor != nil
++	botProvisionEnabled := inviter != nil && botService != nil && encryptor != nil
+ 	if botProvisionEnabled {
+ 		if err := river.AddWorkerSafely(workers, NewBotProvisionWorker(pool, botService, inviter)); err != nil {
+ 			return nil, fmt.Errorf("register bot provisioning worker: %w", err)
+diff --git a/internal/jobs/upload_backend.go b/internal/jobs/upload_backend.go
+new file mode 100644
+index 0000000..1fbbd87
+--- /dev/null
++++ b/internal/jobs/upload_backend.go
+@@ -0,0 +1,209 @@
++package jobs
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"github.com/google/uuid"
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgtype"
++	"github.com/tgdrive/teldrive/v2/internal/catalog"
++	"github.com/tgdrive/teldrive/v2/internal/db/sqlcgen"
++	"github.com/tgdrive/teldrive/v2/internal/dbtypes"
++	"github.com/tgdrive/teldrive/v2/internal/transfer"
++	"github.com/tgdrive/teldrive/v2/internal/uploads"
++	"io"
++	"mime"
++	"net/http"
++	"os"
++	"path"
++	"strings"
++)
++
++type sourceBackend interface {
++	findResumableUpload(context.Context, int64, *uuid.UUID, string, UploadFileSource, bool) (*sqlcgen.UploadSession, map[int32]int64, error)
++	ensureFolders(context.Context, int64, *uuid.UUID, string) (*uuid.UUID, error)
++	detectSourceMIME(context.Context, UploadFileSource) (string, error)
++	openSource(context.Context, UploadFileSource, int64, int64) (*openedSourcePart, error)
++	CreateUpload(context.Context, uploads.CreateInput) (*sqlcgen.UploadSession, error)
++	CompleteUpload(context.Context, int64, uuid.UUID) (*sqlcgen.File, error)
++	SendPart(context.Context, transfer.UploadPartRequest) (*transfer.UploadPartResult, error)
++	ResolveActiveChild(context.Context, sqlcgen.ResolveActiveChildParams) (*sqlcgen.File, error)
++}
++type sourceBinding struct{ *UploadSourceWorker }
++
++func (w *UploadSourceWorker) backend() sourceBackend { return sourceBinding{w} }
++func (w sourceBinding) CreateUpload(ctx context.Context, input uploads.CreateInput) (*sqlcgen.UploadSession, error) {
++	if input.Encryption {
++		if w.activeKeyVersion <= 0 {
++			return nil, transfer.ErrEncryptionKey
++		}
++		input.EncryptionKeyVersion = &w.activeKeyVersion
++	}
++	return w.uploads.Create(ctx, input)
++}
++func (w sourceBinding) CompleteUpload(ctx context.Context, userID int64, id uuid.UUID) (*sqlcgen.File, error) {
++	return w.uploads.Complete(ctx, userID, id)
++}
++func (w sourceBinding) SendPart(ctx context.Context, input transfer.UploadPartRequest) (*transfer.UploadPartResult, error) {
++	return w.pipeline.UploadPart(ctx, input)
++}
++func (w sourceBinding) ResolveActiveChild(ctx context.Context, input sqlcgen.ResolveActiveChildParams) (*sqlcgen.File, error) {
++	return w.queries.ResolveActiveChild(ctx, input)
++}
++
++func (w sourceBinding) findResumableUpload(ctx context.Context, userID int64, parentID *uuid.UUID, name string, source UploadFileSource, encryption bool) (*sqlcgen.UploadSession, map[int32]int64, error) {
++	modTime := pgtype.Timestamptz{}
++	if source.HasModTime {
++		modTime = dbtypes.Time(source.ModTime)
++	}
++	sessions, err := w.queries.FindResumableUploadSessions(ctx, sqlcgen.FindResumableUploadSessionsParams{
++		UserID: userID, ParentID: dbtypes.OptionalUUID(parentID), Name: name,
++		ExpectedSize: source.Size, Encryption: encryption, MimeType: dbtypes.OptionalText(optionalString(source.MIMEType)),
++		HasModTime: source.HasModTime, ModTime: modTime,
++	})
++	if err != nil {
++		return nil, nil, fmt.Errorf("find resumable uploads: %w", err)
++	}
++	if len(sessions) == 0 {
++		return nil, map[int32]int64{}, nil
++	}
++	uploadIDs := make([]pgtype.UUID, 0, len(sessions))
++	for _, session := range sessions {
++		uploadIDs = append(uploadIDs, session.ID)
++	}
++	parts, err := w.queries.ListUploadPartsByUploadIDs(ctx, uploadIDs)
++	if err != nil {
++		return nil, nil, fmt.Errorf("list resumable upload parts: %w", err)
++	}
++	partsByUpload := make(map[uuid.UUID][]*sqlcgen.UploadPart, len(sessions))
++	for _, part := range parts {
++		uploadID, ok := dbtypes.GoogleUUID(part.UploadID)
++		if ok {
++			partsByUpload[uploadID] = append(partsByUpload[uploadID], part)
++		}
++	}
++	for _, session := range sessions {
++		uploadID, ok := dbtypes.GoogleUUID(session.ID)
++		if !ok {
++			continue
++		}
++		stored, compatible := resumableStoredParts(partsByUpload[uploadID], session.ExpectedSize, session.PartSize)
++		if compatible {
++			return session, stored, nil
++		}
++	}
++	return nil, map[int32]int64{}, nil
++}
++
++func (w sourceBinding) ensureFolders(ctx context.Context, userID int64, parentID *uuid.UUID, directory string) (*uuid.UUID, error) {
++	for name := range strings.SplitSeq(strings.Trim(directory, "/"), "/") {
++		if name == "" || name == "." {
++			continue
++		}
++		id, err := w.queries.ResolveActiveChildFolder(ctx, sqlcgen.ResolveActiveChildFolderParams{UserID: userID, ParentID: dbtypes.OptionalUUID(parentID), Name: name})
++		if errors.Is(err, pgx.ErrNoRows) {
++			folder, createErr := w.catalog.CreateFolder(ctx, catalog.CreateFolderInput{UserID: userID, ParentID: parentID, Name: name})
++			if errors.Is(createErr, catalog.ErrConflict) {
++				id, err = w.queries.ResolveActiveChildFolder(ctx, sqlcgen.ResolveActiveChildFolderParams{UserID: userID, ParentID: dbtypes.OptionalUUID(parentID), Name: name})
++			} else if createErr != nil {
++				return nil, createErr
++			} else {
++				id = folder.ID
++				err = nil
++			}
++		}
++		if err != nil {
++			return nil, fmt.Errorf("resolve destination folder: %w", err)
++		}
++		value, ok := dbtypes.GoogleUUID(id)
++		if !ok {
++			return nil, errInvalidUploadSource
++		}
++		parentID = &value
++	}
++	return parentID, nil
++}
++
++func (w sourceBinding) detectSourceMIME(ctx context.Context, source UploadFileSource) (string, error) {
++	var reader io.ReadCloser
++	switch source.Type {
++	case "local":
++		file, err := os.Open(source.Location)
++		if err != nil {
++			return "", fmt.Errorf("open source for MIME detection: %w", err)
++		}
++		reader = file
++	case "http":
++		request, err := http.NewRequestWithContext(ctx, http.MethodGet, source.Location, nil)
++		if err != nil {
++			return "", fmt.Errorf("create MIME detection request: %w", err)
++		}
++		applyUploadHeaders(request.Header, source.Headers)
++		request.Header.Set("Range", "bytes=0-511")
++		response, err := w.httpClient.Do(request)
++		if err != nil {
++			return "", errors.New("read HTTP source for MIME detection failed")
++		}
++		if response.StatusCode < 200 || response.StatusCode >= 300 {
++			_ = response.Body.Close()
++			return "", fmt.Errorf("read HTTP source for MIME detection: %s", response.Status)
++		}
++		reader = response.Body
++	default:
++		return "", fmt.Errorf("%w: unsupported source type %q", errInvalidUploadSource, source.Type)
++	}
++	defer reader.Close()
++
++	buffer := make([]byte, 512)
++	read, err := io.ReadFull(reader, buffer)
++	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
++		return "", fmt.Errorf("read source for MIME detection: %w", err)
++	}
++	if read > 0 {
++		detected := http.DetectContentType(buffer[:read])
++		if detected != "application/octet-stream" {
++			if parsed, _, err := mime.ParseMediaType(detected); err == nil {
++				return parsed, nil
++			}
++			return detected, nil
++		}
++	}
++	if inferred := mime.TypeByExtension(path.Ext(source.DestinationPath)); inferred != "" {
++		if parsed, _, err := mime.ParseMediaType(inferred); err == nil {
++			return parsed, nil
++		}
++		return inferred, nil
++	}
++	return "application/octet-stream", nil
++}
++
++type openedSourcePart struct {
++	reader   io.Reader
++	close    func()
++	response *http.Response
++}
++
++func (w sourceBinding) openSource(ctx context.Context, source UploadFileSource, offset, size int64) (*openedSourcePart, error) {
++	if source.Type == "local" {
++		file, err := os.Open(source.Location)
++		if err != nil {
++			return nil, fmt.Errorf("open local upload source: %w", err)
++		}
++		return &openedSourcePart{reader: io.NewSectionReader(file, offset, size), close: func() { _ = file.Close() }}, nil
++	}
++	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source.Location, nil)
++	if err != nil {
++		return nil, err
++	}
++	applyUploadHeaders(request.Header, source.Headers)
++	request.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, offset+size-1))
++	if source.Validator != "" {
++		request.Header.Set("If-Range", source.Validator)
++	}
++	response, err := w.httpClient.Do(request)
++	if err != nil {
++		return nil, errors.New("open HTTP upload part request failed")
++	}
++	return &openedSourcePart{reader: response.Body, close: func() { _ = response.Body.Close() }, response: response}, nil
++}
+diff --git a/internal/jobs/upload_source.go b/internal/jobs/upload_source.go
+index a77f297..91bfe6a 100644
+--- a/internal/jobs/upload_source.go
++++ b/internal/jobs/upload_source.go
+@@ -23,7 +23,6 @@ import (
+ 
+ 	"github.com/google/uuid"
+ 	"github.com/jackc/pgx/v5"
+-	"github.com/jackc/pgx/v5/pgtype"
+ 	"github.com/jackc/pgx/v5/pgxpool"
+ 	"github.com/riverqueue/river"
+ 	"golang.org/x/sync/errgroup"
+@@ -286,7 +285,7 @@ func (w *UploadSourceWorker) Work(ctx context.Context, job *river.Job[UploadSour
+ 	if name == "" || name == "." {
+ 		return errInvalidUploadSource
+ 	}
+-	parentID, err = w.ensureFolders(ctx, job.Args.UserID, parentID, directory)
++	parentID, err = w.backend().ensureFolders(ctx, job.Args.UserID, parentID, directory)
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -294,7 +293,7 @@ func (w *UploadSourceWorker) Work(ctx context.Context, job *river.Job[UploadSour
+ 	if err != nil {
+ 		return err
+ 	}
+-	existing, err := w.queries.ResolveActiveChild(ctx, sqlcgen.ResolveActiveChildParams{UserID: job.Args.UserID, ParentID: dbtypes.OptionalUUID(parentID), Name: name})
++	existing, err := w.backend().ResolveActiveChild(ctx, sqlcgen.ResolveActiveChildParams{UserID: job.Args.UserID, ParentID: dbtypes.OptionalUUID(parentID), Name: name})
+ 	if err == nil {
+ 		if existing.Kind != sqlcgen.FileKindFile {
+ 			return uploads.ErrNameConflict
+@@ -310,19 +309,13 @@ func (w *UploadSourceWorker) Work(ctx context.Context, job *river.Job[UploadSour
+ 		return fmt.Errorf("resolve upload destination: %w", err)
+ 	}
+ 
+-	session, storedParts, err := w.findResumableUpload(ctx, job.Args.UserID, parentID, name, job.Args.Source, job.Args.Encryption)
++	session, storedParts, err := w.backend().findResumableUpload(ctx, job.Args.UserID, parentID, name, job.Args.Source, job.Args.Encryption)
+ 	if err != nil {
+ 		return err
+ 	}
+ 	if session == nil {
+ 		input := uploads.CreateInput{UserID: job.Args.UserID, ParentID: parentID, Name: name, ExpectedSize: job.Args.Source.Size, MIMEType: optionalString(job.Args.Source.MIMEType), ModTime: job.Args.Source.ModTime, ConflictPolicy: sqlcgen.NameConflictPolicyReplace, Encryption: job.Args.Encryption, PartSize: chunkSize}
+-		if input.Encryption {
+-			if w.activeKeyVersion <= 0 {
+-				return transfer.ErrEncryptionKey
+-			}
+-			input.EncryptionKeyVersion = &w.activeKeyVersion
+-		}
+-		session, err = w.uploads.Create(ctx, input)
++		session, err = w.backend().CreateUpload(ctx, input)
+ 	}
+ 	if err != nil {
+ 		return err
+@@ -344,7 +337,7 @@ func (w *UploadSourceWorker) Work(ctx context.Context, job *river.Job[UploadSour
+ 		return err
+ 	}
+ 	if partCount == 0 {
+-		file, completeErr := w.uploads.Complete(ctx, job.Args.UserID, uploadID)
++		file, completeErr := w.backend().CompleteUpload(ctx, job.Args.UserID, uploadID)
+ 		if completeErr != nil {
+ 			_ = tracker.finish(ctx, "failed", nil)
+ 			return completeErr
+@@ -381,7 +374,7 @@ func (w *UploadSourceWorker) Work(ctx context.Context, job *river.Job[UploadSour
+ 			}
+ 			defer closeReader()
+ 			reader = io.TeeReader(reader, tracker)
+-			_, err = w.pipeline.UploadPart(groupCtx, transfer.UploadPartRequest{UserID: job.Args.UserID, UploadID: uploadID, PartNo: int32(part + 1), PlainSize: size, Body: reader})
++			_, err = w.backend().SendPart(groupCtx, transfer.UploadPartRequest{UserID: job.Args.UserID, UploadID: uploadID, PartNo: int32(part + 1), PlainSize: size, Body: reader})
+ 			if err == nil {
+ 				tracker.partCompleted(groupCtx, size)
+ 			}
+@@ -405,7 +398,7 @@ func (w *UploadSourceWorker) Work(ctx context.Context, job *river.Job[UploadSour
+ 	if err := tracker.update(ctx, "completing", false); err != nil {
+ 		return err
+ 	}
+-	file, err := w.uploads.Complete(ctx, job.Args.UserID, uploadID)
++	file, err := w.backend().CompleteUpload(ctx, job.Args.UserID, uploadID)
+ 	if err != nil {
+ 		_ = tracker.finish(ctx, "failed", nil)
+ 		return err
+@@ -510,47 +503,7 @@ func normalizeUploadChunkSize(value int64) (int64, error) {
+ }
+ 
+ func (w *UploadSourceWorker) findResumableUpload(ctx context.Context, userID int64, parentID *uuid.UUID, name string, source UploadFileSource, encryption bool) (*sqlcgen.UploadSession, map[int32]int64, error) {
+-	modTime := pgtype.Timestamptz{}
+-	if source.HasModTime {
+-		modTime = dbtypes.Time(source.ModTime)
+-	}
+-	sessions, err := w.queries.FindResumableUploadSessions(ctx, sqlcgen.FindResumableUploadSessionsParams{
+-		UserID: userID, ParentID: dbtypes.OptionalUUID(parentID), Name: name,
+-		ExpectedSize: source.Size, Encryption: encryption, MimeType: dbtypes.OptionalText(optionalString(source.MIMEType)),
+-		HasModTime: source.HasModTime, ModTime: modTime,
+-	})
+-	if err != nil {
+-		return nil, nil, fmt.Errorf("find resumable uploads: %w", err)
+-	}
+-	if len(sessions) == 0 {
+-		return nil, map[int32]int64{}, nil
+-	}
+-	uploadIDs := make([]pgtype.UUID, 0, len(sessions))
+-	for _, session := range sessions {
+-		uploadIDs = append(uploadIDs, session.ID)
+-	}
+-	parts, err := w.queries.ListUploadPartsByUploadIDs(ctx, uploadIDs)
+-	if err != nil {
+-		return nil, nil, fmt.Errorf("list resumable upload parts: %w", err)
+-	}
+-	partsByUpload := make(map[uuid.UUID][]*sqlcgen.UploadPart, len(sessions))
+-	for _, part := range parts {
+-		uploadID, ok := dbtypes.GoogleUUID(part.UploadID)
+-		if ok {
+-			partsByUpload[uploadID] = append(partsByUpload[uploadID], part)
+-		}
+-	}
+-	for _, session := range sessions {
+-		uploadID, ok := dbtypes.GoogleUUID(session.ID)
+-		if !ok {
+-			continue
+-		}
+-		stored, compatible := resumableStoredParts(partsByUpload[uploadID], session.ExpectedSize, session.PartSize)
+-		if compatible {
+-			return session, stored, nil
+-		}
+-	}
+-	return nil, map[int32]int64{}, nil
++	return w.backend().findResumableUpload(ctx, userID, parentID, name, source, encryption)
+ }
+ 
+ func resumableStoredParts(parts []*sqlcgen.UploadPart, totalSize, partSize int64) (map[int32]int64, bool) {
+@@ -581,32 +534,7 @@ func (t *uploadProgressTracker) finish(ctx context.Context, stage string, fileID
+ }
+ 
+ func (w *UploadSourceWorker) ensureFolders(ctx context.Context, userID int64, parentID *uuid.UUID, directory string) (*uuid.UUID, error) {
+-	for name := range strings.SplitSeq(strings.Trim(directory, "/"), "/") {
+-		if name == "" || name == "." {
+-			continue
+-		}
+-		id, err := w.queries.ResolveActiveChildFolder(ctx, sqlcgen.ResolveActiveChildFolderParams{UserID: userID, ParentID: dbtypes.OptionalUUID(parentID), Name: name})
+-		if errors.Is(err, pgx.ErrNoRows) {
+-			folder, createErr := w.catalog.CreateFolder(ctx, catalog.CreateFolderInput{UserID: userID, ParentID: parentID, Name: name})
+-			if errors.Is(createErr, catalog.ErrConflict) {
+-				id, err = w.queries.ResolveActiveChildFolder(ctx, sqlcgen.ResolveActiveChildFolderParams{UserID: userID, ParentID: dbtypes.OptionalUUID(parentID), Name: name})
+-			} else if createErr != nil {
+-				return nil, createErr
+-			} else {
+-				id = folder.ID
+-				err = nil
+-			}
+-		}
+-		if err != nil {
+-			return nil, fmt.Errorf("resolve destination folder: %w", err)
+-		}
+-		value, ok := dbtypes.GoogleUUID(id)
+-		if !ok {
+-			return nil, errInvalidUploadSource
+-		}
+-		parentID = &value
+-	}
+-	return parentID, nil
++	return w.backend().ensureFolders(ctx, userID, parentID, directory)
+ }
+ 
+ func (w *UploadSourceWorker) detectSourceMIME(ctx context.Context, source UploadFileSource) (string, error) {
+@@ -617,89 +545,25 @@ func (w *UploadSourceWorker) detectSourceMIME(ctx context.Context, source Upload
+ 	if declared != "" && declared != "application/octet-stream" {
+ 		return declared, nil
+ 	}
+-
+-	var reader io.ReadCloser
+-	switch source.Type {
+-	case "local":
+-		file, err := os.Open(source.Location)
+-		if err != nil {
+-			return "", fmt.Errorf("open source for MIME detection: %w", err)
+-		}
+-		reader = file
+-	case "http":
+-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, source.Location, nil)
+-		if err != nil {
+-			return "", fmt.Errorf("create MIME detection request: %w", err)
+-		}
+-		applyUploadHeaders(request.Header, source.Headers)
+-		request.Header.Set("Range", "bytes=0-511")
+-		response, err := w.httpClient.Do(request)
+-		if err != nil {
+-			return "", errors.New("read HTTP source for MIME detection failed")
+-		}
+-		if response.StatusCode < 200 || response.StatusCode >= 300 {
+-			_ = response.Body.Close()
+-			return "", fmt.Errorf("read HTTP source for MIME detection: %s", response.Status)
+-		}
+-		reader = response.Body
+-	default:
+-		return "", fmt.Errorf("%w: unsupported source type %q", errInvalidUploadSource, source.Type)
+-	}
+-	defer reader.Close()
+-
+-	buffer := make([]byte, 512)
+-	read, err := io.ReadFull(reader, buffer)
+-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+-		return "", fmt.Errorf("read source for MIME detection: %w", err)
+-	}
+-	if read > 0 {
+-		detected := http.DetectContentType(buffer[:read])
+-		if detected != "application/octet-stream" {
+-			if parsed, _, err := mime.ParseMediaType(detected); err == nil {
+-				return parsed, nil
+-			}
+-			return detected, nil
+-		}
+-	}
+-	if inferred := mime.TypeByExtension(path.Ext(source.DestinationPath)); inferred != "" {
+-		if parsed, _, err := mime.ParseMediaType(inferred); err == nil {
+-			return parsed, nil
+-		}
+-		return inferred, nil
+-	}
+-	return "application/octet-stream", nil
++	return w.backend().detectSourceMIME(ctx, source)
+ }
+ 
+ func (w *UploadSourceWorker) openPart(ctx context.Context, source UploadFileSource, offset, size int64) (io.Reader, func(), error) {
+-	if source.Type == "local" {
+-		file, err := os.Open(source.Location)
+-		if err != nil {
+-			return nil, func() {}, fmt.Errorf("open local upload source: %w", err)
+-		}
+-		return io.NewSectionReader(file, offset, size), func() { _ = file.Close() }, nil
+-	}
+-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source.Location, nil)
++	part, err := w.backend().openSource(ctx, source, offset, size)
+ 	if err != nil {
+ 		return nil, func() {}, err
+ 	}
+-	applyUploadHeaders(request.Header, source.Headers)
+-	request.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, offset+size-1))
+-	if source.Validator != "" {
+-		request.Header.Set("If-Range", source.Validator)
+-	}
+-	response, err := w.httpClient.Do(request)
+-	if err != nil {
+-		return nil, func() {}, errors.New("open HTTP upload part request failed")
+-	}
+-	if response.StatusCode != http.StatusPartialContent && !(offset == 0 && size == source.Size && response.StatusCode == http.StatusOK) {
+-		_ = response.Body.Close()
+-		return nil, func() {}, fmt.Errorf("HTTP upload source does not support byte ranges: %s", response.Status)
+-	}
+-	if response.StatusCode == http.StatusPartialContent && !validContentRange(response.Header.Get("Content-Range"), offset, size, source.Size) {
+-		_ = response.Body.Close()
+-		return nil, func() {}, fmt.Errorf("HTTP upload source returned an invalid content range")
++	if response := part.response; response != nil {
++		if response.StatusCode != http.StatusPartialContent && !(offset == 0 && size == source.Size && response.StatusCode == http.StatusOK) {
++			part.close()
++			return nil, func() {}, fmt.Errorf("HTTP upload source does not support byte ranges: %s", response.Status)
++		}
++		if response.StatusCode == http.StatusPartialContent && !validContentRange(response.Header.Get("Content-Range"), offset, size, source.Size) {
++			part.close()
++			return nil, func() {}, fmt.Errorf("HTTP upload source returned an invalid content range")
++		}
+ 	}
+-	return response.Body, func() { _ = response.Body.Close() }, nil
++	return part.reader, part.close, nil
+ }
+ 
+ type uploadFilter struct {
+diff --git a/internal/telegramstore/backend.go b/internal/telegramstore/backend.go
+new file mode 100644
+index 0000000..9ae2bb7
+--- /dev/null
++++ b/internal/telegramstore/backend.go
+@@ -0,0 +1,120 @@
++package telegramstore
++
++import (
++	"context"
++	"fmt"
++	"io"
++)
++
++type Backend interface {
++	Storage
++	Download(context.Context, int64, error) (DownloadSession, error)
++	DocumentInventory() DocumentMessageLister
++	BotAdministration() BotInviter
++	MetadataSource() MetadataReader
++	SessionSource() DownloadSessionOpener
++	WalkDocuments(context.Context, ListDocumentMessagesRequest, func(DocumentMessagePage) ([]int64, error)) (int, error)
++}
++
++type backend struct{ Storage }
++
++func BindBackend(storage Storage) Backend {
++	if storage == nil {
++		return nil
++	}
++	if bound, ok := storage.(Backend); ok {
++		return bound
++	}
++	return backend{Storage: storage}
++}
++
++func (b backend) Download(ctx context.Context, userID int64, unavailable error) (DownloadSession, error) {
++	if opener := b.SessionSource(); opener != nil {
++		return opener.OpenDownloadSession(ctx, userID)
++	}
++	return backendDownload{Backend: b, unavailable: unavailable}, nil
++}
++
++func (b backend) MetadataSource() MetadataReader {
++	reader, _ := b.Storage.(MetadataReader)
++	return reader
++}
++
++func (b backend) SessionSource() DownloadSessionOpener {
++	opener, _ := b.Storage.(DownloadSessionOpener)
++	return opener
++}
++
++func (b backend) DocumentInventory() DocumentMessageLister {
++	lister, _ := b.Storage.(DocumentMessageLister)
++	return lister
++}
++
++type inventoryBackend struct {
++	Backend
++	inventory DocumentMessageLister
++}
++
++func BindInventory(storage Storage, inventory DocumentMessageLister) Backend {
++	return inventoryBackend{Backend: BindBackend(storage), inventory: inventory}
++}
++
++func (b inventoryBackend) DocumentInventory() DocumentMessageLister { return b.inventory }
++
++func (b inventoryBackend) WalkDocuments(ctx context.Context, request ListDocumentMessagesRequest, consume func(DocumentMessagePage) ([]int64, error)) (int, error) {
++	return walkDocuments(ctx, b, request, consume)
++}
++
++func (b backend) WalkDocuments(ctx context.Context, request ListDocumentMessagesRequest, consume func(DocumentMessagePage) ([]int64, error)) (int, error) {
++	return walkDocuments(ctx, b, request, consume)
++}
++
++func walkDocuments(ctx context.Context, b Backend, request ListDocumentMessagesRequest, consume func(DocumentMessagePage) ([]int64, error)) (int, error) {
++	deleted := 0
++	for {
++		page, err := b.DocumentInventory().ListDocumentMessages(ctx, request)
++		if err != nil {
++			return deleted, fmt.Errorf("list Telegram documents for channel %d: %w", request.ChannelID, err)
++		}
++		ids, err := consume(page)
++		if err != nil {
++			return deleted, err
++		}
++		if len(ids) > 0 {
++			if err := b.DeleteMessages(ctx, request.UserID, request.ChannelID, ids); err != nil {
++				return deleted, fmt.Errorf("delete orphaned Telegram documents from channel %d: %w", request.ChannelID, err)
++			}
++			deleted += len(ids)
++		}
++		if page.Exhausted {
++			return deleted, nil
++		}
++		if page.BeforeID <= 0 || page.BeforeID == request.BeforeID {
++			return deleted, fmt.Errorf("list Telegram documents for channel %d: pagination did not advance", request.ChannelID)
++		}
++		request.BeforeID = page.BeforeID
++	}
++}
++
++func (b backend) BotAdministration() BotInviter {
++	inviter, _ := b.Storage.(BotInviter)
++	return inviter
++}
++
++type backendDownload struct {
++	Backend
++	unavailable error
++}
++
++func (s backendDownload) Metadata(ctx context.Context, request MetadataRequest) (StoredPart, error) {
++	if reader := s.Backend.MetadataSource(); reader != nil {
++		return reader.Metadata(ctx, request)
++	}
++	return StoredPart{}, s.unavailable
++}
++
++func (s backendDownload) OpenRange(ctx context.Context, request RangeRequest) (io.ReadCloser, error) {
++	return s.Backend.OpenRange(ctx, request)
++}
++
++func (backendDownload) Close() error { return nil }
+diff --git a/internal/telegramstore/copy_backend.go b/internal/telegramstore/copy_backend.go
+new file mode 100644
+index 0000000..6c5ac21
+--- /dev/null
++++ b/internal/telegramstore/copy_backend.go
+@@ -0,0 +1,35 @@
++package telegramstore
++
++import "context"
++
++type CopyBackend interface {
++	Backend
++	RollbackCopies(context.Context, int64)
++}
++
++type copyBackend struct {
++	Backend
++	parts []StoredPart
++}
++
++func BindCopy(storage Backend) CopyBackend { return &copyBackend{Backend: storage} }
++
++func (b *copyBackend) CopyPart(ctx context.Context, userID, sourceChannelID, sourceMessageID, destinationChannelID int64) (StoredPart, error) {
++	stored, err := b.Backend.CopyPart(ctx, userID, sourceChannelID, sourceMessageID, destinationChannelID)
++	if err == nil {
++		b.parts = append(b.parts, stored)
++	}
++	return stored, err
++}
++
++func (b *copyBackend) RollbackCopies(ctx context.Context, userID int64) {
++	grouped := make(map[int64][]int64)
++	for _, part := range b.parts {
++		if part.ChannelID != 0 && part.MessageID > 0 {
++			grouped[part.ChannelID] = append(grouped[part.ChannelID], part.MessageID)
++		}
++	}
++	for channelID, ids := range grouped {
++		_ = b.DeleteMessages(ctx, userID, channelID, ids)
++	}
++}
+diff --git a/internal/telegramstore/gotd.go b/internal/telegramstore/gotd.go
+index d8e5b2f..347ef1a 100644
+--- a/internal/telegramstore/gotd.go
++++ b/internal/telegramstore/gotd.go
+@@ -140,7 +140,7 @@ func (s *GotdStorage) Upload(ctx context.Context, request UploadRequest) (Stored
+ }
+ 
+ func (s *GotdStorage) runUpload(ctx context.Context, userID int64, threads int, fn func(context.Context, *tg.Client) error) error {
+-	return runWithConnections(ctx, s.runner, userID, OperationUpload, threads, fn)
++	return s.runtime().RunPooled(ctx, userID, OperationUpload, threads, fn)
+ }
+ 
+ func (s *GotdStorage) Metadata(ctx context.Context, request MetadataRequest) (StoredPart, error) {
+@@ -148,7 +148,7 @@ func (s *GotdStorage) Metadata(ctx context.Context, request MetadataRequest) (St
+ 		return StoredPart{}, ErrInvalidRequest
+ 	}
+ 	var stored StoredPart
+-	err := s.runner.Run(ctx, request.UserID, OperationDownload, func(runCtx context.Context, api *tg.Client) error {
++	err := s.runtime().Run(ctx, request.UserID, OperationDownload, func(runCtx context.Context, api *tg.Client) error {
+ 		_, size, err := fetchDocumentLocation(runCtx, api, request.ChannelID, request.MessageID, s.globalCache)
+ 		if err != nil {
+ 			return err
+@@ -169,7 +169,7 @@ func (s *GotdStorage) OpenRange(ctx context.Context, request RangeRequest) (io.R
+ 	streamCtx, cancel := context.WithCancel(ctx)
+ 	reader := newTelegramRangeReader(streamCtx, cancel, s.downloadReadBuffers, s.downloadReadParallel)
+ 	go func() {
+-		err := runWithConnections(streamCtx, s.runner, request.UserID, OperationDownload, s.downloadReadParallel, func(runCtx context.Context, api *tg.Client) error {
++		err := s.runtime().RunPooled(streamCtx, request.UserID, OperationDownload, s.downloadReadParallel, func(runCtx context.Context, api *tg.Client) error {
+ 			location, documentSize, err := fetchDocumentLocation(runCtx, api, request.ChannelID, request.MessageID, s.globalCache)
+ 			if err != nil {
+ 				return err
+@@ -249,31 +249,11 @@ func (s *GotdStorage) OpenDownloadSession(ctx context.Context, userID int64) (Do
+ 	if s == nil || s.runner == nil || userID <= 0 {
+ 		return nil, ErrInvalidRequest
+ 	}
+-	if s.downloadPool != nil {
+-		return s.downloadPool.OpenDownloadSession(ctx, userID)
++	runtime := s.runtime()
++	if cached := runtime.CachedSessions(); cached != nil {
++		return cached.OpenDownloadSession(ctx, userID)
+ 	}
+-	sessionCtx, cancel := context.WithCancel(ctx)
+-	session := &gotdDownloadSession{
+-		ctx: sessionCtx, cancel: cancel, ready: make(chan struct{}), done: make(chan struct{}),
+-		downloadReadBuffers:  s.downloadReadBuffers,
+-		downloadReadParallel: s.downloadReadParallel,
+-		globalCache:          s.globalCache,
+-	}
+-	go func() {
+-		err := runWithConnections(sessionCtx, s.runner, userID, OperationDownload, s.downloadReadParallel, func(runCtx context.Context, api *tg.Client) error {
+-			session.mu.Lock()
+-			session.api = api
+-			session.clientID, _ = ClientID(runCtx)
+-			session.mu.Unlock()
+-			close(session.ready)
+-			<-runCtx.Done()
+-			return runCtx.Err()
+-		})
+-		session.mu.Lock()
+-		session.err = err
+-		session.mu.Unlock()
+-		close(session.done)
+-	}()
++	session := runtime.StartSession(ctx, userID)
+ 	select {
+ 	case <-session.ready:
+ 		return session, nil
+@@ -281,13 +261,13 @@ func (s *GotdStorage) OpenDownloadSession(ctx context.Context, userID int64) (Do
+ 		session.mu.Lock()
+ 		err := session.err
+ 		session.mu.Unlock()
+-		cancel()
++		session.cancel()
+ 		if err == nil {
+ 			err = ErrClientUnavailable
+ 		}
+ 		return nil, err
+ 	case <-ctx.Done():
+-		cancel()
++		session.cancel()
+ 		return nil, ctx.Err()
+ 	}
+ }
+@@ -622,7 +602,7 @@ func (s *GotdStorage) CopyPart(ctx context.Context, userID, sourceChannelID, sou
+ 		return StoredPart{}, ErrInvalidRequest
+ 	}
+ 	var copied StoredPart
+-	err := s.runner.Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
++	err := s.runtime().Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
+ 		location, size, err := documentLocation(runCtx, api, sourceChannelID, sourceMessageID)
+ 		if err != nil {
+ 			return err
+@@ -667,7 +647,7 @@ func (s *GotdStorage) DeleteMessages(ctx context.Context, userID, channelID int6
+ 	if len(messageIDs) == 0 {
+ 		return nil
+ 	}
+-	return s.runner.Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
++	return s.runtime().Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
+ 		channel, err := inputChannel(runCtx, api, channelID)
+ 		if errors.Is(err, ErrInvalidChannel) {
+ 			return nil
+@@ -697,7 +677,7 @@ func (s *GotdStorage) ListDocumentMessages(ctx context.Context, request ListDocu
+ 		return DocumentMessagePage{}, ErrInvalidRequest
+ 	}
+ 	var page DocumentMessagePage
+-	err := s.runner.Run(ctx, request.UserID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
++	err := s.runtime().Run(ctx, request.UserID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
+ 		channel, err := inputChannel(runCtx, api, request.ChannelID)
+ 		if err != nil {
+ 			return err
+@@ -743,7 +723,7 @@ func (s *GotdStorage) CreateChannel(ctx context.Context, userID int64, name stri
+ 		return Channel{}, ErrInvalidRequest
+ 	}
+ 	var created Channel
+-	err := s.runner.Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
++	err := s.runtime().Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
+ 		response, err := api.ChannelsCreateChannel(runCtx, &tg.ChannelsCreateChannelRequest{
+ 			Title:     strings.TrimSpace(name),
+ 			Broadcast: true,
+@@ -760,11 +740,10 @@ func (s *GotdStorage) CreateChannel(ctx context.Context, userID int64, name stri
+ 			if !ok || !isBroadcastChannel(channel) {
+ 				continue
+ 			}
+-			if s.botProvider != nil {
+-				bots, botErr := s.botProvider.ChannelBots(runCtx, userID, api)
++			{
++				bots, botErr := s.runtime().ChannelBotsFor(runCtx, userID, api, channel)
+ 				if botErr != nil {
+-					_, _ = api.ChannelsDeleteChannel(runCtx, channel.AsInput())
+-					return fmt.Errorf("resolve Telegram upload bots: %w", botErr)
++					return botErr
+ 				}
+ 				for _, bot := range bots {
+ 					if adminErr := setBotAdmin(runCtx, api, channel.AsInput(), bot); adminErr != nil {
+@@ -788,7 +767,7 @@ func (s *GotdStorage) DeleteChannel(ctx context.Context, userID, channelID int64
+ 	if s.runner == nil || userID <= 0 || channelID == 0 {
+ 		return ErrInvalidRequest
+ 	}
+-	return s.runner.Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
++	return s.runtime().Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
+ 		channel, err := fullChannel(runCtx, api, channelID)
+ 		if errors.Is(err, ErrInvalidChannel) {
+ 			return nil
+@@ -808,7 +787,7 @@ func (s *GotdStorage) InviteBot(ctx context.Context, userID, channelID int64, us
+ 	if s.runner == nil || userID <= 0 || channelID == 0 || username == "" {
+ 		return ErrInvalidRequest
+ 	}
+-	return s.runner.Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
++	return s.runtime().Run(ctx, userID, OperationManage, func(runCtx context.Context, api *tg.Client) error {
+ 		slog.InfoContext(runCtx, "Resolving Telegram channel for bot provisioning",
+ 			"user_id", userID,
+ 			"channel_id", channelID,
+diff --git a/internal/telegramstore/runtime.go b/internal/telegramstore/runtime.go
+new file mode 100644
+index 0000000..d3b3192
+--- /dev/null
++++ b/internal/telegramstore/runtime.go
+@@ -0,0 +1,81 @@
++package telegramstore
++
++import (
++	"context"
++	"fmt"
++
++	"github.com/gotd/td/tg"
++)
++
++type storageRuntime interface {
++	Runner
++	PooledRunner
++	BotProvider
++	CachedSessions() DownloadSessionOpener
++	StartSession(context.Context, int64) *gotdDownloadSession
++	ChannelBotsFor(context.Context, int64, *tg.Client, *tg.Channel) ([]tg.InputUserClass, error)
++}
++
++type runtimeBinding struct{ storage *GotdStorage }
++
++func (s *GotdStorage) runtime() storageRuntime { return runtimeBinding{storage: s} }
++
++func (r runtimeBinding) Run(ctx context.Context, userID int64, operation Operation, fn func(context.Context, *tg.Client) error) error {
++	return r.storage.runner.Run(ctx, userID, operation, fn)
++}
++
++func (r runtimeBinding) RunPooled(ctx context.Context, userID int64, operation Operation, connections int, fn func(context.Context, *tg.Client) error) error {
++	if pooled, ok := r.storage.runner.(PooledRunner); ok && connections > 1 {
++		return pooled.RunPooled(ctx, userID, operation, connections, fn)
++	}
++	return r.Run(ctx, userID, operation, fn)
++}
++
++func (r runtimeBinding) ChannelBots(ctx context.Context, userID int64, api *tg.Client) ([]tg.InputUserClass, error) {
++	if r.storage.botProvider == nil {
++		return nil, nil
++	}
++	return r.storage.botProvider.ChannelBots(ctx, userID, api)
++}
++
++func (r runtimeBinding) CachedSessions() DownloadSessionOpener {
++	if r.storage.downloadPool != nil {
++		return r.storage.downloadPool
++	}
++	return nil
++}
++
++func (r runtimeBinding) StartSession(ctx context.Context, userID int64) *gotdDownloadSession {
++	sessionCtx, cancel := context.WithCancel(ctx)
++	session := &gotdDownloadSession{
++		ctx: sessionCtx, cancel: cancel, ready: make(chan struct{}), done: make(chan struct{}),
++		downloadReadBuffers:  r.storage.downloadReadBuffers,
++		downloadReadParallel: r.storage.downloadReadParallel,
++		globalCache:          r.storage.globalCache,
++	}
++	go func() {
++		err := r.RunPooled(sessionCtx, userID, OperationDownload, r.storage.downloadReadParallel, func(runCtx context.Context, api *tg.Client) error {
++			session.mu.Lock()
++			session.api = api
++			session.clientID, _ = ClientID(runCtx)
++			session.mu.Unlock()
++			close(session.ready)
++			<-runCtx.Done()
++			return runCtx.Err()
++		})
++		session.mu.Lock()
++		session.err = err
++		session.mu.Unlock()
++		close(session.done)
++	}()
++	return session
++}
++
++func (r runtimeBinding) ChannelBotsFor(ctx context.Context, userID int64, api *tg.Client, channel *tg.Channel) ([]tg.InputUserClass, error) {
++	bots, err := r.ChannelBots(ctx, userID, api)
++	if err != nil {
++		_, _ = api.ChannelsDeleteChannel(ctx, channel.AsInput())
++		return nil, fmt.Errorf("resolve Telegram upload bots: %w", err)
++	}
++	return bots, nil
++}
+diff --git a/internal/transfer/backend.go b/internal/transfer/backend.go
+new file mode 100644
+index 0000000..fff56ca
+--- /dev/null
++++ b/internal/transfer/backend.go
+@@ -0,0 +1,48 @@
++package transfer
++
++import (
++	"context"
++	"github.com/google/uuid"
++	"github.com/tgdrive/teldrive/v2/internal/db/sqlcgen"
++	"github.com/tgdrive/teldrive/v2/internal/telegramstore"
++	"github.com/tgdrive/teldrive/v2/internal/uploads"
++)
++
++type uploadBackend interface {
++	UploadCatalog
++	ChannelResolver
++	KeyProvider
++	telegramstore.Backend
++	AbortPart(context.Context, UploadPartRequest, uuid.UUID, string) error
++	KeepLease(context.Context, UploadPartRequest, uuid.UUID, func(error))
++	RemoveUploaded(context.Context, int64, telegramstore.StoredPart) error
++	StoreUploaded(context.Context, context.Context, int64, telegramstore.StoredPart, uploads.StorePartInput) (*sqlcgen.UploadPart, error)
++}
++
++type uploadBinding struct {
++	UploadCatalog
++	ChannelResolver
++	KeyProvider
++	telegramstore.Backend
++	config Config
++}
++
++func (p *Pipeline) backend() uploadBackend {
++	return uploadBinding{UploadCatalog: p.catalog, ChannelResolver: p.channels, KeyProvider: p.keys, Backend: telegramstore.BindBackend(p.storage), config: p.config}
++}
++
++type downloadBackend interface {
++	FileCatalog
++	KeyProvider
++	telegramstore.Backend
++}
++
++type downloadBinding struct {
++	FileCatalog
++	KeyProvider
++	telegramstore.Backend
++}
++
++func (d *Downloader) backend() downloadBackend {
++	return downloadBinding{FileCatalog: d.catalog, KeyProvider: d.keys, Backend: telegramstore.BindBackend(d.storage)}
++}
+diff --git a/internal/transfer/download.go b/internal/transfer/download.go
+index 99ad144..ec10da3 100644
+--- a/internal/transfer/download.go
++++ b/internal/transfer/download.go
+@@ -81,21 +81,22 @@ func (d *Downloader) Open(ctx context.Context, request DownloadRequest) (*Downlo
+ }
+ 
+ func (d *Downloader) openOrigin(ctx context.Context, request DownloadRequest) (*Download, error) {
+-	file, err := d.catalog.Get(ctx, request.UserID, request.FileID)
++	file, err := d.backend().Get(ctx, request.UserID, request.FileID)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 	if file.Kind != sqlcgen.FileKindFile || file.Status != sqlcgen.FileStatusActive || !file.Size.Valid || file.Size.Int64 < 0 {
+ 		return nil, ErrInvalidDownload
+ 	}
+-	parts, err := d.catalog.Parts(ctx, request.UserID, request.FileID)
++	parts, err := d.backend().Parts(ctx, request.UserID, request.FileID)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	session, err := d.openDownloadSession(ctx, request.UserID)
++	opened, err := d.openDownloadSession(ctx, request.UserID)
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	session := d.requestBackend(opened)
+ 	keepSession := false
+ 	defer func() {
+ 		if !keepSession {
+@@ -124,7 +125,7 @@ func (d *Downloader) openOrigin(ctx context.Context, request DownloadRequest) (*
+ 		if d.keys == nil || !file.EncryptionKeyVersion.Valid {
+ 			return nil, ErrEncryptionKey
+ 		}
+-		encryptionKey, err = d.keys.Key(ctx, request.UserID, file.EncryptionKeyVersion.Int32)
++		encryptionKey, err = d.backend().Key(ctx, request.UserID, file.EncryptionKeyVersion.Int32)
+ 		if err != nil || encryptionKey == "" {
+ 			return nil, errors.Join(ErrEncryptionKey, err)
+ 		}
+@@ -147,17 +148,13 @@ func (d *Downloader) openOrigin(ctx context.Context, request DownloadRequest) (*
+ 	}, nil
+ }
+ 
+-func (d *Downloader) resolveMissingPartSizes(ctx context.Context, session telegramstore.DownloadSession, userID int64, fileID uuid.UUID, file *sqlcgen.File, parts []*sqlcgen.FilePart) error {
+-	backfiller, _ := d.catalog.(PartSizeBackfiller)
+-	batchBackfiller, _ := d.catalog.(PartSizeBatchBackfiller)
+-	resolvedSizes := make(map[int32][2]int64)
++func (d *Downloader) resolveMissingPartSizes(ctx context.Context, session downloadScope, userID int64, fileID uuid.UUID, file *sqlcgen.File, parts []*sqlcgen.FilePart) error {
++	one, many := session.SizePersistence()
+ 	for _, part := range parts {
+ 		if part == nil || (part.PlainSize.Valid && part.StoredSize.Valid) {
+ 			continue
+ 		}
+-		stored, err := session.Metadata(ctx, telegramstore.MetadataRequest{
+-			UserID: userID, ChannelID: part.ChannelID, MessageID: part.MessageID,
+-		})
++		stored, err := session.Metadata(ctx, telegramstore.MetadataRequest{UserID: userID, ChannelID: part.ChannelID, MessageID: part.MessageID})
+ 		if err != nil {
+ 			return fmt.Errorf("resolve Telegram part %d metadata: %w", part.PartNo, err)
+ 		}
+@@ -168,29 +165,18 @@ func (d *Downloader) resolveMissingPartSizes(ctx context.Context, session telegr
+ 				return fmt.Errorf("derive plaintext size for part %d: %w", part.PartNo, err)
+ 			}
+ 		}
+-		part.StoredSize.Int64, part.StoredSize.Valid = stored.Size, true
+-		part.PlainSize.Int64, part.PlainSize.Valid = plainSize, true
+-		if batchBackfiller != nil {
+-			resolvedSizes[part.PartNo] = [2]int64{plainSize, stored.Size}
+-		} else if backfiller != nil {
+-			if err := backfiller.UpdatePartSizes(ctx, fileID, part.PartNo, plainSize, stored.Size); err != nil {
++		session.StoreResolvedSize(part, plainSize, stored.Size)
++		if many == nil && one != nil {
++			if err := one.UpdatePartSizes(ctx, fileID, part.PartNo, plainSize, stored.Size); err != nil {
+ 				return err
+ 			}
+ 		}
+ 	}
+-	if batchBackfiller != nil && len(resolvedSizes) > 0 {
+-		if err := batchBackfiller.UpdatePartSizesMany(ctx, fileID, resolvedSizes); err != nil {
+-			return err
+-		}
+-	}
+-	return nil
++	return session.CommitSizes(ctx, fileID)
+ }
+ 
+ func (d *Downloader) openDownloadSession(ctx context.Context, userID int64) (telegramstore.DownloadSession, error) {
+-	if opener, ok := d.storage.(telegramstore.DownloadSessionOpener); ok {
+-		return opener.OpenDownloadSession(ctx, userID)
+-	}
+-	return storageDownloadSession{storage: d.storage}, nil
++	return d.backend().Download(ctx, userID, ErrDownloadNotConfigured)
+ }
+ 
+ type storageDownloadSession struct{ storage telegramstore.Storage }
+@@ -217,7 +203,7 @@ type downloadSegment struct {
+ 
+ type downloadReader struct {
+ 	ctx          context.Context
+-	session      telegramstore.DownloadSession
++	session      downloadScope
+ 	sessionOwner bool
+ 	userID       int64
+ 	file         *sqlcgen.File
+diff --git a/internal/transfer/download_backend.go b/internal/transfer/download_backend.go
+new file mode 100644
+index 0000000..576b7f1
+--- /dev/null
++++ b/internal/transfer/download_backend.go
+@@ -0,0 +1,83 @@
++package transfer
++
++import (
++	"context"
++	"io"
++
++	"github.com/google/uuid"
++	"github.com/tgdrive/teldrive/v2/internal/db/sqlcgen"
++	"github.com/tgdrive/teldrive/v2/internal/telegramstore"
++)
++
++type downloadScope interface {
++	downloadBackend
++	telegramstore.DownloadSession
++	SizePersistence() (PartSizeBackfiller, PartSizeBatchBackfiller)
++	StoreResolvedSize(*sqlcgen.FilePart, int64, int64)
++	CommitSizes(context.Context, uuid.UUID) error
++}
++
++type downloadRequestBinding struct {
++	downloadBackend
++	session telegramstore.DownloadSession
++	one     PartSizeBackfiller
++	many    PartSizeBatchBackfiller
++	sizes   map[int32][2]int64
++}
++
++func (b downloadBinding) Download(ctx context.Context, userID int64, unavailable error) (telegramstore.DownloadSession, error) {
++	if opener := b.SessionSource(); opener != nil {
++		return opener.OpenDownloadSession(ctx, userID)
++	}
++	return borrowedDownload{downloadBackend: b, metadata: b.MetadataSource(), unavailable: unavailable}, nil
++}
++
++type borrowedDownload struct {
++	downloadBackend
++	metadata    telegramstore.MetadataReader
++	unavailable error
++}
++
++func (b borrowedDownload) Metadata(ctx context.Context, request telegramstore.MetadataRequest) (telegramstore.StoredPart, error) {
++	if b.metadata == nil {
++		return telegramstore.StoredPart{}, b.unavailable
++	}
++	return b.metadata.Metadata(ctx, request)
++}
++
++func (borrowedDownload) Close() error { return nil }
++
++func (d *Downloader) requestBackend(session telegramstore.DownloadSession) downloadScope {
++	one, _ := d.catalog.(PartSizeBackfiller)
++	many, _ := d.catalog.(PartSizeBatchBackfiller)
++	return &downloadRequestBinding{downloadBackend: d.backend(), session: session, one: one, many: many, sizes: make(map[int32][2]int64)}
++}
++
++func (b *downloadRequestBinding) Metadata(ctx context.Context, req telegramstore.MetadataRequest) (telegramstore.StoredPart, error) {
++	return b.session.Metadata(ctx, req)
++}
++
++func (b *downloadRequestBinding) OpenRange(ctx context.Context, req telegramstore.RangeRequest) (io.ReadCloser, error) {
++	return b.session.OpenRange(ctx, req)
++}
++
++func (b *downloadRequestBinding) Close() error { return b.session.Close() }
++
++func (b *downloadRequestBinding) SizePersistence() (PartSizeBackfiller, PartSizeBatchBackfiller) {
++	return b.one, b.many
++}
++
++func (b *downloadRequestBinding) StoreResolvedSize(part *sqlcgen.FilePart, plainSize, storedSize int64) {
++	part.StoredSize.Int64, part.StoredSize.Valid = storedSize, true
++	part.PlainSize.Int64, part.PlainSize.Valid = plainSize, true
++	if b.many != nil {
++		b.sizes[part.PartNo] = [2]int64{plainSize, storedSize}
++	}
++}
++
++func (b *downloadRequestBinding) CommitSizes(ctx context.Context, fileID uuid.UUID) error {
++	if b.many != nil && len(b.sizes) > 0 {
++		return b.many.UpdatePartSizesMany(ctx, fileID, b.sizes)
++	}
++	return nil
++}
+diff --git a/internal/transfer/upload.go b/internal/transfer/upload.go
+index 983d83b..39b90a2 100644
+--- a/internal/transfer/upload.go
++++ b/internal/transfer/upload.go
+@@ -109,11 +109,11 @@ func (p *Pipeline) UploadPart(ctx context.Context, request UploadPartRequest) (*
+ 	}
+ 	request.Checksum = checksum
+ 
+-	session, err := p.catalog.Get(ctx, request.UserID, request.UploadID)
++	session, err := p.backend().Get(ctx, request.UserID, request.UploadID)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	if existing, err := p.catalog.GetPart(ctx, request.UserID, request.UploadID, request.PartNo); err == nil {
++	if existing, err := p.backend().GetPart(ctx, request.UserID, request.UploadID, request.PartNo); err == nil {
+ 		if existing.State == sqlcgen.UploadPartStateStored {
+ 			if existing.PlainSize != request.PlainSize || !checksumMatches(existing.Checksum.String, existing.Checksum.Valid, request.Checksum) {
+ 				return nil, uploads.ErrPartConflict
+@@ -125,11 +125,11 @@ func (p *Pipeline) UploadPart(ctx context.Context, request UploadPartRequest) (*
+ 	}
+ 	slog.DebugContext(ctx, "upload part started", "upload_id", request.UploadID, "part_no", request.PartNo, "plain_size", request.PlainSize, "requested_channel_id", request.RequestedChannelID)
+ 
+-	channelID, err := p.channels.Resolve(ctx, request.UserID, request.RequestedChannelID)
++	channelID, err := p.backend().Resolve(ctx, request.UserID, request.RequestedChannelID)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	claim, err := p.catalog.ClaimPart(ctx, uploads.ClaimPartInput{
++	claim, err := p.backend().ClaimPart(ctx, uploads.ClaimPartInput{
+ 		UserID:    request.UserID,
+ 		UploadID:  request.UploadID,
+ 		PartNo:    request.PartNo,
+@@ -163,7 +163,7 @@ func (p *Pipeline) UploadPart(ctx context.Context, request UploadPartRequest) (*
+ 		if p.keys == nil || !session.EncryptionKeyVersion.Valid {
+ 			return nil, p.failPart(ctx, request, claim.LeaseToken, "encryption_key_missing", ErrEncryptionKey)
+ 		}
+-		key, keyErr := p.keys.Key(ctx, request.UserID, session.EncryptionKeyVersion.Int32)
++		key, keyErr := p.backend().Key(ctx, request.UserID, session.EncryptionKeyVersion.Int32)
+ 		if keyErr != nil || key == "" {
+ 			return nil, p.failPart(ctx, request, claim.LeaseToken, "encryption_key_missing", errors.Join(ErrEncryptionKey, keyErr))
+ 		}
+@@ -184,7 +184,7 @@ func (p *Pipeline) UploadPart(ctx context.Context, request UploadPartRequest) (*
+ 		salt = &generatedSalt
+ 	}
+ 
+-	stored, err := p.storage.Upload(uploadCtx, telegramstore.UploadRequest{
++	stored, err := p.backend().Upload(uploadCtx, telegramstore.UploadRequest{
+ 		UserID:    request.UserID,
+ 		ChannelID: channelID,
+ 		Name:      p.partName(session, request.PartNo),
+@@ -232,7 +232,7 @@ func (p *Pipeline) UploadPart(ctx context.Context, request UploadPartRequest) (*
+ 
+ 	storeCtx, cancelStore := partCleanupContext(ctx)
+ 	defer cancelStore()
+-	part, err := p.catalog.StorePart(storeCtx, uploads.StorePartInput{
++	part, err := p.backend().StoreUploaded(storeCtx, ctx, request.UserID, stored, uploads.StorePartInput{
+ 		UploadID:    request.UploadID,
+ 		PartNo:      request.PartNo,
+ 		LeaseToken:  claim.LeaseToken,
+@@ -243,22 +243,14 @@ func (p *Pipeline) UploadPart(ctx context.Context, request UploadPartRequest) (*
+ 		BlockHashes: append([]byte(nil), blockHashes...),
+ 	})
+ 	if err != nil {
+-		cleanupErr := p.deleteUploaded(ctx, request.UserID, stored)
+-		return nil, errors.Join(err, cleanupErr)
++		return nil, err
+ 	}
+ 	slog.DebugContext(ctx, "upload part completed", "upload_id", request.UploadID, "part_no", request.PartNo, "channel_id", stored.ChannelID, "message_id", stored.MessageID, "stored_size", stored.Size)
+ 	return &UploadPartResult{Part: part}, nil
+ }
+ 
+ func (p *Pipeline) failPart(ctx context.Context, request UploadPartRequest, leaseToken uuid.UUID, code string, cause error) error {
+-	cleanupCtx, cancel := partCleanupContext(ctx)
+-	defer cancel()
+-	_, failErr := p.catalog.FailPart(cleanupCtx, uploads.FailPartInput{
+-		UploadID:   request.UploadID,
+-		PartNo:     request.PartNo,
+-		LeaseToken: leaseToken,
+-		ErrorCode:  code,
+-	})
++	failErr := p.backend().AbortPart(ctx, request, leaseToken, code)
+ 	if failErr != nil && !errors.Is(failErr, uploads.ErrLeaseLost) {
+ 		return errors.Join(cause, failErr)
+ 	}
+@@ -267,27 +259,10 @@ func (p *Pipeline) failPart(ctx context.Context, request UploadPartRequest, leas
+ 
+ func (p *Pipeline) renewPartLease(ctx context.Context, cancel context.CancelCauseFunc, request UploadPartRequest, leaseToken uuid.UUID) <-chan error {
+ 	errorsCh := make(chan error, 1)
+-	go func() {
+-		ticker := time.NewTicker(p.config.LeaseRenewInterval)
+-		defer ticker.Stop()
+-		for {
+-			select {
+-			case <-ctx.Done():
+-				return
+-			case <-ticker.C:
+-				renewCtx, stop := partCleanupContext(ctx)
+-				err := p.catalog.RenewPart(renewCtx, uploads.RenewPartInput{
+-					UploadID: request.UploadID, PartNo: request.PartNo, LeaseToken: leaseToken,
+-				})
+-				stop()
+-				if err != nil {
+-					errorsCh <- err
+-					cancel(err)
+-					return
+-				}
+-			}
+-		}
+-	}()
++	p.backend().KeepLease(ctx, request, leaseToken, func(err error) {
++		errorsCh <- err
++		cancel(err)
++	})
+ 	return errorsCh
+ }
+ 
+@@ -305,13 +280,7 @@ func partCleanupContext(ctx context.Context) (context.Context, context.CancelFun
+ }
+ 
+ func (p *Pipeline) deleteUploaded(ctx context.Context, userID int64, part telegramstore.StoredPart) error {
+-	if part.ChannelID == 0 || part.MessageID <= 0 {
+-		return nil
+-	}
+-	if err := p.storage.DeleteMessages(ctx, userID, part.ChannelID, []int64{part.MessageID}); err != nil {
+-		return fmt.Errorf("compensate Telegram upload: %w", err)
+-	}
+-	return nil
++	return p.backend().RemoveUploaded(ctx, userID, part)
+ }
+ 
+ // partName returns the Telegram document name for a part. Uploads whose known
+diff --git a/internal/transfer/upload_backend.go b/internal/transfer/upload_backend.go
+new file mode 100644
+index 0000000..6a2b803
+--- /dev/null
++++ b/internal/transfer/upload_backend.go
+@@ -0,0 +1,70 @@
++package transfer
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"github.com/google/uuid"
++	"github.com/tgdrive/teldrive/v2/internal/db/sqlcgen"
++	"github.com/tgdrive/teldrive/v2/internal/telegramstore"
++	"github.com/tgdrive/teldrive/v2/internal/uploads"
++	"time"
++)
++
++func (b uploadBinding) StoreUploaded(storeCtx, cleanupCtx context.Context, userID int64, stored telegramstore.StoredPart, input uploads.StorePartInput) (*sqlcgen.UploadPart, error) {
++	part, err := b.StorePart(storeCtx, input)
++	if err != nil {
++		return nil, errors.Join(err, b.RemoveUploaded(cleanupCtx, userID, stored))
++	}
++	return part, nil
++}
++
++func (b uploadBinding) AbortPart(ctx context.Context, request UploadPartRequest, leaseToken uuid.UUID, code string) error {
++	cleanupCtx, cancel := partCleanupContext(ctx)
++	defer cancel()
++	_, failErr := b.FailPart(cleanupCtx, uploads.FailPartInput{
++		UploadID:   request.UploadID,
++		PartNo:     request.PartNo,
++		LeaseToken: leaseToken,
++		ErrorCode:  code,
++	})
++	return failErr
++}
++
++func (b uploadBinding) RenewPart(ctx context.Context, input uploads.RenewPartInput) error {
++	renewCtx, stop := partCleanupContext(ctx)
++	err := b.UploadCatalog.RenewPart(renewCtx, input)
++	stop()
++	return err
++}
++
++func (b uploadBinding) KeepLease(ctx context.Context, request UploadPartRequest, leaseToken uuid.UUID, failed func(error)) {
++	go func() {
++		ticker := time.NewTicker(b.config.LeaseRenewInterval)
++		defer ticker.Stop()
++		for {
++			select {
++			case <-ctx.Done():
++				return
++			case <-ticker.C:
++				err := b.RenewPart(ctx, uploads.RenewPartInput{
++					UploadID: request.UploadID, PartNo: request.PartNo, LeaseToken: leaseToken,
++				})
++				if err != nil {
++					failed(err)
++					return
++				}
++			}
++		}
++	}()
++}
++
++func (b uploadBinding) RemoveUploaded(ctx context.Context, userID int64, part telegramstore.StoredPart) error {
++	if part.ChannelID == 0 || part.MessageID <= 0 {
++		return nil
++	}
++	if err := b.DeleteMessages(ctx, userID, part.ChannelID, []int64{part.MessageID}); err != nil {
++		return fmt.Errorf("compensate Telegram upload: %w", err)
++	}
++	return nil
++}

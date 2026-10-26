@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/google_differential_privacy_isp"
+version = "1.0.0"
+description = "Refactor an injected interface_segregation smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "interface_segregation", "go"]
+
+[metadata]
+repo_name = "differential-privacy"
+repo_url = "https://github.com/google/differential-privacy"
+git_commit = "7d61fcf8f1dd37ac96d28b9203ce9c48f116c4d0"
+language = "Go"
+smell_type = "interface_segregation"
+prompt_mode = "explicit"
+apt_packages = []
+smell_checker_match_count = 2
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 4
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/google/differential-privacy", CC_FORBIDDEN_REPO_URL = "differential-privacy", CC_FORBIDDEN_REPO_NAME = "differential-privacy" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

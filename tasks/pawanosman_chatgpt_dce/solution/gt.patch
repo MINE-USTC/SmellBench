@@ -1,0 +1,248 @@
+diff --git a/src/agent/tools/grepContent.ts b/src/agent/tools/grepContent.ts
+deleted file mode 100644
+index 29a9b1d..0000000
+--- a/src/agent/tools/grepContent.ts
++++ /dev/null
+@@ -1,21 +0,0 @@
+-import type { GrepMode, GrepRow } from "./grepResults";
+-
+-export function contentWriter(mode: GrepMode, pending: GrepRow[]): { flush(): void; lines: string[] } | undefined {
+-  if (mode !== "content") return undefined;
+-  const lines: string[] = [];
+-  let lastPath: string | undefined;
+-  return {
+-    lines,
+-    flush() {
+-      for (const row of pending) {
+-        if (row.path !== lastPath) {
+-          if (lastPath !== undefined) lines.push("");
+-          lines.push(row.path);
+-          lastPath = row.path;
+-        }
+-        lines.push(`${row.line}${row.match ? ":" : "-"}${row.text}`);
+-      }
+-      pending.length = 0;
+-    },
+-  };
+-}
+diff --git a/src/agent/tools/grepProtocol.ts b/src/agent/tools/grepProtocol.ts
+deleted file mode 100644
+index f7a6d13..0000000
+--- a/src/agent/tools/grepProtocol.ts
++++ /dev/null
+@@ -1,45 +0,0 @@
+-import type { GrepMode, GrepRow } from "./grepResults";
+-
+-type Encoded = { text?: string; bytes?: string };
+-export interface SearchEvent {
+-  type: string;
+-  data: { path?: Encoded; lines?: Encoded; line_number?: number };
+-}
+-const decode = (value?: Encoded) => value?.text ?? (value?.bytes ? Buffer.from(value.bytes, "base64").toString("utf8") : "");
+-
+-export interface SearchCursor {
+-  path: string;
+-  lastRow: number;
+-  lastMatch: number;
+-  matchingLines: number;
+-  markedFile: boolean;
+-}
+-
+-export function metadataReceiver(mode: GrepMode, cursor: SearchCursor, relative: (file: string) => string, push: (row: GrepRow) => boolean, stop: () => void): ((event: SearchEvent) => boolean) {
+-  return event => {
+-    if (event.type === "begin") {
+-      cursor.path = relative(decode(event.data.path));
+-      cursor.lastRow = 0;
+-      cursor.lastMatch = 0;
+-      cursor.matchingLines = 0;
+-      cursor.markedFile = false;
+-      return true;
+-    }
+-    if (mode === "content") return false;
+-    if (event.type === "match" || event.type === "context") {
+-      const path = relative(decode(event.data.path));
+-      const lines = decode(event.data.lines).replace(/\r?\n$/, "").split(/\r?\n/);
+-      for (let i = 0; i < lines.length; i++) {
+-        const number = Number(event.data.line_number) + i;
+-        if (event.type === "match" && number > cursor.lastMatch) { cursor.matchingLines++; cursor.lastMatch = number; }
+-        if (mode === "files_with_matches" && event.type === "match" && !cursor.markedFile) {
+-          cursor.markedFile = true;
+-          if (!push({ path })) { stop(); return true; }
+-        }
+-      }
+-    } else if (event.type === "end" && mode === "count" && cursor.matchingLines > 0) {
+-      if (!push({ path: cursor.path, count: cursor.matchingLines })) stop();
+-    }
+-    return true;
+-  };
+-}
+diff --git a/src/agent/tools/grepResults.ts b/src/agent/tools/grepResults.ts
+index 3ea8ecd..ae0eba6 100644
+--- a/src/agent/tools/grepResults.ts
++++ b/src/agent/tools/grepResults.ts
+@@ -7,8 +7,6 @@
+  * Licensed under the MIT License. See LICENSE file in the project root.
+  */
+ 
+-import { contentWriter } from "./grepContent";
+-
+ export type GrepMode = "content" | "files_with_matches" | "count";
+ export interface GrepRow { path: string; line?: number; text?: string; match?: boolean; count?: number }
+ 
+@@ -18,11 +16,7 @@ export class GrepPage {
+   private seen = 0;
+   private chars = 0;
+   private more = false;
++  constructor(readonly mode: GrepMode, readonly skip: number, readonly cap: number) {}
+-  private count = 0;
+-  private content: ReturnType<typeof contentWriter>;
+-  constructor(readonly mode: GrepMode, readonly skip: number, readonly cap: number) {
+-    this.content = contentWriter(mode, this.rows);
+-  }
+ 
+   /** False means a real lookahead row proves that another page exists. */
+   push(row: GrepRow): boolean {
+@@ -32,23 +26,20 @@ export class GrepPage {
+     const text = row.text ?? "";
+     const clipped = text.length > 500 ? text.slice(0, 500) + " …[truncated; use Read for exact text]" : text;
+     const size = clipped.length + row.path.length + 24;
++    if (this.rows.length >= this.cap || (this.rows.length > 0 && this.chars + size > 20_000)) {
+-    if (this.count >= this.cap || (this.count > 0 && this.chars + size > 20_000)) {
+       this.more = true;
+       return false;
+     }
++    this.rows.push({ ...row, text: clipped });
+-    const accepted = { ...row, text: clipped };
+-    this.rows.push(accepted);
+-    this.count++;
+     this.chars += size;
+     return true;
+   }
+ 
+   format(incomplete?: string): string {
+-    this.content?.flush();
+     const unit = this.mode === "content" ? "rows" : "files";
++    const next = this.more ? String(this.skip + this.rows.length) : "none";
++    const header = `[Grep ${unit}=${this.rows.length} offset=${this.skip} next_offset=${next}${incomplete ? " scan_incomplete=true" : ""}]`;
++    const out: string[] = [header];
+-    const next = this.more ? String(this.skip + this.count) : "none";
+-    const header = `[Grep ${unit}=${this.count} offset=${this.skip} next_offset=${next}${incomplete ? " scan_incomplete=true" : ""}]`;
+-    const out: string[] = [header, ...(this.content?.lines ?? [])];
+     let lastPath: string | undefined;
+     for (const row of this.rows) {
+       if (this.mode === "files_with_matches") out.push(row.path);
+@@ -58,7 +49,7 @@ export class GrepPage {
+         out.push(`${row.line}${row.match ? ":" : "-"}${row.text}`);
+       }
+     }
++    if (!this.rows.length) out.push(this.skip > 0 ? "(no rows at this offset)" : "(no matches)");
+-    if (!this.count) out.push(this.skip > 0 ? "(no rows at this offset)" : "(no matches)");
+     if (incomplete) out.push(`(${incomplete}; narrow path/glob/pattern — this is not a complete search)`);
+     return out.join("\n");
+   }
+diff --git a/src/agent/tools/grepWindows.ts b/src/agent/tools/grepWindows.ts
+deleted file mode 100644
+index 5d760b0..0000000
+--- a/src/agent/tools/grepWindows.ts
++++ /dev/null
+@@ -1,16 +0,0 @@
+-import type { GrepMode, GrepRow } from "./grepResults";
+-
+-export function consumeWindows(mode: GrepMode, file: string, lines: string[], matches: Set<number>, before: number, after: number, push: (row: GrepRow) => boolean): { through: number; full: boolean } {
+-  if (mode !== "content") return { through: -1, full: false };
+-  let through = -1;
+-  for (const match of matches) {
+-    const end = Math.min(lines.length - 1, match + after);
+-    let line = Math.max(through + 1, match - before, 0);
+-    while (line <= end) {
+-      if (!push({ path: file, line: line + 1, text: lines[line], match: matches.has(line) })) return { through: line - 1, full: true };
+-      line++;
+-    }
+-    through = Math.max(through, end);
+-  }
+-  return { through, full: false };
+-}
+diff --git a/src/agent/tools/search.ts b/src/agent/tools/search.ts
+index bcf4006..2c4c2d6 100644
+--- a/src/agent/tools/search.ts
++++ b/src/agent/tools/search.ts
+@@ -20,8 +20,6 @@ import { BINARY_EXTS, isNoisePath, NOISE_GLOBS } from "./ignore";
+ import { search as semanticIndexSearch, buildIndex, isIndexing, isIndexingEnabled } from "../semanticIndex";
+ import { searchDocs, listDocSources } from "../docsIndex";
+ import { GrepPage, type GrepMode } from "./grepResults";
+-import { metadataReceiver } from "./grepProtocol";
+-import { consumeWindows } from "./grepWindows";
+ import type { ToolOutcome } from "../toolOutcome";
+ import { fuseRetrieval, lexicalCodeSearch } from "./hybridRetrieval";
+ 
+@@ -88,7 +86,11 @@ export const grepTool = defineTool("Grep", false, async (input, abortSignal) =>
+         let child: ReturnType<typeof spawn> | undefined;
+         let pending = "";
+         let stderr = "";
++        let currentPath = "";
++        let lastRow = 0;
++        let lastMatch = 0;
++        let matchingLines = 0;
++        let markedFile = false;
+-        const cursor = { path: "", lastRow: 0, lastMatch: 0, matchingLines: 0, markedFile: false };
+         let stopping: { message?: string; status?: ToolOutcome["status"] } | undefined;
+         let closeFallback: ReturnType<typeof setTimeout> | undefined;
+         const finish = (message?: string, status?: ToolOutcome["status"]) => {
+@@ -112,32 +114,30 @@ export const grepTool = defineTool("Grep", false, async (input, abortSignal) =>
+         const onAbort = () => stop("grep aborted", "aborted");
+         const timer = setTimeout(() => stop("grep timed out", "timed_out"), 15_000);
+         const decode = (v: { text?: string; bytes?: string } | undefined) => v?.text ?? (v?.bytes ? Buffer.from(v.bytes, "base64").toString("utf8") : "");
+-        const receiveMetadata = metadataReceiver(mode, cursor, relative, row => page.push(row), () => stop());
+         const accept = (record: string) => {
+           if (!record || settled || stopping) return;
+           const event = JSON.parse(record);
+-          if (receiveMetadata(event)) return;
+           const data = event.data;
+           if (event.type === "begin") {
++            currentPath = relative(decode(data.path)); lastRow = 0; lastMatch = 0; matchingLines = 0; markedFile = false;
+-            cursor.path = relative(decode(data.path)); cursor.lastRow = 0; cursor.lastMatch = 0; cursor.matchingLines = 0; cursor.markedFile = false;
+           } else if (event.type === "match" || event.type === "context") {
+             const file = relative(decode(data.path));
+             const matching = event.type === "match";
+             const lines = decode(data.lines).replace(/\r?\n$/, "").split(/\r?\n/);
+             for (let i = 0; i < lines.length; i++) {
+               const number = Number(data.line_number) + i;
++              if (matching && number > lastMatch) { matchingLines++; lastMatch = number; }
++              if (mode === "files_with_matches" && matching && !markedFile) {
++                markedFile = true;
+-              if (matching && number > cursor.lastMatch) { cursor.matchingLines++; cursor.lastMatch = number; }
+-              if (mode === "files_with_matches" && matching && !cursor.markedFile) {
+-                cursor.markedFile = true;
+                 if (!page.push({ path: file })) { stop(); return; }
+               }
++              if (mode === "content" && number > lastRow) {
++                lastRow = number;
+-              if (mode === "content" && number > cursor.lastRow) {
+-                cursor.lastRow = number;
+                 if (!page.push({ path: file, line: number, text: lines[i], match: matching })) { stop(); return; }
+               }
+             }
++          } else if (event.type === "end" && mode === "count" && matchingLines > 0) {
++            if (!page.push({ path: currentPath, count: matchingLines })) stop();
+-          } else if (event.type === "end" && mode === "count" && cursor.matchingLines > 0) {
+-            if (!page.push({ path: cursor.path, count: cursor.matchingLines })) stop();
+           }
+         };
+         try { child = spawn(rgBin, args, { cwd: root, windowsHide: true }); }
+@@ -226,15 +226,13 @@ export const grepTool = defineTool("Grep", false, async (input, abortSignal) =>
+           for (let i = 0; i < lines.length; i++) if (expression.test(lines[i])) matches.add(i);
+         }
+         if (!matches.size) continue;
+-        const consumed = consumeWindows(mode, entry.file, lines, matches, bCtx, aCtx, row => page.push(row));
+-        if (consumed.full) break outer;
+         if (mode !== "content") {
+           if (!page.push({ path: entry.file, count: matches.size })) break outer;
+           continue;
+         }
+         // Merge overlapping context windows before paging; each source line is
+         // emitted once and a matching line always keeps its ':' marker.
++        let previousEnd = -1;
+-        let previousEnd = consumed.through;
+         for (const index of matches) {
+           const start = Math.max(previousEnd + 1, index - bCtx, 0);
+           const end = Math.min(lines.length - 1, index + aCtx);

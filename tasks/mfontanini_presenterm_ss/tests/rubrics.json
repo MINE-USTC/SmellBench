@@ -1,0 +1,398 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "mfontanini_presenterm_ss",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "palette_resolution",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion all theme producers and Line; retry consumers.",
+      "baseline_defect": "Repeated optional raw-channel resolve/transpose/flatten across theme and render code.",
+      "criterion": "Centralize palette resolution policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Background before foreground, missing/transparent\u2192None, error propagation preserves first failure. Cover ordinary Line, title/heading/list/quote/table/frontmatter/footer as well as all theme producers; execution statuses resolve running\u2192success\u2192failure\u2192not_started. No per-producer quota. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/theme/clean.rs",
+          "symbol": "SlideTitleStyle,HeadingStyle,IntroSlideLabelStyle,FooterStyle,ExecutionStatusBlockStyle,PtyCursorStyle",
+          "detail": "Repeated optional raw-channel resolve/transpose/flatten across theme and render code.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "style_inheritance",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion TextStyle/Line merge duplicated in modal/builders/footer.",
+      "baseline_defect": "Flags OR, maximum size and own-color-first are copied fieldwise.",
+      "criterion": "Centralize style inheritance policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Keep current flags|inherited, max sizes, each current color.or(inherited), including transparency resolved before merge; same policy serves modal, heading and intro/footer content. Separate rule from palette resolution; no requirement fields become private again. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/ui/modals.rs",
+          "symbol": "ContentRow::with_style",
+          "detail": "Flags OR, maximum size and own-color-first are copied fieldwise.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "inline_theme_cascade",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion ordinary/list/quote; stage2 flags choose later contributions.",
+      "baseline_defect": "Three paths independently encode code\u2192bold\u2192italics cascade.",
+      "criterion": "Centralize inline theme cascade policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Later eligibility observes flags added by earlier merge, not initial flags snapshot. First existing/color contribution wins; ordinary max-size merge then slide override only if>1; list always slide-size replacement; quote applies cascade only if BOTH resolved colors absent after optional base colors, then forces slide size. Explicit transparent token may become eligible; not raw-token presence. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/presentation/builder/mod.rs",
+          "symbol": "push_aligned_text",
+          "detail": "Three paths independently encode code\u2192bold\u2192italics cascade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "font_capability_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion/continuation theme and slide size policy.",
+      "baseline_defect": "Builders and theme constructors duplicate support/default/clamp logic.",
+      "criterion": "Centralize font capability policy policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Supported requested/default1 clamped1..7, unsupported1. Cover theme slide title/headings/intro, list indentation and width, paragraph spacing, code, separator, execution/status/PTY. This is distinct from TextStyle size cap16 and size inheritance; retain call-site effects. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/presentation/builder/snippet.rs",
+          "symbol": "push_code_lines,highlight_lines,push_pty_snippet",
+          "detail": "Builders and theme constructors duplicate support/default/clamp logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "alignment_fallback",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion all element selectors.",
+      "baseline_defect": "Slide override, element alignment and default spread across builders.",
+      "criterion": "Centralize alignment fallback policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Title/subtitle/event/location/date/author, headings, table, paragraph/list and quote keep original precedence. Quote entry uses theme blockquote/default without adding slide override; others retain explicit slide precedence where present. Generic element selector or existing theme API valid; do not unify genuine exceptions. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/presentation/builder/frontmatter.rs",
+          "symbol": "push_intro_slide_text",
+          "detail": "Slide override, element alignment and default spread across builders.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "title_metadata_and_prefix",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry raw title cache and generated prefixes.",
+      "baseline_defect": "Builders own copies of raw resolution, inherited output and generated-style rules.",
+      "criterion": "Centralize title metadata and prefix policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Title cache first resolved line, unthemed/prefix-free, only after whole line succeeds; rendered title uses theme plus slide override then chunk inheritance. First title prefix only, prefix+space with size max1. Ordinary heading resolves whole input before selecting level, prefix independently inherited, then common aligned flow. Line-local error does not commit partial title/chunks; prior padding remains. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/presentation/builder/heading.rs",
+          "symbol": "push_slide_title,push_heading",
+          "detail": "Builders own copies of raw resolution, inherited output and generated-style rules.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "generated_whitespace_style",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2/retry footer and output generated text.",
+      "baseline_defect": "Generated whitespace and content maintain related inheritance policy independently.",
+      "criterion": "Centralize generated whitespace style policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Footer reassembled inline resolution completes before inserting original leading/trailing whitespace; whitespace gets theme flags/colors and max(1,size), content retains larger size/current colors. Frontmatter content uses same resolve-then-inherit semantics. Reconnecting Line::resolve/apply_style is valid; whitespace counts/parse errors unchanged. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/ui/footer.rs",
+          "symbol": "FooterLine",
+          "detail": "Generated whitespace and content maintain related inheritance policy independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "table_resolution_measurement",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry resolution interleaved with cell measurement.",
+      "baseline_defect": "Per-cell raw channel construction duplicates shared resolver before padding.",
+      "criterion": "Centralize table resolution measurement policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Resolve background first, construct/measure cell, foreground then commit into local line; undefined colors abort without emitting partial row. Preserve width and per-column saturating padding, separators and all header/body alignment policy; table does not acquire list/quote theme styles. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/presentation/builder/table.rs",
+          "symbol": "prepare_table_row",
+          "detail": "Per-cell raw channel construction duplicates shared resolver before padding.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "blockquote_prefix_override",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry shared base preparation and explicit prefix transparency.",
+      "baseline_defect": "Base/prefix color inheritance is locally encoded outside common color policy.",
+      "criterion": "Centralize blockquote prefix override policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Resolve base background then foreground; missing prefix override inherits base foreground, explicit transparent clears it. Do not replace explicit override with Option::or. Base background shared, prefix string default retained; simple resolve-then-override valid, no duplicate-validation requirement. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/theme/clean.rs",
+          "symbol": "BlockQuoteStyle::new",
+          "detail": "Base/prefix color inheritance is locally encoded outside common color policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cell_pixel_geometry",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion cell/pixel policy across engine/scaler/PTY.",
+      "baseline_defect": "Consumers restate cell densities and pixel reductions.",
+      "criterion": "Centralize cell pixel geometry policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Floating division then multiplication then u16 truncation, saturating pixel/cell subtraction; set_columns scales width, row counterpart height. Cover max viewport, dynamic available rows, image WidthScaled/options, WindowRect, scaler fit/aspect ratio and PTY startup. Preserve aspect-expression operation order and existing custom ScaleImage extension, not algebraically change rounding. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/render/engine.rs",
+          "symbol": "new,current_available_dimensions,render_image,WindowRect",
+          "detail": "Consumers restate cell densities and pixel reductions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "applied_margin_geometry",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 margin origin and sequential transforms.",
+      "baseline_defect": "Applied margin fuses shared size math with position changes.",
+      "criterion": "Centralize applied margin geometry policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Percent uses current rect columns with ceil; horizontal saturating double, start_column original+margin; bottom reduction before top, top pixels computed from intermediate size, saturating start_row. Move cursor if changed before pushing new rect; no combined reduction erasing truncation. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/render/engine.rs",
+          "symbol": "apply_margin",
+          "detail": "Applied margin fuses shared size math with position changes.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "column_margin_geometry",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 column allocation/relative root margin.",
+      "baseline_defect": "Column handoff duplicates ratio, origin and margin arithmetic.",
+      "criterion": "Centralize column margin geometry policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Width from current density*totalcolumns, row consumption relative current start, margins based ROOT columns. First-column branch wins even single column: right only; last left only; middle floor(totalmargin/2) each. Left reduction before right with intermediate density/truncation, saturating left origin; preserve push/move sequence. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/render/engine.rs",
+          "symbol": "enter_column",
+          "detail": "Column handoff duplicates ratio, origin and margin arithmetic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "margin_conversion",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Continuation fixed/percentage conversion.",
+      "baseline_defect": "Layout left/right/center and engine margin paths duplicate ceil percentage rule.",
+      "criterion": "Centralize margin conversion policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Fixed direct, percent ceil(columns*(percent/100)); caller supplies current versus root dimension as appropriate. One pure Margin owner suffices; separate from overflow fitting and rectangle effects. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/render/layout.rs",
+          "symbol": "Layout::compute",
+          "detail": "Layout left/right/center and engine margin paths duplicate ceil percentage rule.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "layout_fit_policy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry left/right/center fit branch redistribution.",
+      "baseline_defect": "Branches encode related margin fitting independently.",
+      "criterion": "Centralize layout fit policy policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Left/right discard margin only when doubledmargin>columns; right edge then saturating text subtraction clamped left margin. Center caps min size to columns then discards margin if combined required exceeds width, preserving minimum-size priority and final centering. Retain font scaling and integer boundaries; no requirement revive removed private fit helper. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/render/layout.rs",
+          "symbol": "Layout::compute",
+          "detail": "Branches encode related margin fitting independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "pty_size_handoff",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Continuation/retry virtual viewport and resize effect.",
+      "baseline_defect": "PTY duplicates scaled geometry and fieldwise expected-size decisions.",
+      "criterion": "Centralize pty size handoff policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Compute row/column reductions using font size, update only update_size&&rows>0. Compare all four dimensions, including pixel-only changes; commit expected size before parser.set_size(rows,columns). No resize if unchanged, and preserve initial-state output. A value comparison or equivalent fieldwise result valid; not force a result struct. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/ui/execution/pty.rs",
+          "symbol": "PtySnippetOutputOperation::as_render_operations",
+          "detail": "PTY duplicates scaled geometry and fieldwise expected-size decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "content_size_inheritance",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 effective size specialization, retry streamed output.",
+      "baseline_defect": "Code, separator and output duplicate chunk max-size policy.",
+      "criterion": "Centralize content size inheritance policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Retain max(existing,font_size.min16); output vertical padding size=max(1,cappedrequest), horizontal prefix=cappedrequest (zero remainszero), actual streamed content retains larger ownsize. No blanket replacement/max1 for all. Shared size/line operations may serve multiple consumers. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/code/snippet.rs",
+          "symbol": "SnippetLine",
+          "detail": "Code, separator and output duplicate chunk max-size policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "centered_minimum_width",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Continuation output/status alignment minimum.",
+      "baseline_defect": "Output and indicator independently implement Alignment adjust_size.",
+      "criterion": "Centralize centered minimum width policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Center block_length max minimum_size; status additionally max MINIMUM_SEPARATOR_WIDTH*font_size, noncenter FitToWindow. Keep output content/margin width selection, not make all alignments centered or introduce margins into minimum. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/ui/execution/output.rs",
+          "symbol": "SnippetOutputOperation::new,ExecIndicator::new",
+          "detail": "Output and indicator independently implement Alignment adjust_size.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "separator_clipping",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Continuation local scaled clip replaces Layout.",
+      "baseline_defect": "Separator repeats width/font/window fit policy outside Layout.",
+      "criterion": "Centralize separator clipping policy so equivalent decisions change coherently across affected consumers while genuine local differences stay explicit.",
+      "acceptance": "Fixed effective width=min(width*font_size,columns).min(width), FitToWindow columns; preserve font0/multiplication/truncation semantics. Coherent fitting API or direct shared policy data valid; no need make Layout a dependency if equivalent policy owner exists. Existing TextStyle/Line/WindowSize/WindowRect/theme APIs are valid repair owners; concise reconnection, data-driven policies or composition qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around each still-independent copy or forcing unlike consumers into identical behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/ui/separator.rs",
+          "symbol": "RenderSeparator::as_render_operations",
+          "detail": "Separator repeats width/font/window fit policy outside Layout.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "mfontanini_presenterm_ss",
+    "rubric_status": "ready",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "weighting": "Each item has equal weight; each dimension is a classification, not a separate quota.",
+    "excluded": "The empty post.diff, pre-existing rendering behavior, test passage, compilation repairs, and removal of an unused private helper alone earn no structural credit."
+  }
+}

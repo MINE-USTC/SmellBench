@@ -1,0 +1,257 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "carllerche_bytes_isp",
+  "rubric_status": "limited",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "bytes_isp_01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Read-only access does not require ownership dispatch.",
+      "baseline_defect": "Bytes::as_slice delegates raw pointer and length interpretation to Vtable::view, making every read depend on the ownership table.",
+      "criterion": "Keep ordinary byte-view construction at a narrow Bytes or view boundary that does not require ownership conversion, uniqueness, cloning, or drop capabilities.",
+      "acceptance": "as_slice and its read-only consumers obtain a slice through state available to a Bytes view without Vtable::view or an equivalent broad ownership interface. A narrow capability projection, functions, direct view operations or composition can qualify even if implementation storage remains in one table. No requirement for multiple physical tables, named traits or a new class per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding through the same full ownership interface while the affected client still depends on unrelated capabilities does not qualify. A genuinely narrow projection is valid even if it shares a backing implementation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Bytes::as_slice",
+          "detail": null,
+          "raw": "expanded.diff:src/bytes.rs:Bytes::as_slice"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Vtable::view",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes.rs:Vtable::view"
+        }
+      ]
+    },
+    {
+      "id": "bytes_isp_02",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Cursor movement is representation-independent view state.",
+      "baseline_defect": "Bytes::inc_start forwards its length and pointer update to Vtable::advance_view.",
+      "criterion": "Own cursor advancement and its bounds invariant at a narrow view-state boundary independent of ownership dispatch.",
+      "acceptance": "The path used by Bytes cursor movement updates ptr and len without a Vtable method or an equally broad clone/conversion/drop dependency. A narrow capability projection, functions, direct view operations or composition can qualify even if implementation storage remains in one table. No requirement for multiple physical tables, named traits or a new class per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding through the same full ownership interface while the affected client still depends on unrelated capabilities does not qualify. A genuinely narrow projection is valid even if it shares a backing implementation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Bytes::inc_start",
+          "detail": null,
+          "raw": "expanded.diff:src/bytes.rs:Bytes::inc_start"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Vtable::advance_view",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes.rs:Vtable::advance_view"
+        }
+      ]
+    },
+    {
+      "id": "bytes_isp_03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The range selection policy belongs with the Bytes view while representation-specific retention may remain behind a narrow backend operation.",
+      "baseline_defect": "Bytes::slice delegates both empty-range policy and nonempty range orchestration to Vtable::slice_view; the interaction stage then sends range endpoints through clone dispatch.",
+      "criterion": "Keep slicing policy, including the empty-view pointer case, with the Bytes view and delegate only representation-dependent retention through a focused capability.",
+      "acceptance": "slice decides its view-level cases and obtains a retained range without requiring backend ownership conversion or drop operations to implement slice policy. A narrow capability projection, functions, direct view operations or composition can qualify even if implementation storage remains in one table. No requirement for multiple physical tables, named traits or a new class per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding through the same full ownership interface while the affected client still depends on unrelated capabilities does not qualify. A genuinely narrow projection is valid even if it shares a backing implementation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Bytes::slice",
+          "detail": null,
+          "raw": "expanded.diff:src/bytes.rs:Bytes::slice"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Vtable::slice_view",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/bytes.rs:Vtable::slice_view"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Vtable::slice_view",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes.rs:Vtable::slice_view"
+        }
+      ]
+    },
+    {
+      "id": "bytes_isp_04",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "A suffix split combines a view-level mutation with backend retention.",
+      "baseline_defect": "Bytes::split_off transfers its central suffix-split decision to Vtable::split_suffix, which retains [at,len) and mutates the original length.",
+      "criterion": "Give Bytes or a narrow view owner responsibility for the split-off state transition while obtaining backend-specific retention through a focused boundary.",
+      "acceptance": "The source prefix length and returned suffix are coordinated without a whole split_suffix operation on the ownership table. A narrow capability projection, functions, direct view operations or composition can qualify even if implementation storage remains in one table. No requirement for multiple physical tables, named traits or a new class per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding through the same full ownership interface while the affected client still depends on unrelated capabilities does not qualify. A genuinely narrow projection is valid even if it shares a backing implementation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Bytes::split_off",
+          "detail": null,
+          "raw": "expanded.diff:src/bytes.rs:Bytes::split_off"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Vtable::split_suffix",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/bytes.rs:Vtable::split_suffix"
+        }
+      ]
+    },
+    {
+      "id": "bytes_isp_05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "A prefix split has a distinct cursor state transition from suffix splitting.",
+      "baseline_defect": "Bytes::split_to delegates prefix retention and source cursor advancement to Vtable::split_prefix.",
+      "criterion": "Give Bytes or a narrow view owner the split-to cursor transition while retaining the prefix through a focused backend capability.",
+      "acceptance": "The original view advances and the returned prefix is retained without a whole split_prefix operation on the broad ownership table. A narrow capability projection, functions, direct view operations or composition can qualify even if implementation storage remains in one table. No requirement for multiple physical tables, named traits or a new class per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding through the same full ownership interface while the affected client still depends on unrelated capabilities does not qualify. A genuinely narrow projection is valid even if it shares a backing implementation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Bytes::split_to",
+          "detail": null,
+          "raw": "expanded.diff:src/bytes.rs:Bytes::split_to"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Vtable::split_prefix",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/bytes.rs:Vtable::split_prefix"
+        }
+      ]
+    },
+    {
+      "id": "bytes_isp_06",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Truncation's general view policy and exceptional promotable-storage handling have different owners.",
+      "baseline_defect": "Bytes::truncate hands all zero, shorter, and promotable cases to Vtable::truncate_view, whose implementation compares concrete Vtable identities and replaces the handle.",
+      "criterion": "Separate general Bytes truncation decisions from the representation-aware retention needed for promotable storage.",
+      "acceptance": "Zero and ordinary shortening are handled by view-level logic; the promotable exception uses a focused storage operation rather than a whole truncate_view method on the ownership table. A narrow capability projection, functions, direct view operations or composition can qualify even if implementation storage remains in one table. No requirement for multiple physical tables, named traits or a new class per operation. Retain the backing before replacing/dropping the old handle when required; preserve original allocation extent through promotable truncation. Equivalent unified retention avoids concrete table identity switches and is valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding through the same full ownership interface while the affected client still depends on unrelated capabilities does not qualify. A genuinely narrow projection is valid even if it shares a backing implementation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Bytes::truncate",
+          "detail": null,
+          "raw": "expanded.diff:src/bytes.rs:Bytes::truncate"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Vtable::truncate_view",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/bytes.rs:Vtable::truncate_view"
+        }
+      ]
+    },
+    {
+      "id": "bytes_isp_07",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full-handle cloning and selected-range retention are distinct capabilities even when they share backing-specific reference acquisition.",
+      "baseline_defect": "Clone directly supplies synthetic full-range endpoints to the widened clone callback on the full conversion/uniqueness/drop table, exposing selection protocol to a full-handle client.",
+      "criterion": "Decouple full-handle Clone consumers from range-selection orchestration through a suitably narrow retention contract.",
+      "acceptance": "Ordinary Clone need not interpret ranges; view clients obtain only retention capability. A full-range projection over shared low-level range retention is valid when it narrows the client dependency. Separate backend callbacks are not mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding through the same full ownership interface while the affected client still depends on unrelated capabilities does not qualify. A genuinely narrow projection is valid even if it shares a backing implementation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Vtable::clone",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/bytes.rs:Vtable::clone"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/bytes.rs",
+          "symbol": "impl Clone for Bytes",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/bytes.rs:impl Clone for Bytes"
+        }
+      ]
+    },
+    {
+      "id": "bytes_isp_09",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "BytesMut::freeze supplies a separate shared backing to immutable Bytes.",
+      "baseline_defect": "The selected-range callback signature propagates from Bytes's table to src/bytes_mut.rs:shared_v_clone, where the adapter increments a different Shared count and projects the returned range.",
+      "criterion": "Coordinate the immutable Bytes range-retention contract with the BytesMut-backed shared adapter through the same focused boundary used by other backings.",
+      "acceptance": "The producer in bytes_mut.rs retains its Shared allocation and hands an appropriately ranged Bytes view to consumers in bytes.rs without inheriting unrelated view-policy methods. A narrow capability projection, functions, direct view operations or composition can qualify even if implementation storage remains in one table. No requirement for multiple physical tables, named traits or a new class per operation. The adapter may use generic post-retention projection instead of implementing begin/end itself. Preserve its distinct Shared reference acquisition; physical attachment to a shared dispatch structure alone is not failure. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding through the same full ownership interface while the affected client still depends on unrelated capabilities does not qualify. A genuinely narrow projection is valid even if it shares a backing implementation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "shared_v_clone",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/bytes_mut.rs:shared_v_clone"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes.rs",
+          "symbol": "Vtable::clone",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes.rs:Vtable::clone"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "BytesMut::freeze",
+          "detail": "Location of the final injected responsibility or call-site change.",
+          "raw": "src/bytes_mut.rs:BytesMut::freeze"
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "carllerche_bytes_isp",
+    "rubric_status": "ready",
+    "aggregation": "Equal weight for each independent item; no separate behavior or test credit.",
+    "excluded_from_scoring": [
+      "The unchanged public Buf and BufMut generic adapters were inspected but no new obligation was injected there.",
+      "Passing the existing test suite, restoring byte correctness, and preserving empty-pointer and reference-count invariants are controls, not independent smell credits.",
+      "post.diff changes only two comments; it creates no structural repair obligation.",
+      "Existing into_vec, into_mut, is_unique, and drop algorithms were not modified by the injected patch."
+    ]
+  }
+}

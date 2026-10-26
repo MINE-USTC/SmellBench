@@ -1,0 +1,1036 @@
+diff --git a/fec.go b/fec.go
+index 80a4962..0ecb36a 100644
+--- a/fec.go
++++ b/fec.go
+@@ -160,10 +160,12 @@ func newFECDecoder(dataShards, parityShards int) *fecDecoder {
+ // decode a fec packet
+ func (dec *fecDecoder) decode(in fecPacket) (recovered [][]byte) {
+ 	// Sample the packet type for auto-tuning
+-	if in.flag() == typeData {
+-		dec.autoTune.Sample(true, in.seqid())
++	dec.autoTune.pulses[dec.autoTune.tail] = pulse{bit: in.flag() == typeData, seq: in.seqid()}
++	dec.autoTune.tail = (dec.autoTune.tail + 1) % maxAutoTuneSamples
++	if dec.autoTune.count < maxAutoTuneSamples {
++		dec.autoTune.count++
+ 	} else {
+-		dec.autoTune.Sample(false, in.seqid())
++		dec.autoTune.head = (dec.autoTune.head + 1) % maxAutoTuneSamples
+ 	}
+ 
+ 	// check seqid < paws to avoid invalid packets
+@@ -198,7 +200,9 @@ func (dec *fecDecoder) decode(in fecPacket) (recovered [][]byte) {
+ 				// recycle old shards before creating new shardSet
+ 				for _, shard := range dec.shardSet {
+ 					for _, pkt := range shard.elements {
+-						defaultBufferPool.Put(pkt)
++						if cap(pkt) == mtuLimit {
++							defaultBufferPool.xmitBuf.Put([]byte(pkt[:cap(pkt)]))
++						}
+ 					}
+ 				}
+ 				dec.shardSet = make(map[uint32]*shardHeap) // empty the shard set
+@@ -239,7 +243,7 @@ func (dec *fecDecoder) decode(in fecPacket) (recovered [][]byte) {
+ 	}
+ 
+ 	// push the packet into the shard heap
+-	pkt := fecPacket(defaultBufferPool.Get()[:len(in)])
++	pkt := fecPacket(defaultBufferPool.xmitBuf.Get().([]byte)[:len(in)])
+ 	copy(pkt, in)
+ 	shard.Push(pkt)
+ 
+@@ -284,7 +288,7 @@ func (dec *fecDecoder) decode(in fecPacket) (recovered [][]byte) {
+ 					clear(shards[k][dlen:])
+ 				} else if k < dec.dataShards {
+ 					// prepare memory for the data recovery
+-					shards[k] = defaultBufferPool.Get()[:0]
++					shards[k] = defaultBufferPool.xmitBuf.Get().([]byte)[:0]
+ 					newBuffers = append(newBuffers, shards[k])
+ 				}
+ 			}
+@@ -302,7 +306,9 @@ func (dec *fecDecoder) decode(in fecPacket) (recovered [][]byte) {
+ 				// recycle new buffers if failed
+ 				// NOTE: if success, these buffers are returned in 'recovered' and will be recycled by the caller
+ 				for _, buf := range newBuffers {
+-					defaultBufferPool.Put(buf)
++					if cap(buf) == mtuLimit {
++						defaultBufferPool.xmitBuf.Put([]byte(buf[:cap(buf)]))
++					}
+ 				}
+ 			}
+ 
+@@ -312,7 +318,9 @@ func (dec *fecDecoder) decode(in fecPacket) (recovered [][]byte) {
+ 
+ 		// recycle the packets
+ 		for _, pkt := range pkts {
+-			defaultBufferPool.Put(pkt)
++			if cap(pkt) == mtuLimit {
++				defaultBufferPool.xmitBuf.Put([]byte(pkt[:cap(pkt)]))
++			}
+ 		}
+ 	}
+ 
+@@ -340,7 +348,9 @@ func (dec *fecDecoder) discardShards() {
+ 		if _itimediff(dec.newestShardId*uint32(dec.shardSize), shardId*uint32(dec.shardSize)) > maxShardSets*int32(dec.shardSize) {
+ 			//println("flushing shard", shardId, "minShardId", dec.minShardId, _itimediff(dec.minShardId, shardId))
+ 			for _, pkt := range shard.elements {
+-				defaultBufferPool.Put(pkt)
++				if cap(pkt) == mtuLimit {
++					defaultBufferPool.xmitBuf.Put([]byte(pkt[:cap(pkt)]))
++				}
+ 			}
+ 			delete(dec.shardSet, shardId)
+ 		}
+diff --git a/kcp.go b/kcp.go
+index b2d506a..ed7e8fd 100644
+--- a/kcp.go
++++ b/kcp.go
+@@ -282,14 +282,16 @@ func NewKCP(conv uint32, output output_callback) *KCP {
+ 
+ // newSegment creates a KCP segment
+ func (kcp *KCP) newSegment(size int) (seg segment) {
+-	seg.data = defaultBufferPool.Get()[:size]
++	seg.data = defaultBufferPool.xmitBuf.Get().([]byte)[:size]
+ 	return
+ }
+ 
+ // recycleSegment recycles a KCP segment
+ func (kcp *KCP) recycleSegment(seg *segment) {
+ 	if seg.data != nil {
+-		defaultBufferPool.Put(seg.data)
++		if cap(seg.data) == mtuLimit {
++			defaultBufferPool.xmitBuf.Put([]byte(seg.data[:cap(seg.data)]))
++		}
+ 		seg.data = nil
+ 	}
+ }
+@@ -558,7 +560,7 @@ func (kcp *KCP) parse_data(newseg segment) bool {
+ 	repeat := false
+ 	if !kcp.rcv_buf.Has(sn) {
+ 		// replicate the content if it's new
+-		dataCopy := defaultBufferPool.Get()[:len(newseg.data)]
++		dataCopy := defaultBufferPool.xmitBuf.Get().([]byte)[:len(newseg.data)]
+ 		copy(dataCopy, newseg.data)
+ 		newseg.data = dataCopy
+ 
+diff --git a/readloop.go b/readloop.go
+index 2ff038a..c2a15a6 100644
+--- a/readloop.go
++++ b/readloop.go
+@@ -23,6 +23,8 @@
+ package kcp
+ 
+ import (
++	"encoding/binary"
++	"hash/crc32"
+ 	"net"
+ 	"sync/atomic"
+ 
+@@ -81,7 +83,59 @@ func (s *UDPSession) defaultReadLoop() {
+ 			continue
+ 		}
+ 
+-		s.packetInput(buf[:n])
++		data := buf[:n]
++
++		switch block := s.block.(type) {
++		case nil:
++		case *aeadCrypt:
++			nonceSize := block.aead.NonceSize()
++			if len(data) < nonceSize+block.aead.Overhead() {
++				continue
++			}
++
++			nonce := data[:nonceSize]
++			ciphertext := data[nonceSize:]
++
++			plaintext, err := block.aead.Open(ciphertext[:0], nonce, ciphertext, nil)
++			if err != nil {
++				atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
++				continue
++			}
++
++			data = plaintext
++		default:
++			// decryption and crc32 check
++			if len(data) < cryptHeaderSize {
++				continue
++			}
++
++			if concrete, ok := block.(*blockCrypt); ok {
++				concrete.decMu.Lock()
++				decrypt(concrete.block, data, data, concrete.decbuf)
++				concrete.decMu.Unlock()
++			} else {
++				block.Decrypt(data, data)
++			}
++			data = data[nonceSize:]
++
++			checksum := crc32.ChecksumIEEE(data[crcSize:])
++			if checksum != binary.LittleEndian.Uint32(data) {
++				atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
++				continue
++			}
++
++			data = data[crcSize:]
++		}
++
++		// basic check for minimum packet size
++		// NOTE: OOB allows sending small packets and even empty packets.
++		if len(data) < min(IKCP_OVERHEAD, fecHeaderSizePlus2+convSize) {
++			atomic.AddUint64(&DefaultSnmp.KCPInErrors, 1)
++			continue
++		}
++
++		s.kcpInput(data)
++
+ 	}
+ }
+ 
+diff --git a/readloop_linux.go b/readloop_linux.go
+index e8b9fc1..668116b 100644
+--- a/readloop_linux.go
++++ b/readloop_linux.go
+@@ -25,6 +25,8 @@
+ package kcp
+ 
+ import (
++	"encoding/binary"
++	"hash/crc32"
+ 	"net"
+ 	"sync/atomic"
+ 
+@@ -93,7 +95,59 @@ func (s *UDPSession) readLoop() {
+ 			}
+ 
+ 			// source and size has validated
+-			s.packetInput(msg.Buffers[0][:msg.N])
++			data := msg.Buffers[0][:msg.N]
++
++			switch block := s.block.(type) {
++			case nil:
++			case *aeadCrypt:
++				nonceSize := block.aead.NonceSize()
++				if len(data) < nonceSize+block.aead.Overhead() {
++					continue
++				}
++
++				nonce := data[:nonceSize]
++				ciphertext := data[nonceSize:]
++
++				plaintext, err := block.aead.Open(ciphertext[:0], nonce, ciphertext, nil)
++				if err != nil {
++					atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
++					continue
++				}
++
++				data = plaintext
++			default:
++				// decryption and crc32 check
++				if len(data) < cryptHeaderSize {
++					continue
++				}
++
++				if concrete, ok := block.(*blockCrypt); ok {
++					concrete.decMu.Lock()
++					decrypt(concrete.block, data, data, concrete.decbuf)
++					concrete.decMu.Unlock()
++				} else {
++					block.Decrypt(data, data)
++				}
++				data = data[nonceSize:]
++
++				checksum := crc32.ChecksumIEEE(data[crcSize:])
++				if checksum != binary.LittleEndian.Uint32(data) {
++					atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
++					continue
++				}
++
++				data = data[crcSize:]
++			}
++
++			// basic check for minimum packet size
++			// NOTE: OOB allows sending small packets and even empty packets.
++			if len(data) < min(IKCP_OVERHEAD, fecHeaderSizePlus2+convSize) {
++				atomic.AddUint64(&DefaultSnmp.KCPInErrors, 1)
++				continue
++			}
++
++			s.kcpInput(data)
++
+ 		}
+ 	}
+ }
+diff --git a/sess.go b/sess.go
+index 4b7d611..262187c 100644
+--- a/sess.go
++++ b/sess.go
+@@ -46,6 +46,7 @@
+ package kcp
+ 
+ import (
++	"container/heap"
+ 	"context"
+ 	"crypto/rand"
+ 	"encoding/binary"
+@@ -56,6 +57,7 @@ import (
+ 	"sync/atomic"
+ 	"time"
+ 
++	"github.com/klauspost/reedsolomon"
+ 	"github.com/pkg/errors"
+ 	"golang.org/x/net/ipv4"
+ 	"golang.org/x/net/ipv6"
+@@ -210,7 +212,7 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn
+ 	case nil:
+ 		sess.headerSize = 0
+ 	case *aeadCrypt:
+-		sess.headerSize = block.NonceSize()
++		sess.headerSize = block.aead.NonceSize()
+ 	default:
+ 		sess.headerSize = cryptHeaderSize
+ 	}
+@@ -228,7 +230,7 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn
+ 		// A basic check for the minimum packet size
+ 		if size >= IKCP_OVERHEAD {
+ 			// make a copy
+-			bts := defaultBufferPool.Get()[:size+sess.headerSize]
++			bts := defaultBufferPool.xmitBuf.Get().([]byte)[:size+sess.headerSize]
+ 			// copy the data to a new buffer, and reserve header space
+ 			copy(bts[sess.headerSize:], buf)
+ 
+@@ -239,7 +241,9 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn
+ 				return
+ 			default:
+ 				// drop and recycle to avoid blocking; KCP will retransmit if needed
+-				defaultBufferPool.Put(bts)
++				if cap(bts) == mtuLimit {
++					defaultBufferPool.xmitBuf.Put([]byte(bts[:cap(bts)]))
++				}
+ 			}
+ 		}
+ 	})
+@@ -306,29 +310,62 @@ RESET_TIMER:
+ 			return n, nil
+ 		}
+ 
+-		if size := s.kcp.PeekSize(); size > 0 { // peek data size from kcp
+-			// if 'b' is large enough to accommodate the data, read directly
+-			// from kcp.recv() to 'b', like 'DMA'.
+-			if len(b) >= size {
+-				s.kcp.Recv(b)
+-				s.mu.Unlock()
+-				atomic.AddUint64(&DefaultSnmp.BytesReceived, uint64(size))
+-				return size, nil
++		size := -1
++		if first, ok := s.kcp.rcv_queue.Peek(); ok {
++			if first.frg == 0 {
++				size = len(first.data)
++			} else if s.kcp.rcv_queue.Len() >= int(first.frg+1) {
++				size = 0
++				for part := range s.kcp.rcv_queue.ForEach {
++					size += len(part.data)
++					if part.frg == 0 {
++						break
++					}
++				}
+ 			}
+-
+-			// otherwise, read to recvbuf first, then copy to 'b'.
+-			// dynamically adjust the buffer size to the maximum of 'packet size' when necessary.
+-			if cap(s.recvbuf) < size {
+-				// usually recvbuf has a size of maximum packet size
+-				s.recvbuf = make([]byte, size)
++		}
++		if size > 0 {
++			direct := len(b) >= size
++			target := b
++			if !direct {
++				if cap(s.recvbuf) < size {
++					s.recvbuf = make([]byte, size)
++				}
++				s.recvbuf = s.recvbuf[:size]
++				target = s.recvbuf
++			}
++			wasFull := s.kcp.rcv_queue.Len() >= int(s.kcp.rcv_wnd)
++			copied := 0
++			for {
++				part, ok := s.kcp.rcv_queue.Pop()
++				if !ok {
++					break
++				}
++				copied += copy(target[copied:], part.data)
++				s.kcp.recycleSegment(&part)
++				if part.frg == 0 {
++					s.kcp.debugLog(IKCP_LOG_RECV, "stream", s.kcp.stream, "conv", s.kcp.conv, "sn", part.sn, "ts", part.ts, "datalen", copied)
++					break
++				}
++			}
++			for s.kcp.rcv_buf.Len() > 0 {
++				part := heap.Pop(s.kcp.rcv_buf).(segment)
++				if part.sn != s.kcp.rcv_nxt || s.kcp.rcv_queue.Len() >= int(s.kcp.rcv_wnd) {
++					heap.Push(s.kcp.rcv_buf, part)
++					break
++				}
++				s.kcp.rcv_queue.Push(part)
++				s.kcp.rcv_nxt++
++			}
++			if wasFull && s.kcp.rcv_queue.Len() < int(s.kcp.rcv_wnd) {
++				s.kcp.probe |= IKCP_ASK_TELL
++			}
++			if direct {
++				n = size
++			} else {
++				n = copy(b, s.recvbuf)
++				s.bufptr = s.recvbuf[n:]
+ 			}
+-
+-			// resize the length of recvbuf to match the data size
+-			s.recvbuf = s.recvbuf[:size]
+-			s.kcp.Recv(s.recvbuf)    // read data to recvbuf first
+-			n = copy(b, s.recvbuf)   // then copy bytes to 'b' as many as possible
+-			s.bufptr = s.recvbuf[n:] // pointer update
+-
+ 			s.mu.Unlock()
+ 			atomic.AddUint64(&DefaultSnmp.BytesReceived, uint64(n))
+ 			return n, nil
+@@ -396,24 +433,44 @@ RESET_TIMER:
+ 		s.mu.Lock()
+ 
+ 		// make sure write do not overflow the max sliding window on both side
+-		waitsnd := s.kcp.WaitSnd()
++		waitsnd := (s.kcp.snd_buf.Len() + s.kcp.snd_queue.Len())
+ 		if waitsnd < int(s.kcp.snd_wnd) {
+-			// transmit all data sequentially, make sure every packet size is within 'mss'
+-			for _, b := range v {
+-				n += len(b)
+-				// handle each slice for packet splitting
+-				for {
+-					if len(b) <= int(s.kcp.mss) {
+-						s.kcp.Send(b)
+-						break
+-					} else {
+-						s.kcp.Send(b[:s.kcp.mss])
+-						b = b[s.kcp.mss:]
++			for _, input := range v {
++				n += len(input)
++				for len(input) > 0 {
++					take := min(len(input), int(s.kcp.mss))
++					payload := input[:take]
++					input = input[take:]
++					s.kcp.debugLog(IKCP_LOG_SEND, "stream", s.kcp.stream, "conv", s.kcp.conv, "datalen", len(payload))
++					if s.kcp.stream != 0 && s.kcp.snd_queue.Len() > 0 {
++						q := s.kcp.snd_queue
++						last := q.tail - 1
++						if last < 0 {
++							last = len(q.elements) - 1
++						}
++						tail := &q.elements[last]
++						if len(tail.data) < int(s.kcp.mss) {
++							extend := min(len(payload), int(s.kcp.mss)-len(tail.data))
++							before := len(tail.data)
++							tail.data = tail.data[:before+extend]
++							copy(tail.data[before:], payload)
++							payload = payload[extend:]
++						}
++					}
++					if len(payload) != 0 {
++						part := segment{data: defaultBufferPool.xmitBuf.Get().([]byte)[:len(payload)]}
++						copy(part.data, payload)
++						q := s.kcp.snd_queue
++						if (q.tail+1)%len(q.elements) == q.head {
++							q.grow()
++						}
++						q.elements[q.tail] = part
++						q.tail = (q.tail + 1) % len(q.elements)
+ 					}
+ 				}
+ 			}
+ 
+-			waitsnd = s.kcp.WaitSnd()
++			waitsnd = (s.kcp.snd_buf.Len() + s.kcp.snd_queue.Len())
+ 			if waitsnd >= int(s.kcp.snd_wnd) || !s.writeDelay {
+ 				// put the packets on wire immediately if the inflight window is full
+ 				// or if we've specified write no delay(NO merging of outgoing bytes)
+@@ -529,7 +586,13 @@ func (s *UDPSession) SetWriteDelay(delay bool) {
+ // SetWindowSize set maximum window size
+ func (s *UDPSession) SetWindowSize(sndwnd, rcvwnd int) {
+ 	s.mu.Lock()
+-	s.kcp.WndSize(sndwnd, rcvwnd)
++
++	if sndwnd > 0 {
++		s.kcp.snd_wnd = uint32(sndwnd)
++	}
++	if rcvwnd > 0 {
++		s.kcp.rcv_wnd = uint32(rcvwnd)
++	}
+ 	s.mu.Unlock()
+ }
+ 
+@@ -544,8 +607,13 @@ func (s *UDPSession) SetMtu(mtu int) bool {
+ 
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	ret := s.kcp.SetMtu(mtu) // kcp mtu is not including udp header
+-	return ret == 0
++	if mtu <= IKCP_OVERHEAD {
++		return false
++	}
++	s.kcp.mtu = uint32(mtu)
++	s.kcp.mss = s.kcp.mtu - IKCP_OVERHEAD
++	s.kcp.buffer = make([]byte, (mtu+IKCP_OVERHEAD)*3)
++	return true
+ }
+ 
+ // Deprecated: toggles the stream mode on/off
+@@ -579,7 +647,30 @@ func (s *UDPSession) SetDUP(dup int) {
+ // https://github.com/skywind3000/kcp/blob/master/README.en.md#protocol-configuration
+ func (s *UDPSession) SetNoDelay(nodelay, interval, resend, nc int) {
+ 	s.mu.Lock()
+-	s.kcp.NoDelay(nodelay, interval, resend, nc)
++
++	if nodelay >= 0 {
++		s.kcp.nodelay = uint32(nodelay)
++		if nodelay != 0 {
++			s.kcp.rx_minrto = IKCP_RTO_NDL
++		} else {
++			s.kcp.rx_minrto = IKCP_RTO_MIN
++		}
++	}
++	if interval >= 0 {
++		if interval > 5000 {
++			interval = 5000
++		} else if interval < 10 {
++			interval = 10
++		}
++		s.kcp.interval = uint32(interval)
++	}
++	if resend >= 0 {
++		s.kcp.fastresend = int32(resend)
++	}
++	if nc >= 0 {
++		s.kcp.nocwnd = int32(nc)
++	}
++
+ 	s.mu.Unlock()
+ }
+ 
+@@ -695,9 +786,30 @@ func (s *UDPSession) postProcess() {
+ 			// --- Stage 1: FEC encoding ---
+ 			if s.fecEncoder != nil {
+ 				if !oob {
+-					ecc = s.fecEncoder.encode(buf, maxFECEncodeLatency)
++
++					binary.LittleEndian.PutUint32(buf[s.fecEncoder.headerOffset:], s.fecEncoder.next)
++					binary.LittleEndian.PutUint16(buf[s.fecEncoder.headerOffset+4:], typeData)
++					s.fecEncoder.next = (s.fecEncoder.next + 1) % s.fecEncoder.paws
++					binary.LittleEndian.PutUint16(buf[s.fecEncoder.payloadOffset:], uint16(len(buf[s.fecEncoder.payloadOffset:])))
++
++					// copy data from payloadOffset to fec shard cache
++					sz := len(buf)
++					s.fecEncoder.shardCache[s.fecEncoder.shardCount] = s.fecEncoder.shardCache[s.fecEncoder.shardCount][:sz]
++					copy(s.fecEncoder.shardCache[s.fecEncoder.shardCount][s.fecEncoder.payloadOffset:], buf[s.fecEncoder.payloadOffset:])
++					s.fecEncoder.shardCount++
++
++					// track max datashard length
++					if sz > s.fecEncoder.maxSize {
++						s.fecEncoder.maxSize = sz
++					}
++
++					// Generation of Reed-Solomon Erasure Code when we have enough datashards
++					now := time.Now().UnixMilli()
++					ecc = s.encodePacket(now, maxFECEncodeLatency)
+ 				} else {
+-					s.fecEncoder.encodeOOB(buf)
++					binary.LittleEndian.PutUint32(buf[s.fecEncoder.headerOffset:], uint32(0xffffffff))
++					binary.LittleEndian.PutUint16(buf[s.fecEncoder.headerOffset+4:], typeOOB)
++					binary.LittleEndian.PutUint16(buf[s.fecEncoder.payloadOffset:], uint16(len(buf[s.fecEncoder.payloadOffset:])))
+ 				}
+ 			}
+ 
+@@ -708,14 +820,17 @@ func (s *UDPSession) postProcess() {
+ 			switch block := s.block.(type) {
+ 			case nil:
+ 			case *aeadCrypt: // AEAD mode
+-				nonceSize := block.NonceSize()
++				nonceSize := block.aead.NonceSize()
+ 
+ 				dst := buf[:nonceSize]
+ 				nonce := buf[:nonceSize]
+ 				plaintext := buf[nonceSize:]
+ 
+ 				fillRand(nonce)
+-				buf = block.Seal(dst, nonce, plaintext, nil)
++				if dst == nil || cap(dst)-len(dst) < len(plaintext)+block.aead.Overhead() {
++					panic("AEAD Seal allocated new slice, please increase MTU size")
++				}
++				buf = block.aead.Seal(dst, nonce, plaintext, nil)
+ 
+ 				for k := range ecc {
+ 					dst := ecc[k][:nonceSize]
+@@ -723,19 +838,34 @@ func (s *UDPSession) postProcess() {
+ 					plaintext := ecc[k][nonceSize:]
+ 
+ 					fillRand(nonce)
+-					ecc[k] = block.Seal(dst, nonce, plaintext, nil)
++					if dst == nil || cap(dst)-len(dst) < len(plaintext)+block.aead.Overhead() {
++						panic("AEAD Seal allocated new slice, please increase MTU size")
++					}
++					ecc[k] = block.aead.Seal(dst, nonce, plaintext, nil)
+ 				}
+ 			default: // Cipher Feedback (CFB) mode
+ 				fillRand(buf[:nonceSize])
+ 				checksum := crc32.ChecksumIEEE(buf[cryptHeaderSize:])
+ 				binary.LittleEndian.PutUint32(buf[nonceSize:], checksum)
+-				block.Encrypt(buf, buf)
++				if concrete, ok := block.(*blockCrypt); ok {
++					concrete.encMu.Lock()
++					encrypt(concrete.block, buf, buf, concrete.encbuf)
++					concrete.encMu.Unlock()
++				} else {
++					block.Encrypt(buf, buf)
++				}
+ 
+ 				for k := range ecc {
+ 					fillRand(ecc[k][:nonceSize])
+ 					checksum := crc32.ChecksumIEEE(ecc[k][cryptHeaderSize:])
+ 					binary.LittleEndian.PutUint32(ecc[k][nonceSize:], checksum)
+-					block.Encrypt(ecc[k], ecc[k])
++					if concrete, ok := block.(*blockCrypt); ok {
++						concrete.encMu.Lock()
++						encrypt(concrete.block, ecc[k], ecc[k], concrete.encbuf)
++						concrete.encMu.Unlock()
++					} else {
++						block.Encrypt(ecc[k], ecc[k])
++					}
+ 				}
+ 			}
+ 
+@@ -750,7 +880,7 @@ func (s *UDPSession) postProcess() {
+ 
+ 			// dup copies for testing if set
+ 			for i := 0; i < s.dup; i++ {
+-				bts := defaultBufferPool.Get()[:len(buf)]
++				bts := defaultBufferPool.xmitBuf.Get().([]byte)[:len(buf)]
+ 				copy(bts, buf)
+ 				msg.Buffers = [][]byte{bts}
+ 				bytesToSend += len(bts)
+@@ -759,7 +889,7 @@ func (s *UDPSession) postProcess() {
+ 
+ 			// parity
+ 			for k := range ecc {
+-				bts := defaultBufferPool.Get()[:len(ecc[k])]
++				bts := defaultBufferPool.xmitBuf.Get().([]byte)[:len(ecc[k])]
+ 				copy(bts, ecc[k])
+ 				msg.Buffers = [][]byte{bts}
+ 				bytesToSend += len(bts)
+@@ -777,7 +907,9 @@ func (s *UDPSession) postProcess() {
+ 				s.kcp.debugLog(IKCP_LOG_OUTPUT, "conv", s.kcp.conv, "datalen", bytesToSend)
+ 				// recycle
+ 				for k := range txqueue {
+-					defaultBufferPool.Put(txqueue[k].Buffers[0])
++					if cap(txqueue[k].Buffers[0]) == mtuLimit {
++						defaultBufferPool.xmitBuf.Put([]byte(txqueue[k].Buffers[0][:cap(txqueue[k].Buffers[0])]))
++					}
+ 					txqueue[k].Buffers = nil
+ 				}
+ 				txqueue = txqueue[:0]
+@@ -805,7 +937,7 @@ func (s *UDPSession) update() {
+ 	default:
+ 		s.mu.Lock()
+ 		interval := s.kcp.flush(IKCP_FLUSH_FULL)
+-		waitsnd := s.kcp.WaitSnd()
++		waitsnd := (s.kcp.snd_buf.Len() + s.kcp.snd_queue.Len())
+ 		if waitsnd < int(s.kcp.snd_wnd) {
+ 			s.notifyWriteEvent()
+ 		}
+@@ -907,7 +1039,7 @@ func (s *UDPSession) SendOOB(data []byte) error {
+ 
+ 	// Allocate buffer with reserved header space.
+ 	// s.headerSize includes the space needed by the FEC encoder.
+-	buf := defaultBufferPool.Get()[:size+s.headerSize]
++	buf := defaultBufferPool.xmitBuf.Get().([]byte)[:size+s.headerSize]
+ 	// Encode conversation ID.
+ 	binary.LittleEndian.PutUint32(buf[s.headerSize:], s.kcp.conv)
+ 
+@@ -921,12 +1053,16 @@ func (s *UDPSession) SendOOB(data []byte) error {
+ 		return nil
+ 	case <-s.die:
+ 		// Session is closing.
+-		defaultBufferPool.Put(buf)
++		if cap(buf) == mtuLimit {
++			defaultBufferPool.xmitBuf.Put([]byte(buf[:cap(buf)]))
++		}
+ 		return errors.WithStack(io.ErrClosedPipe)
+ 	default:
+ 		// Drop silently to avoid blocking the sender.
+ 		// OOB delivery is best-effort by design.
+-		defaultBufferPool.Put(buf)
++		if cap(buf) == mtuLimit {
++			defaultBufferPool.xmitBuf.Put([]byte(buf[:cap(buf)]))
++		}
+ 		return nil
+ 	}
+ }
+@@ -971,15 +1107,15 @@ func (s *UDPSession) packetInput(data []byte) {
+ 	switch block := s.block.(type) {
+ 	case nil:
+ 	case *aeadCrypt:
+-		nonceSize := block.NonceSize()
+-		if len(data) < nonceSize+block.Overhead() {
++		nonceSize := block.aead.NonceSize()
++		if len(data) < nonceSize+block.aead.Overhead() {
+ 			return
+ 		}
+ 
+ 		nonce := data[:nonceSize]
+ 		ciphertext := data[nonceSize:]
+ 
+-		plaintext, err := block.Open(ciphertext[:0], nonce, ciphertext, nil)
++		plaintext, err := block.aead.Open(ciphertext[:0], nonce, ciphertext, nil)
+ 		if err != nil {
+ 			atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
+ 			return
+@@ -992,7 +1128,13 @@ func (s *UDPSession) packetInput(data []byte) {
+ 			return
+ 		}
+ 
+-		block.Decrypt(data, data)
++		if concrete, ok := block.(*blockCrypt); ok {
++			concrete.decMu.Lock()
++			decrypt(concrete.block, data, data, concrete.decbuf)
++			concrete.decMu.Unlock()
++		} else {
++			block.Decrypt(data, data)
++		}
+ 		data = data[nonceSize:]
+ 
+ 		checksum := crc32.ChecksumIEEE(data[crcSize:])
+@@ -1062,7 +1204,7 @@ func (s *UDPSession) kcpInput(data []byte) {
+ 
+ 		// FEC decoding
+ 		// If there're some packets recovered from FEC, feed them into kcp
+-		recovers := s.fecDecoder.decode(f)
++		recovers := s.recoverPacket(f)
+ 		for _, r := range recovers {
+ 			if len(r) >= 2 { // must be larger than 2bytes
+ 				sz := binary.LittleEndian.Uint16(r)
+@@ -1073,7 +1215,9 @@ func (s *UDPSession) kcpInput(data []byte) {
+ 				}
+ 			}
+ 			// recycle the buffer
+-			defaultBufferPool.Put(r)
++			if cap(r) == mtuLimit {
++				defaultBufferPool.xmitBuf.Put([]byte(r[:cap(r)]))
++			}
+ 		}
+ 
+ 		// to notify the readers to receive the data if there's any
+@@ -1083,7 +1227,7 @@ func (s *UDPSession) kcpInput(data []byte) {
+ 
+ 		// to notify the writers if the window size allows to send more packets
+ 		// and the remote window size is not full.
+-		waitsnd := s.kcp.WaitSnd()
++		waitsnd := (s.kcp.snd_buf.Len() + s.kcp.snd_queue.Len())
+ 		if waitsnd < int(s.kcp.snd_wnd) {
+ 			s.notifyWriteEvent()
+ 		}
+@@ -1112,7 +1256,7 @@ func (s *UDPSession) kcpInput(data []byte) {
+ 			s.notifyReadEvent()
+ 		}
+ 
+-		waitsnd := s.kcp.WaitSnd()
++		waitsnd := (s.kcp.snd_buf.Len() + s.kcp.snd_queue.Len())
+ 		if waitsnd < int(s.kcp.snd_wnd) {
+ 			s.notifyWriteEvent()
+ 		}
+@@ -1156,15 +1300,15 @@ func (l *Listener) packetInput(data []byte, addr net.Addr) {
+ 	switch block := l.block.(type) {
+ 	case nil:
+ 	case *aeadCrypt:
+-		nonceSize := block.NonceSize()
+-		if len(data) < nonceSize+block.Overhead() {
++		nonceSize := block.aead.NonceSize()
++		if len(data) < nonceSize+block.aead.Overhead() {
+ 			return
+ 		}
+ 
+ 		nonce := data[:nonceSize]
+ 		ciphertext := data[nonceSize:]
+ 
+-		plaintext, err := block.Open(ciphertext[:0], nonce, ciphertext, nil)
++		plaintext, err := block.aead.Open(ciphertext[:0], nonce, ciphertext, nil)
+ 		if err != nil {
+ 			atomic.AddUint64(&DefaultSnmp.InCsumErrors, 1)
+ 			return
+@@ -1177,7 +1321,13 @@ func (l *Listener) packetInput(data []byte, addr net.Addr) {
+ 			return
+ 		}
+ 
+-		block.Decrypt(data, data)
++		if concrete, ok := block.(*blockCrypt); ok {
++			concrete.decMu.Lock()
++			decrypt(concrete.block, data, data, concrete.decbuf)
++			concrete.decMu.Unlock()
++		} else {
++			block.Decrypt(data, data)
++		}
+ 		data = data[nonceSize:]
+ 
+ 		checksum := crc32.ChecksumIEEE(data[crcSize:])
+@@ -1532,3 +1682,256 @@ func NewConn(raddr string, block BlockCrypt, dataShards, parityShards int, conn
+ 	}
+ 	return NewConn2(udpaddr, block, dataShards, parityShards, conn)
+ }
++
++func (s *UDPSession) encodePacket(now int64, rto uint32) (ps [][]byte) {
++	if s.fecEncoder.shardCount == s.fecEncoder.dataShards {
++		// Generate the parity shards if we collect enough datashards,
++		// the continuity is determined by the time interval between
++		// the latest 2 data packets.
++		//
++		// If the interval is larger than rto, we consider the data is non-continuous,
++		// thus we skip this parity generation to avoid useless parity packets.
++		//
++		// Note that, even we skip this parity generation, we still need to
++		// increase the seqid to keep the monotonic increasing property.
++		// This is important for the receiver to detect lost packets.
++		// see fecEncoder.skipParity()
++		// also note that the rto is in milliseconds.
++		// see kcp.UDPSession.rto()
++		//
++		if now-s.fecEncoder.tsLatestPacket < int64(rto) {
++			// clear the tail of each datashard to make them equal-sized
++			for i := 0; i < s.fecEncoder.dataShards; i++ {
++				shard := s.fecEncoder.shardCache[i]
++				slen := len(shard)
++				clear(shard[slen:s.fecEncoder.maxSize])
++			}
++
++			// construct equal-sized slice with stripped header
++			cache := s.fecEncoder.encodeCache
++			for k := range cache {
++				cache[k] = s.fecEncoder.shardCache[k][s.fecEncoder.payloadOffset:s.fecEncoder.maxSize]
++			}
++
++			// Reed-Solomon Erasure Code Encoding
++			if err := s.fecEncoder.codec.Encode(cache); err == nil {
++				ps = s.fecEncoder.shardCache[s.fecEncoder.dataShards:]
++				for k := range ps {
++					binary.LittleEndian.PutUint32(ps[k][s.fecEncoder.headerOffset:], s.fecEncoder.next)
++					binary.LittleEndian.PutUint16(ps[k][s.fecEncoder.headerOffset+4:], typeParity)
++					s.fecEncoder.next = (s.fecEncoder.next + 1) % s.fecEncoder.paws // NOTE(x): seal parity will increase the seqid by 1
++					ps[k] = ps[k][:s.fecEncoder.maxSize]
++				}
++			} else {
++				// encoding failed, record the error but keep the seqid monotonic increasing
++				atomic.AddUint64(&DefaultSnmp.FECErrs, 1)
++				s.fecEncoder.next = (s.fecEncoder.next + uint32(s.fecEncoder.parityShards)) % s.fecEncoder.paws
++			}
++		} else {
++			// Non-continuous data detected, skip this parity generation.
++			// Through we do not send non-continuous parity shard, we still need to increase seqid.
++			s.fecEncoder.next = (s.fecEncoder.next + uint32(s.fecEncoder.parityShards)) % s.fecEncoder.paws
++		}
++
++		// reset shard count and max size
++		s.fecEncoder.shardCount = 0
++		s.fecEncoder.maxSize = 0
++	}
++
++	// record the time of the latest data packet
++	s.fecEncoder.tsLatestPacket = now
++
++	return
++}
++
++func (s *UDPSession) recoverPacket(in fecPacket) (recovered [][]byte) {
++	// Sample the packet type for auto-tuning
++	s.fecDecoder.autoTune.pulses[s.fecDecoder.autoTune.tail] = pulse{bit: in.flag() == typeData, seq: in.seqid()}
++	s.fecDecoder.autoTune.tail = (s.fecDecoder.autoTune.tail + 1) % maxAutoTuneSamples
++	if s.fecDecoder.autoTune.count < maxAutoTuneSamples {
++		s.fecDecoder.autoTune.count++
++	} else {
++		s.fecDecoder.autoTune.head = (s.fecDecoder.autoTune.head + 1) % maxAutoTuneSamples
++	}
++
++	// check seqid < paws to avoid invalid packets
++	if in.seqid() >= s.fecDecoder.paws {
++		return nil
++	}
++
++	// check if the packet type matches the current FEC parameters
++	if in.seqid()%uint32(s.fecDecoder.shardSize) < uint32(s.fecDecoder.dataShards) {
++		if in.flag() != typeData { // expect typeData
++			s.fecDecoder.shouldTune = true
++		}
++	} else {
++		if in.flag() != typeParity {
++			s.fecDecoder.shouldTune = true
++		}
++	}
++
++	// perform auto-tuning if the decoder detects packet type mismatches.
++	// This means the peer has changed FEC parameters and we must adapt.
++	if s.fecDecoder.shouldTune {
++		autoDS := s.fecDecoder.autoTune.FindPeriod(true)  // detect data shard period
++		autoPS := s.fecDecoder.autoTune.FindPeriod(false) // detect parity shard period
++
++		// validate the auto-tuned parameters
++		if autoDS > 0 && autoPS > 0 && autoDS+autoPS < 256 {
++			if autoDS != s.fecDecoder.dataShards || autoPS != s.fecDecoder.parityShards {
++				// apply the new FEC parameters
++				s.fecDecoder.dataShards = autoDS
++				s.fecDecoder.parityShards = autoPS
++				s.fecDecoder.shardSize = autoDS + autoPS
++				// recycle old shards before creating new shardSet
++				for _, shard := range s.fecDecoder.shardSet {
++					for _, pkt := range shard.elements {
++						if cap(pkt) == mtuLimit {
++							defaultBufferPool.xmitBuf.Put([]byte(pkt[:cap(pkt)]))
++						}
++					}
++				}
++				s.fecDecoder.shardSet = make(map[uint32]*shardHeap) // empty the shard set
++				codec, err := reedsolomon.New(autoDS, autoPS)
++				if err != nil {
++					return nil
++				}
++				s.fecDecoder.codec = codec
++				s.fecDecoder.decodeCache = make([][]byte, s.fecDecoder.shardSize)
++				s.fecDecoder.flagCache = make([]bool, s.fecDecoder.shardSize)
++				s.fecDecoder.paws = 0xffffffff / uint32(s.fecDecoder.shardSize) * uint32(s.fecDecoder.shardSize)
++				//log.Println("autotune to :", s.fecDecoder.dataShards, s.fecDecoder.parityShards)
++			}
++			// reset shouldTune flag regardless of whether parameters changed
++			// to avoid permanent blocking when detected parameters match current ones
++			s.fecDecoder.shouldTune = false
++		}
++		return nil
++	}
++
++	// get the shard heap for this shard id
++	shardId := in.seqid() / uint32(s.fecDecoder.shardSize)
++	shard, ok := s.fecDecoder.shardSet[shardId]
++	if !ok {
++		shard = newShardHeap()
++		s.fecDecoder.shardSet[shardId] = shard
++		atomic.AddUint64(&DefaultSnmp.FECShardSet, 1)
++	}
++
++	// ignore duplicate packets
++	if shard.Has(in.seqid()) {
++		return nil
++	}
++
++	// update statistics for parity shards
++	if in.flag() == typeParity {
++		atomic.AddUint64(&DefaultSnmp.FECParityShards, 1)
++	}
++
++	// push the packet into the shard heap
++	pkt := fecPacket(defaultBufferPool.xmitBuf.Get().([]byte)[:len(in)])
++	copy(pkt, in)
++	shard.Push(pkt)
++
++	// try to recover data if we have enough shards
++	if shard.Len() >= s.fecDecoder.dataShards {
++		var numDataShard, maxlen int
++
++		// prepare the decode cache
++		shards := s.fecDecoder.decodeCache
++		shardsflag := s.fecDecoder.flagCache
++		for k := range s.fecDecoder.decodeCache {
++			shards[k] = nil
++			shardsflag[k] = false
++		}
++
++		// pop all shards from the heap and fill into the decode cache
++		var pkts []fecPacket
++		for shard.Len() > 0 {
++			pkt := shard.Pop().(fecPacket)
++			pkts = append(pkts, pkt)
++			seqid := pkt.seqid()
++			shards[seqid%uint32(s.fecDecoder.shardSize)] = pkt.data()
++			shardsflag[seqid%uint32(s.fecDecoder.shardSize)] = true
++			if pkt.flag() == typeData {
++				numDataShard++
++			}
++			if len(pkt.data()) > maxlen {
++				maxlen = len(pkt.data())
++			}
++		}
++
++		// case 1: all data shards are present
++		if numDataShard == s.fecDecoder.dataShards {
++			atomic.AddUint64(&DefaultSnmp.FECFullShardSet, 1)
++		} else { // case 2: some data shards are missing, try to recover
++			// fill '0' into the tail of each shard to make them equal-sized
++			var newBuffers [][]byte
++			for k := range shards {
++				if shards[k] != nil {
++					dlen := len(shards[k])
++					shards[k] = shards[k][:maxlen]
++					clear(shards[k][dlen:])
++				} else if k < s.fecDecoder.dataShards {
++					// prepare memory for the data recovery
++					shards[k] = defaultBufferPool.xmitBuf.Get().([]byte)[:0]
++					newBuffers = append(newBuffers, shards[k])
++				}
++			}
++
++			// Reed-Solomon Erasure Code Decoding
++			if err := s.fecDecoder.codec.ReconstructData(shards); err == nil {
++				for k := range shards[:s.fecDecoder.dataShards] {
++					if !shardsflag[k] {
++						recovered = append(recovered, shards[k])
++					}
++				}
++			} else {
++				// recovery failed, record the error
++				atomic.AddUint64(&DefaultSnmp.FECErrs, 1)
++				// recycle new buffers if failed
++				// NOTE: if success, these buffers are returned in 'recovered' and will be recycled by the caller
++				for _, buf := range newBuffers {
++					if cap(buf) == mtuLimit {
++						defaultBufferPool.xmitBuf.Put([]byte(buf[:cap(buf)]))
++					}
++				}
++			}
++
++			// record the number of recovered packets
++			atomic.AddUint64(&DefaultSnmp.FECRecovered, uint64(len(recovered)))
++		}
++
++		// recycle the packets
++		for _, pkt := range pkts {
++			if cap(pkt) == mtuLimit {
++				defaultBufferPool.xmitBuf.Put([]byte(pkt[:cap(pkt)]))
++			}
++		}
++	}
++
++	// update the newest shard id
++	if _itimediff(shardId*uint32(s.fecDecoder.shardSize), s.fecDecoder.newestShardId*uint32(s.fecDecoder.shardSize)) > 0 {
++		s.fecDecoder.newestShardId = shardId
++		atomic.StoreUint64(&DefaultSnmp.FECShardMin, uint64(s.fecDecoder.newestShardId))
++	}
++
++	// try to discard shard sets that are too old
++
++	for shardId, shard := range s.fecDecoder.shardSet {
++		// discard shards that are too old
++		if _itimediff(s.fecDecoder.newestShardId*uint32(s.fecDecoder.shardSize), shardId*uint32(s.fecDecoder.shardSize)) > maxShardSets*int32(s.fecDecoder.shardSize) {
++			//println("flushing shard", shardId, "minShardId", s.fecDecoder.minShardId, _itimediff(s.fecDecoder.minShardId, shardId))
++			for _, pkt := range shard.elements {
++				if cap(pkt) == mtuLimit {
++					defaultBufferPool.xmitBuf.Put([]byte(pkt[:cap(pkt)]))
++				}
++			}
++			delete(s.fecDecoder.shardSet, shardId)
++		}
++	}
++
++	atomic.StoreUint64(&DefaultSnmp.FECShardSet, uint64(len(s.fecDecoder.shardSet)))
++
++	return
++}

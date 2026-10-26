@@ -1,0 +1,1229 @@
+diff --git a/packages/cli-utils/src/commands/generate-output/runner.ts b/packages/cli-utils/src/commands/generate-output/runner.ts
+index 1f79aa0..94fe43f 100644
+--- a/packages/cli-utils/src/commands/generate-output/runner.ts
++++ b/packages/cli-utils/src/commands/generate-output/runner.ts
+@@ -1,15 +1,13 @@
++import type { PathLike } from 'node:fs';
++import { dirname } from 'node:path';
++import * as fs from 'node:fs/promises';
+ import * as path from 'node:path';
+ 
+-import {
+-  loadRef,
+-  minifyIntrospection,
+-  outputIntrospectionFile,
+-  extractIntrospectionHeader,
+-} from '@gql.tada/internal';
++import { loadRef, TadaError } from '@gql.tada/internal';
+ 
+ import type { TTY, ComposeInput } from '../../term';
+ import type { ProjectContext, WriteTarget } from '../shared';
+-import { loadProjects, writeOutput, readOutput } from '../shared';
++import { loadProjects, readOutput } from '../shared';
+ import * as logger from './logger';
+ 
+ export interface OutputOptions {
+@@ -116,7 +114,8 @@ async function* runProject(
+     const existing = await readOutput(destination);
+     let contents: string;
+     try {
+-      contents = outputIntrospectionFile(minifyIntrospection(schema.introspection), {
++      contents = outputIntrospectionFile(schema.introspection, {
++        types: minifyIntrospectionTypes(schema.introspection),
+         fileType:
+           destination && typeof destination === 'string'
+             ? destination
+@@ -124,14 +123,55 @@ async function* runProject(
+               ? '.ts'
+               : '.d.ts',
+         shouldPreprocess: !opts.disablePreprocessing,
+-        preamble: existing ? extractIntrospectionHeader(existing) || undefined : undefined,
++        preamble: existing
++          ? (() => {
++              const header: string[] = [];
++              let inBlock = false;
++              for (const line of existing.split('\n')) {
++                const trimmed = line.trim();
++                if (inBlock) {
++                  header.push(line);
++                  if (trimmed.includes('*/')) inBlock = false;
++                } else if (!trimmed) {
++                  break;
++                } else if (trimmed.startsWith('//')) {
++                  header.push(line);
++                } else if (trimmed.startsWith('/*')) {
++                  header.push(line);
++                  if (!trimmed.includes('*/')) inBlock = true;
++                } else {
++                  break;
++                }
++              }
++              const text = header.join('\n');
++              return header.length && !inBlock ? text + '\n' : undefined;
++            })()
++          : undefined,
+       });
+     } catch (error) {
+       throw logger.externalError('Could not generate introspection output', error);
+     }
+ 
+     try {
+-      await writeOutput(destination, contents);
++      {
++        const target: WriteTarget = destination;
++        const outputContents = contents;
++        if (target && typeof target === 'object' && 'writable' in target) {
++          await new Promise<void>((resolve, reject) => {
++            target.write(outputContents, (error) => (error ? reject(error) : resolve()));
++          });
++        } else {
++          const directory = dirname(
++            typeof target === 'string' ? target : await fs.realpath(target)
++          );
++          if (!(await directoryExists(directory))) await fs.mkdir(directory, { recursive: true });
++          if (await fileExists(target)) {
++            await writeOutput(target, outputContents);
++          } else {
++            await fs.writeFile(target, outputContents);
++          }
++        }
++      }
+     } catch (error) {
+       throw logger.externalError(
+         'Something went wrong while writing the introspection file',
+@@ -169,10 +209,34 @@ async function* runProject(
+       const existing = await readOutput(destination);
+       let contents: string;
+       try {
+-        contents = outputIntrospectionFile(minifyIntrospection(schema.introspection), {
++        contents = outputIntrospectionFile(schema.introspection, {
++          types: minifyIntrospectionTypes(schema.introspection),
+           fileType: schema.tadaOutputLocation,
+           shouldPreprocess: !opts.disablePreprocessing,
+-          preamble: existing ? extractIntrospectionHeader(existing) || undefined : undefined,
++          preamble: existing
++            ? (() => {
++                const header: string[] = [];
++                let inBlock = false;
++                for (const line of existing.split('\n')) {
++                  const trimmed = line.trim();
++                  if (inBlock) {
++                    header.push(line);
++                    if (trimmed.includes('*/')) inBlock = false;
++                  } else if (!trimmed) {
++                    break;
++                  } else if (trimmed.startsWith('//')) {
++                    header.push(line);
++                  } else if (trimmed.startsWith('/*')) {
++                    header.push(line);
++                    if (!trimmed.includes('*/')) inBlock = true;
++                  } else {
++                    break;
++                  }
++                }
++                const text = header.join('\n');
++                return header.length && !inBlock ? text + '\n' : undefined;
++              })()
++            : undefined,
+         });
+       } catch (error) {
+         throw logger.externalError(
+@@ -182,7 +246,13 @@ async function* runProject(
+       }
+ 
+       try {
+-        await writeOutput(destination, contents);
++        const directory = dirname(destination);
++        if (!(await directoryExists(directory))) await fs.mkdir(directory, { recursive: true });
++        if (await fileExists(destination)) {
++          await writeOutput(destination, contents);
++        } else {
++          await fs.writeFile(destination, contents);
++        }
+       } catch (error) {
+         throw logger.externalError(
+           `Something went wrong while writing the '${schemaName}' schema's output`,
+@@ -194,3 +264,478 @@ async function* runProject(
+     yield logger.summary();
+   }
+ }
++
++/** Checks whether a directory exists on disk */
++const directoryExists = async (file: PathLike): Promise<boolean> => {
++  try {
++    const stat = await fs.stat(file);
++    if (stat.isDirectory()) {
++      return true;
++    } else if (stat.isSymbolicLink()) {
++      return directoryExists(await fs.realpath(file));
++    } else {
++      return false;
++    }
++  } catch {
++    return false;
++  }
++};
++
++/** Checks whether a file exists on disk */
++const fileExists = (file: PathLike): Promise<boolean> =>
++  fs
++    .stat(file)
++    .then((stat) => stat.isFile())
++    .catch(() => false);
++
++const touchFile = async (file: PathLike): Promise<void> => {
++  try {
++    const now = new Date();
++    await fs.utimes(file, now, now);
++  } catch (_error) {}
++};
++
++/** Writes a file to a swapfile then moves it into place to prevent excess change events. */
++const writeOutput = async (target: PathLike, contents: string): Promise<void> => {
++  // If the file exists, we write to a swap-file, then rename (i.e. move)
++  // the file into place. No try-catch around `writeFile` for proper
++  // directory/permission errors
++  const tempTarget = target + '.tmp';
++  await fs.writeFile(tempTarget, contents);
++  try {
++    await fs.rename(tempTarget, target);
++  } catch (error) {
++    await fs.unlink(tempTarget);
++    throw error;
++  } finally {
++    // When we move the file into place, we also update its access and
++    // modification time manually, in case the rename doesn't trigger
++    // a change event
++    await touchFile(target);
++  }
++};
++
++import type {
++  IntrospectionQuery,
++  IntrospectionType,
++  IntrospectionTypeRef,
++  IntrospectionNamedTypeRef,
++  IntrospectionOutputTypeRef,
++  IntrospectionInputTypeRef,
++  IntrospectionInputValue,
++  IntrospectionEnumValue,
++  IntrospectionField,
++} from 'graphql';
++
++import type { IntrospectionResult } from '@gql.tada/internal';
++
++function nameCompare(objA: { name: string }, objB: { name: string }) {
++  return objA.name < objB.name ? -1 : objA.name > objB.name ? 1 : 0;
++}
++
++function mapTypeRef<const T extends IntrospectionTypeRef>(fromType: T): T;
++function mapTypeRef(fromType: IntrospectionTypeRef): IntrospectionTypeRef;
++function mapTypeRef(fromType: IntrospectionOutputTypeRef): IntrospectionOutputTypeRef;
++function mapTypeRef(fromType: IntrospectionInputTypeRef): IntrospectionInputTypeRef;
++
++function mapTypeRef(fromType: IntrospectionTypeRef): IntrospectionTypeRef & { isOneOf?: boolean } {
++  switch (fromType.kind) {
++    case 'NON_NULL':
++      return {
++        kind: fromType.kind,
++        ofType: mapTypeRef(fromType.ofType),
++      };
++    case 'LIST':
++      return {
++        kind: fromType.kind,
++        ofType: mapTypeRef(fromType.ofType),
++      };
++    case 'INPUT_OBJECT':
++    case 'ENUM':
++    case 'SCALAR':
++    case 'OBJECT':
++    case 'INTERFACE':
++    case 'UNION':
++      return {
++        kind: fromType.kind,
++        name: fromType.name,
++      };
++  }
++}
++
++function mapEnumValue(value: IntrospectionEnumValue): IntrospectionEnumValue {
++  return {
++    name: value.name,
++    isDeprecated: !!value.isDeprecated,
++    deprecationReason: undefined,
++  };
++}
++
++function mapInputField(value: IntrospectionInputValue): IntrospectionInputValue {
++  return {
++    name: value.name,
++    type: mapTypeRef(value.type),
++    defaultValue: value.defaultValue || undefined,
++  };
++}
++
++function mapField(field: IntrospectionField): IntrospectionField {
++  return {
++    name: field.name,
++    type: mapTypeRef(field.type),
++    args: field.args ? field.args.map(mapInputField).sort(nameCompare) : [],
++    isDeprecated: !!field.isDeprecated,
++    deprecationReason: undefined,
++  };
++}
++
++function mapPossibleType<T extends IntrospectionNamedTypeRef>(ref: T): T {
++  return {
++    kind: ref.kind,
++    name: ref.name,
++  } as T;
++}
++
++function minifyIntrospectionType(type: IntrospectionType): IntrospectionType {
++  switch (type.kind) {
++    case 'SCALAR':
++      return {
++        kind: 'SCALAR',
++        name: type.name,
++      };
++
++    case 'ENUM':
++      return {
++        kind: 'ENUM',
++        name: type.name,
++        enumValues: type.enumValues.map(mapEnumValue),
++      };
++
++    case 'INPUT_OBJECT': {
++      return {
++        kind: 'INPUT_OBJECT',
++        name: type.name,
++        inputFields: type.inputFields.map(mapInputField),
++        isOneOf: (type as any).isOneOf || false,
++      } as IntrospectionType;
++    }
++
++    case 'OBJECT':
++      return {
++        kind: 'OBJECT',
++        name: type.name,
++        fields: type.fields ? type.fields.map(mapField).sort(nameCompare) : [],
++        interfaces: type.interfaces ? type.interfaces.map(mapPossibleType).sort(nameCompare) : [],
++      };
++
++    case 'INTERFACE':
++      return {
++        kind: 'INTERFACE',
++        name: type.name,
++        fields: type.fields ? type.fields.map(mapField).sort(nameCompare) : [],
++        interfaces: type.interfaces ? type.interfaces.map(mapPossibleType).sort(nameCompare) : [],
++        possibleTypes: type.possibleTypes
++          ? type.possibleTypes.map(mapPossibleType).sort(nameCompare)
++          : [],
++      };
++
++    case 'UNION':
++      return {
++        kind: 'UNION',
++        name: type.name,
++        possibleTypes: type.possibleTypes
++          ? type.possibleTypes.map(mapPossibleType).sort(nameCompare)
++          : [],
++      };
++  }
++}
++
++/** Minifies an {@link IntrospectionQuery} for use with Graphcache or the `populateExchange`.
++ *
++ * @param schema - An {@link IntrospectionQuery} object to be minified.
++ * @param opts - An optional {@link MinifySchemaOptions} configuration object.
++ * @returns the minified {@link IntrospectionQuery} object.
++ *
++ * @remarks
++ * `minifyIntrospectionQuery` reduces the size of an {@link IntrospectionQuery} by
++ * removing data and information that a client-side consumer, like Graphcache or the
++ * `populateExchange`, may not require.
++ *
++ * At the very least, it will remove system types, descriptions, depreactions,
++ * and source locations. Unless disabled via the options passed, it will also
++ * by default remove all scalars, enums, inputs, and directives.
++ *
++ * @throws
++ * If `schema` receives an object that isn’t an {@link IntrospectionQuery}, a
++ * {@link TypeError} will be thrown.
++ */
++const minifyIntrospectionTypes = (
++  schema: IntrospectionQuery | IntrospectionResult
++): IntrospectionType[] => {
++  if (!schema || !('__schema' in schema)) {
++    throw new TypeError('Expected to receive an IntrospectionQuery.');
++  }
++
++  const {
++    __schema: { types },
++  } = schema;
++
++  const minifiedTypes = types
++    .filter((type) => {
++      switch (type.name) {
++        case '__Directive':
++        case '__DirectiveLocation':
++        case '__EnumValue':
++        case '__InputValue':
++        case '__Field':
++        case '__Type':
++        case '__TypeKind':
++        case '__Schema':
++          return false;
++        default:
++          return (
++            type.kind === 'SCALAR' ||
++            type.kind === 'ENUM' ||
++            type.kind === 'INPUT_OBJECT' ||
++            type.kind === 'OBJECT' ||
++            type.kind === 'INTERFACE' ||
++            type.kind === 'UNION'
++          );
++      }
++    })
++    .map(minifyIntrospectionType)
++    .sort(nameCompare);
++
++  return minifiedTypes;
++};
++
++const printName = (input: string | undefined | null): string => (input ? `'${input}'` : 'never');
++
++const printTypeRef = (typeRef: IntrospectionTypeRef) => {
++  if (typeRef.kind === 'NON_NULL') {
++    return `{ kind: 'NON_NULL'; name: never; ofType: ${printTypeRef(typeRef.ofType)}; }`;
++  } else if (typeRef.kind === 'LIST') {
++    return `{ kind: 'LIST'; name: never; ofType: ${printTypeRef(typeRef.ofType)}; }`;
++  } else {
++    return `{ kind: ${printName(typeRef.kind)}; name: ${printName(typeRef.name)}; ofType: null; }`;
++  }
++};
++
++const printInputFields = (inputFields: readonly IntrospectionInputValue[]) => {
++  let output = '';
++  for (const inputField of inputFields) {
++    if (output) output += ', ';
++    const name = printName(inputField.name);
++    const type = printTypeRef(inputField.type);
++    const defaultValue = inputField.defaultValue ? JSON.stringify(inputField.defaultValue) : 'null';
++    output += `{ name: ${name}; type: ${type}; defaultValue: ${defaultValue} }`;
++  }
++  return `[${output}]`;
++};
++
++const printNamedTypes = (
++  values: readonly (IntrospectionEnumValue | IntrospectionNamedTypeRef)[]
++) => {
++  if (!values.length) return 'never';
++  let output = '';
++  for (const value of values) {
++    if (output) output += ' | ';
++    output += printName(value.name);
++  }
++  return output;
++};
++
++const printFields = (fields: readonly IntrospectionField[]) => {
++  let output = '';
++  for (const field of fields) {
++    const name = printName(field.name);
++    const type = printTypeRef(field.type);
++    output += `${printName(field.name)}: { name: ${name}; type: ${type} }; `;
++  }
++  return `{ ${output}}`;
++};
++
++const printIntrospectionType = (type: IntrospectionType) => {
++  if (type.kind === 'ENUM') {
++    const values = printNamedTypes(type.enumValues);
++    return `{ name: ${printName(type.name)}; enumValues: ${values}; }`;
++  } else if (type.kind === 'INPUT_OBJECT') {
++    const fields = printInputFields(type.inputFields);
++    return `{ kind: 'INPUT_OBJECT'; name: ${printName(type.name)}; isOneOf: ${
++      (type as any).isOneOf || false
++    }; inputFields: ${fields}; }`;
++  } else if (type.kind === 'OBJECT') {
++    const fields = printFields(type.fields);
++    return `{ kind: 'OBJECT'; name: ${printName(type.name)}; fields: ${fields}; }`;
++  } else if (type.kind === 'INTERFACE') {
++    const name = printName(type.name);
++    const fields = printFields(type.fields);
++    const possibleTypes = printNamedTypes(type.possibleTypes);
++    return `{ kind: 'INTERFACE'; name: ${name}; fields: ${fields}; possibleTypes: ${possibleTypes}; }`;
++  } else if (type.kind === 'UNION') {
++    const name = printName(type.name);
++    const possibleTypes = printNamedTypes(type.possibleTypes);
++    return `{ kind: 'UNION'; name: ${name}; fields: {}; possibleTypes: ${possibleTypes}; }`;
++  } else {
++    return 'unknown';
++  }
++};
++
++function preprocessIntrospectionTypes(
++  introspection: IntrospectionResult | IntrospectionQuery
++): string {
++  let evaluatedTypes = '';
++  for (const type of introspection.__schema.types) {
++    const typeStr = printIntrospectionType(type);
++    if (evaluatedTypes) evaluatedTypes += '\n';
++    evaluatedTypes += `    ${printName(type.name)}: ${typeStr};`;
++  }
++  return `{\n${evaluatedTypes}\n}`;
++}
++
++function preprocessIntrospection(
++  introspection: IntrospectionResult | IntrospectionQuery,
++  typesStr = preprocessIntrospectionTypes(introspection)
++): string {
++  const { __schema: schema } = introspection;
++  const name = 'name' in introspection ? introspection.name : undefined;
++  const queryName = printName(schema.queryType.name);
++  const mutationName = printName(schema.mutationType && schema.mutationType.name);
++  const subscriptionName = printName(schema.subscriptionType && schema.subscriptionType.name);
++  return (
++    '{\n' +
++    `  name: ${printName(name)};\n` +
++    `  query: ${queryName};\n` +
++    `  mutation: ${mutationName};\n` +
++    `  subscription: ${subscriptionName};\n` +
++    `  types: ${typesStr};\n}`
++  );
++}
++
++const PREAMBLE_IGNORE = ['/* eslint-disable */', '/* prettier-ignore */'].join('\n') + '\n';
++
++const ANNOTATION_DTS = [
++  '/** An IntrospectionQuery representation of your schema.',
++  ' *',
++  ' * @remarks',
++  ' * This is an introspection of your schema saved as a file by GraphQLSP.',
++  ' * It will automatically be used by `gql.tada` to infer the types of your GraphQL documents.',
++  ' * If you need to reuse this data or update your `scalars`, update `tadaOutputLocation` to',
++  ' * instead save to a .ts instead of a .d.ts file.',
++  ' */',
++].join('\n');
++
++const ANNOTATION_TS = [
++  '/** An IntrospectionQuery representation of your schema.',
++  ' *',
++  ' * @remarks',
++  ' * This is an introspection of your schema saved as a file by GraphQLSP.',
++  ' * You may import it to create a `graphql()` tag function with `gql.tada`',
++  ' * by importing it and passing it to `initGraphQLTada<>()`.',
++  ' *',
++  ' * @example',
++  ' * ```',
++  " * import { initGraphQLTada } from 'gql.tada';",
++  " * import type { introspection } from './introspection';",
++  ' *',
++  ' * export const graphql = initGraphQLTada<{',
++  ' *   introspection: typeof introspection;',
++  ' *   scalars: {',
++  ' *     DateTime: string;',
++  ' *     Json: any;',
++  ' *   };',
++  ' * }>();',
++  ' * ```',
++  ' */',
++].join('\n');
++
++const TYPES_VAR = 'introspection_types';
++const stringifyJson = (input: unknown | string): string =>
++  typeof input === 'string' ? input : JSON.stringify(input, null, 2);
++
++interface OutputIntrospectionFileOptions {
++  types: IntrospectionType[];
++  fileType: '.ts' | '.d.ts' | string;
++  shouldPreprocess?: boolean;
++  /** A custom leading comment header used in place of the default preamble,
++   * typically extracted from a prior file via `extractIntrospectionHeader`. */
++  preamble?: string;
++}
++
++function outputIntrospectionFile(
++  introspection: IntrospectionQuery | IntrospectionResult,
++  opts: OutputIntrospectionFileOptions
++): string {
++  const { queryType, mutationType, subscriptionType } = introspection.__schema;
++  introspection = {
++    name: 'name' in introspection ? introspection.name : undefined,
++    __schema: {
++      queryType: {
++        kind: queryType.kind,
++        name: queryType.name,
++      },
++      mutationType: mutationType
++        ? {
++            kind: mutationType.kind,
++            name: mutationType.name,
++          }
++        : null,
++      subscriptionType: subscriptionType
++        ? {
++            kind: subscriptionType.kind,
++            name: subscriptionType.name,
++          }
++        : null,
++      types: opts.types,
++      directives: [],
++    },
++  };
++  const preamble =
++    opts.preamble && !opts.preamble.includes('An IntrospectionQuery representation')
++      ? opts.preamble
++      : PREAMBLE_IGNORE;
++  if (/\.d\.ts$/.test(opts.fileType)) {
++    const out = [preamble];
++    if (typeof introspection !== 'string' && opts.shouldPreprocess) {
++      // NOTE: When types aren't exported separately, composite tsconfigs
++      // will output a serialization error in diagnostics
++      out.push(
++        `export type ${TYPES_VAR} = ${preprocessIntrospectionTypes(introspection)};\n`,
++        ANNOTATION_DTS,
++        `export type introspection = ${preprocessIntrospection(introspection, TYPES_VAR)};\n`,
++        `import * as gqlTada from 'gql.tada';\n`
++      );
++    } else {
++      out.push(
++        ANNOTATION_DTS,
++        `export type introspection = ${stringifyJson(introspection)};\n`,
++        "import * as gqlTada from 'gql.tada';\n"
++      );
++    }
++    // NOTE: When the `name` option is used and multiple schemas are present,
++    // we omit the automatic schema declaration and rely on the user calling
++    // `initGraphQLTada()` themselves
++    if (!('name' in introspection) || !introspection.name) {
++      out.push(
++        "declare module 'gql.tada' {",
++        '  interface setupSchema {',
++        '    introspection: introspection',
++        '  }',
++        '}'
++      );
++    }
++    return out.join('\n');
++  } else if (/\.ts$/.test(opts.fileType)) {
++    const json = stringifyJson(introspection);
++    return [
++      preamble,
++      ANNOTATION_TS,
++      `const introspection = ${json} as const;\n`,
++      'export { introspection };',
++    ].join('\n');
++  }
++
++  throw new TadaError(
++    `No available introspection format for "${opts.fileType}" (expected ".ts" or ".d.ts")`
++  );
++}
+diff --git a/packages/cli-utils/src/commands/generate-persisted/runner.ts b/packages/cli-utils/src/commands/generate-persisted/runner.ts
+index d9d1893..a9bc4b8 100644
+--- a/packages/cli-utils/src/commands/generate-persisted/runner.ts
++++ b/packages/cli-utils/src/commands/generate-persisted/runner.ts
+@@ -1,8 +1,11 @@
++import type { PathLike } from 'node:fs';
++import { dirname } from 'node:path';
++import * as fs from 'node:fs/promises';
+ import * as path from 'node:path';
+ 
+ import type { TTY, ComposeInput } from '../../term';
+ import type { ProjectContext, WriteTarget } from '../shared';
+-import { loadProjects, writeOutput } from '../shared';
++import { loadProjects } from '../shared';
+ import type { PersistedDocument } from './types';
+ import * as logger from './logger';
+ 
+@@ -148,7 +151,25 @@ async function* runProject(
+         const json: Record<string, string> = {};
+         for (const item of documents) json[item.hashKey] = item.document;
+         const contents = JSON.stringify(json, null, 2);
+-        await writeOutput(destination, contents);
++        {
++          const target: WriteTarget = destination;
++          const outputContents = contents;
++          if (target && typeof target === 'object' && 'writable' in target) {
++            await new Promise<void>((resolve, reject) => {
++              target.write(outputContents, (error) => (error ? reject(error) : resolve()));
++            });
++          } else {
++            const directory = dirname(
++              typeof target === 'string' ? target : await fs.realpath(target)
++            );
++            if (!(await directoryExists(directory))) await fs.mkdir(directory, { recursive: true });
++            if (await fileExists(target)) {
++              await writeOutput(target, outputContents);
++            } else {
++              await fs.writeFile(target, outputContents);
++            }
++          }
++        }
+       } catch (error) {
+         throw logger.externalError(
+           'Something went wrong while writing the persisted manifest file.',
+@@ -195,7 +216,14 @@ async function* runProject(
+         }
+         if (documentCount[name]) {
+           const contents = JSON.stringify(json, null, 2);
+-          await writeOutput(path.resolve(projectPath, tadaPersistedLocation), contents);
++          const destination = path.resolve(projectPath, tadaPersistedLocation);
++          const directory = dirname(destination);
++          if (!(await directoryExists(directory))) await fs.mkdir(directory, { recursive: true });
++          if (await fileExists(destination)) {
++            await writeOutput(destination, contents);
++          } else {
++            await fs.writeFile(destination, contents);
++          }
+         }
+       } catch (error) {
+         throw logger.externalError(
+@@ -215,3 +243,53 @@ async function* runProject(
+ 
+   return { warnings, failed: false };
+ }
++
++/** Checks whether a directory exists on disk */
++const directoryExists = async (file: PathLike): Promise<boolean> => {
++  try {
++    const stat = await fs.stat(file);
++    if (stat.isDirectory()) {
++      return true;
++    } else if (stat.isSymbolicLink()) {
++      return directoryExists(await fs.realpath(file));
++    } else {
++      return false;
++    }
++  } catch {
++    return false;
++  }
++};
++
++/** Checks whether a file exists on disk */
++const fileExists = (file: PathLike): Promise<boolean> =>
++  fs
++    .stat(file)
++    .then((stat) => stat.isFile())
++    .catch(() => false);
++
++const touchFile = async (file: PathLike): Promise<void> => {
++  try {
++    const now = new Date();
++    await fs.utimes(file, now, now);
++  } catch (_error) {}
++};
++
++/** Writes a file to a swapfile then moves it into place to prevent excess change events. */
++const writeOutput = async (target: PathLike, contents: string): Promise<void> => {
++  // If the file exists, we write to a swap-file, then rename (i.e. move)
++  // the file into place. No try-catch around `writeFile` for proper
++  // directory/permission errors
++  const tempTarget = target + '.tmp';
++  await fs.writeFile(tempTarget, contents);
++  try {
++    await fs.rename(tempTarget, target);
++  } catch (error) {
++    await fs.unlink(tempTarget);
++    throw error;
++  } finally {
++    // When we move the file into place, we also update its access and
++    // modification time manually, in case the rename doesn't trigger
++    // a change event
++    await touchFile(target);
++  }
++};
+diff --git a/packages/cli-utils/src/commands/generate-persisted/thread.ts b/packages/cli-utils/src/commands/generate-persisted/thread.ts
+index 6f47bd5..b47445b 100644
+--- a/packages/cli-utils/src/commands/generate-persisted/thread.ts
++++ b/packages/cli-utils/src/commands/generate-persisted/thread.ts
+@@ -3,7 +3,6 @@ import { Kind, parse, print } from '@0no-co/graphql.web';
+ 
+ import type { FragmentDefinitionNode } from '@0no-co/graphql.web';
+ import type { GraphQLSPConfig } from '@gql.tada/internal';
+-import { getSchemaNamesFromConfig } from '@gql.tada/internal';
+ 
+ import {
+   findAllPersistedCallExpressions,
+@@ -26,7 +25,12 @@ export interface PersistedParams {
+ }
+ 
+ async function* _runPersisted(params: PersistedParams): AsyncIterableIterator<PersistedSignal> {
+-  const schemaNames = getSchemaNamesFromConfig(params.pluginConfig);
++  const schemaCount = new Set<null | string>([
++    ...('schema' in params.pluginConfig ? [null] : []),
++    ...('schemas' in params.pluginConfig
++      ? params.pluginConfig.schemas.map((input) => input.name)
++      : []),
++  ]).size;
+   const factory = programFactory(params);
+ 
+   const externalFiles = factory.createExternalFiles();
+@@ -54,11 +58,17 @@ async function* _runPersisted(params: PersistedParams): AsyncIterableIterator<Pe
+       const position = container.getSourcePosition(sourceFile, call.node.getStart());
+       filePath = position.fileName;
+ 
+-      if (!schemaNames.has(call.schema)) {
++      if (
++        !(
++          (call.schema === null && 'schema' in params.pluginConfig) ||
++          ('schemas' in params.pluginConfig &&
++            params.pluginConfig.schemas.some((input) => input.name === call.schema))
++        )
++      ) {
+         warnings.push({
+           message: call.schema
+             ? `The '${call.schema}' schema is not in the configuration but was referenced by "graphql.persisted".`
+-            : schemaNames.size > 1
++            : schemaCount > 1
+               ? 'The document is not for a known schema. Have you re-generated the output file?'
+               : 'Multiple schemas are configured, but the document is not for a specific schema.',
+           file: position.fileName,
+diff --git a/packages/cli-utils/src/commands/generate-schema/runner.ts b/packages/cli-utils/src/commands/generate-schema/runner.ts
+index 4c6da99..3f25af9 100644
+--- a/packages/cli-utils/src/commands/generate-schema/runner.ts
++++ b/packages/cli-utils/src/commands/generate-schema/runner.ts
+@@ -1,3 +1,6 @@
++import type { PathLike } from 'node:fs';
++import { dirname } from 'node:path';
++import * as fs from 'node:fs/promises';
+ import path from 'node:path';
+ import { printSchema } from 'graphql';
+ import type { GraphQLSchema } from 'graphql';
+@@ -5,7 +8,7 @@ import { load } from '@gql.tada/internal';
+ 
+ import type { TTY, ComposeInput } from '../../term';
+ import type { ProjectContext, WriteTarget } from '../shared';
+-import { loadProjects, writeOutput } from '../shared';
++import { loadProjects } from '../shared';
+ import * as logger from './logger';
+ 
+ export interface SchemaOptions {
+@@ -94,10 +97,76 @@ export async function* run(tty: TTY, opts: SchemaOptions): AsyncIterable<Compose
+   }
+ 
+   try {
+-    await writeOutput(destination, printSchema(schema));
++    {
++      const target: WriteTarget = destination;
++      const outputContents = printSchema(schema);
++      if (target && typeof target === 'object' && 'writable' in target) {
++        await new Promise<void>((resolve, reject) => {
++          target.write(outputContents, (error) => (error ? reject(error) : resolve()));
++        });
++      } else {
++        const directory = dirname(typeof target === 'string' ? target : await fs.realpath(target));
++        if (!(await directoryExists(directory))) await fs.mkdir(directory, { recursive: true });
++        if (await fileExists(target)) {
++          await writeOutput(target, outputContents);
++        } else {
++          await fs.writeFile(target, outputContents);
++        }
++      }
++    }
+   } catch (error) {
+     throw logger.externalError('Something went wrong while writing the introspection file', error);
+   }
+ 
+   yield logger.summary();
+ }
++
++/** Checks whether a directory exists on disk */
++const directoryExists = async (file: PathLike): Promise<boolean> => {
++  try {
++    const stat = await fs.stat(file);
++    if (stat.isDirectory()) {
++      return true;
++    } else if (stat.isSymbolicLink()) {
++      return directoryExists(await fs.realpath(file));
++    } else {
++      return false;
++    }
++  } catch {
++    return false;
++  }
++};
++
++/** Checks whether a file exists on disk */
++const fileExists = (file: PathLike): Promise<boolean> =>
++  fs
++    .stat(file)
++    .then((stat) => stat.isFile())
++    .catch(() => false);
++
++const touchFile = async (file: PathLike): Promise<void> => {
++  try {
++    const now = new Date();
++    await fs.utimes(file, now, now);
++  } catch (_error) {}
++};
++
++/** Writes a file to a swapfile then moves it into place to prevent excess change events. */
++const writeOutput = async (target: PathLike, contents: string): Promise<void> => {
++  // If the file exists, we write to a swap-file, then rename (i.e. move)
++  // the file into place. No try-catch around `writeFile` for proper
++  // directory/permission errors
++  const tempTarget = target + '.tmp';
++  await fs.writeFile(tempTarget, contents);
++  try {
++    await fs.rename(tempTarget, target);
++  } catch (error) {
++    await fs.unlink(tempTarget);
++    throw error;
++  } finally {
++    // When we move the file into place, we also update its access and
++    // modification time manually, in case the rename doesn't trigger
++    // a change event
++    await touchFile(target);
++  }
++};
+diff --git a/packages/cli-utils/src/commands/scan/thread.ts b/packages/cli-utils/src/commands/scan/thread.ts
+index b8a80dd..032ff87 100644
+--- a/packages/cli-utils/src/commands/scan/thread.ts
++++ b/packages/cli-utils/src/commands/scan/thread.ts
+@@ -1,7 +1,6 @@
+ import ts from 'typescript';
+ import v8 from 'node:v8';
+ import vm from 'node:vm';
+-import { getSchemaNamesFromConfig } from '@gql.tada/internal';
+ import { findAllCallExpressions } from '@0no-co/graphqlsp/api';
+ 
+ import type { ProgramContainer, PluginCreateInfo } from '../../ts';
+@@ -36,7 +35,12 @@ function collectModuleImports(
+ }
+ 
+ async function* _runScan(params: ScanParams): AsyncIterableIterator<ScanSignal> {
+-  const schemaNames = getSchemaNamesFromConfig(params.pluginConfig);
++  const schemaCount = new Set<null | string>([
++    ...('schema' in params.pluginConfig ? [null] : []),
++    ...('schemas' in params.pluginConfig
++      ? params.pluginConfig.schemas.map((input) => input.name)
++      : []),
++  ]).size;
+   const factory = programFactory(params);
+ 
+   const externalFiles = factory.createExternalFiles();
+@@ -85,11 +89,17 @@ async function* _runScan(params: ScanParams): AsyncIterableIterator<ScanSignal>
+       const position = container.getSourcePosition(sourceFile, callExpression.getStart());
+       filePath = position.fileName;
+ 
+-      if (!schemaNames.has(call.schema)) {
++      if (
++        !(
++          (call.schema === null && 'schema' in params.pluginConfig) ||
++          ('schemas' in params.pluginConfig &&
++            params.pluginConfig.schemas.some((input) => input.name === call.schema))
++        )
++      ) {
+         warnings.push({
+           message: call.schema
+             ? `The '${call.schema}' schema is not in the configuration but was referenced by a document.`
+-            : schemaNames.size > 1
++            : schemaCount > 1
+               ? 'The document is not for a known schema. Have you re-generated the output file?'
+               : 'Multiple schemas are configured, but the document is not for a specific schema.',
+           file: position.fileName,
+diff --git a/packages/cli-utils/src/commands/shared/projects.ts b/packages/cli-utils/src/commands/shared/projects.ts
+index fd3c9c1..eaa2bb8 100644
+--- a/packages/cli-utils/src/commands/shared/projects.ts
++++ b/packages/cli-utils/src/commands/shared/projects.ts
+@@ -1,6 +1,6 @@
+ import * as path from 'node:path';
+ import type { GraphQLSPConfig, LoadConfigResult } from '@gql.tada/internal';
+-import { loadConfigs, parseConfig, validateUniqueOutputLocations } from '@gql.tada/internal';
++import { loadConfigs, parseConfig, getURLConfig, TadaError } from '@gql.tada/internal';
+ 
+ export interface ProjectContext {
+   configResult: LoadConfigResult;
+@@ -23,12 +23,47 @@ export const loadProjects = async (tsconfig: string | undefined): Promise<Projec
+       label: path.relative(process.cwd(), configResult.tsconfigPath) || configResult.tsconfigPath,
+     };
+   });
+-  validateUniqueOutputLocations(
+-    projects.map((project) => ({
+-      projectPath: project.projectPath,
+-      config: project.pluginConfig,
+-      label: project.label,
+-    }))
+-  );
++  for (const prop of [
++    'tadaOutputLocation',
++    'tadaTurboLocation',
++    'tadaPersistedLocation',
++  ] as const) {
++    const seen = new Map<string, { label: string; schema: string }>();
++    for (const project of projects) {
++      const label = project.label || project.projectPath;
++      const schemas =
++        'schemas' in project.pluginConfig ? project.pluginConfig.schemas : [project.pluginConfig];
++      for (const schema of schemas) {
++        const location = schema[prop];
++        if (!location) continue;
++        let resolved = path.resolve(project.projectPath, location);
++        if (process.platform === 'win32') resolved = resolved.toLowerCase();
++        const origin = schema.schema;
++        let identity: string;
++        if (!origin) {
++          identity = '';
++        } else if (typeof origin === 'object') {
++          identity = `url:${origin.url}\0${JSON.stringify(origin.headers || null)}`;
++        } else if (getURLConfig(origin)) {
++          identity = `url:${origin}`;
++        } else {
++          let schemaPath = path.resolve(project.projectPath, origin);
++          if (process.platform === 'win32') schemaPath = schemaPath.toLowerCase();
++          identity = `file:${schemaPath}`;
++        }
++        const previous = seen.get(resolved);
++        if (previous && previous.label !== label) {
++          const isSharedOutput = prop === 'tadaOutputLocation' && previous.schema === identity;
++          if (!isSharedOutput) {
++            throw new TadaError(
++              `Projects '${previous.label}' and '${label}' resolve '${prop}' to the same file: ${location}`
++            );
++          }
++        } else if (!previous) {
++          seen.set(resolved, { label, schema: identity });
++        }
++      }
++    }
++  }
+   return projects;
+ };
+diff --git a/packages/cli-utils/src/commands/turbo/runner.ts b/packages/cli-utils/src/commands/turbo/runner.ts
+index 45fffd4..62dee64 100644
+--- a/packages/cli-utils/src/commands/turbo/runner.ts
++++ b/packages/cli-utils/src/commands/turbo/runner.ts
+@@ -1,10 +1,11 @@
++import type { PathLike } from 'node:fs';
++import { dirname } from 'node:path';
++import * as fs from 'node:fs/promises';
+ import * as path from 'node:path';
+ 
+-import { extractIntrospectionHeader } from '@gql.tada/internal';
+-
+ import type { TTY, ComposeInput } from '../../term';
+ import type { ProjectContext, WriteTarget } from '../shared';
+-import { loadProjects, writeOutput, readOutput } from '../shared';
++import { loadProjects, readOutput } from '../shared';
+ import type { TurboDocument, GraphQLSourceFile, TurboPath } from './types';
+ import * as logger from './logger';
+ 
+@@ -173,7 +174,25 @@ async function* runProject(
+     try {
+       const existing = await readOutput(destination!);
+       const contents = createCacheContents(documents, graphqlSources, destination!, existing);
+-      await writeOutput(destination!, contents);
++      {
++        const target: WriteTarget = destination!;
++        const outputContents = contents;
++        if (target && typeof target === 'object' && 'writable' in target) {
++          await new Promise<void>((resolve, reject) => {
++            target.write(outputContents, (error) => (error ? reject(error) : resolve()));
++          });
++        } else {
++          const directory = dirname(
++            typeof target === 'string' ? target : await fs.realpath(target)
++          );
++          if (!(await directoryExists(directory))) await fs.mkdir(directory, { recursive: true });
++          if (await fileExists(target)) {
++            await writeOutput(target, outputContents);
++          } else {
++            await fs.writeFile(target, outputContents);
++          }
++        }
++      }
+     } catch (error) {
+       throw logger.externalError('Something went wrong while writing the type cache file', error);
+     }
+@@ -218,7 +237,13 @@ async function* runProject(
+         const destination = path.resolve(projectPath, tadaTurboLocation);
+         const existing = await readOutput(destination);
+         const contents = createCacheContents(cache, graphqlSources, destination, existing);
+-        await writeOutput(destination, contents);
++        const directory = dirname(destination);
++        if (!(await directoryExists(directory))) await fs.mkdir(directory, { recursive: true });
++        if (await fileExists(destination)) {
++          await writeOutput(destination, contents);
++        } else {
++          await fs.writeFile(destination, contents);
++        }
+       } catch (error) {
+         throw logger.externalError(
+           `Something went wrong while writing the '${name}' schema's type cache file.`,
+@@ -244,7 +269,31 @@ export function createCacheContents(
+   turboDestination: WriteTarget,
+   existing?: string
+ ): string {
+-  const preamble = (existing && extractIntrospectionHeader(existing)) || PREAMBLE_IGNORE;
++  const preamble =
++    (existing &&
++      (() => {
++        const header: string[] = [];
++        let inBlock = false;
++        for (const line of existing.split('\n')) {
++          const trimmed = line.trim();
++          if (inBlock) {
++            header.push(line);
++            if (trimmed.includes('*/')) inBlock = false;
++          } else if (!trimmed) {
++            break;
++          } else if (trimmed.startsWith('//')) {
++            header.push(line);
++          } else if (trimmed.startsWith('/*')) {
++            header.push(line);
++            if (!trimmed.includes('*/')) inBlock = true;
++          } else {
++            break;
++          }
++        }
++        const text = header.join('\n');
++        return header.length && !inBlock ? text + '\n' : undefined;
++      })()) ||
++    PREAMBLE_IGNORE;
+   const documentsByKey = new Map<string, TurboDocument>();
+   for (const document of cache) documentsByKey.set(document.argumentKey, document);
+ 
+@@ -296,7 +345,7 @@ export function createCacheContents(
+   }
+ 
+   return (
+-    preamble +
++    (preamble.includes('An IntrospectionQuery representation') ? PREAMBLE_IGNORE : preamble) +
+     imports +
+     '\n' +
+     "declare module 'gql.tada' {\n" +
+@@ -310,3 +359,53 @@ export function createCacheContents(
+ function compareUtf16(a: string, b: string): number {
+   return a < b ? -1 : a > b ? 1 : 0;
+ }
++
++/** Checks whether a directory exists on disk */
++const directoryExists = async (file: PathLike): Promise<boolean> => {
++  try {
++    const stat = await fs.stat(file);
++    if (stat.isDirectory()) {
++      return true;
++    } else if (stat.isSymbolicLink()) {
++      return directoryExists(await fs.realpath(file));
++    } else {
++      return false;
++    }
++  } catch {
++    return false;
++  }
++};
++
++/** Checks whether a file exists on disk */
++const fileExists = (file: PathLike): Promise<boolean> =>
++  fs
++    .stat(file)
++    .then((stat) => stat.isFile())
++    .catch(() => false);
++
++const touchFile = async (file: PathLike): Promise<void> => {
++  try {
++    const now = new Date();
++    await fs.utimes(file, now, now);
++  } catch (_error) {}
++};
++
++/** Writes a file to a swapfile then moves it into place to prevent excess change events. */
++const writeOutput = async (target: PathLike, contents: string): Promise<void> => {
++  // If the file exists, we write to a swap-file, then rename (i.e. move)
++  // the file into place. No try-catch around `writeFile` for proper
++  // directory/permission errors
++  const tempTarget = target + '.tmp';
++  await fs.writeFile(tempTarget, contents);
++  try {
++    await fs.rename(tempTarget, target);
++  } catch (error) {
++    await fs.unlink(tempTarget);
++    throw error;
++  } finally {
++    // When we move the file into place, we also update its access and
++    // modification time manually, in case the rename doesn't trigger
++    // a change event
++    await touchFile(target);
++  }
++};
+diff --git a/packages/cli-utils/src/commands/turbo/thread.ts b/packages/cli-utils/src/commands/turbo/thread.ts
+index cd6cc89..63fe15e 100644
+--- a/packages/cli-utils/src/commands/turbo/thread.ts
++++ b/packages/cli-utils/src/commands/turbo/thread.ts
+@@ -6,7 +6,6 @@ import * as path from 'node:path';
+ import * as crypto from 'node:crypto';
+ import type { GraphQLSPConfig } from '@gql.tada/internal';
+ 
+-import { getSchemaNamesFromConfig, getSchemaConfigForName } from '@gql.tada/internal';
+ import { findAllCallExpressions } from '@0no-co/graphqlsp/api';
+ 
+ import type { ProgramContainer, PluginCreateInfo } from '../../ts';
+@@ -231,7 +230,12 @@ function isTadaImport(
+ }
+ 
+ export async function* _runTurbo(params: TurboParams): AsyncIterableIterator<TurboSignal> {
+-  const schemaNames = getSchemaNamesFromConfig(params.pluginConfig);
++  const schemaCount = new Set<null | string>([
++    ...('schema' in params.pluginConfig ? [null] : []),
++    ...('schemas' in params.pluginConfig
++      ? params.pluginConfig.schemas.map((input) => input.name)
++      : []),
++  ]).size;
+   const factory = programFactory(params);
+   const cachedDocumentsByPath = new Map<string, CachedTurboDocuments>();
+ 
+@@ -309,11 +313,17 @@ export async function* _runTurbo(params: TurboParams): AsyncIterableIterator<Tur
+ 
+       const position = container.getSourcePosition(sourceFile, callExpression.getStart());
+       filePath = position.fileName;
+-      if (!schemaNames.has(call.schema)) {
++      if (
++        !(
++          (call.schema === null && 'schema' in params.pluginConfig) ||
++          ('schemas' in params.pluginConfig &&
++            params.pluginConfig.schemas.some((input) => input.name === call.schema))
++        )
++      ) {
+         warnings.push({
+           message: call.schema
+             ? `The '${call.schema}' schema is not in the configuration but was referenced by document.`
+-            : schemaNames.size > 1
++            : schemaCount > 1
+               ? 'The document is not for a known schema. Have you re-generated the output file?'
+               : 'Multiple schemas are configured, but the document is not for a specific schema.',
+           file: position.fileName,
+@@ -449,9 +459,27 @@ export async function* _runTurbo(params: TurboParams): AsyncIterableIterator<Tur
+ function computeSchemaFingerprints(params: TurboParams): Map<string | null, string> {
+   const fingerprints = new Map<string | null, string>();
+   const configDir = path.dirname(params.configPath);
+-  for (const schemaName of getSchemaNamesFromConfig(params.pluginConfig)) {
+-    const schemaConfig = getSchemaConfigForName(params.pluginConfig, schemaName || undefined);
+-    const outputLocation = schemaConfig && schemaConfig.tadaOutputLocation;
++  for (const schemaName of new Set<null | string>([
++    ...('schema' in params.pluginConfig ? [null] : []),
++    ...('schemas' in params.pluginConfig
++      ? params.pluginConfig.schemas.map((input) => input.name)
++      : []),
++  ])) {
++    const config = params.pluginConfig;
++    const name = schemaName || undefined;
++    let outputLocation: string | undefined;
++    if (name && 'name' in config && config.name === name) {
++      outputLocation = config.tadaOutputLocation;
++    } else if (!name && !('schemas' in config)) {
++      outputLocation = config.tadaOutputLocation;
++    } else if (name && 'schemas' in config) {
++      for (const input of config.schemas) {
++        if (input.name === name) {
++          outputLocation = input.tadaOutputLocation;
++          break;
++        }
++      }
++    }
+     if (!outputLocation) continue;
+ 
+     let contents: string;

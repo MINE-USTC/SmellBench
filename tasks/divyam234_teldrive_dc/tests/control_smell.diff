@@ -1,0 +1,1584 @@
+diff --git a/internal/api/handler_access.go b/internal/api/handler_access.go
+index 6caf295..7f0ff0d 100644
+--- a/internal/api/handler_access.go
++++ b/internal/api/handler_access.go
+@@ -426,21 +426,25 @@ func (h *Handler) AbortPublicShareUpload(ctx context.Context, params gen.AbortPu
+ 	return &gen.AbortPublicShareUploadNoContent{}, nil
+ }
+ 
+-func (h *Handler) resolveAuthenticatedFileAccess(ctx context.Context, fileID uuid.UUID, requireEdit bool) (*shares.Access, error) {
++func (h *Handler) resolveAuthenticatedFileAccess(ctx context.Context, fileID uuid.UUID, requireEdit bool) (int64, uuid.UUID, bool, error) {
+ 	actorID, err := UserIDFromContext(ctx)
+ 	if err != nil {
+-		return nil, err
++		return 0, uuid.Nil, false, err
+ 	}
+ 	if h.Shares == nil {
+ 		if h.Catalog == nil {
+-			return nil, ErrOperationUnavailable
++			return 0, uuid.Nil, false, ErrOperationUnavailable
+ 		}
+ 		if _, err := h.Catalog.Get(ctx, actorID, fileID); err != nil {
+-			return nil, err
++			return 0, uuid.Nil, false, err
+ 		}
+-		return &shares.Access{OwnerID: actorID, RootFileID: fileID, Permission: sqlcgen.SharePermissionEdit, Owned: true}, nil
++		return actorID, fileID, true, nil
++	}
++	access, err := h.Shares.ResolveAccess(ctx, actorID, fileID, requireEdit)
++	if err != nil {
++		return 0, uuid.Nil, false, err
+ 	}
+-	return h.Shares.ResolveAccess(ctx, actorID, fileID, requireEdit)
++	return access.OwnerID, access.RootFileID, access.Owned, nil
+ }
+ 
+ // resolveFileContent preserves per-user authorization unless the request was
+@@ -449,11 +453,11 @@ func (h *Handler) resolveFileContent(ctx context.Context, fileID uuid.UUID) (*sq
+ 	if isPublicFileContent(ctx) {
+ 		return h.Catalog.GetPublic(ctx, fileID)
+ 	}
+-	access, err := h.resolveAuthenticatedFileAccess(ctx, fileID, false)
++	accessOwnerID, _, _, err := h.resolveAuthenticatedFileAccess(ctx, fileID, false)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	return h.Catalog.Get(ctx, access.OwnerID, fileID)
++	return h.Catalog.Get(ctx, accessOwnerID, fileID)
+ }
+ 
+ func (h *Handler) resolveAuthenticatedUploadOwner(ctx context.Context, uploadID uuid.UUID, requireEdit bool) (int64, error) {
+diff --git a/internal/api/handler_core.go b/internal/api/handler_core.go
+index cea7128..84f0fb4 100644
+--- a/internal/api/handler_core.go
++++ b/internal/api/handler_core.go
+@@ -57,11 +57,11 @@ func (h *Handler) CreateFolder(ctx context.Context, req *gen.FolderCreateRequest
+ 	parentID := optionalGoogleUUID(req.ParentId)
+ 	ownerID := userID
+ 	if parentID != nil {
+-		access, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
++		accessOwnerID, _, _, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
+ 		if err != nil {
+ 			return nil, mapServiceError(err)
+ 		}
+-		ownerID = access.OwnerID
++		ownerID = accessOwnerID
+ 	}
+ 	file, err := h.Catalog.CreateFolder(ctx, catalog.CreateFolderInput{
+ 		UserID: ownerID, ParentID: parentID, Name: req.Name, ModTime: modTime,
+@@ -84,11 +84,11 @@ func (h *Handler) GetFile(ctx context.Context, params gen.GetFileParams) (gen.Ge
+ 	if h.Catalog == nil {
+ 		return nil, mapServiceError(ErrOperationUnavailable)
+ 	}
+-	access, err := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false)
++	accessOwnerID, _, _, err := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+-	file, err := h.Catalog.Get(ctx, access.OwnerID, googleUUID(params.FileId))
++	file, err := h.Catalog.Get(ctx, accessOwnerID, googleUUID(params.FileId))
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+@@ -111,6 +111,16 @@ func (h *Handler) ListFiles(ctx context.Context, params gen.ListFilesParams) (ge
+ 	if err := decodeCursor(params.Cursor, &cursor); err != nil {
+ 		return nil, mapServiceError(uploads.ErrInvalidInput)
+ 	}
++	afterName := cursor.Name
++	afterSort := cursor.Sort
++	afterOrder := cursor.Order
++	afterValue := cursor.Value
++	afterID := cursor.ID
++	afterScope := cursor.Scope
++	queryFingerprint := cursor.Fingerprint
++	afterFolder := cursor.FolderID
++	rawSearch := params.Search.Or("")
++	querySearch := rawSearch
+ 	limit := params.Limit.Or(100)
+ 	scope := string(params.Scope.Or(gen.FileListQueryScopeFolder))
+ 	bookmarked := params.Bookmarked.Or(false)
+@@ -130,12 +140,12 @@ func (h *Handler) ListFiles(ctx context.Context, params gen.ListFilesParams) (ge
+ 	if value, ok := params.SearchType.Get(); ok {
+ 		searchType = string(value)
+ 	}
+-	if cursor.Sort != "" && (cursor.Sort != sortBy || cursor.Order != order) {
++	if afterSort != "" && (afterSort != sortBy || afterOrder != order) {
+ 		return nil, mapServiceError(uploads.ErrInvalidInput)
+ 	}
+ 	parentID := optionalGoogleUUID(params.ParentId)
+ 	ownerID := userID
+-	if cursor.ID != uuid.Nil && cursor.Scope != "" && cursor.Scope != scope {
++	if afterID != uuid.Nil && afterScope != "" && afterScope != scope {
+ 		return nil, mapServiceError(uploads.ErrInvalidInput)
+ 	}
+ 	if scope != "folder" {
+@@ -148,13 +158,14 @@ func (h *Handler) ListFiles(ctx context.Context, params gen.ListFilesParams) (ge
+ 			Categories                                                   []gen.FileCategory
+ 			After, Before                                                string
+ 			Bookmarked                                                   bool
+-		}{scope, folderCursor, params.Search.Or(""), searchType, sortBy, order, string(params.Kind.Or("")), string(params.Status.Or("")), params.Category, params.UpdatedAfter.Or(time.Time{}).Format(time.RFC3339Nano), params.UpdatedBefore.Or(time.Time{}).Format(time.RFC3339Nano), bookmarked})
++		}{scope, folderCursor, rawSearch, searchType, sortBy, order, string(params.Kind.Or("")), string(params.Status.Or("")), params.Category, params.UpdatedAfter.Or(time.Time{}).Format(time.RFC3339Nano), params.UpdatedBefore.Or(time.Time{}).Format(time.RFC3339Nano), bookmarked})
+ 		fingerprintSum := sha256.Sum256(fingerprintBytes)
+ 		fingerprint := hex.EncodeToString(fingerprintSum[:])
+-		if cursor.ID != uuid.Nil && (cursor.Scope != scope || cursor.FolderID != folderCursor || cursor.Fingerprint != fingerprint) {
++		if afterID != uuid.Nil && (afterScope != scope || afterFolder != folderCursor || queryFingerprint != fingerprint) {
+ 			return nil, mapServiceError(uploads.ErrInvalidInput)
+ 		}
+-		cursor.Fingerprint = fingerprint
++		queryFingerprint = fingerprint
++		querySearch = strings.TrimSpace(rawSearch)
+ 		if strings.TrimSpace(params.Path.Or("")) != "" {
+ 			return nil, mapServiceError(uploads.ErrInvalidInput)
+ 		}
+@@ -162,43 +173,54 @@ func (h *Handler) ListFiles(ctx context.Context, params gen.ListFilesParams) (ge
+ 			return nil, mapServiceError(uploads.ErrInvalidInput)
+ 		}
+ 	} else if parentID != nil {
+-		access, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, false)
++		accessOwnerID, _, _, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, false)
+ 		if err != nil {
+ 			return nil, mapServiceError(err)
+ 		}
+-		ownerID = access.OwnerID
+-	}
+-	input := catalog.ListInput{
+-		UserID: ownerID, Scope: scope, ParentID: parentID, Path: params.Path.Or(""),
+-		Search: params.Search.Or(""), SearchType: searchType,
+-		Sort: sortBy, Order: order, Limit: limit, Bookmarked: bookmarked,
+-	}
++		ownerID = accessOwnerID
++	}
++	listingParent := parentID
++	var scopeFolder *uuid.UUID
++	path := params.Path.Or("")
++	searchText := querySearch
++	var selectedKind *sqlcgen.FileKind
++	var selectedStatus sqlcgen.FileStatus
++	var categories []string
++	var updatedAfter, updatedBefore *time.Time
++	var selectedCursorID *uuid.UUID
++	cursorName, cursorValue := "", ""
+ 	if scope == "recursive" {
+-		input.ScopeFolderID = parentID
+-		input.ParentID = nil
++		scopeFolder = parentID
++		listingParent = nil
+ 	}
+ 	if value, ok := params.Kind.Get(); ok {
+ 		kind := sqlcgen.FileKind(value)
+-		input.Kind = &kind
++		selectedKind = &kind
+ 	}
+ 	if value, ok := params.Status.Get(); ok {
+-		input.Status = sqlcgen.FileStatus(value)
++		selectedStatus = sqlcgen.FileStatus(value)
+ 	}
+ 	for _, category := range params.Category {
+-		input.Categories = append(input.Categories, string(category))
++		categories = append(categories, string(category))
+ 	}
+ 	if value, ok := params.UpdatedAfter.Get(); ok {
+-		input.UpdatedAfter = &value
++		updatedAfter = &value
+ 	}
+ 	if value, ok := params.UpdatedBefore.Get(); ok {
+-		input.UpdatedBefore = &value
++		updatedBefore = &value
+ 	}
+-	if cursor.ID != uuid.Nil {
+-		input.AfterID = &cursor.ID
+-		input.AfterName = cursor.Name
+-		input.AfterValue = cursor.Value
++	if afterID != uuid.Nil {
++		selectedCursorID = &afterID
++		cursorName = afterName
++		cursorValue = afterValue
+ 	}
+-	files, err := h.Catalog.List(ctx, input)
++	files, err := h.Catalog.List(ctx, catalog.ListInput{
++		UserID: ownerID, Scope: scope, ScopeFolderID: scopeFolder, ParentID: listingParent, Path: path,
++		Search: searchText, SearchType: searchType, Kind: selectedKind, Status: selectedStatus,
++		Sort: sortBy, Order: order, Limit: limit, Bookmarked: bookmarked,
++		Categories: categories, UpdatedAfter: updatedAfter, UpdatedBefore: updatedBefore,
++		AfterID: selectedCursorID, AfterName: cursorName, AfterValue: cursorValue,
++	})
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+@@ -241,7 +263,7 @@ func (h *Handler) ListFiles(ctx context.Context, params gen.ListFilesParams) (ge
+ 				}
+ 				return ""
+ 			}(),
+-			Fingerprint: cursor.Fingerprint,
++			Fingerprint: queryFingerprint,
+ 		})
+ 	}
+ 	return &response, nil
+@@ -299,12 +321,12 @@ func (h *Handler) UpdateFile(ctx context.Context, req *gen.FileUpdateRequest, pa
+ 	if value, ok := req.ModTime.Get(); ok {
+ 		modTime = &value
+ 	}
+-	access, err := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), true)
++	accessOwnerID, _, _, err := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), true)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+ 	file, err := h.Catalog.Update(ctx, catalog.UpdateInput{
+-		UserID: access.OwnerID, FileID: googleUUID(params.FileId), ExpectedGeneration: generation, Name: name, ModTime: modTime,
++		UserID: accessOwnerID, FileID: googleUUID(params.FileId), ExpectedGeneration: generation, Name: name, ModTime: modTime,
+ 	})
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+@@ -328,25 +350,25 @@ func (h *Handler) MoveFile(ctx context.Context, req *gen.FileMoveRequest, params
+ 	if err != nil {
+ 		return nil, mapServiceError(uploads.ErrInvalidInput)
+ 	}
+-	sourceAccess, err := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), true)
++	sourceAccessOwnerID, _, sourceAccessOwned, err := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), true)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+ 	parentID := optionalGoogleUUID(req.ParentId)
+ 	if parentID == nil {
+-		if !sourceAccess.Owned {
++		if !sourceAccessOwned {
+ 			return nil, mapServiceError(shares.ErrForbidden)
+ 		}
+ 	} else {
+-		destinationAccess, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
++		destinationAccessOwnerID, _, _, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
+ 		if err != nil {
+ 			return nil, mapServiceError(err)
+ 		}
+-		if destinationAccess.OwnerID != sourceAccess.OwnerID {
++		if destinationAccessOwnerID != sourceAccessOwnerID {
+ 			return nil, mapServiceError(shares.ErrForbidden)
+ 		}
+ 	}
+-	file, err := h.Catalog.MoveWithPolicy(ctx, sourceAccess.OwnerID, googleUUID(params.FileId), parentID, generation, policy)
++	file, err := h.Catalog.MoveWithPolicy(ctx, sourceAccessOwnerID, googleUUID(params.FileId), parentID, generation, policy)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+@@ -362,14 +384,14 @@ func (h *Handler) TrashFile(ctx context.Context, params gen.TrashFileParams) (ge
+ 		return nil, mapServiceError(ErrOperationUnavailable)
+ 	}
+ 	fileID := googleUUID(params.FileId)
+-	access, err := h.resolveAuthenticatedFileAccess(ctx, fileID, true)
++	accessOwnerID, accessRootID, accessOwned, err := h.resolveAuthenticatedFileAccess(ctx, fileID, true)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+-	if !access.Owned && access.RootFileID == fileID {
++	if !accessOwned && accessRootID == fileID {
+ 		return nil, mapServiceError(shares.ErrForbidden)
+ 	}
+-	if _, err := h.Catalog.Trash(ctx, access.OwnerID, fileID); err != nil {
++	if _, err := h.Catalog.Trash(ctx, accessOwnerID, fileID); err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+ 	return &gen.TrashFileNoContent{}, nil
+@@ -405,11 +427,11 @@ func (h *Handler) CreateUpload(ctx context.Context, req *gen.UploadCreateRequest
+ 	parentID := optionalGoogleUUID(req.ParentId)
+ 	ownerID := userID
+ 	if parentID != nil {
+-		access, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
++		accessOwnerID, _, _, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
+ 		if err != nil {
+ 			return nil, mapServiceError(err)
+ 		}
+-		ownerID = access.OwnerID
++		ownerID = accessOwnerID
+ 	}
+ 	session, err := h.createUploadForOwner(ctx, ownerID, parentID, req)
+ 	if err != nil {
+@@ -453,15 +475,21 @@ func (h *Handler) ListUploads(ctx context.Context, params gen.ListUploadsParams)
+ 	if err := decodeCursor(params.Cursor, &cursor); err != nil {
+ 		return nil, mapServiceError(uploads.ErrInvalidInput)
+ 	}
+-	input := uploads.ListInput{UserID: userID, Limit: params.Limit.Or(100)}
++	pageSize := params.Limit.Or(100)
++	var selectedState *sqlcgen.UploadState
++	var cursorID *uuid.UUID
++	var cursorTime *time.Time
+ 	if value, ok := params.State.Get(); ok {
+ 		state := sqlcgen.UploadState(value)
+-		input.State = &state
++		selectedState = &state
+ 	}
+ 	if cursor.ID != uuid.Nil {
+-		input.AfterID, input.AfterCreatedAt = &cursor.ID, &cursor.CreatedAt
++		cursorID, cursorTime = &cursor.ID, &cursor.CreatedAt
+ 	}
+-	sessions, err := h.Uploads.List(ctx, input)
++	sessions, err := h.Uploads.List(ctx, uploads.ListInput{
++		UserID: userID, Limit: pageSize, State: selectedState,
++		AfterID: cursorID, AfterCreatedAt: cursorTime,
++	})
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+@@ -474,7 +502,7 @@ func (h *Handler) ListUploads(ctx context.Context, params gen.ListUploadsParams)
+ 		items = append(items, item)
+ 	}
+ 	response := gen.ListUploadsOK{Items: items}
+-	if len(sessions) == int(input.Limit) && len(sessions) > 0 {
++	if len(sessions) == int(pageSize) && len(sessions) > 0 {
+ 		last := sessions[len(sessions)-1]
+ 		lastID, _ := dbtypes.GoogleUUID(last.ID)
+ 		response.NextCursor = encodeCursor(uploadCursor{CreatedAt: last.CreatedAt.Time, ID: lastID})
+@@ -494,11 +522,15 @@ func (h *Handler) ListUploadParts(ctx context.Context, params gen.ListUploadPart
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+-	input := uploads.ListPartsInput{UserID: ownerID, UploadID: googleUUID(params.UploadId), Limit: params.Limit.Or(100)}
++	uploadID := googleUUID(params.UploadId)
++	pageSize := params.Limit.Or(100)
++	var afterPart *int32
+ 	if cursor.PartNo > 0 {
+-		input.AfterPartNo = &cursor.PartNo
++		afterPart = &cursor.PartNo
+ 	}
+-	parts, err := h.Uploads.ListParts(ctx, input)
++	parts, err := h.Uploads.ListParts(ctx, uploads.ListPartsInput{
++		UserID: ownerID, UploadID: uploadID, Limit: pageSize, AfterPartNo: afterPart,
++	})
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+@@ -511,7 +543,7 @@ func (h *Handler) ListUploadParts(ctx context.Context, params gen.ListUploadPart
+ 		items = append(items, item)
+ 	}
+ 	response := gen.ListUploadPartsOK{Items: items}
+-	if len(parts) == int(input.Limit) && len(parts) > 0 {
++	if len(parts) == int(pageSize) && len(parts) > 0 {
+ 		response.NextCursor = encodeCursor(partCursor{PartNo: parts[len(parts)-1].PartNo})
+ 	}
+ 	return &response, nil
+diff --git a/internal/api/handler_domains.go b/internal/api/handler_domains.go
+index c6c109c..53764b8 100644
+--- a/internal/api/handler_domains.go
++++ b/internal/api/handler_domains.go
+@@ -556,26 +556,26 @@ func (h *Handler) CopyFile(ctx context.Context, req *gen.FileCopyRequest, params
+ 	if value, ok := req.ConflictPolicy.Get(); ok {
+ 		policy = sqlcgen.NameConflictPolicy(value)
+ 	}
+-	sourceAccess, err := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false)
++	sourceAccessOwnerID, _, sourceAccessOwned, err := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+ 	parentID := optionalGoogleUUID(req.ParentId)
+ 	if parentID == nil {
+-		if !sourceAccess.Owned {
++		if !sourceAccessOwned {
+ 			return nil, mapServiceError(shares.ErrForbidden)
+ 		}
+ 	} else {
+-		destinationAccess, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
++		destinationAccessOwnerID, _, _, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
+ 		if err != nil {
+ 			return nil, mapServiceError(err)
+ 		}
+-		if destinationAccess.OwnerID != sourceAccess.OwnerID {
++		if destinationAccessOwnerID != sourceAccessOwnerID {
+ 			return nil, mapServiceError(shares.ErrForbidden)
+ 		}
+ 	}
+ 	file, err := h.FileOps.Copy(ctx, fileops.CopyInput{
+-		UserID: sourceAccess.OwnerID, FileID: googleUUID(params.FileId), ParentID: parentID, Name: name,
++		UserID: sourceAccessOwnerID, FileID: googleUUID(params.FileId), ParentID: parentID, Name: name,
+ 		ConflictPolicy: policy,
+ 	})
+ 	if err != nil {
+@@ -672,11 +672,17 @@ func (h *Handler) ListFileShares(ctx context.Context, params gen.ListFileSharesP
+ 	if err := decodeCursor(params.Cursor, &cursor); err != nil {
+ 		return nil, mapServiceError(shares.ErrInvalidInput)
+ 	}
+-	input := shares.ListInput{OwnerID: userID, FileID: googleUUID(params.FileId), Limit: params.Limit.Or(100)}
++	fileID := googleUUID(params.FileId)
++	pageSize := params.Limit.Or(100)
++	var cursorTime *time.Time
++	var cursorID *uuid.UUID
+ 	if cursor.ID != uuid.Nil {
+-		input.AfterCreatedAt, input.AfterID = &cursor.CreatedAt, &cursor.ID
++		cursorTime, cursorID = &cursor.CreatedAt, &cursor.ID
+ 	}
+-	rows, err := h.Shares.List(ctx, input)
++	rows, err := h.Shares.List(ctx, shares.ListInput{
++		OwnerID: userID, FileID: fileID, Limit: pageSize,
++		AfterCreatedAt: cursorTime, AfterID: cursorID,
++	})
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+@@ -685,7 +691,7 @@ func (h *Handler) ListFileShares(ctx context.Context, params gen.ListFileSharesP
+ 		items = append(items, shareSummary(row))
+ 	}
+ 	response := gen.ListFileSharesOK{Items: items}
+-	if len(rows) == int(input.Limit) && len(rows) > 0 {
++	if len(rows) == int(pageSize) && len(rows) > 0 {
+ 		last := rows[len(rows)-1]
+ 		lastID, _ := dbtypes.GoogleUUID(last.ID)
+ 		response.NextCursor = encodeCursor(datedUUIDCursor{CreatedAt: last.CreatedAt.Time, ID: lastID})
+diff --git a/internal/api/handler_parity.go b/internal/api/handler_parity.go
+index 2e20bc9..9ff7b93 100644
+--- a/internal/api/handler_parity.go
++++ b/internal/api/handler_parity.go
+@@ -2,6 +2,7 @@ package api
+ 
+ import (
+ 	"context"
++	"time"
+ 
+ 	"github.com/google/uuid"
+ 
+@@ -19,10 +20,16 @@ func (h *Handler) BulkMoveFiles(ctx context.Context, req *gen.FileBulkMoveReques
+ 	for _, value := range req.FileIds {
+ 		fileIDs = append(fileIDs, googleUUID(value))
+ 	}
+-	ownerID, _, err := h.resolveAuthenticatedFileAccessMany(ctx, fileIDs, true)
++	owners, _, _, err := h.resolveAuthenticatedFileAccessMany(ctx, fileIDs, true)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
++	ownerID := owners[0]
++	for _, owner := range owners[1:] {
++		if owner != ownerID {
++			return nil, mapServiceError(shares.ErrForbidden)
++		}
++	}
+ 	parentID := optionalGoogleUUID(req.ParentId)
+ 	if parentID == nil {
+ 		actorID, err := UserIDFromContext(ctx)
+@@ -30,11 +37,11 @@ func (h *Handler) BulkMoveFiles(ctx context.Context, req *gen.FileBulkMoveReques
+ 			return nil, mapServiceError(shares.ErrForbidden)
+ 		}
+ 	} else {
+-		destinationAccess, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
++		destinationAccessOwnerID, _, _, err := h.resolveAuthenticatedFileAccess(ctx, *parentID, true)
+ 		if err != nil {
+ 			return nil, mapServiceError(err)
+ 		}
+-		if destinationAccess.OwnerID != ownerID {
++		if destinationAccessOwnerID != ownerID {
+ 			return nil, mapServiceError(shares.ErrForbidden)
+ 		}
+ 	}
+@@ -61,12 +68,18 @@ func (h *Handler) BulkTrashFiles(ctx context.Context, req *gen.FileBulkTrashRequ
+ 	for _, value := range req.FileIds {
+ 		fileIDs = append(fileIDs, googleUUID(value))
+ 	}
+-	ownerID, accesses, err := h.resolveAuthenticatedFileAccessMany(ctx, fileIDs, true)
++	owners, roots, owned, err := h.resolveAuthenticatedFileAccessMany(ctx, fileIDs, true)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+-	for index, access := range accesses {
+-		if !access.Owned && access.RootFileID == fileIDs[index] {
++	ownerID := owners[0]
++	for _, owner := range owners[1:] {
++		if owner != ownerID {
++			return nil, mapServiceError(shares.ErrForbidden)
++		}
++	}
++	for index, root := range roots {
++		if !owned[index] && root == fileIDs[index] {
+ 			return nil, mapServiceError(shares.ErrForbidden)
+ 		}
+ 	}
+@@ -81,41 +94,43 @@ func (h *Handler) BulkTrashFiles(ctx context.Context, req *gen.FileBulkTrashRequ
+ 	return &gen.FileBulkResult{Items: items}, nil
+ }
+ 
+-func (h *Handler) resolveAuthenticatedFileAccessMany(ctx context.Context, fileIDs []uuid.UUID, requireEdit bool) (int64, []*shares.Access, error) {
++func (h *Handler) resolveAuthenticatedFileAccessMany(ctx context.Context, fileIDs []uuid.UUID, requireEdit bool) ([]int64, []uuid.UUID, []bool, error) {
+ 	actorID, err := UserIDFromContext(ctx)
+ 	if err != nil {
+-		return 0, nil, err
++		return nil, nil, nil, err
+ 	}
+ 	if len(fileIDs) == 0 {
+-		return 0, nil, shares.ErrInvalidInput
++		return nil, nil, nil, shares.ErrInvalidInput
+ 	}
+ 	var accesses []*shares.Access
+ 	if h.Shares != nil {
+ 		accesses, err = h.Shares.ResolveAccessMany(ctx, actorID, fileIDs, requireEdit)
+ 		if err != nil {
+-			return 0, nil, err
++			return nil, nil, nil, err
+ 		}
+ 	} else {
+ 		if h.Catalog == nil {
+-			return 0, nil, ErrOperationUnavailable
++			return nil, nil, nil, ErrOperationUnavailable
+ 		}
+ 		accesses = make([]*shares.Access, 0, len(fileIDs))
+ 		for _, fileID := range fileIDs {
+ 			if _, err := h.Catalog.Get(ctx, actorID, fileID); err != nil {
+-				return 0, nil, err
++				return nil, nil, nil, err
+ 			}
+ 			accesses = append(accesses, &shares.Access{
+ 				OwnerID: actorID, RootFileID: fileID, Permission: sqlcgen.SharePermissionEdit, Owned: true,
+ 			})
+ 		}
+ 	}
+-	ownerID := accesses[0].OwnerID
+-	for _, access := range accesses[1:] {
+-		if access.OwnerID != ownerID {
+-			return 0, nil, shares.ErrForbidden
+-		}
++	owners := make([]int64, 0, len(accesses))
++	roots := make([]uuid.UUID, 0, len(accesses))
++	owned := make([]bool, 0, len(accesses))
++	for _, access := range accesses {
++		owners = append(owners, access.OwnerID)
++		roots = append(roots, access.RootFileID)
++		owned = append(owned, access.Owned)
+ 	}
+-	return ownerID, accesses, nil
++	return owners, roots, owned, nil
+ }
+ 
+ func (h *Handler) GetFileCategoryStatistics(ctx context.Context) (gen.GetFileCategoryStatisticsRes, error) {
+@@ -166,25 +181,32 @@ func (h *Handler) UpdateShare(ctx context.Context, req *gen.ShareUpdateRequest,
+ 	if h.Shares == nil || req == nil {
+ 		return nil, mapServiceError(ErrOperationUnavailable)
+ 	}
+-	input := shares.UpdateInput{
+-		OwnerID: userID, ShareID: googleUUID(params.ShareId),
+-		ClearPassword: req.ClearPassword.Or(false), ClearExpiresAt: req.ClearExpiresAt.Or(false),
+-		ClearMaxDownloads: req.ClearMaxDownloads.Or(false),
+-	}
++	shareID := googleUUID(params.ShareId)
++	clearPassword := req.ClearPassword.Or(false)
++	clearExpiry := req.ClearExpiresAt.Or(false)
++	clearDownloadLimit := req.ClearMaxDownloads.Or(false)
++	var password *string
++	var expiresAt *time.Time
++	var downloadLimit *int64
++	var selectedPermission *sqlcgen.SharePermission
+ 	if value, ok := req.Password.Get(); ok {
+-		input.Password = &value
++		password = &value
+ 	}
+ 	if value, ok := req.ExpiresAt.Get(); ok {
+-		input.ExpiresAt = &value
++		expiresAt = &value
+ 	}
+ 	if value, ok := req.MaxDownloads.Get(); ok {
+-		input.MaxDownloads = &value
++		downloadLimit = &value
+ 	}
+ 	if value, ok := req.Permission.Get(); ok {
+ 		permission := sqlcgen.SharePermission(value)
+-		input.Permission = &permission
++		selectedPermission = &permission
+ 	}
+-	row, err := h.Shares.Update(ctx, input)
++	row, err := h.Shares.Update(ctx, shares.UpdateInput{
++		OwnerID: userID, ShareID: shareID, Password: password, ClearPassword: clearPassword,
++		ExpiresAt: expiresAt, ClearExpiresAt: clearExpiry,
++		MaxDownloads: downloadLimit, ClearMaxDownloads: clearDownloadLimit, Permission: selectedPermission,
++	})
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+@@ -200,13 +222,14 @@ func (h *Handler) ListPublicShareFiles(ctx context.Context, params gen.ListPubli
+ 	if err := decodeCursor(params.Cursor, &cursor); err != nil {
+ 		return nil, mapServiceError(shares.ErrInvalidInput)
+ 	}
++	afterID, afterName := cursor.ID, cursor.Name
+ 	limit := params.Limit.Or(100)
+ 	input := shares.PublicListInput{
+ 		Token: params.Token, Password: params.XSharePassword.Or(""), Path: params.Path.Or(""),
+ 		Search: params.Search.Or(""), Limit: limit,
+ 	}
+-	if cursor.ID != uuid.Nil {
+-		input.AfterID, input.AfterName = &cursor.ID, cursor.Name
++	if afterID != uuid.Nil {
++		input.AfterID, input.AfterName = &afterID, afterName
+ 	}
+ 	files, err := h.Shares.ListPublicFiles(ctx, input)
+ 	if err != nil {
+diff --git a/internal/api/handler_view_states.go b/internal/api/handler_view_states.go
+index f625009..8ac9b08 100644
+--- a/internal/api/handler_view_states.go
++++ b/internal/api/handler_view_states.go
+@@ -16,7 +16,7 @@ func (h *Handler) GetFileViewState(ctx context.Context, params gen.GetFileViewSt
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+-	if _, accessErr := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false); accessErr != nil {
++	if _, _, _, accessErr := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false); accessErr != nil {
+ 		return nil, mapServiceError(accessErr)
+ 	}
+ 	state, err := h.Catalog.GetViewState(ctx, userID, googleUUID(params.FileId))
+@@ -34,7 +34,7 @@ func (h *Handler) PutFileViewState(ctx context.Context, req *gen.FileViewStateUp
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+-	if _, accessErr := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false); accessErr != nil {
++	if _, _, _, accessErr := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false); accessErr != nil {
+ 		return nil, mapServiceError(accessErr)
+ 	}
+ 	position, err := json.Marshal(req.Position.Or(gen.FileViewStateUpdatePosition{}))
+@@ -61,7 +61,7 @@ func (h *Handler) DeleteFileViewState(ctx context.Context, params gen.DeleteFile
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+-	if _, accessErr := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false); accessErr != nil {
++	if _, _, _, accessErr := h.resolveAuthenticatedFileAccess(ctx, googleUUID(params.FileId), false); accessErr != nil {
+ 		return nil, mapServiceError(accessErr)
+ 	}
+ 	if err := h.Catalog.DeleteViewState(ctx, userID, googleUUID(params.FileId)); err != nil {
+diff --git a/internal/catalog/advanced.go b/internal/catalog/advanced.go
+index 339fb41..f908766 100644
+--- a/internal/catalog/advanced.go
++++ b/internal/catalog/advanced.go
+@@ -114,28 +114,32 @@ func (s *Service) EnsureFolderPath(ctx context.Context, userID int64, rootID *uu
+ 	return current, nil
+ }
+ 
+-func (s *Service) listAdvanced(ctx context.Context, in ListInput) ([]*sqlcgen.File, error) {
+-	if in.SearchType != "text" && in.SearchType != "regex" {
++func (s *Service) listAdvanced(ctx context.Context, ownerID int64, listScope string, scopeFolder, parentFolder *uuid.UUID, fileStatus sqlcgen.FileStatus, fileKind *sqlcgen.FileKind, searchText, searchMode string, selectedCategories []string, modifiedAfter, modifiedBefore *time.Time, sortBy, sortDirection, cursorValue string, cursorID *uuid.UUID, pageSize int32, bookmarksOnly bool) ([]*sqlcgen.File, error) {
++	if searchMode != "text" && searchMode != "regex" {
+ 		return nil, ErrInvalidParent
+ 	}
+-	if in.Sort != "name" && in.Sort != "updatedAt" && in.Sort != "size" && in.Sort != "id" {
++	if sortBy != "name" && sortBy != "updatedAt" && sortBy != "size" && sortBy != "id" {
+ 		return nil, ErrInvalidParent
+ 	}
+-	if in.Order != "asc" && in.Order != "desc" {
++	if sortDirection != "asc" && sortDirection != "desc" {
+ 		return nil, ErrInvalidParent
+ 	}
+-	if in.UpdatedAfter != nil && in.UpdatedBefore != nil && !in.UpdatedAfter.Before(*in.UpdatedBefore) {
++	if modifiedAfter != nil && modifiedBefore != nil && !modifiedAfter.Before(*modifiedBefore) {
+ 		return nil, ErrInvalidParent
+ 	}
+-	for _, category := range in.Categories {
++	for _, category := range selectedCategories {
+ 		if _, ok := validCategories[category]; !ok {
+ 			return nil, ErrInvalidParent
+ 		}
+ 	}
+ 
+ 	var search *string
+-	if value := strings.TrimSpace(in.Search); value != "" {
+-		if in.SearchType == "regex" {
++	value := searchText
++	if listScope == "folder" {
++		value = strings.TrimSpace(value)
++	}
++	if value != "" {
++		if searchMode == "regex" {
+ 			if _, err := regexp.Compile(value); err != nil {
+ 				return nil, ErrInvalidParent
+ 			}
+@@ -146,22 +150,19 @@ func (s *Service) listAdvanced(ctx context.Context, in ListInput) ([]*sqlcgen.Fi
+ 	}
+ 
+ 	var kind sqlcgen.NullFileKind
+-	if in.Kind != nil {
+-		kind = sqlcgen.NullFileKind{FileKind: *in.Kind, Valid: true}
++	if fileKind != nil {
++		kind = sqlcgen.NullFileKind{FileKind: *fileKind, Valid: true}
+ 	}
+-	categories := in.Categories
++	categories := selectedCategories
+ 	if categories == nil {
+ 		categories = []string{}
+ 	}
+ 	var afterName *string
+ 	var afterUpdatedAt *time.Time
+ 	var afterSize *int64
+-	if in.AfterID != nil && in.Sort != "id" {
+-		value := in.AfterValue
+-		if value == "" {
+-			value = in.AfterName
+-		}
+-		switch in.Sort {
++	if cursorID != nil && sortBy != "id" {
++		value := cursorValue
++		switch sortBy {
+ 		case "name":
+ 			afterName = &value
+ 		case "updatedAt":
+@@ -180,13 +181,13 @@ func (s *Service) listAdvanced(ctx context.Context, in ListInput) ([]*sqlcgen.Fi
+ 	}
+ 
+ 	files, err := s.queries.ListFilesAdvanced(ctx, sqlcgen.ListFilesAdvancedParams{
+-		UserID: in.UserID, Scope: in.Scope, ScopeFolder: dbtypes.OptionalUUID(in.ScopeFolderID), ParentID: dbtypes.OptionalUUID(in.ParentID), Status: in.Status,
+-		Kind: kind, Search: dbtypes.OptionalText(search), SearchType: in.SearchType,
+-		Categories: categories, UpdatedAfter: dbtypes.OptionalTime(in.UpdatedAfter),
+-		UpdatedBefore: dbtypes.OptionalTime(in.UpdatedBefore), AfterID: dbtypes.OptionalUUID(in.AfterID),
+-		SortBy: in.Sort, AfterName: dbtypes.OptionalText(afterName), SortOrder: in.Order,
++		UserID: ownerID, Scope: listScope, ScopeFolder: dbtypes.OptionalUUID(scopeFolder), ParentID: dbtypes.OptionalUUID(parentFolder), Status: fileStatus,
++		Kind: kind, Search: dbtypes.OptionalText(search), SearchType: searchMode,
++		Categories: categories, UpdatedAfter: dbtypes.OptionalTime(modifiedAfter),
++		UpdatedBefore: dbtypes.OptionalTime(modifiedBefore), AfterID: dbtypes.OptionalUUID(cursorID),
++		SortBy: sortBy, AfterName: dbtypes.OptionalText(afterName), SortOrder: sortDirection,
+ 		AfterUpdatedAt: dbtypes.OptionalTime(afterUpdatedAt), AfterSize: dbtypes.OptionalInt8(afterSize),
+-		PageSize: in.Limit, Bookmarked: in.Bookmarked,
++		PageSize: pageSize, Bookmarked: bookmarksOnly,
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("advanced file list: %w", err)
+diff --git a/internal/catalog/bulk.go b/internal/catalog/bulk.go
+index b1ea569..ce43839 100644
+--- a/internal/catalog/bulk.go
++++ b/internal/catalog/bulk.go
+@@ -135,15 +135,19 @@ func (s *Service) bulkMove(ctx context.Context, userID int64, rawIDs []uuid.UUID
+ 	if err != nil {
+ 		return nil, fmt.Errorf("lock bulk move files: %w", err)
+ 	}
+-	locked := make(map[uuid.UUID]*sqlcgen.File, len(ids))
++	lockedPositions := make(map[uuid.UUID]int, len(ids))
++	lockedNames := make([]string, 0, len(lockedRows))
++	lockedKinds := make([]sqlcgen.FileKind, 0, len(lockedRows))
+ 	for _, file := range lockedRows {
+ 		id, ok := fileUUID(file)
+ 		if !ok {
+ 			return nil, ErrNotFound
+ 		}
+-		locked[id] = file
++		lockedPositions[id] = len(lockedNames)
++		lockedNames = append(lockedNames, file.Name)
++		lockedKinds = append(lockedKinds, file.Kind)
+ 	}
+-	if len(locked) != len(ids) {
++	if len(lockedPositions) != len(ids) {
+ 		return nil, ErrNotFound
+ 	}
+ 
+@@ -163,8 +167,10 @@ func (s *Service) bulkMove(ctx context.Context, userID int64, rawIDs []uuid.UUID
+ 		}
+ 		for _, ancestorID := range ancestorIDs {
+ 			id, ok := dbtypes.GoogleUUID(ancestorID)
+-			if ok && locked[id] != nil && locked[id].Kind == sqlcgen.FileKindFolder {
+-				return nil, ErrCycle
++			if ok {
++				if position, exists := lockedPositions[id]; exists && lockedKinds[position] == sqlcgen.FileKindFolder {
++					return nil, ErrCycle
++				}
+ 			}
+ 		}
+ 	}
+@@ -186,11 +192,11 @@ func (s *Service) bulkMove(ctx context.Context, userID int64, rawIDs []uuid.UUID
+ 		conflicts[entry.Name] = entryID
+ 	}
+ 
+-	names := make([]string, len(ids))
++	plannedNames := make([]string, len(lockedNames))
+ 	replacedSet := make(map[uuid.UUID]struct{})
+-	for index, id := range ids {
+-		file := locked[id]
+-		name := file.Name
++	for _, id := range ids {
++		position := lockedPositions[id]
++		name := lockedNames[position]
+ 		if occupant, occupied := conflicts[name]; occupied && occupant == id {
+ 			delete(usedNames, name)
+ 			delete(conflicts, name)
+@@ -213,7 +219,7 @@ func (s *Service) bulkMove(ctx context.Context, userID int64, rawIDs []uuid.UUID
+ 				delete(conflicts, name)
+ 			case "rename":
+ 				var renameErr error
+-				name, renameErr = nextAvailableNameFromSet(file.Name, usedNames)
++				name, renameErr = nextAvailableNameFromSet(lockedNames[position], usedNames)
+ 				if renameErr != nil {
+ 					return nil, renameErr
+ 				}
+@@ -221,7 +227,7 @@ func (s *Service) bulkMove(ctx context.Context, userID int64, rawIDs []uuid.UUID
+ 		}
+ 		usedNames[name] = struct{}{}
+ 		conflicts[name] = id
+-		names[index] = name
++		plannedNames[position] = name
+ 	}
+ 
+ 	invalidated := make([]uuid.UUID, 0)
+@@ -253,6 +259,10 @@ func (s *Service) bulkMove(ctx context.Context, userID int64, rawIDs []uuid.UUID
+ 		}
+ 	}
+ 
++	names := make([]string, len(ids))
++	for index, id := range ids {
++		names[index] = plannedNames[lockedPositions[id]]
++	}
+ 	updatedRows, err := queries.MoveFilesWithNames(ctx, sqlcgen.MoveFilesWithNamesParams{
+ 		ParentID: dbtypes.OptionalUUID(parentID), UserID: userID,
+ 		ExpectedGeneration: dbtypes.OptionalInt8(expectedGeneration), FileIds: pgUUIDs(ids),
+diff --git a/internal/catalog/service.go b/internal/catalog/service.go
+index 2a051b2..309e23c 100644
+--- a/internal/catalog/service.go
++++ b/internal/catalog/service.go
+@@ -59,13 +59,17 @@ type CreateFolderInput struct {
+ }
+ 
+ func (s *Service) CreateFolder(ctx context.Context, in CreateFolderInput) (*sqlcgen.File, error) {
+-	if in.UserID <= 0 {
++	ownerID := in.UserID
++	parentID := in.ParentID
++	name := in.Name
++	requestedTime := in.ModTime
++	if ownerID <= 0 {
+ 		return nil, ErrInvalidOwner
+ 	}
+-	if in.ParentID != nil {
++	if parentID != nil {
+ 		if _, err := s.queries.GetActiveFolderForUser(ctx, sqlcgen.GetActiveFolderForUserParams{
+-			FolderID: dbtypes.UUID(*in.ParentID),
+-			UserID:   in.UserID,
++			FolderID: dbtypes.UUID(*parentID),
++			UserID:   ownerID,
+ 		}); err != nil {
+ 			if errors.Is(err, pgx.ErrNoRows) {
+ 				return nil, ErrInvalidParent
+@@ -73,15 +77,15 @@ func (s *Service) CreateFolder(ctx context.Context, in CreateFolderInput) (*sqlc
+ 			return nil, fmt.Errorf("get parent folder: %w", err)
+ 		}
+ 	}
+-	modTime := in.ModTime
++	modTime := requestedTime
+ 	if modTime.IsZero() {
+ 		modTime = s.now().UTC()
+ 	}
+ 	file, err := s.queries.CreateFolder(ctx, sqlcgen.CreateFolderParams{
+ 		ID:       dbtypes.UUID(uuid.New()),
+-		UserID:   in.UserID,
+-		ParentID: dbtypes.OptionalUUID(in.ParentID),
+-		Name:     in.Name,
++		UserID:   ownerID,
++		ParentID: dbtypes.OptionalUUID(parentID),
++		Name:     name,
+ 		ModTime:  dbtypes.Time(modTime.UTC()),
+ 	})
+ 	if err != nil {
+@@ -278,33 +282,52 @@ type ListInput struct {
+ }
+ 
+ func (s *Service) List(ctx context.Context, in ListInput) ([]*sqlcgen.File, error) {
+-	if in.UserID <= 0 {
++	ownerID := in.UserID
++	listScope := in.Scope
++	scopeFolder := in.ScopeFolderID
++	parentFolder := in.ParentID
++	rawPath := in.Path
++	fileStatus := in.Status
++	fileKind := in.Kind
++	searchText := in.Search
++	searchMode := in.SearchType
++	selectedCategories := in.Categories
++	modifiedAfter := in.UpdatedAfter
++	modifiedBefore := in.UpdatedBefore
++	sortBy := in.Sort
++	sortDirection := in.Order
++	cursorName := in.AfterName
++	cursorValue := in.AfterValue
++	cursorID := in.AfterID
++	pageSize := in.Limit
++	bookmarksOnly := in.Bookmarked
++	if ownerID <= 0 {
+ 		return nil, ErrInvalidOwner
+ 	}
+-	if in.Bookmarked {
+-		if in.Status != "" && in.Status != sqlcgen.FileStatusActive || in.ParentID != nil || strings.TrimSpace(in.Path) != "" {
++	if bookmarksOnly {
++		if fileStatus != "" && fileStatus != sqlcgen.FileStatusActive || parentFolder != nil || strings.TrimSpace(rawPath) != "" {
+ 			return nil, ErrInvalidParent
+ 		}
+-		in.Scope = "drive"
++		listScope = "drive"
+ 	}
+-	if in.ParentID != nil && strings.TrimSpace(in.Path) != "" {
++	if parentFolder != nil && strings.TrimSpace(rawPath) != "" {
+ 		return nil, ErrInvalidParent
+ 	}
+-	if in.Scope == "" {
+-		in.Scope = "folder"
++	if listScope == "" {
++		listScope = "folder"
+ 	}
+-	if in.Scope != "folder" && in.Scope != "drive" && in.Scope != "recursive" {
++	if listScope != "folder" && listScope != "drive" && listScope != "recursive" {
+ 		return nil, ErrInvalidParent
+ 	}
+-	if in.Scope != "folder" {
+-		if in.Status != "" && in.Status != sqlcgen.FileStatusActive || in.ParentID != nil || strings.TrimSpace(in.Path) != "" {
++	if listScope != "folder" {
++		if fileStatus != "" && fileStatus != sqlcgen.FileStatusActive || parentFolder != nil || strings.TrimSpace(rawPath) != "" {
+ 			return nil, ErrInvalidParent
+ 		}
+-		if in.Scope == "drive" && in.ScopeFolderID != nil {
++		if listScope == "drive" && scopeFolder != nil {
+ 			return nil, ErrInvalidParent
+ 		}
+-		if in.Scope == "recursive" && in.ScopeFolderID != nil {
+-			if _, err := s.queries.GetActiveFolderForUser(ctx, sqlcgen.GetActiveFolderForUserParams{FolderID: dbtypes.UUID(*in.ScopeFolderID), UserID: in.UserID}); err != nil {
++		if listScope == "recursive" && scopeFolder != nil {
++			if _, err := s.queries.GetActiveFolderForUser(ctx, sqlcgen.GetActiveFolderForUserParams{FolderID: dbtypes.UUID(*scopeFolder), UserID: ownerID}); err != nil {
+ 				if errors.Is(err, pgx.ErrNoRows) {
+ 					return nil, ErrInvalidParent
+ 				}
+@@ -312,57 +335,64 @@ func (s *Service) List(ctx context.Context, in ListInput) ([]*sqlcgen.File, erro
+ 			}
+ 		}
+ 	}
+-	if strings.TrimSpace(in.Path) != "" {
+-		resolved, err := s.ResolveFolderPath(ctx, in.UserID, nil, in.Path)
++	if strings.TrimSpace(rawPath) != "" {
++		resolved, err := s.ResolveFolderPath(ctx, ownerID, nil, rawPath)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+-		in.ParentID = resolved
++		parentFolder = resolved
+ 	}
+-	if in.Status == "" {
+-		in.Status = sqlcgen.FileStatusActive
++	if fileStatus == "" {
++		fileStatus = sqlcgen.FileStatusActive
+ 	}
+-	if in.Limit <= 0 {
+-		in.Limit = 100
++	if pageSize <= 0 {
++		pageSize = 100
+ 	}
+-	if in.Limit > 500 {
+-		in.Limit = 500
++	if pageSize > 500 {
++		pageSize = 500
+ 	}
+-	if in.SearchType == "" {
+-		in.SearchType = "text"
++	if searchMode == "" {
++		searchMode = "text"
+ 	}
+-	if in.Sort == "" {
+-		in.Sort = "name"
++	if sortBy == "" {
++		sortBy = "name"
+ 	}
+-	if in.Order == "" {
+-		in.Order = "asc"
++	if sortDirection == "" {
++		sortDirection = "asc"
+ 	}
+-	if in.Bookmarked || in.Scope != "folder" || len(in.Categories) > 0 || in.UpdatedAfter != nil || in.UpdatedBefore != nil || in.SearchType != "text" || in.Sort != "name" || in.Order != "asc" || in.AfterValue != "" {
+-		return s.listAdvanced(ctx, in)
++	if listScope != "folder" {
++		searchText = strings.TrimSpace(searchText)
++	}
++	if bookmarksOnly || listScope != "folder" || len(selectedCategories) > 0 || modifiedAfter != nil || modifiedBefore != nil || searchMode != "text" || sortBy != "name" || sortDirection != "asc" || cursorValue != "" {
++		selectedValue := cursorValue
++		if cursorID != nil && sortBy != "id" && selectedValue == "" {
++			selectedValue = cursorName
++		}
++		return s.listAdvanced(ctx, ownerID, listScope, scopeFolder, parentFolder, fileStatus, fileKind, searchText, searchMode, selectedCategories, modifiedAfter, modifiedBefore, sortBy, sortDirection, selectedValue, cursorID, pageSize, bookmarksOnly)
+ 	}
+ 	var kind sqlcgen.NullFileKind
+-	if in.Kind != nil {
+-		kind = sqlcgen.NullFileKind{FileKind: *in.Kind, Valid: true}
++	if fileKind != nil {
++		kind = sqlcgen.NullFileKind{FileKind: *fileKind, Valid: true}
+ 	}
+ 	var search pgtype.Text
+-	if strings.TrimSpace(in.Search) != "" {
+-		search = dbtypes.Text(in.Search)
++	if strings.TrimSpace(searchText) != "" {
++		search = dbtypes.Text(searchText)
+ 	}
+ 	var afterName pgtype.Text
+ 	var afterID pgtype.UUID
+-	if in.AfterName != "" && in.AfterID != nil {
+-		afterName = dbtypes.Text(in.AfterName)
+-		afterID = dbtypes.UUID(*in.AfterID)
++	if cursorName != "" && cursorID != nil {
++		afterName = dbtypes.Text(cursorName)
++		afterID = dbtypes.UUID(*cursorID)
+ 	}
+ 	items, err := s.queries.ListFiles(ctx, sqlcgen.ListFilesParams{
+-		UserID:    in.UserID,
+-		ParentID:  dbtypes.OptionalUUID(in.ParentID),
+-		Status:    in.Status,
++		UserID:    ownerID,
++		ParentID:  dbtypes.OptionalUUID(parentFolder),
++		Status:    fileStatus,
+ 		Kind:      kind,
+ 		Search:    search,
+ 		AfterName: afterName,
+ 		AfterID:   afterID,
+-		PageSize:  in.Limit,
++		PageSize:  pageSize,
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("list files: %w", err)
+diff --git a/internal/catalog/update.go b/internal/catalog/update.go
+index e4b3e0f..6c68d2f 100644
+--- a/internal/catalog/update.go
++++ b/internal/catalog/update.go
+@@ -22,25 +22,41 @@ type UpdateInput struct {
+ }
+ 
+ func (s *Service) Update(ctx context.Context, in UpdateInput) (*sqlcgen.File, error) {
+-	if in.UserID <= 0 {
++	ownerID := in.UserID
++	fileID := in.FileID
++	expectedGeneration := in.ExpectedGeneration
++	requestedName := in.Name
++	requestedTime := in.ModTime
++	hasGeneration := expectedGeneration != nil
++	hasName := requestedName != nil
++	hasTime := requestedTime != nil
++	if ownerID <= 0 {
+ 		return nil, ErrInvalidOwner
+ 	}
+-	if in.FileID == uuid.Nil || (in.Name == nil && in.ModTime == nil) {
++	if fileID == uuid.Nil || (!hasName && !hasTime) {
+ 		return nil, ErrInvalidName
+ 	}
+-	var name pgtype.Text
+-	if in.Name != nil {
+-		name = dbtypes.Text(*in.Name)
++	var generation int64
++	if hasGeneration {
++		generation = *expectedGeneration
++	}
++	nameValue := ""
++	if hasName {
++		nameValue = *requestedName
++	}
++	var timeValue time.Time
++	if hasTime {
++		timeValue = *requestedTime
+ 	}
+ 	file, err := s.queries.UpdateFileMetadata(ctx, sqlcgen.UpdateFileMetadataParams{
+-		Name:               name,
+-		ModTime:            dbtypes.OptionalTime(in.ModTime),
+-		FileID:             dbtypes.UUID(in.FileID),
+-		UserID:             in.UserID,
+-		ExpectedGeneration: dbtypes.OptionalInt8(in.ExpectedGeneration),
++		Name:               pgtype.Text{String: nameValue, Valid: hasName},
++		ModTime:            pgtype.Timestamptz{Time: timeValue, Valid: hasTime},
++		FileID:             dbtypes.UUID(fileID),
++		UserID:             ownerID,
++		ExpectedGeneration: pgtype.Int8{Int64: generation, Valid: hasGeneration},
+ 	})
+ 	if errors.Is(err, pgx.ErrNoRows) {
+-		if in.ExpectedGeneration != nil {
++		if hasGeneration {
+ 			return nil, ErrPrecondition
+ 		}
+ 		return nil, ErrNotFound
+@@ -48,6 +64,6 @@ func (s *Service) Update(ctx context.Context, in UpdateInput) (*sqlcgen.File, er
+ 	if err != nil {
+ 		return nil, classifyWriteError("update file", err)
+ 	}
+-	s.invalidateFile(ctx, in.UserID, in.FileID)
++	s.invalidateFile(ctx, ownerID, fileID)
+ 	return file, nil
+ }
+diff --git a/internal/fileops/service.go b/internal/fileops/service.go
+index 83701e3..b0204d1 100644
+--- a/internal/fileops/service.go
++++ b/internal/fileops/service.go
+@@ -53,8 +53,12 @@ type treeNode struct {
+ }
+ 
+ type copiedPart struct {
+-	Part   sqlcgen.FilePart
+-	Stored telegramstore.StoredPart
++	PartNo      int32
++	PlainSize   pgtype.Int8
++	Checksum    pgtype.Text
++	Salt        pgtype.Text
++	BlockHashes []byte
++	Stored      telegramstore.StoredPart
+ }
+ 
+ type copiedFileRecord struct {
+@@ -185,7 +189,11 @@ func (s *Service) Copy(ctx context.Context, in CopyInput) (*sqlcgen.File, error)
+ 			return nil, telegramstore.ErrSizeMismatch
+ 		}
+ 		cleanup = append(cleanup, stored)
+-		copied[oldID] = append(copied[oldID], copiedPart{Part: *part, Stored: stored})
++		copied[oldID] = append(copied[oldID], copiedPart{
++			PartNo: part.PartNo, PlainSize: part.PlainSize,
++			Checksum: part.Checksum, Salt: part.Salt, BlockHashes: part.BlockHashes,
++			Stored: stored,
++		})
+ 	}
+ 
+ 	tx, err := s.pool.Begin(ctx)
+@@ -276,10 +284,10 @@ func (s *Service) Copy(ctx context.Context, in CopyInput) (*sqlcgen.File, error)
+ 		})
+ 		for _, part := range copied[oldID] {
+ 			partRecords = append(partRecords, copiedFilePartRecord{
+-				FileID: newID, PartNo: part.Part.PartNo, ChannelID: part.Stored.ChannelID,
+-				MessageID: part.Stored.MessageID, PlainSize: optionalInt64(part.Part.PlainSize),
+-				StoredSize: optionalInt64(part.Part.StoredSize), Checksum: optionalText(part.Part.Checksum),
+-				Salt: optionalText(part.Part.Salt), BlockHashes: part.Part.BlockHashes,
++				FileID: newID, PartNo: part.PartNo, ChannelID: part.Stored.ChannelID,
++				MessageID: part.Stored.MessageID, PlainSize: optionalInt64(part.PlainSize),
++				StoredSize: &part.Stored.Size, Checksum: optionalText(part.Checksum),
++				Salt: optionalText(part.Salt), BlockHashes: part.BlockHashes,
+ 			})
+ 		}
+ 	}
+@@ -485,7 +493,8 @@ func (s *Service) PurgeMany(ctx context.Context, userID int64, rootIDs []uuid.UU
+ 		return nil
+ 	}
+ 
+-	nodesByID := make(map[uuid.UUID]treeNode)
++	filesByID := make(map[uuid.UUID]sqlcgen.File)
++	selectedRows := make(map[uuid.UUID]int)
+ 	rows, err := s.queries.LoadFileSubtrees(ctx, sqlcgen.LoadFileSubtreesParams{
+ 		RootIds: pgUUIDs(lockedRoots), UserID: userID,
+ 	})
+@@ -497,24 +506,25 @@ func (s *Service) PurgeMany(ctx context.Context, userID int64, rootIDs []uuid.UU
+ 	for _, rootID := range lockedRoots {
+ 		rootSet[rootID] = struct{}{}
+ 	}
+-	for _, row := range rows {
++	for rowIndex, row := range rows {
+ 		id, ok := dbtypes.GoogleUUID(row.ID)
+ 		if !ok {
+ 			return ErrNotFound
+ 		}
+-		node := treeNode{File: sqlcgen.File{
++		file := sqlcgen.File{
+ 			ID: row.ID, UserID: row.UserID, ParentID: row.ParentID, Name: row.Name,
+ 			Kind: row.Kind, MimeType: row.MimeType,
+ 			Size: row.Size, HashAlgorithm: row.HashAlgorithm, HashValue: row.HashValue,
+ 			Encryption: row.Encryption, EncryptionKeyVersion: row.EncryptionKeyVersion,
+ 			Status: row.Status, ModTime: row.ModTime, Generation: row.Generation,
+ 			CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, DeletedAt: row.DeletedAt,
+-		}, Depth: row.Depth}
++		}
+ 		if _, isRoot := rootSet[id]; isRoot {
+ 			foundRoots[id] = row.Status
+ 		}
+-		if existing, exists := nodesByID[id]; !exists || node.Depth > existing.Depth {
+-			nodesByID[id] = node
++		if previous, exists := selectedRows[id]; !exists || row.Depth > rows[previous].Depth {
++			filesByID[id] = file
++			selectedRows[id] = rowIndex
+ 		}
+ 	}
+ 	for _, rootID := range lockedRoots {
+@@ -526,10 +536,12 @@ func (s *Service) PurgeMany(ctx context.Context, userID int64, rootIDs []uuid.UU
+ 			return ErrNotTrashed
+ 		}
+ 	}
+-	nodes := make([]treeNode, 0, len(nodesByID))
+-	ids := make([]uuid.UUID, 0, len(nodesByID))
+-	for id, node := range nodesByID {
+-		nodes = append(nodes, node)
++	nodeFiles := make([]sqlcgen.File, 0, len(filesByID))
++	nodeRows := make([]int, 0, len(filesByID))
++	ids := make([]uuid.UUID, 0, len(filesByID))
++	for id, file := range filesByID {
++		nodeFiles = append(nodeFiles, file)
++		nodeRows = append(nodeRows, selectedRows[id])
+ 		ids = append(ids, id)
+ 	}
+ 	fileIDs := pgUUIDs(ids)
+@@ -571,12 +583,13 @@ func (s *Service) PurgeMany(ctx context.Context, userID int64, rootIDs []uuid.UU
+ 	}
+ 	byDepth := make(map[int32][]uuid.UUID)
+ 	depths := make([]int32, 0)
+-	for _, node := range nodes {
+-		id, _ := dbtypes.GoogleUUID(node.File.ID)
+-		if _, ok := byDepth[node.Depth]; !ok {
+-			depths = append(depths, node.Depth)
++	for index, file := range nodeFiles {
++		id, _ := dbtypes.GoogleUUID(file.ID)
++		depth := rows[nodeRows[index]].Depth
++		if _, ok := byDepth[depth]; !ok {
++			depths = append(depths, depth)
+ 		}
+-		byDepth[node.Depth] = append(byDepth[node.Depth], id)
++		byDepth[depth] = append(byDepth[depth], id)
+ 	}
+ 	slices.SortFunc(depths, func(a, b int32) int { return cmp.Compare(b, a) })
+ 	for _, depth := range depths {
+diff --git a/internal/shares/service.go b/internal/shares/service.go
+index 6125748..3fe3493 100644
+--- a/internal/shares/service.go
++++ b/internal/shares/service.go
+@@ -143,11 +143,16 @@ func optionalPermission(permission *sqlcgen.SharePermission) sqlcgen.NullSharePe
+ }
+ 
+ func (s *Service) Create(ctx context.Context, in CreateInput) (*Created, error) {
+-	in.Permission = normalizePermission(in.Permission)
+-	if in.OwnerID <= 0 || in.FileID == uuid.Nil || !validPermission(in.Permission) || (in.ExpiresAt != nil && !in.ExpiresAt.After(s.now())) || (in.MaxDownloads != nil && *in.MaxDownloads <= 0) {
++	ownerID := in.OwnerID
++	fileID := in.FileID
++	rawPassword := in.Password
++	expiresAt := in.ExpiresAt
++	downloadLimit := in.MaxDownloads
++	permission := in.Permission
++	if ownerID <= 0 || fileID == uuid.Nil || (permission != "" && !validPermission(permission)) || (expiresAt != nil && !expiresAt.After(s.now())) || (downloadLimit != nil && *downloadLimit <= 0) {
+ 		return nil, ErrInvalidInput
+ 	}
+-	file, err := s.catalog.Get(ctx, in.OwnerID, in.FileID)
++	file, err := s.catalog.Get(ctx, ownerID, fileID)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -163,8 +168,8 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Created, error)
+ 		prefix = prefix[:16]
+ 	}
+ 	var passwordHash *string
+-	if in.Password != nil {
+-		password := strings.TrimSpace(*in.Password)
++	if rawPassword != nil {
++		password := strings.TrimSpace(*rawPassword)
+ 		if password == "" {
+ 			return nil, ErrInvalidInput
+ 		}
+@@ -176,10 +181,10 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Created, error)
+ 		passwordHash = &value
+ 	}
+ 	row, err := s.queries.CreateFileShare(ctx, sqlcgen.CreateFileShareParams{
+-		ID: dbtypes.UUID(uuid.New()), FileID: dbtypes.UUID(in.FileID), OwnerID: in.OwnerID,
++		ID: dbtypes.UUID(uuid.New()), FileID: dbtypes.UUID(fileID), OwnerID: ownerID,
+ 		TokenPrefix: prefix, TokenHash: hash, PasswordHash: dbtypes.OptionalText(passwordHash),
+-		ExpiresAt: dbtypes.OptionalTime(in.ExpiresAt), MaxDownloads: dbtypes.OptionalInt8(in.MaxDownloads),
+-		Permission: in.Permission,
++		ExpiresAt: dbtypes.OptionalTime(expiresAt), MaxDownloads: dbtypes.OptionalInt8(downloadLimit),
++		Permission: normalizePermission(permission),
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("create file share: %w", err)
+@@ -189,22 +194,27 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Created, error)
+ }
+ 
+ func (s *Service) List(ctx context.Context, in ListInput) ([]*sqlcgen.FileShare, error) {
+-	if in.OwnerID <= 0 || in.FileID == uuid.Nil {
++	ownerID := in.OwnerID
++	fileID := in.FileID
++	cursorTime := in.AfterCreatedAt
++	cursorID := in.AfterID
++	pageSize := in.Limit
++	if ownerID <= 0 || fileID == uuid.Nil {
+ 		return nil, ErrInvalidInput
+ 	}
+-	if _, err := s.catalog.Get(ctx, in.OwnerID, in.FileID); err != nil {
++	if _, err := s.catalog.Get(ctx, ownerID, fileID); err != nil {
+ 		return nil, err
+ 	}
+-	if in.Limit <= 0 {
+-		in.Limit = 100
++	if pageSize <= 0 {
++		pageSize = 100
+ 	}
+-	if in.Limit > 200 {
+-		in.Limit = 200
++	if pageSize > 200 {
++		pageSize = 200
+ 	}
+ 	rows, err := s.queries.ListFileShares(ctx, sqlcgen.ListFileSharesParams{
+-		OwnerID: in.OwnerID, FileID: dbtypes.UUID(in.FileID),
+-		AfterCreatedAt: dbtypes.OptionalTime(in.AfterCreatedAt), AfterID: dbtypes.OptionalUUID(in.AfterID),
+-		PageSize: in.Limit,
++		OwnerID: ownerID, FileID: dbtypes.UUID(fileID),
++		AfterCreatedAt: dbtypes.OptionalTime(cursorTime), AfterID: dbtypes.OptionalUUID(cursorID),
++		PageSize: pageSize,
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("list file shares: %w", err)
+@@ -213,26 +223,35 @@ func (s *Service) List(ctx context.Context, in ListInput) ([]*sqlcgen.FileShare,
+ }
+ 
+ func (s *Service) Update(ctx context.Context, in UpdateInput) (*sqlcgen.FileShare, error) {
+-	if in.OwnerID <= 0 || in.ShareID == uuid.Nil ||
+-		(in.Password != nil && in.ClearPassword) ||
+-		(in.ExpiresAt != nil && in.ClearExpiresAt) ||
+-		(in.MaxDownloads != nil && in.ClearMaxDownloads) {
++	ownerID := in.OwnerID
++	shareID := in.ShareID
++	rawPassword := in.Password
++	clearPassword := in.ClearPassword
++	expiresAt := in.ExpiresAt
++	clearExpiry := in.ClearExpiresAt
++	downloadLimit := in.MaxDownloads
++	clearDownloadLimit := in.ClearMaxDownloads
++	permission := in.Permission
++	if ownerID <= 0 || shareID == uuid.Nil ||
++		(rawPassword != nil && clearPassword) ||
++		(expiresAt != nil && clearExpiry) ||
++		(downloadLimit != nil && clearDownloadLimit) {
+ 		return nil, ErrInvalidInput
+ 	}
+-	if in.Password == nil && !in.ClearPassword && in.ExpiresAt == nil && !in.ClearExpiresAt && in.MaxDownloads == nil && !in.ClearMaxDownloads && in.Permission == nil {
++	if rawPassword == nil && !clearPassword && expiresAt == nil && !clearExpiry && downloadLimit == nil && !clearDownloadLimit && permission == nil {
+ 		return nil, ErrInvalidInput
+ 	}
+-	if in.Permission != nil && !validPermission(*in.Permission) {
++	if permission != nil && !validPermission(*permission) {
+ 		return nil, ErrInvalidInput
+ 	}
+-	if in.ExpiresAt != nil && !in.ExpiresAt.After(s.now()) {
++	if expiresAt != nil && !expiresAt.After(s.now()) {
+ 		return nil, ErrInvalidInput
+ 	}
+-	if in.MaxDownloads != nil && *in.MaxDownloads <= 0 {
++	if downloadLimit != nil && *downloadLimit <= 0 {
+ 		return nil, ErrInvalidInput
+ 	}
+ 	existing, err := s.queries.GetFileShareForOwner(ctx, sqlcgen.GetFileShareForOwnerParams{
+-		ID: dbtypes.UUID(in.ShareID), OwnerID: in.OwnerID,
++		ID: dbtypes.UUID(shareID), OwnerID: ownerID,
+ 	})
+ 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && existing.RevokedAt.Valid) {
+ 		return nil, ErrNotFound
+@@ -240,12 +259,12 @@ func (s *Service) Update(ctx context.Context, in UpdateInput) (*sqlcgen.FileShar
+ 	if err != nil {
+ 		return nil, fmt.Errorf("get share for update: %w", err)
+ 	}
+-	if in.MaxDownloads != nil && *in.MaxDownloads < existing.DownloadCount {
++	if downloadLimit != nil && *downloadLimit < existing.DownloadCount {
+ 		return nil, ErrInvalidInput
+ 	}
+ 	var passwordHash *string
+-	if in.Password != nil {
+-		password := strings.TrimSpace(*in.Password)
++	if rawPassword != nil {
++		password := strings.TrimSpace(*rawPassword)
+ 		if password == "" {
+ 			return nil, ErrInvalidInput
+ 		}
+@@ -257,10 +276,10 @@ func (s *Service) Update(ctx context.Context, in UpdateInput) (*sqlcgen.FileShar
+ 		passwordHash = &value
+ 	}
+ 	updated, err := s.queries.UpdateFileShare(ctx, sqlcgen.UpdateFileShareParams{
+-		ClearPassword: in.ClearPassword, PasswordHash: dbtypes.OptionalText(passwordHash),
+-		ClearExpiresAt: in.ClearExpiresAt, ExpiresAt: dbtypes.OptionalTime(in.ExpiresAt),
+-		ClearMaxDownloads: in.ClearMaxDownloads, MaxDownloads: dbtypes.OptionalInt8(in.MaxDownloads),
+-		Permission: optionalPermission(in.Permission), ID: dbtypes.UUID(in.ShareID), OwnerID: in.OwnerID,
++		ClearPassword: clearPassword, PasswordHash: dbtypes.OptionalText(passwordHash),
++		ClearExpiresAt: clearExpiry, ExpiresAt: dbtypes.OptionalTime(expiresAt),
++		ClearMaxDownloads: clearDownloadLimit, MaxDownloads: dbtypes.OptionalInt8(downloadLimit),
++		Permission: optionalPermission(permission), ID: dbtypes.UUID(shareID), OwnerID: ownerID,
+ 	})
+ 	if errors.Is(err, pgx.ErrNoRows) {
+ 		return nil, ErrNotFound
+@@ -272,7 +291,11 @@ func (s *Service) Update(ctx context.Context, in UpdateInput) (*sqlcgen.FileShar
+ }
+ 
+ func (s *Service) ListPublicFiles(ctx context.Context, in PublicListInput) ([]*sqlcgen.File, error) {
+-	resolved, err := s.Resolve(ctx, in.Token, in.Password)
++	return s.listPublicPage(ctx, in.Token, in.Password, in.Path, in.Search, in.AfterName, in.AfterID, in.Limit)
++}
++
++func (s *Service) listPublicPage(ctx context.Context, token, password, rawPath, searchText, cursorName string, cursorID *uuid.UUID, pageSize int32) ([]*sqlcgen.File, error) {
++	resolved, err := s.Resolve(ctx, token, password)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -283,13 +306,13 @@ func (s *Service) ListPublicFiles(ctx context.Context, in PublicListInput) ([]*s
+ 	if !ok {
+ 		return nil, ErrNotFound
+ 	}
+-	parentID, err := s.catalog.ResolveFolderPath(ctx, resolved.Share.OwnerID, &rootID, in.Path)
++	parentID, err := s.catalog.ResolveFolderPath(ctx, resolved.Share.OwnerID, &rootID, rawPath)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 	return s.catalog.List(ctx, catalog.ListInput{
+ 		UserID: resolved.Share.OwnerID, ParentID: parentID, Status: sqlcgen.FileStatusActive,
+-		Search: in.Search, AfterName: in.AfterName, AfterID: in.AfterID, Limit: in.Limit,
++		Search: searchText, AfterName: cursorName, AfterID: cursorID, Limit: pageSize,
+ 	})
+ }
+ 
+@@ -424,14 +447,18 @@ func (s *Service) resolveRow(ctx context.Context, token, password string) (*sqlc
+ }
+ 
+ func (s *Service) CreateGrant(ctx context.Context, in GrantCreateInput) (*sqlcgen.FileAccessGrant, error) {
+-	in.Permission = normalizePermission(in.Permission)
+-	if in.OwnerID <= 0 || in.GranteeID <= 0 || in.OwnerID == in.GranteeID || in.FileID == uuid.Nil || !validPermission(in.Permission) || (in.ExpiresAt != nil && !in.ExpiresAt.After(s.now())) {
++	ownerID := in.OwnerID
++	fileID := in.FileID
++	granteeID := in.GranteeID
++	permission := in.Permission
++	expiresAt := in.ExpiresAt
++	if ownerID <= 0 || granteeID <= 0 || ownerID == granteeID || fileID == uuid.Nil || (permission != "" && !validPermission(permission)) || (expiresAt != nil && !expiresAt.After(s.now())) {
+ 		return nil, ErrInvalidInput
+ 	}
+-	if _, err := s.catalog.Get(ctx, in.OwnerID, in.FileID); err != nil {
++	if _, err := s.catalog.Get(ctx, ownerID, fileID); err != nil {
+ 		return nil, err
+ 	}
+-	user, err := s.queries.GetUser(ctx, in.GranteeID)
++	user, err := s.queries.GetUser(ctx, granteeID)
+ 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && user.DisabledAt.Valid) {
+ 		return nil, ErrNotFound
+ 	}
+@@ -439,8 +466,8 @@ func (s *Service) CreateGrant(ctx context.Context, in GrantCreateInput) (*sqlcge
+ 		return nil, fmt.Errorf("get grant recipient: %w", err)
+ 	}
+ 	row, err := s.queries.CreateFileAccessGrant(ctx, sqlcgen.CreateFileAccessGrantParams{
+-		ID: dbtypes.UUID(uuid.New()), FileID: dbtypes.UUID(in.FileID), OwnerID: in.OwnerID, GranteeID: in.GranteeID,
+-		Permission: in.Permission, ExpiresAt: dbtypes.OptionalTime(in.ExpiresAt),
++		ID: dbtypes.UUID(uuid.New()), FileID: dbtypes.UUID(fileID), OwnerID: ownerID, GranteeID: granteeID,
++		Permission: normalizePermission(permission), ExpiresAt: dbtypes.OptionalTime(expiresAt),
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("create file access grant: %w", err)
+@@ -463,12 +490,17 @@ func (s *Service) ListGrants(ctx context.Context, ownerID int64, fileID uuid.UUI
+ }
+ 
+ func (s *Service) UpdateGrant(ctx context.Context, in GrantUpdateInput) (*sqlcgen.FileAccessGrant, error) {
+-	if in.OwnerID <= 0 || in.GrantID == uuid.Nil || (in.Permission == nil && in.ExpiresAt == nil && !in.ClearExpiresAt) || (in.Permission != nil && !validPermission(*in.Permission)) || (in.ExpiresAt != nil && (!in.ExpiresAt.After(s.now()) || in.ClearExpiresAt)) {
++	ownerID := in.OwnerID
++	grantID := in.GrantID
++	permission := in.Permission
++	expiresAt := in.ExpiresAt
++	clearExpiry := in.ClearExpiresAt
++	if ownerID <= 0 || grantID == uuid.Nil || (permission == nil && expiresAt == nil && !clearExpiry) || (permission != nil && !validPermission(*permission)) || (expiresAt != nil && (!expiresAt.After(s.now()) || clearExpiry)) {
+ 		return nil, ErrInvalidInput
+ 	}
+ 	row, err := s.queries.UpdateFileAccessGrant(ctx, sqlcgen.UpdateFileAccessGrantParams{
+-		Permission: optionalPermission(in.Permission), ExpiresAt: dbtypes.OptionalTime(in.ExpiresAt), ClearExpiresAt: in.ClearExpiresAt,
+-		ID: dbtypes.UUID(in.GrantID), OwnerID: in.OwnerID,
++		Permission: optionalPermission(permission), ExpiresAt: dbtypes.OptionalTime(expiresAt), ClearExpiresAt: clearExpiry,
++		ID: dbtypes.UUID(grantID), OwnerID: ownerID,
+ 	})
+ 	if errors.Is(err, pgx.ErrNoRows) {
+ 		return nil, ErrNotFound
+@@ -559,16 +591,22 @@ func (s *Service) ResolveAccessMany(ctx context.Context, actorID int64, fileIDs
+ 	if err != nil {
+ 		return nil, fmt.Errorf("resolve file access: %w", err)
+ 	}
+-	byID := make(map[uuid.UUID]*Access, len(rows))
++	owners := make(map[uuid.UUID]int64, len(rows))
++	roots := make(map[uuid.UUID]uuid.UUID, len(rows))
++	permissions := make(map[uuid.UUID]sqlcgen.SharePermission, len(rows))
++	owned := make(map[uuid.UUID]bool, len(rows))
+ 	for _, row := range rows {
+ 		fileID, fileOK := dbtypes.GoogleUUID(row.TargetFileID)
+ 		rootID, rootOK := dbtypes.GoogleUUID(row.RootFileID)
+ 		if !fileOK || !rootOK {
+ 			return nil, ErrNotFound
+ 		}
+-		byID[fileID] = &Access{OwnerID: row.OwnerID, RootFileID: rootID, Permission: row.Permission, Owned: row.Owned}
++		owners[fileID] = row.OwnerID
++		roots[fileID] = rootID
++		permissions[fileID] = row.Permission
++		owned[fileID] = row.Owned
+ 	}
+-	if len(byID) != len(unique) {
++	if len(owners) != len(unique) {
+ 		activeIDs, loadErr := s.queries.ListActiveFileIDsAnyOwner(ctx, shareUUIDs(unique))
+ 		if loadErr != nil {
+ 			return nil, fmt.Errorf("resolve file access targets: %w", loadErr)
+@@ -579,8 +617,14 @@ func (s *Service) ResolveAccessMany(ctx context.Context, actorID int64, fileIDs
+ 		return nil, ErrForbidden
+ 	}
+ 	result := make([]*Access, 0, len(fileIDs))
++	materialized := make(map[uuid.UUID]*Access, len(owners))
+ 	for _, fileID := range fileIDs {
+-		result = append(result, byID[fileID])
++		access := materialized[fileID]
++		if access == nil {
++			access = &Access{OwnerID: owners[fileID], RootFileID: roots[fileID], Permission: permissions[fileID], Owned: owned[fileID]}
++			materialized[fileID] = access
++		}
++		result = append(result, access)
+ 	}
+ 	return result, nil
+ }
+diff --git a/internal/uploads/list.go b/internal/uploads/list.go
+index 7586a12..6ce0386 100644
+--- a/internal/uploads/list.go
++++ b/internal/uploads/list.go
+@@ -21,25 +21,30 @@ type ListInput struct {
+ }
+ 
+ func (s *Service) List(ctx context.Context, in ListInput) ([]*sqlcgen.UploadSession, error) {
+-	if in.UserID <= 0 {
++	ownerID := in.UserID
++	selectedState := in.State
++	cursorTime := in.AfterCreatedAt
++	cursorID := in.AfterID
++	pageSize := in.Limit
++	if ownerID <= 0 {
+ 		return nil, ErrInvalidInput
+ 	}
+-	if in.Limit <= 0 {
+-		in.Limit = 100
++	if pageSize <= 0 {
++		pageSize = 100
+ 	}
+-	if in.Limit > 200 {
+-		in.Limit = 200
++	if pageSize > 200 {
++		pageSize = 200
+ 	}
+ 	var state sqlcgen.NullUploadState
+-	if in.State != nil {
+-		state = sqlcgen.NullUploadState{UploadState: *in.State, Valid: true}
++	if selectedState != nil {
++		state = sqlcgen.NullUploadState{UploadState: *selectedState, Valid: true}
+ 	}
+ 	items, err := s.queries.ListUploadSessions(ctx, sqlcgen.ListUploadSessionsParams{
+-		UserID:         in.UserID,
++		UserID:         ownerID,
+ 		State:          state,
+-		AfterCreatedAt: dbtypes.OptionalTime(in.AfterCreatedAt),
+-		AfterID:        dbtypes.OptionalUUID(in.AfterID),
+-		PageSize:       in.Limit,
++		AfterCreatedAt: dbtypes.OptionalTime(cursorTime),
++		AfterID:        dbtypes.OptionalUUID(cursorID),
++		PageSize:       pageSize,
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("list uploads: %w", err)
+@@ -55,26 +60,30 @@ type ListPartsInput struct {
+ }
+ 
+ func (s *Service) ListParts(ctx context.Context, in ListPartsInput) ([]*sqlcgen.UploadPart, error) {
+-	if in.UserID <= 0 || in.UploadID == uuid.Nil {
++	ownerID := in.UserID
++	uploadID := in.UploadID
++	cursorPart := in.AfterPartNo
++	pageSize := in.Limit
++	if ownerID <= 0 || uploadID == uuid.Nil {
+ 		return nil, ErrInvalidInput
+ 	}
+-	if _, err := s.Get(ctx, in.UserID, in.UploadID); err != nil {
++	if _, err := s.Get(ctx, ownerID, uploadID); err != nil {
+ 		return nil, err
+ 	}
+-	if in.Limit <= 0 {
+-		in.Limit = 100
++	if pageSize <= 0 {
++		pageSize = 100
+ 	}
+-	if in.Limit > 200 {
+-		in.Limit = 200
++	if pageSize > 200 {
++		pageSize = 200
+ 	}
+ 	var after pgtype.Int4
+-	if in.AfterPartNo != nil {
+-		after = dbtypes.Int4(*in.AfterPartNo)
++	if cursorPart != nil {
++		after = dbtypes.Int4(*cursorPart)
+ 	}
+ 	parts, err := s.queries.ListUploadParts(ctx, sqlcgen.ListUploadPartsParams{
+-		UploadID:    dbtypes.UUID(in.UploadID),
++		UploadID:    dbtypes.UUID(uploadID),
+ 		AfterPartNo: after,
+-		PageSize:    in.Limit,
++		PageSize:    pageSize,
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("list upload parts: %w", err)

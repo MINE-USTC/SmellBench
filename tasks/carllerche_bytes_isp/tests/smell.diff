@@ -1,0 +1,305 @@
+diff --git a/src/bytes.rs b/src/bytes.rs
+index aed4d7c..3b6447b 100644
+--- a/src/bytes.rs
++++ b/src/bytes.rs
+@@ -111,8 +111,9 @@ pub struct Bytes {
+ // This allows the optimizer to see that the address of the `Bytes` is not
+ // captured by the indirect call, enabling further optimizations.
+ pub(crate) struct Vtable {
+-    /// fn(data, ptr, len)
+-    pub clone: unsafe fn(&AtomicPtr<()>, *const u8, usize) -> Bytes,
++    /// Clone a selected range from this view.
++    /// The returned value owns the selected bytes.
++    pub clone: unsafe fn(&AtomicPtr<()>, *const u8, usize, usize, usize) -> Bytes,
+     /// fn(data, ptr, len)
+     ///
+     /// `into_*` consumes the `Bytes`, returning the respective value.
+@@ -372,17 +373,7 @@ impl Bytes {
+     /// will panic.
+     pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
+         let (begin, end) = crate::range(range, self.len());
+-
+-        if end == begin {
+-            return Bytes::new_empty_with_ptr(self.ptr.wrapping_add(begin));
+-        }
+-
+-        let mut ret = self.clone();
+-
+-        ret.len = end - begin;
+-        ret.ptr = unsafe { ret.ptr.add(begin) };
+-
+-        ret
++        self.vtable.slice_view(self, begin, end)
+     }
+ 
+     /// Returns a slice of self that is equivalent to the given `subset`.
+@@ -485,15 +476,7 @@ impl Bytes {
+             self.len(),
+         );
+ 
+-        let mut ret = self.clone();
+-
+-        self.len = at;
+-
+-        // SAFETY: `at` has been asserted to be <= `self.len()`, and the
+-        // `at == self.len()` and `at == 0` cases were handled above.
+-        unsafe { ret.inc_start(at) };
+-
+-        ret
++        self.vtable.split_suffix(self, at)
+     }
+ 
+     /// Splits the bytes into two at the given index.
+@@ -537,14 +520,7 @@ impl Bytes {
+             self.len(),
+         );
+ 
+-        let mut ret = self.clone();
+-
+-        // SAFETY: `at` has been asserted to be <= `self.len()`, and the
+-        // `at == self.len()` and `at == 0` cases were handled above.
+-        unsafe { self.inc_start(at) };
+-
+-        ret.len = at;
+-        ret
++        self.vtable.split_prefix(self, at)
+     }
+ 
+     /// Shortens the buffer, keeping the first `len` bytes and dropping the
+@@ -567,20 +543,7 @@ impl Bytes {
+     /// ```
+     #[inline]
+     pub fn truncate(&mut self, len: usize) {
+-        if len == 0 {
+-            drop(mem::replace(self, Bytes::new_empty_with_ptr(self.ptr)));
+-        } else if len < self.len {
+-            // The Vec "promotable" vtables do not store the capacity,
+-            // so we cannot truncate while using this repr. We *have* to
+-            // promote using `split_off` so the capacity can be stored.
+-            if self.vtable as *const Vtable == &PROMOTABLE_EVEN_VTABLE
+-                || self.vtable as *const Vtable == &PROMOTABLE_ODD_VTABLE
+-            {
+-                drop(self.split_off(len));
+-            } else {
+-                self.len = len;
+-            }
+-        }
++        self.vtable.truncate_view(self, len);
+     }
+ 
+     /// Clears the buffer, removing all data.
+@@ -644,15 +607,12 @@ impl Bytes {
+ 
+     #[inline]
+     fn as_slice(&self) -> &[u8] {
+-        unsafe { slice::from_raw_parts(self.ptr, self.len) }
++        self.vtable.view(self)
+     }
+ 
+     #[inline]
+     unsafe fn inc_start(&mut self, by: usize) {
+-        // should already be asserted, but debug assert for tests
+-        debug_assert!(self.len >= by, "internal: inc_start out of bounds");
+-        self.len -= by;
+-        self.ptr = self.ptr.add(by);
++        self.vtable.advance_view(self, by);
+     }
+ 
+     #[inline]
+@@ -676,7 +636,7 @@ impl Drop for Bytes {
+ impl Clone for Bytes {
+     #[inline]
+     fn clone(&self) -> Bytes {
+-        unsafe { (self.vtable.clone)(&self.data, self.ptr, self.len) }
++        unsafe { (self.vtable.clone)(&self.data, self.ptr, self.len, 0, self.len) }
+     }
+ }
+ 
+@@ -1053,6 +1013,57 @@ impl From<Bytes> for Vec<u8> {
+ 
+ // ===== impl Vtable =====
+ 
++impl Vtable {
++    fn truncate_view(&self, bytes: &mut Bytes, len: usize) {
++        if len == 0 {
++            drop(mem::replace(bytes, Bytes::new_empty_with_ptr(bytes.ptr)));
++        } else if len < bytes.len {
++            // Keep the view usable after truncation.
++            if self as *const Vtable == &PROMOTABLE_EVEN_VTABLE
++                || self as *const Vtable == &PROMOTABLE_ODD_VTABLE
++            {
++                let retained = unsafe {
++                    (self.clone)(&bytes.data, bytes.ptr, bytes.len, 0, len)
++                };
++                drop(mem::replace(bytes, retained));
++            } else {
++                bytes.len = len;
++            }
++        }
++    }
++
++    fn slice_view(&self, bytes: &Bytes, begin: usize, end: usize) -> Bytes {
++        if end == begin {
++            return Bytes::new_empty_with_ptr(bytes.ptr.wrapping_add(begin));
++        }
++        unsafe { (self.clone)(&bytes.data, bytes.ptr, bytes.len, begin, end) }
++    }
++
++    fn split_suffix(&self, bytes: &mut Bytes, at: usize) -> Bytes {
++        let ret = unsafe { (self.clone)(&bytes.data, bytes.ptr, bytes.len, at, bytes.len) };
++        bytes.len = at;
++        ret
++    }
++
++    fn split_prefix(&self, bytes: &mut Bytes, at: usize) -> Bytes {
++        let ret = unsafe { (self.clone)(&bytes.data, bytes.ptr, bytes.len, 0, at) };
++        unsafe { bytes.inc_start(at) };
++        ret
++    }
++
++    #[inline]
++    fn view<'a>(&self, bytes: &'a Bytes) -> &'a [u8] {
++        unsafe { slice::from_raw_parts(bytes.ptr, bytes.len) }
++    }
++
++    #[inline]
++    unsafe fn advance_view(&self, bytes: &mut Bytes, by: usize) {
++        debug_assert!(bytes.len >= by, "internal: inc_start out of bounds");
++        bytes.len -= by;
++        bytes.ptr = bytes.ptr.add(by);
++    }
++}
++
+ impl fmt::Debug for Vtable {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         f.debug_struct("Vtable")
+@@ -1072,8 +1083,8 @@ const STATIC_VTABLE: Vtable = Vtable {
+     drop: static_drop,
+ };
+ 
+-unsafe fn static_clone(_: &AtomicPtr<()>, ptr: *const u8, len: usize) -> Bytes {
+-    let slice = slice::from_raw_parts(ptr, len);
++unsafe fn static_clone(_: &AtomicPtr<()>, ptr: *const u8, _: usize, begin: usize, end: usize) -> Bytes {
++    let slice = slice::from_raw_parts(ptr.add(begin), end - begin);
+     Bytes::from_static(slice)
+ }
+ 
+@@ -1113,7 +1124,7 @@ impl<T> Owned<T> {
+     };
+ }
+ 
+-unsafe fn owned_clone<T>(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> Bytes {
++unsafe fn owned_clone<T>(data: &AtomicPtr<()>, ptr: *const u8, _: usize, begin: usize, end: usize) -> Bytes {
+     let owned = data.load(Ordering::Relaxed);
+     let old_cnt = (*owned.cast::<AtomicUsize>()).fetch_add(1, Ordering::Relaxed);
+     if old_cnt > usize::MAX >> 1 {
+@@ -1121,8 +1132,8 @@ unsafe fn owned_clone<T>(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> By
+     }
+ 
+     Bytes {
+-        ptr,
+-        len,
++        ptr: ptr.add(begin),
++        len: end - begin,
+         data: AtomicPtr::new(owned as _),
+         vtable: &Owned::<T>::VTABLE,
+     }
+@@ -1183,16 +1194,16 @@ static PROMOTABLE_ODD_VTABLE: Vtable = Vtable {
+     drop: promotable_odd_drop,
+ };
+ 
+-unsafe fn promotable_even_clone(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> Bytes {
++unsafe fn promotable_even_clone(data: &AtomicPtr<()>, ptr: *const u8, len: usize, begin: usize, end: usize) -> Bytes {
+     let shared = data.load(Ordering::Acquire);
+     let kind = shared as usize & KIND_MASK;
+ 
+     if kind == KIND_ARC {
+-        shallow_clone_arc(shared.cast(), ptr, len)
++        shallow_clone_arc(shared.cast(), ptr.add(begin), end - begin)
+     } else {
+         debug_assert_eq!(kind, KIND_VEC);
+         let buf = ptr_map(shared.cast(), |addr| addr & !KIND_MASK);
+-        shallow_clone_vec(data, shared, buf, ptr, len)
++        shallow_clone_vec(data, shared, buf, ptr, len, begin, end)
+     }
+ }
+ 
+@@ -1273,15 +1284,15 @@ unsafe fn promotable_even_drop(shared: *mut (), ptr: *const u8, len: usize) {
+     }
+ }
+ 
+-unsafe fn promotable_odd_clone(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> Bytes {
++unsafe fn promotable_odd_clone(data: &AtomicPtr<()>, ptr: *const u8, len: usize, begin: usize, end: usize) -> Bytes {
+     let shared = data.load(Ordering::Acquire);
+     let kind = shared as usize & KIND_MASK;
+ 
+     if kind == KIND_ARC {
+-        shallow_clone_arc(shared as _, ptr, len)
++        shallow_clone_arc(shared as _, ptr.add(begin), end - begin)
+     } else {
+         debug_assert_eq!(kind, KIND_VEC);
+-        shallow_clone_vec(data, shared, shared.cast(), ptr, len)
++        shallow_clone_vec(data, shared, shared.cast(), ptr, len, begin, end)
+     }
+ }
+ 
+@@ -1369,9 +1380,9 @@ const KIND_ARC: usize = 0b0;
+ const KIND_VEC: usize = 0b1;
+ const KIND_MASK: usize = 0b1;
+ 
+-unsafe fn shared_clone(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> Bytes {
++unsafe fn shared_clone(data: &AtomicPtr<()>, ptr: *const u8, _: usize, begin: usize, end: usize) -> Bytes {
+     let shared = data.load(Ordering::Relaxed);
+-    shallow_clone_arc(shared as _, ptr, len)
++    shallow_clone_arc(shared as _, ptr.add(begin), end - begin)
+ }
+ 
+ unsafe fn shared_to_vec_impl(shared: *mut Shared, ptr: *const u8, len: usize) -> Vec<u8> {
+@@ -1478,6 +1489,8 @@ unsafe fn shallow_clone_vec(
+     buf: *mut u8,
+     offset: *const u8,
+     len: usize,
++    begin: usize,
++    end: usize,
+ ) -> Bytes {
+     // If the buffer is still tracked in a `Vec<u8>`. It is time to
+     // promote the vec to an `Arc`. This could potentially be called
+@@ -1525,8 +1538,8 @@ unsafe fn shallow_clone_vec(
+             // The upgrade was successful, the new handle can be
+             // returned.
+             Bytes {
+-                ptr: offset,
+-                len,
++                ptr: offset.add(begin),
++                len: end - begin,
+                 data: AtomicPtr::new(shared as _),
+                 vtable: &SHARED_VTABLE,
+             }
+@@ -1540,7 +1553,7 @@ unsafe fn shallow_clone_vec(
+ 
+             // Buffer already promoted to shared storage, so increment ref
+             // count.
+-            shallow_clone_arc(actual as _, offset, len)
++            shallow_clone_arc(actual as _, offset.add(begin), end - begin)
+         }
+     }
+ }
+diff --git a/src/bytes_mut.rs b/src/bytes_mut.rs
+index ae808fa..a0463b1 100644
+--- a/src/bytes_mut.rs
++++ b/src/bytes_mut.rs
+@@ -1897,12 +1897,12 @@ static SHARED_VTABLE: Vtable = Vtable {
+     drop: shared_v_drop,
+ };
+ 
+-unsafe fn shared_v_clone(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> Bytes {
++unsafe fn shared_v_clone(data: &AtomicPtr<()>, ptr: *const u8, _: usize, begin: usize, end: usize) -> Bytes {
+     let shared = data.load(Ordering::Relaxed) as *mut Shared;
+     increment_shared(shared);
+ 
+     let data = AtomicPtr::new(shared as *mut ());
+-    Bytes::with_vtable(ptr, len, data, &SHARED_VTABLE)
++    Bytes::with_vtable(ptr.add(begin), end - begin, data, &SHARED_VTABLE)
+ }
+ 
+ unsafe fn shared_v_to_vec(shared: *mut (), ptr: *const u8, len: usize) -> Vec<u8> {

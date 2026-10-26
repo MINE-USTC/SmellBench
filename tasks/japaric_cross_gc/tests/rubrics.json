@@ -1,0 +1,360 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "japaric_cross_gc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "dockerfile_build",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 custom-image construction.",
+      "baseline_defect": "Options owns Dockerfile-specific platform/tag/path/context and build execution.",
+      "criterion": "Make Dockerfile build preparation/execution a focused responsibility.",
+      "acceptance": "Retain platform/progress/verbosity/labels, image name then caller args then arch arg, File vs generated path/materialization, optional File CROSS_BASE_IMAGE (lookup errors ignored), --file, parsed build opts, Docker output fallback and context order; preserve engine/buildkit diagnostics. Existing Dockerfile.build can own whole workflow. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/custom.rs",
+          "symbol": "build_dockerfile",
+          "detail": "Options owns Dockerfile-specific platform/tag/path/context and build execution.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_preparation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage2 progressive selected image.",
+      "baseline_defect": "Prepared image mutates options across Dockerfile/prebuild branches and is consumed by both runners.",
+      "criterion": "Coordinate focused custom-image preparation with local and remote launch through a coherent selected-image contract.",
+      "acceptance": "Retain ARM note, configured Dockerfile name/platform, successful Dockerfile result as FROM for later prebuild, final selected image consumed by both launch paths. Build failure precedes new child registration/launch. Mutable focused preparation context is allowed; no forced immutable return object or ban on progressive publication. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "custom_image_build,run_local,run_remote",
+          "detail": "Prepared image mutates options across Dockerfile/prebuild branches and is consumed by both runners.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/local.rs",
+          "symbol": "custom_image_build,run_local,run_remote",
+          "detail": "Prepared image mutates options across Dockerfile/prebuild branches and is consumed by both runners.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "custom_image_build,run_local,run_remote",
+          "detail": "Prepared image mutates options across Dockerfile/prebuild branches and is consumed by both runners.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "prebuild_variants",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R2/preparation branches carrying selected base image.",
+      "baseline_defect": "Options selects script-file vs command text and constructs generated build inputs.",
+      "criterion": "Localize pre-build variation in focused image preparation.",
+      "acceptance": "Single non-env/no newline/existing host-root file uses COPY/script and CROSS_SCRIPT/CROSS_TARGET; other Single/Lines use eval joined newline when nonempty. Preserve notes, arguments, prior selected image and platform. A single image-preparation service may satisfy both items. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "custom_image_build",
+          "detail": "Options selects script-file vs command text and constructs generated build inputs.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "local_execution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 local lifecycle.",
+      "baseline_defect": "Options owns local command/bind mounts/launch/status and signal cleanup.",
+      "criterion": "Provide focused local execution orchestration using configuration and specialized policies.",
+      "acceptance": "Keep mount/argument order, platform and SELinux variants, Nix, tty/interactive flags. Prepare custom image before ChildContainer.create; preserve should_fail check after registration, status and TERMINATED-controlled exit_static. Coordinating helper calls may remain on facade; no need separate owner for every launch phase. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/local.rs",
+          "symbol": "run_local",
+          "detail": "Options owns local command/bind mounts/launch/status and signal cleanup.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "remote_execution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 remote lifecycle.",
+      "baseline_defect": "Options owns remote volume/container preparation and entire execution/output workflow.",
+      "criterion": "Provide focused remote lifecycle orchestration that collaborates with mount/sync/output policies.",
+      "acceptance": "Keep existing-volume selection/warnings, stop/remove previous container, mount collection before startup, image prep before registration, registration before run, tty/infinite sleep, cargo/toolchain preparation, symlink/exec/output/finish order and resource cleanup on errors. A cohesive remote runner can remain large and receive options; size/state access alone does not disqualify it. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "run_remote",
+          "detail": "Options owns remote volume/container preparation and entire execution/output workflow.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "environment_emission",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 environment assembly.",
+      "baseline_defect": "Options assembles passthrough, runner, toolchain, user, external options and compiler flags.",
+      "criterion": "Keep container environment construction within focused command/environment policy.",
+      "acceptance": "Preserve ordered passthrough -e entries, cargo/sysroot/target/runner then Zig cache/config vars, username error context, CROSS_CONTAINER_OPTS over DOCKER_OPTS with dual warning, then rustc version default1.0.0. Direct command mutator or equivalent ordered plan valid; no requirement command extension own policy. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "configure_environment",
+          "detail": "Options assembles passthrough, runner, toolchain, user, external options and compiler flags.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "environment_validation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage2 removed shared validator.",
+      "baseline_defect": "Two loops duplicate name syntax/reserved-name decisions.",
+      "criterion": "Make shared environment-name policy consistently maintained for passthrough and volume consumers.",
+      "acceptance": "Split first =; only no-value invalid names warn once per list/call, lists have independent warned state and distinct diagnostic context. CROSS_RUNNER forbidden with/without value; preserve warning-before-error and partial command mutation. Reusable rule/policy sufficient, no mandatory shared mutable validator. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "configure_environment,configure_mounts",
+          "detail": "Two loops duplicate name syntax/reserved-name decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "configured_mounts",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 configured volume resolution.",
+      "baseline_defect": "Options handles env resolution, canonical validation, mount translation and callbacks.",
+      "criterion": "Place configured-volume preparation/emission in focused mount policy.",
+      "acceptance": "Explicit value else env; unavailable value skipped. Canonical host path then mount-finder translation; raw supplied path determines mounted POSIX path and stored source. mount_cb then -e then store_cb, preserving partial effects/errors. Returned plan allowed only if evaluation/emission timing preserved; no canonicalized published source substitution. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "configure_mounts",
+          "detail": "Options handles env resolution, canonical validation, mount translation and callbacks.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dependency_mounts",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 workspace dependency mapping.",
+      "baseline_defect": "Options owns separate dependency traversal and raw/canonical mapping after configured volumes.",
+      "criterion": "Keep workspace dependency mount mapping with focused mount responsibilities.",
+      "acceptance": "Run after configured volumes in existing order; canonicalize/find host, original dependency POSIX destination, mount callback then UTF8 stored source; no added -e entry. Common mount service may cover both lists without forcing identical side effects. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "configure_mounts",
+          "detail": "Options owns separate dependency traversal and raw/canonical mapping after configured volumes.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mount_sync_handoff",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R3 remote store callback to transfer.",
+      "baseline_defect": "Options both produces collected mount mappings and later orchestrates their synchronization.",
+      "criterion": "Maintain focused mount preparation-to-remote transfer collaboration with correct path provenance.",
+      "acceptance": "Remote callback collects raw source/destination before startup; transfer later uses captured list and copied-root/symlink handling. Local callback mounts immediately. Preserve errors/env reads/callback order before container launch; no requirement for a new mount-plan object. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "configure_mounts,run_remote,synchronize_mount",
+          "detail": "Options both produces collected mount mappings and later orchestrates their synchronization.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "configure_mounts,run_remote,synchronize_mount",
+          "detail": "Options both produces collected mount mappings and later orchestrates their synchronization.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sync_lifecycle",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 remote sync lifecycle.",
+      "baseline_defect": "Options handles volume cache identity, inventory, copy/remove and fingerprint publication.",
+      "criterion": "Assign synchronization lifecycle to focused volume/transfer policy.",
+      "acceptance": "Keep volume: fingerprint name from toolchain+source, inventory read, file exists AND remote path exists guard. Existing pair copy then remove then fingerprint write; first/missing-remote path writes fingerprint BEFORE full copy; Discard full copy no fingerprint. Respect copy_cache/full nocache variants and errors. Do not silently repair write-before-copy behavior. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "synchronize_mount",
+          "detail": "Options handles volume cache identity, inventory, copy/remove and fingerprint publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "inventory_delta",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage2 destructive inventory reconciliation.",
+      "baseline_defect": "Options removes current keys from previous map to derive copies and deletion remainder.",
+      "criterion": "Make inventory comparison a focused contract consumed by transfer lifecycle.",
+      "acceptance": "Current sorted keys absent/changed copy; all visited keys removed even equal, previous remainder removed in order. Preserve time precision/duplicate behavior of Fingerprint readers. Pure difference returning sets, map clone or destructive traversal equally valid; no mandatory destructive state. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "synchronize_mount,Fingerprint",
+          "detail": "Options removes current keys from previous map to derive copies and deletion remainder.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "artifact_discovery",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R4/stage2 artifact stream.",
+      "baseline_defect": "Options owns Cargo record parsing, workspace eligibility, intermediate filtering and dedup.",
+      "criterion": "Provide focused artifact discovery independent of options/container lifecycle.",
+      "acceptance": "Trim lines; ignore malformed/nonworkspace/non-compiler records, exclude intermediate filenames then include executable exception, dedup raw strings in first-seen order. Preserve standalone parser adapter. Iterator or eager list both valid; no enforced parsing/transfer class split. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "artifact_candidates,parse_artifact_filenames",
+          "detail": "Options owns Cargo record parsing, workspace eligibility, intermediate filtering and dedup.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "artifact_transfer",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 path mapping and actual copies.",
+      "baseline_defect": "Options handles artifact path validation, host directory creation and engine copy.",
+      "criterion": "Keep artifact path mapping and publication effects within focused transfer responsibility.",
+      "acceptance": "Trim candidate; empty skip; retain substring find(mount_target_dir), not stricter starts_with, and original warning on absent substring. Join trimmed-leading-slash suffix to host target, create parent then subcommand_or_exit cp/statusfalse. Preserve candidate order and fail-stop effects; shared artifact service is legal. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "publish_artifacts",
+          "detail": "Options handles artifact path validation, host directory creation and engine copy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "artifact_fallback",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage2 discovery result governs fallback.",
+      "baseline_defect": "Runner fallback is coupled to publication Boolean with discovery-before-trim semantics.",
+      "criterion": "Coordinate output selection and fallback through a focused remote-output contract.",
+      "acceptance": "Only no discovered raw candidate triggers whole target fallback in selective mode; discovered empty or unmappable skipped candidates still suppress fallback. Preserve skip artifacts, remote existence, produces/full-mode gates, per-artifact host target versus full-copy host target parent, -a and cleanup sequence. Callback/count/list/session state all valid, no required Boolean result. Shared focused services/functions and a thin DockerOptions facade are valid; mutable session state, callbacks or returned data may express the collaboration. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same collection of unrelated policies into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "publish_artifacts,run_remote",
+          "detail": "Runner fallback is coupled to publication Boolean with discovery-before-trim semantics.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "japaric_cross_gc",
+    "rubric_status": "ready",
+    "aggregation": "equal_weight_per_item",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "excluded_from_scoring": [
+      "The empty post.diff introduces no repair obligation.",
+      "Existing Cargo artifact filtering and test passage are controls, not standalone smell-removal credit.",
+      "Restoring behavior after image mutation is required for correctness, but behavior restoration alone does not earn a structural point."
+    ]
+  }
+}

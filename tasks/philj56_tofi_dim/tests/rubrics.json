@@ -1,0 +1,475 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "philj56_tofi_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "text_editing",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 edit expansion/stage2 event-owned flow.",
+      "baseline_defect": "Dispatcher embeds insert/backspace/worddelete/clear buffer algorithms.",
+      "criterion": "Give text editing a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Preserve capacity bound, UTF32 terminators/lengths, append UTF8 bytes vs interior shift, delete-word preceding whitespace thenword, cursor0 no-op; clear always refresh. No-op must still allow outer autoaccept/redraw, unlike submit/close immediate return. One edit operation can cover all keys. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/input.c",
+          "symbol": "input_handle_keypress",
+          "detail": "Dispatcher embeds insert/backspace/worddelete/clear buffer algorithms.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "edit_result_lifecycle",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 shared append/rebuild/prior ownership.",
+      "baseline_defect": "Dispatcher interleaves encoding, filter selection and oldbuffer lifetime.",
+      "criterion": "Give edit result lifecycle a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Append plain filters prior results then frees; rebuild frees prior before filtering commands; DRUN alwaysapps. Reencode UTF32 only nonappend, reset selection/firstresult after update and advance insert cursor after filter. Preserve public refresh and shared borrowed string ownership; no use-afterfree/doublefree. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/input.c",
+          "symbol": "input_handle_keypress,input_refresh_results",
+          "detail": "Dispatcher interleaves encoding, filter selection and oldbuffer lifetime.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "result_navigation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 navigation and stage2 selected action.",
+      "baseline_defect": "Key routing embeds result/page bounds and wrap math.",
+      "criterion": "Give result navigation a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "nsel=max(min(drawn,count),1), forward wrap/update previousdrawn, reverse uses strict first_result>nsel and lastdrawn. PageUp clamps using lastdrawn, PageDown addsdrawn wraps0, resetselection; cursor-left only show&&selection0&&pos>0, right show&&pos<len. Retain precedence and live key aliases. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/input.c",
+          "symbol": "input_handle_keypress",
+          "detail": "Key routing embeds result/page bounds and wrap math.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "clipboard_receive",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 paste lifecycle.",
+      "baseline_defect": "Dispatcher owns pipe creation and descriptor publication.",
+      "criterion": "Give clipboard receive a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Require both offer/mime; pipe CLOEXEC|NONBLOCK, error logs without aborting outer autoaccept/redraw; receive then closewrite and publishread. No synchronous read or different fd lifetime. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/input.c",
+          "symbol": "input_handle_keypress",
+          "detail": "Dispatcher owns pipe creation and descriptor publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "single_word_fuzzy_setup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 wordscore inline.",
+      "baseline_defect": "Multiword aggregation contains candidate/pattern length admission and recurse setup.",
+      "criterion": "Give single word fuzzy setup a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Normalize/split words in existing order, empty0, shorter candidate INT32_MIN, initial-(slen-plen), first-only slen>100, immediate failure versus sum preserved. Compact focused singleword call or equivalent reusable phase qualifies. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/matching.c",
+          "symbol": "fuzzy_match_words",
+          "detail": "Multiword aggregation contains candidate/pattern length admission and recurse setup.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "utf8_candidate_traversal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 shared UTF8 scan and cumulative jump.",
+      "baseline_defect": "Recursive aggregation embeds low-level casefolded candidate scanning and distance tracking.",
+      "criterion": "Give utf8 candidate traversal a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Lowercase codepoints, advance UTF8 boundaries, jump relative current recursion str includes skipped and previously matched chars; increment after each match. Do not reset jump per occurrence; preserve first_match_only and bestscore/no-match handling. May combine scanner with letter scoring coherently. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/matching.c",
+          "symbol": "fuzzy_match_recurse",
+          "detail": "Recursive aggregation embeds low-level casefolded candidate scanning and distance tracking.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fuzzy_letter_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 letter score and stage2 same traversal.",
+      "baseline_defect": "Bonus/penalty decisions embedded in recursion.",
+      "criterion": "Give fuzzy letter policy a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Adjacency15 for nonfirst jump0, camel30 and separator30 only when predecessor valid, firstatstart15, first leading max(-5*jump,-15); recursive score+best, INT32_MIN shortcircuit. No required named scoring helper. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/matching.c",
+          "symbol": "fuzzy_match_recurse",
+          "detail": "Bonus/penalty decisions embedded in recursion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "result_materialization",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 vector create/add; stage2 emptycopy/filter unified.",
+      "baseline_defect": "Matching/token traversal owns allocation/growth/record initialization.",
+      "criterion": "Give result materialization a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Emptyquery preserves original capacity, both scores/order and no matching/sort; nonempty capacity128, doubles asneeded, borrowed strings/history, matching score thenexistingcomparator. Frombuffer mutates newline strtok, borrowed fields, scores0; avoid copying/freeing source strings. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/string_vec.c",
+          "symbol": "string_ref_vec_filter,string_ref_vec_from_buffer",
+          "detail": "Matching/token traversal owns allocation/growth/record initialization.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "history_path_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 default file path inline.",
+      "baseline_defect": "Load/save both embed XDG/defaultmode path allocation.",
+      "criterion": "Give history path policy a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "XDG_STATE_HOME present evenempty wins else HOME/defaultstate, drun selects distinctbasename; missingHOMElogs, loademptyhistory/save no-op. Path freed after every delegated outcome; no normalized slash/empty-env semantic change. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/history.c",
+          "symbol": "history_load_default_file,history_save_default_file",
+          "detail": "Load/save both embed XDG/defaultmode path allocation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "history_read_protocol",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 wholeload and stage2 duplicate parser owner.",
+      "baseline_defect": "Defaultloader duplicates opening/seeks/size/read/parse preparation.",
+      "criterion": "Give history read protocol a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Initial capacity16, openfailureempty, seek/oversize/readfailure logs/returnsoriginalempty, MAX_HISTFILE_SIZE gate and len+1/NUL. Preserve recordtokenization countspace/name newline and malformed tail stop. Existing public history_load valid reconnection; no implicit regeneration or fileformat change. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/history.c",
+          "symbol": "history_load,history_load_default_file",
+          "detail": "Defaultloader duplicates opening/seeks/size/read/parse preparation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "history_entry_update",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 decode coupled insertion/reorder.",
+      "baseline_defect": "Parser embeds find/grow/insert/increment/memmove.",
+      "criterion": "Give history entry update a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "New namecopy,count1; duplicate increment and move only ahead of strictlylowercounts, then original LAST element run_count assigned parsedvalue even if duplicate moved elsewhere. Preserve actual odd behavior, not silently fix. Shared history collection policy can serve direct/defaultload. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/history.c",
+          "symbol": "history_load,history_load_default_file",
+          "detail": "Parser embeds find/grow/insert/increment/memmove.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "history_persistence",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 save inline independent of loader.",
+      "baseline_defect": "Defaultsave owns low-level mkdir/open/fdopen/write loop.",
+      "criterion": "Give history persistence a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "mkdirp gate, open O_WRONLY|O_CREAT0600 (no newtruncate), fdopen wb, original error behavior, ordered count/name newline records and close, outer pathrelease onfailure. Reuse history_save allowed, no required new I/O abstraction. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/history.c",
+          "symbol": "history_save_default_file",
+          "detail": "Defaultsave owns low-level mkdir/open/fdopen/write loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "command_cache_location",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 location and stage2 inline.",
+      "baseline_defect": "Cache workflow owns environment precedence and string allocation.",
+      "criterion": "Give command cache location a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "MissingPATH logs/exits before cache resolution; XDG_CACHE_HOME elseHOME/.cache, missingHOME generationfallback. Preserve suppliedemptyenv and exactslash construction, pathlifetime. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/compgen.c",
+          "symbol": "compgen_cached",
+          "detail": "Cache workflow owns environment precedence and string allocation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "command_cache_freshness",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 missing/stale/valid orchestration.",
+      "baseline_defect": "Cache decision nests stat/PATHtoken walk and generation policy.",
+      "criterion": "Give command cache freshness a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "ENOENT missing, otherstatfailure generationwithoutwrite; existing cache stale only directory mtime seconds strictlygreater; failed pathstats ignored. Missing/stale generate once; mkdirp onlymissing, stale log indentation aroundcompgen. Fresh readfailure returnsNULL no regenerate. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/compgen.c",
+          "symbol": "compgen_cached",
+          "detail": "Cache decision nests stat/PATHtoken walk and generation policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "command_cache_io",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 read helper and stage2 shared result/cleanup.",
+      "baseline_defect": "Workflow embeds fread/fwrite/seeks and buffer publication.",
+      "criterion": "Give command cache io a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Write wb uses strlen/nonfatal shortwrite log thenclose; generated commands returned despite writefailure. Read rb/seekend/nonnegativeftell/allocate/rewind/exactread/NUL; error frees readbuffer and returnsNULL afterfile/pathcleanup. Coherent shared cache owner can satisfy freshness too. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/compgen.c",
+          "symbol": "compgen_cached",
+          "detail": "Workflow embeds fread/fwrite/seeks and buffer publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "application_directory_policy",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 paths; stage2 normalized timestamp traversal.",
+      "baseline_defect": "Discovery and cache validity separately assemble XDG dirs and application paths.",
+      "criterion": "Give application directory policy a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "DATA_HOME else HOME/.local/share precedes DATA_DIRS default/usr/local/share/:/usr/share/; missingHOME exits. Colon tokenization/applications suffix, UTF8 reject and normalizationfallback preserved. Validity traverses cleanup after firstnewer but avoids laterstats; checksseconds notnanos. Iterator or collectedlist both valid with same outcomes. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/drun.c",
+          "symbol": "drun_generate,drun_generate_cached",
+          "detail": "Discovery and cache validity separately assemble XDG dirs and application paths.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "desktop_cache_location",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 desktop cache path inlined.",
+      "baseline_defect": "Desktop cache contains its own XDG cache path memory/earlyexit mechanics.",
+      "criterion": "Give desktop cache location a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Keep XDG_CACHE_HOME/HOME/defaultcache path and desktopbasename, missingHOMElogs falls to drun_generate, retain original trailing slashes (default .cache/). No demand unify location with commandcache if configured differences remain clear. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/drun.c",
+          "symbol": "drun_generate_cached",
+          "detail": "Desktop cache contains its own XDG cache path memory/earlyexit mechanics.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "desktop_record_publication",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 append and stage2 ownershiptransfer.",
+      "baseline_defect": "Keyfile/cache consumers embed capacity and stored-field ownership.",
+      "criterion": "Give desktop record publication a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Keyfile owns name/keywords: normalizedname or transfername+NULL, transferkeywords+NULL, ID/pathcopy; cache fields borrowed getline\u2192copy all except independentnormalizedname. Grow doubled, scores0,countafterinitialization, sharedcleanup no doublefree. Existing public desktop_vec_add stays callable with original copy semantics; a common new helper not compulsory. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/desktop_vec.c",
+          "symbol": "desktop_vec_add_file,desktop_vec_load",
+          "detail": "Keyfile/cache consumers embed capacity and stored-field ownership.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "theme_fallback",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 fallback and stage2 orderedthemes.",
+      "baseline_defect": "Entryinit owns perfield default-inheritance rules.",
+      "criterion": "Give theme fallback a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Only unspecified fg/bg/padding/radius inherit; alternate uses alreadyresolved default-result, allothersrootdefault; cursorcolor fromresolved input whenunspecified. Cohesive initializer or declarative mappingvalid; not everytheme separatehelper. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/entry.c",
+          "symbol": "entry_init",
+          "detail": "Entryinit owns perfield default-inheritance rules.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rounded_geometry",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 border/background/cursor fourarc inline.",
+      "baseline_defect": "Repeated path construction mixed into painting workflows.",
+      "criterion": "Give rounded geometry a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "newpath fourarcs TL/TR/BR/BL thenclose, preserve uint32 conversion BEFORE subtraction, callerceil/floor, no clampingradius or signedmathchange. Cover outline, inputbackground/bar/block/underscore and themedbackground. Existing Pango helper remains usable, no requiredsharedfile. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/entry.c",
+          "symbol": "entry_init; src/entry_backend/pango.c render_input",
+          "detail": "Repeated path construction mixed into painting workflows.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "themed_text_paint",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 themedtext and stage2 sharedmeasurement/background redraw.",
+      "baseline_defect": "Update embeds foreground/layout/extents and backgroundgeometry.",
+      "criterion": "Give themed text paint a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Draw foreground before extents; alpha0 no background/redraw; negativepadding uses matrix relativeclip and ink/logical dimensions, ceilwidth/height. Save/translate/fill/restore then foreground secondshow; preserve prompt advance and normalresult themes. Highlight substring branch remains separate, not a requirednewrefactor. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/entry_backend/pango.c",
+          "symbol": "entry_backend_pango_update",
+          "detail": "Update embeds foreground/layout/extents and backgroundgeometry.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "result_buffered_paint",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 fixed/vertical/horizontal branches.",
+      "baseline_defect": "Resultloop interleaves drawing with Cairo group lifetime/overflow.",
+      "criterion": "Give result buffered paint a cohesive operation or policy boundary so higher-level workflows no longer maintain its nested mechanics.",
+      "acceptance": "Fixednumresults directdraw; autovertical precheck using existing logicalheight, setdrawn/break beforedraw. Autohorizontal pushgroup thenmeasure/draw, pop, overflowdestroyswithoutpaint, successsave/setsource/paint/restore/destroy. Preserve iterationcount/groupcleanup; no mandated renderresult object. Existing public helpers may be reused, and equivalent composition or reorganized control flow is valid; no prescribed signatures, result object or helper count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the entire mixed workflow, renaming labels or adding a wrapper around unchanged nested mechanics is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/entry_backend/pango.c",
+          "symbol": "entry_backend_pango_update",
+          "detail": "Resultloop interleaves drawing with Cairo group lifetime/overflow.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded.four_dimensions.v1",
+    "task_id": "philj56_tofi_dim",
+    "aggregation": "equal_weight_per_item"
+  }
+}

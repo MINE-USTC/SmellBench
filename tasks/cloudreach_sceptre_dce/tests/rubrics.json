@@ -1,0 +1,580 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "cloudreach_sceptre_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "pair_join",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stage one validates Join pair shape and str/list before its original guards.",
+      "baseline_defect": "Join still rejects the same pair shape/types after successful _resolve_pair.",
+      "criterion": "Eliminate Join unreachable post-validation pair rejection.",
+      "acceptance": "Enforce the existing shape/type contract once and preserve joining and conversion. Either validation location or an equivalent combined operation is valid; no mandatory base-class helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/join.py",
+          "symbol": "Join.resolve",
+          "detail": "Join still rejects the same pair shape/types after successful _resolve_pair.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/__init__.py",
+          "symbol": "Resolver._resolve_pair",
+          "detail": "Join still rejects the same pair shape/types after successful _resolve_pair.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "pair_select",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stage one validates Select pair shape and unrestricted selector plus dict/list before its original guards.",
+      "baseline_defect": "Select still rejects the same pair shape/types after successful _resolve_pair.",
+      "criterion": "Eliminate Select unreachable post-validation pair rejection.",
+      "acceptance": "Enforce the existing shape/type contract once and preserve key/index lookup and its live errors. Either validation location or an equivalent combined operation is valid; no mandatory base-class helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/select.py",
+          "symbol": "Select.resolve",
+          "detail": "Select still rejects the same pair shape/types after successful _resolve_pair.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/__init__.py",
+          "symbol": "Resolver._resolve_pair",
+          "detail": "Select still rejects the same pair shape/types after successful _resolve_pair.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "pair_split",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stage one validates Split pair shape and str/str before its original guards.",
+      "baseline_defect": "Split still rejects the same pair shape/types after successful _resolve_pair.",
+      "criterion": "Eliminate Split unreachable post-validation pair rejection.",
+      "acceptance": "Enforce the existing shape/type contract once and preserve string splitting and its live errors. Either validation location or an equivalent combined operation is valid; no mandatory base-class helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/split.py",
+          "symbol": "Split.resolve",
+          "detail": "Split still rejects the same pair shape/types after successful _resolve_pair.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/__init__.py",
+          "symbol": "Resolver._resolve_pair",
+          "detail": "Split still rejects the same pair shape/types after successful _resolve_pair.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "pair_sub",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stage one validates Sub pair shape and str/dict before its original guards.",
+      "baseline_defect": "Sub still rejects the same pair shape/types after successful _resolve_pair.",
+      "criterion": "Eliminate Sub unreachable post-validation pair rejection.",
+      "acceptance": "Enforce the existing shape/type contract once and preserve format substitution and its live errors. Either validation location or an equivalent combined operation is valid; no mandatory base-class helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/sub.py",
+          "symbol": "Sub.resolve",
+          "detail": "Sub still rejects the same pair shape/types after successful _resolve_pair.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/__init__.py",
+          "symbol": "Resolver._resolve_pair",
+          "detail": "Sub still rejects the same pair shape/types after successful _resolve_pair.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "suffix_file",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stage one adds _validated_suffix to File.",
+      "baseline_defect": "File repeats extension rejection after its effective validator returned the same supported suffix.",
+      "criterion": "Remove the unreachable extension rejection in File with one effective supported-suffix decision.",
+      "acceptance": "Preserve the handler-specific configured suffix set, rejection diagnostics and validation timing. Shared validation or a directly owned handler policy both qualify; there is no requirement to keep the new base method. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/file.py",
+          "symbol": "File.handle",
+          "detail": "File repeats extension rejection after its effective validator returned the same supported suffix.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/__init__.py",
+          "symbol": "TemplateHandler._validated_suffix",
+          "detail": "File repeats extension rejection after its effective validator returned the same supported suffix.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "render_file_jinja",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "prepare_template consumes jinja rendering before File legacy fallback.",
+      "baseline_defect": "File retains an unreachable jinja renderer after the producer has returned no pending path.",
+      "criterion": "Eliminate File obsolete jinja rendering branch across its preparation/consumption flow.",
+      "acceptance": "Preserve exactly-once rendering, errors and user data. Raw-file reads remain reachable; standard suffixes keep precedence over overlapping render suffixes. The existing preparation helper and pending-path representation are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/file.py",
+          "symbol": "File.handle",
+          "detail": "File retains an unreachable jinja renderer after the producer has returned no pending path.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/helper.py",
+          "symbol": "prepare_template",
+          "detail": "File retains an unreachable jinja renderer after the producer has returned no pending path.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "render_file_python",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "prepare_template consumes python rendering before File legacy fallback.",
+      "baseline_defect": "File retains an unreachable python renderer after the producer has returned no pending path.",
+      "criterion": "Eliminate File obsolete python rendering branch across its preparation/consumption flow.",
+      "acceptance": "Preserve exactly-once rendering, errors and user data. Raw-file reads remain reachable; standard suffixes keep precedence over overlapping render suffixes. The existing preparation helper and pending-path representation are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/file.py",
+          "symbol": "File.handle",
+          "detail": "File retains an unreachable python renderer after the producer has returned no pending path.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/helper.py",
+          "symbol": "prepare_template",
+          "detail": "File retains an unreachable python renderer after the producer has returned no pending path.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "suffix_http",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stage one adds _validated_suffix to Http.",
+      "baseline_defect": "Http repeats extension rejection after its effective validator returned the same supported suffix.",
+      "criterion": "Remove the unreachable extension rejection in Http with one effective supported-suffix decision.",
+      "acceptance": "Preserve the handler-specific configured suffix set, rejection diagnostics and validation timing. Shared validation or a directly owned handler policy both qualify; there is no requirement to keep the new base method. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/http.py",
+          "symbol": "Http.handle",
+          "detail": "Http repeats extension rejection after its effective validator returned the same supported suffix.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/__init__.py",
+          "symbol": "TemplateHandler._validated_suffix",
+          "detail": "Http repeats extension rejection after its effective validator returned the same supported suffix.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "render_http_jinja",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "prepare_template consumes jinja rendering before Http legacy fallback.",
+      "baseline_defect": "Http retains an unreachable jinja renderer after the producer has returned no pending path.",
+      "criterion": "Eliminate Http obsolete jinja rendering branch across its preparation/consumption flow.",
+      "acceptance": "Preserve exactly-once rendering, errors and user data. Download and the open temporary-stream lifecycle remain live, including write/seek/read and traceback behavior; equivalent lifetime management is allowed. The existing preparation helper and pending-path representation are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/http.py",
+          "symbol": "Http.handle",
+          "detail": "Http retains an unreachable jinja renderer after the producer has returned no pending path.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/helper.py",
+          "symbol": "prepare_template",
+          "detail": "Http retains an unreachable jinja renderer after the producer has returned no pending path.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "render_http_python",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "prepare_template consumes python rendering before Http legacy fallback.",
+      "baseline_defect": "Http retains an unreachable python renderer after the producer has returned no pending path.",
+      "criterion": "Eliminate Http obsolete python rendering branch across its preparation/consumption flow.",
+      "acceptance": "Preserve exactly-once rendering, errors and user data. Download and the open temporary-stream lifecycle remain live, including write/seek/read and traceback behavior; equivalent lifetime management is allowed. The existing preparation helper and pending-path representation are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/http.py",
+          "symbol": "Http.handle",
+          "detail": "Http retains an unreachable python renderer after the producer has returned no pending path.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/helper.py",
+          "symbol": "prepare_template",
+          "detail": "Http retains an unreachable python renderer after the producer has returned no pending path.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "suffix_s3",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stage one adds _validated_suffix to S3.",
+      "baseline_defect": "S3 repeats extension rejection after its effective validator returned the same supported suffix.",
+      "criterion": "Remove the unreachable extension rejection in S3 with one effective supported-suffix decision.",
+      "acceptance": "Preserve the handler-specific configured suffix set, rejection diagnostics and validation timing. Shared validation or a directly owned handler policy both qualify; there is no requirement to keep the new base method. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/s3.py",
+          "symbol": "S3.handle",
+          "detail": "S3 repeats extension rejection after its effective validator returned the same supported suffix.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/__init__.py",
+          "symbol": "TemplateHandler._validated_suffix",
+          "detail": "S3 repeats extension rejection after its effective validator returned the same supported suffix.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "render_s3_jinja",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "prepare_template consumes jinja rendering before S3 legacy fallback.",
+      "baseline_defect": "S3 retains an unreachable jinja renderer after the producer has returned no pending path.",
+      "criterion": "Eliminate S3 obsolete jinja rendering branch across its preparation/consumption flow.",
+      "acceptance": "Preserve exactly-once rendering, errors and user data. Download and the open temporary-stream lifecycle remain live, including write/seek/read and traceback behavior; equivalent lifetime management is allowed. The existing preparation helper and pending-path representation are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/s3.py",
+          "symbol": "S3.handle",
+          "detail": "S3 retains an unreachable jinja renderer after the producer has returned no pending path.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/helper.py",
+          "symbol": "prepare_template",
+          "detail": "S3 retains an unreachable jinja renderer after the producer has returned no pending path.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "render_s3_python",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "prepare_template consumes python rendering before S3 legacy fallback.",
+      "baseline_defect": "S3 retains an unreachable python renderer after the producer has returned no pending path.",
+      "criterion": "Eliminate S3 obsolete python rendering branch across its preparation/consumption flow.",
+      "acceptance": "Preserve exactly-once rendering, errors and user data. Download and the open temporary-stream lifecycle remain live, including write/seek/read and traceback behavior; equivalent lifetime management is allowed. The existing preparation helper and pending-path representation are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/s3.py",
+          "symbol": "S3.handle",
+          "detail": "S3 retains an unreachable python renderer after the producer has returned no pending path.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/template_handlers/helper.py",
+          "symbol": "prepare_template",
+          "detail": "S3 retains an unreachable python renderer after the producer has returned no pending path.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "list_join_validation",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "validate_merge_inputs checks parent then child before operand selection.",
+      "baseline_defect": "list_join retains truthy wrong-type rejection bodies for already checked selected operands.",
+      "criterion": "Remove list_join redundant post-selection type rejection paths.",
+      "acceptance": "Preserve parent-before-child error timing and the original truthiness-based validation: falsy wrong-type inputs are not automatically rejected by this validator. Keep subsequent native operation errors. Validation may be integrated with the operation rather than require a helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/merge.py",
+          "symbol": "merge_operands",
+          "detail": "list_join retains truthy wrong-type rejection bodies for already checked selected operands.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/strategies.py",
+          "symbol": "list_join",
+          "detail": "list_join retains truthy wrong-type rejection bodies for already checked selected operands.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "list_join_absence",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "merge_operands selects one operand for either None case and two only when both are present.",
+      "baseline_defect": "list_join loop still contains an absent-result takeover although a None result cannot enter that loop.",
+      "criterion": "Eliminate list_join impossible None-result takeover while keeping the real two-operand operation.",
+      "acceptance": "Distinguish None from empty/falsy containers; preserve one final deepcopy of the complete selected/combined result, including aliases. Equivalent direct branching without an operand tuple is valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/merge.py",
+          "symbol": "merge_operands",
+          "detail": "list_join loop still contains an absent-result takeover although a None result cannot enter that loop.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/strategies.py",
+          "symbol": "list_join",
+          "detail": "list_join loop still contains an absent-result takeover although a None result cannot enter that loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dict_merge_validation",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "validate_merge_inputs checks parent then child before operand selection.",
+      "baseline_defect": "dict_merge retains truthy wrong-type rejection bodies for already checked selected operands.",
+      "criterion": "Remove dict_merge redundant post-selection type rejection paths.",
+      "acceptance": "Preserve parent-before-child error timing and the original truthiness-based validation: falsy wrong-type inputs are not automatically rejected by this validator. Keep subsequent native operation errors. Validation may be integrated with the operation rather than require a helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/merge.py",
+          "symbol": "merge_operands",
+          "detail": "dict_merge retains truthy wrong-type rejection bodies for already checked selected operands.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/strategies.py",
+          "symbol": "dict_merge",
+          "detail": "dict_merge retains truthy wrong-type rejection bodies for already checked selected operands.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dict_merge_absence",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "merge_operands selects one operand for either None case and two only when both are present.",
+      "baseline_defect": "dict_merge loop still contains an absent-result takeover although a None result cannot enter that loop.",
+      "criterion": "Eliminate dict_merge impossible None-result takeover while keeping the real two-operand operation.",
+      "acceptance": "Distinguish None from empty/falsy containers; preserve one final deepcopy of the complete selected/combined result, including aliases. Equivalent direct branching without an operand tuple is valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/merge.py",
+          "symbol": "merge_operands",
+          "detail": "dict_merge loop still contains an absent-result takeover although a None result cannot enter that loop.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/strategies.py",
+          "symbol": "dict_merge",
+          "detail": "dict_merge loop still contains an absent-result takeover although a None result cannot enter that loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dict_winner_provenance",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "merge_entries resolves child precedence and reports parent provenance only for keys absent from child.",
+      "baseline_defect": "dict_merge reassigns a parent-provenance entry from child under a producer-impossible overlap.",
+      "criterion": "Remove the impossible parent-provenance conflict reassignment.",
+      "acceptance": "Keep child precedence, insertion order and whole-result copying. Direct dictionary composition or other equivalent assembly can replace merge_entries; no iterator/provenance field is prescribed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/merge.py",
+          "symbol": "merge_entries",
+          "detail": "dict_merge reassigns a parent-provenance entry from child under a producer-impossible overlap.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/config/strategies.py",
+          "symbol": "dict_merge",
+          "detail": "dict_merge reassigns a parent-provenance entry from child under a producer-impossible overlap.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "argument_empty_callback",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "resolve_argument_values filters normal None results before assignment; property recovery returns a non-None ResolveLater object.",
+      "baseline_defect": "The argument callback retains a None-result deletion arm that its actual producer cannot reach.",
+      "criterion": "Remove the unreachable empty-result arm from the argument resolution flow.",
+      "acceptance": "One effective empty-result decision is sufficient regardless of callback/helper design. Keep nested resolver evaluation once, delayed key deletion, assignment and the resolved cache flag. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/argument.py",
+          "symbol": "resolve_argument_values",
+          "detail": "The argument callback retains a None-result deletion arm that its actual producer cannot reach.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/__init__.py",
+          "symbol": "CustomYamlTagBase._resolve_argument",
+          "detail": "The argument callback retains a None-result deletion arm that its actual producer cannot reach.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "property_empty_callback",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "resolve_argument_values filters normal None results before assignment; property recovery returns a non-None ResolveLater object.",
+      "baseline_defect": "The property callback retains a None-result deletion arm that its actual producer cannot reach.",
+      "criterion": "Remove the unreachable empty-result arm from the property resolution flow.",
+      "acceptance": "One effective empty-result decision is sufficient regardless of callback/helper design. Keep placeholder-aware evaluation, None logging/deletion and deferred resolution. Both evaluation-side RecursiveResolve recovery and assignment-side RecursiveResolve handling are live; the latter can be raised by container assignment and retains the original resolver source. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving or renaming the unreachable body unchanged is insufficient. Removing live effects or reopening an invalid state merely to make the old branch reachable does not eliminate the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/argument.py",
+          "symbol": "resolve_argument_values",
+          "detail": "The property callback retains a None-result deletion arm that its actual producer cannot reach.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "sceptre/resolvers/__init__.py",
+          "symbol": "ResolvableContainerProperty.get_resolved_value",
+          "detail": "The property callback retains a None-result deletion arm that its actual producer cannot reach.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "cloudreach_sceptre_dce",
+    "schema_version": "source_grounded_four_dimensions_v5",
+    "aggregation": "equal_weight_per_item",
+    "source_diff_sha256": "35c6095885e7e4c04d100bf4b05eb37333911e2a31c2e9dfaf10aa5af3d8ce65",
+    "excluded_from_scoring": [
+      "The empty post.diff introduces no repair obligation.",
+      "Preserving tests, compilation, error text, raw behavior, deepcopy semantics, and resolver cache behavior is an acceptance constraint, not separate structural credit.",
+      "A cosmetic rename or an unchanged patch earns no item.",
+      "Historical scope ideas for ConfigReader, unrelated resolvers, graph paths, and connection retry do not appear in the final injection."
+    ]
+  }
+}

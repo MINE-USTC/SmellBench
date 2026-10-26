@@ -1,0 +1,333 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "dreamanddead_csapp_3e_solutions_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "alu_value",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "lookup_alu_recipe covers ADD/SUB/AND/XOR and returns before their legacy switch cases.",
+      "baseline_defect": "lookup_alu_recipe covers ADD/SUB/AND/XOR and returns before their legacy switch cases.",
+      "criterion": "Eliminate the unreachable duplicate implementation in compute_alu while retaining its live behavior.",
+      "acceptance": "Keep unmatched operation default value and public API. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "compute_alu",
+          "detail": "lookup_alu_recipe covers ADD/SUB/AND/XOR and returns before their legacy switch cases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "alu_flags",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "For all four registered operations evaluate_recipe supplies flags before the old overflow switch.",
+      "baseline_defect": "For all four registered operations evaluate_recipe supplies flags before the old overflow switch.",
+      "criterion": "Eliminate the unreachable duplicate implementation in compute_cc while retaining its live behavior.",
+      "acceptance": "Keep unknown-operation zero/sign/overflow behavior; remove obsolete supported cases and any now-unused computation without deleting live evaluate_recipe users. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "compute_cc",
+          "detail": "For all four registered operations evaluate_recipe supplies flags before the old overflow switch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "byte_read",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "memory_span width 1 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original read body unreachable.",
+      "baseline_defect": "memory_span width 1 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original read body unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in get_byte_val while retaining its live behavior.",
+      "acceptance": "Preserve invalid-address rejection and 1-byte access; failed reads leave destination unchanged and failed writes leave memory unchanged. Word operations retain unaligned little-endian signed-bit representation. Do not broaden proof to invalid memory objects or undefined overflow inputs. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "get_byte_val",
+          "detail": "memory_span width 1 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original read body unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "byte_write",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "memory_span width 1 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original write body unreachable.",
+      "baseline_defect": "memory_span width 1 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original write body unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in set_byte_val while retaining its live behavior.",
+      "acceptance": "Preserve invalid-address rejection and 1-byte access; failed reads leave destination unchanged and failed writes leave memory unchanged. Word operations retain unaligned little-endian signed-bit representation. Do not broaden proof to invalid memory objects or undefined overflow inputs. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "set_byte_val",
+          "detail": "memory_span width 1 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original write body unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "word_read",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "memory_span width 8 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original read body unreachable.",
+      "baseline_defect": "memory_span width 8 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original read body unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in get_word_val while retaining its live behavior.",
+      "acceptance": "Preserve invalid-address rejection and 8-byte access; failed reads leave destination unchanged and failed writes leave memory unchanged. Word operations retain unaligned little-endian signed-bit representation. Do not broaden proof to invalid memory objects or undefined overflow inputs. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "get_word_val",
+          "detail": "memory_span width 8 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original read body unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "word_write",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "memory_span width 8 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original write body unreachable.",
+      "baseline_defect": "memory_span width 8 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original write body unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in set_word_val while retaining its live behavior.",
+      "acceptance": "Preserve invalid-address rejection and 8-byte access; failed reads leave destination unchanged and failed writes leave memory unchanged. Word operations retain unaligned little-endian signed-bit representation. Do not broaden proof to invalid memory objects or undefined overflow inputs. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "set_word_val",
+          "detail": "memory_span width 8 succeeds and returns for every supported valid address; its failure satisfies the following rejection, leaving the original write body unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "operand_first",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "bind_operand selects a non-null reader for every R_ARG/M_ARG/I_ARG; the no-handler switch cannot reach its matching supported cases.",
+      "baseline_defect": "bind_operand selects a non-null reader for every R_ARG/M_ARG/I_ARG; the no-handler switch cannot reach its matching supported cases.",
+      "criterion": "Eliminate the unreachable duplicate implementation in finish_line:arg1 while retaining its live behavior.",
+      "acceptance": "Preserve descriptor positions/widths, first-reader effects, comma diagnostics/consumption, second-reader effects, print_code and start_line ordering. NO_ARG/unknown metadata no-op behavior remains; shared token readers and symbol resolution stay live. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/yas.c",
+          "symbol": "finish_line:arg1",
+          "detail": "bind_operand selects a non-null reader for every R_ARG/M_ARG/I_ARG; the no-handler switch cannot reach its matching supported cases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "operand_second",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "bind_operand selects a non-null reader for every R_ARG/M_ARG/I_ARG; the no-handler switch cannot reach its matching supported cases.",
+      "baseline_defect": "bind_operand selects a non-null reader for every R_ARG/M_ARG/I_ARG; the no-handler switch cannot reach its matching supported cases.",
+      "criterion": "Eliminate the unreachable duplicate implementation in finish_line:arg2 while retaining its live behavior.",
+      "acceptance": "Preserve descriptor positions/widths, first-reader effects, comma diagnostics/consumption, second-reader effects, print_code and start_line ordering. NO_ARG/unknown metadata no-op behavior remains; shared token readers and symbol resolution stay live. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/yas.c",
+          "symbol": "finish_line:arg2",
+          "detail": "bind_operand selects a non-null reader for every R_ARG/M_ARG/I_ARG; the no-handler switch cannot reach its matching supported cases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "immediate_add",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Reaching the arithmetic choice entails successful register/immediate reads and valid destination, so prepare_arithmetic has returned TRUE; the else computation is unreachable.",
+      "baseline_defect": "Reaching the arithmetic choice entails successful register/immediate reads and valid destination, so prepare_arithmetic has returned TRUE; the else computation is unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in step_state:I_IADDQ while retaining its live behavior.",
+      "acceptance": "Retain live validation diagnostics and register/PC/flag commits. I_ALU fallback remains live for unknown function codes and must not be deleted wholesale. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "step_state:I_IADDQ",
+          "detail": "Reaching the arithmetic choice entails successful register/immediate reads and valid destination, so prepare_arithmetic has returned TRUE; the else computation is unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Successful operand validations imply prepared write callback; issue_memory already completed or returned error. Therefore the guarded legacy memory body is unreachable.",
+      "baseline_defect": "Successful operand validations imply prepared write callback; issue_memory already completed or returned error. Therefore the guarded legacy memory body is unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in step_state:I_RMMOVQ while retaining its live behavior.",
+      "acceptance": "Keep optional invalid base as absolute address, data-address diagnostic and PC commit after success. Keep case validation and shared GUI-aware set_reg_val calls; deleting the whole case is incorrect. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "step_state:I_RMMOVQ",
+          "detail": "Successful operand validations imply prepared write callback; issue_memory already completed or returned error. Therefore the guarded legacy memory body is unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "load",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Successful operand validations imply prepared read callback; issue_memory already completed or returned error. Therefore the guarded legacy memory body is unreachable.",
+      "baseline_defect": "Successful operand validations imply prepared read callback; issue_memory already completed or returned error. Therefore the guarded legacy memory body is unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in step_state:I_MRMOVQ while retaining its live behavior.",
+      "acceptance": "Keep silent address failure, loaded destination and PC commit after success. Keep case validation and shared GUI-aware set_reg_val calls; deleting the whole case is incorrect. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "step_state:I_MRMOVQ",
+          "detail": "Successful operand validations imply prepared read callback; issue_memory already completed or returned error. Therefore the guarded legacy memory body is unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "call",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Successful fetches imply prepared write; request.write remains set through issue_memory. Therefore the guarded legacy memory body is unreachable.",
+      "baseline_defect": "Successful fetches imply prepared write; request.write remains set through issue_memory. Therefore the guarded legacy memory body is unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in step_state:I_CALL while retaining its live behavior.",
+      "acceptance": "Keep return PC pushed, RSP decrement before failed write, stack diagnostic and target PC only on success. Keep case validation and shared GUI-aware set_reg_val calls; deleting the whole case is incorrect. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "step_state:I_CALL",
+          "detail": "Successful fetches imply prepared write; request.write remains set through issue_memory. Therefore the guarded legacy memory body is unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "push",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Successful register fetch and valid source imply prepared write; no immediate read is needed because okc starts TRUE. Therefore the guarded legacy memory body is unreachable.",
+      "baseline_defect": "Successful register fetch and valid source imply prepared write; no immediate read is needed because okc starts TRUE. Therefore the guarded legacy memory body is unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in step_state:I_PUSHQ while retaining its live behavior.",
+      "acceptance": "Keep source value captured before RSP decrement, decrement visible on failure, and next PC on success. Keep case validation and shared GUI-aware set_reg_val calls; deleting the whole case is incorrect. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "step_state:I_PUSHQ",
+          "detail": "Successful register fetch and valid source imply prepared write; no immediate read is needed because okc starts TRUE. Therefore the guarded legacy memory body is unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "return",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "No operand reads are required; ok1/okc default TRUE, prepare_memory always supplies read. Therefore the guarded legacy memory body is unreachable.",
+      "baseline_defect": "No operand reads are required; ok1/okc default TRUE, prepare_memory always supplies read. Therefore the guarded legacy memory body is unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in step_state:I_RET while retaining its live behavior.",
+      "acceptance": "Keep RSP increment only after successful read and loaded return PC; error leaves pre-read RSP unchanged. Keep case validation and shared GUI-aware set_reg_val calls; deleting the whole case is incorrect. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "step_state:I_RET",
+          "detail": "No operand reads are required; ok1/okc default TRUE, prepare_memory always supplies read. Therefore the guarded legacy memory body is unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "pop",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Successful register fetch and valid source imply read; issue_memory performs pre-read RSP increment. Therefore the guarded legacy memory body is unreachable.",
+      "baseline_defect": "Successful register fetch and valid source imply read; issue_memory performs pre-read RSP increment. Therefore the guarded legacy memory body is unreachable.",
+      "criterion": "Eliminate the unreachable duplicate implementation in step_state:I_POPQ while retaining its live behavior.",
+      "acceptance": "Keep increment even on read failure and POP into RSP overwriting it with loaded value; destination/PC commits remain live. Keep case validation and shared GUI-aware set_reg_val calls; deleting the whole case is incorrect. Either deleting the obsolete continuation or removing the superseding mechanism and restoring a single equivalent live path qualifies. Shared live helpers remain available; no mandatory dispatch table, request object or execution architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the dead block or requiring it to execute artificially is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "site/content/chapter4/code/sim/misc/isa.c",
+          "symbol": "step_state:I_POPQ",
+          "detail": "Successful register fetch and valid source imply read; issue_memory performs pre-read RSP increment. Therefore the guarded legacy memory body is unreachable.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "dreamanddead_csapp_3e_solutions_dce",
+    "rubric_status": "ready",
+    "scoring": "Each item has equal weight; award an item only for its structural repair, not for tests or behavior preservation alone.",
+    "excluded_from_scoring": [
+      "The two final comments and ordinary domain names are not repair defects.",
+      "Preservation of existing ISA/assembler behavior and passing tests are controls, not stand-alone smell credits.",
+      "The post.diff comment changes are leakage cleanup only and add no structural scoring item."
+    ]
+  }
+}

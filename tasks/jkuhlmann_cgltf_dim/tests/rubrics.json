@@ -1,0 +1,1017 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "jkuhlmann_cgltf_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "sparse_lookup",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Pilot runtime sparse search expansion retained in final.",
+      "baseline_defect": "View resolution, typed index reads and binary search are duplicated in sparse lookup and float access.",
+      "criterion": "Make sparse lookup a focused, consistently maintained operation.",
+      "acceptance": "Keep view data override, buffer offset fallback, sparse byte offsets, typed unsigned 8/16/32 index reads, lower-bound match and value stride addressing; missing backing data returns no match. Public accessor entry points remain available. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_find_sparse_index,cgltf_accessor_read_float",
+          "detail": "View resolution, typed index reads and binary search are duplicated in sparse lookup and float access.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "float_conversion",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Pilot normalized and padded matrix decoding.",
+      "baseline_defect": "Single-element and base/sparse bulk loops embed component conversion and padded matrix layout.",
+      "criterion": "Concentrate float component/layout interpretation across single and bulk reads.",
+      "acceptance": "Keep MAT2 byte columns at four-byte spacing and MAT3 byte/short columns at four/eight bytes; signed normalization divides by127/32767 without clamping; normalized uint32 fallback0 and float bypass. Equivalent shared decoder or dispatch data qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_accessor_read_float,cgltf_accessor_unpack_floats",
+          "detail": "Single-element and base/sparse bulk loops embed component conversion and padded matrix layout.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "bulk_accessor",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Pilot base materialization then sparse override.",
+      "baseline_defect": "Bulk traversal contains decoding details alongside base initialization and sparse scatter.",
+      "criterion": "Make bulk materialization and sparse override coordination understandable independently of component conversion.",
+      "acceptance": "Null output returns available count; cap request and process complete elements, no-base zeroes processed span, unavailable base returns0, contiguous float memcpy semantics, base precedes sparse overrides and existing return count remain. No forced two helper functions. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_accessor_unpack_floats",
+          "detail": "Bulk traversal contains decoding details alongside base initialization and sparse scatter.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "uint_accessor",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Pilot uint extraction path.",
+      "baseline_defect": "Unsigned accessor entry embeds element validation and typed scalar copying.",
+      "criterion": "Keep uint element interpretation focused instead of mixed with storage selection.",
+      "acceptance": "Retain sparse precedence, no-base zero-fill success before matrix/size rejection, signed-to-unsigned casts and invalid type result. Do not require changes to public API. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_accessor_read_uint",
+          "detail": "Unsigned accessor entry embeds element validation and typed scalar copying.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "embedded_loading",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion R3 embedded acquisition; deepening direct exit ownership.",
+      "baseline_defect": "Base64 allocation/bit decoding/free and ownership-tag publication sit within source iteration.",
+      "criterion": "Localize embedded-buffer acquisition and release semantics.",
+      "acceptance": "Preserve requested-size decoding, allocator/free fallback, invalid character frees allocation and returns io_error, alloc failure out_of_memory, memory_free tag on both failure exits and success. Reusing public base64 API with correct caller tags is valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_load_buffers",
+          "detail": "Base64 allocation/bit decoding/free and ownership-tag publication sit within source iteration.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "external_loading",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Pilot path construction and R3 callback file loading.",
+      "baseline_defect": "URI-tail decoding, temporary path allocation and file ownership/error publication are interwoven.",
+      "criterion": "Provide a focused external-buffer acquisition contract.",
+      "acceptance": "Latest slash/backslash determines prefix, percent-decode URI tail only; callback receives size pointer, temporary path freed before data publication; callback failure clears output and sets file_release tag, allocation failure retains its existing exit/tag behavior. Default callback/public IO primitives may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_load_buffers",
+          "detail": "URI-tail decoding, temporary path allocation and file ownership/error publication are interwoven.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "collection_allocation",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Deepening 27 checked allocation and collection publication sites.",
+      "baseline_defect": "Array-kind, duplicate destination, overflow, allocation/zeroing and count publication are copied across collections.",
+      "criterion": "Maintain array allocation and publication policy consistently across affected collections.",
+      "acceptance": "Object instead of array returns LEGACY, other wrong kinds JSON; duplicate pointer JSON; checked multiply and null allocation NOMEM including zero-sized allocation. Publish initialized pointer/count at original successful boundary; no empty-to-absent normalization. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_array,cgltf_parse_json_images,cgltf_parse_json_animations",
+          "detail": "Array-kind, duplicate destination, overflow, allocation/zeroing and count publication are copied across collections.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "numeric_arrays",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 fixed arrays and stage2 complete numeric decode.",
+      "baseline_defect": "Shape, cardinality, primitive validation, truncation/conversion and cursor advance repeated.",
+      "criterion": "Make numeric-array interpretation a consistent focused policy across field consumers.",
+      "acceptance": "Exact cardinality, primitive tokens, at most127 bytes plus terminator through CGLTF_ATOF, advance after each conversion. Preserve weights header rewind after allocation and min/max cap16 with exact-size check, so oversized min/max fails; no new type-width validation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_materials,cgltf_parse_json_nodes,cgltf_parse_json_accessors",
+          "detail": "Shape, cardinality, primitive validation, truncation/conversion and cursor advance repeated.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "owned_strings",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion resource collections inline string ownership.",
+      "baseline_defect": "String validation, duplicate check, allocation/copy/publication repeated inside object loops.",
+      "criterion": "Concentrate owned JSON-string acquisition across resource and scene consumers.",
+      "acceptance": "String-only, existing pointer JSON, allocation failure NOMEM, raw token bytes with NUL and publication before cursor advance; no new unescaping or null/empty equivalence. Attribute key error translation is assessed separately. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_images,cgltf_parse_json_textures,cgltf_parse_json_skins",
+          "detail": "String validation, duplicate check, allocation/copy/publication repeated inside object loops.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "extras_payload",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 extras copying and cursor/ownership.",
+      "baseline_defect": "Payload allocation/offset publication and skip logic copied into many unrelated parsers.",
+      "criterion": "Maintain extras payload ownership and token advancement through a coherent operation.",
+      "acceptance": "Reject existing data; publish deprecated start/end offsets before allocation, copy raw payload with NUL, skip whole token; preserve partial state on NOMEM and target-level animation extras placement. Mesh targetNames extras retains its distinct semantics. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_extras,cgltf_parse_json_animations",
+          "detail": "Payload allocation/offset publication and skip logic copied into many unrelated parsers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "opaque_extensions",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Opaque extension chains expanded and deepened.",
+      "baseline_defect": "Extension array/name/body allocation and partially owned cleanup counts are duplicated.",
+      "criterion": "Localize opaque extension construction and partial ownership accounting.",
+      "acceptance": "Object payload required, duplicate array rejected, zero allocated array semantics, increment owned count before name/body parse, name success may precede body failure, raw payload retained, negative skip results propagate. Do not lose partially allocated entries during cleanup. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_unprocessed_extensions,cgltf_parse_json_animations",
+          "detail": "Extension array/name/body allocation and partially owned cleanup counts are duplicated.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mesh_primitive",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 mesh/primitive collection folding.",
+      "baseline_defect": "Mesh traversal carries primitive modes/references, morph targets and extension object walks.",
+      "criterion": "Give primitive interpretation a focused place within mesh parsing.",
+      "acceptance": "Preserve default triangles, raw reference placeholders, ordered targets and extensions/extras; object errors stop immediately. Shared schema-driven traversal or primitive parser valid; no required function per primitive branch. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_meshes",
+          "detail": "Mesh traversal carries primitive modes/references, morph targets and extension object walks.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "attribute_keys",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Deepening ordinary/morph/Draco/GPU-instancing key continuation.",
+      "baseline_defect": "Four consumers repeat allocated key classification and data-token consumption.",
+      "criterion": "Maintain attribute key interpretation and reference continuation consistently.",
+      "acceptance": "Name allocation failure maps JSON, not NOMEM; underscore custom classification still consumes data token; known prefix plus suffix uses ATOI, negative suffix invalidates type and resets index0; preserve original names and partial ownership. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_meshes,cgltf_parse_json_nodes",
+          "detail": "Four consumers repeat allocated key classification and data-token consumption.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "draco_parse",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 nested Draco object.",
+      "baseline_defect": "Compression object protocol is embedded in primitive extension dispatch.",
+      "criterion": "Make Draco object interpretation independently understandable from primitive enumeration.",
+      "acceptance": "Set has flag at existing point; validate object, parse bufferView and attributes, skip unknown fields and propagate errors. Shared attribute handling may also satisfy key rubric; no codec execution added. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_meshes",
+          "detail": "Compression object protocol is embedded in primitive extension dispatch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "variant_mapping",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 mapping count/fill and delayed extras.",
+      "baseline_defect": "Private count cursor, nullable allocation, fill cursor, per-variant extras and output offsets are tangled.",
+      "criterion": "Localize mapping construction and its count/fill ownership contract.",
+      "acceptance": "Count pass validates material>=0 and variants array but does not parse variant values or allocate extras. Preserve nullable mapping allocation path with no invented NOMEM; null output counts without per-value validation. Non-null fill publishes material/variant, copies deferred extras with separate cursor then advances offset; preserve partial cleanup and error ordering. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_meshes",
+          "detail": "Private count cursor, nullable allocation, fill cursor, per-variant extras and output offsets are tangled.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mesh_weights_extras",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 mesh weights and target-name metadata.",
+      "baseline_defect": "Mesh object semantics are mixed with collection and nested primitive work.",
+      "criterion": "Keep mesh-local weights and targetNames/extras interpretation focused.",
+      "acceptance": "Weights allocation before numeric decode, exact count and negative propagation; mesh extras records offsets and handles targetNames distinctly from generic owned extras; preserve unknown skipping. Same mesh parser can satisfy primitive coordination. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_meshes",
+          "detail": "Mesh object semantics are mixed with collection and nested primitive work.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "texture_views",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R2 PBR texture-view/transform chains.",
+      "baseline_defect": "PBR texture sites duplicate index, texcoord, scale aliases and nested transform protocol.",
+      "criterion": "Maintain texture-view interpretation consistently across PBR and other material consumers.",
+      "acceptance": "Scale/strength aliases share scale default1; transform scale defaults[1,1]; flag publication precedes nested validation; offset/scale2, rotation and optional texCoord presence preserved; unknown fields skipped. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_texture_view,cgltf_parse_json_materials",
+          "detail": "PBR texture sites duplicate index, texcoord, scale aliases and nested transform protocol.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "accessor_metadata",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 sparse descriptor and bound arrays.",
+      "baseline_defect": "Accessor-local type/bounds/sparse indices-values decisions are buried in collection traversal.",
+      "criterion": "Give accessor metadata interpretation a focused contract.",
+      "acceptance": "Preserve field order, min/max presence before validation, sparse presence before object check, raw reference placeholders and offsets/component type; pointer fixup stays deferred. Bounds cardinality is not forced to accessor type. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_accessors",
+          "detail": "Accessor-local type/bounds/sparse indices-values decisions are buried in collection traversal.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "material_core",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 two PBR forms and core material defaults.",
+      "baseline_defect": "Collection parser embeds material defaults and both complete PBR protocols.",
+      "criterion": "Localize material core and PBR interpretation so collection management does not carry their field mechanics.",
+      "acceptance": "Preserve base/diffuse/specular white defaults, metallic/roughness/glossiness1, alpha cutoff.5, volume white/FLT_MAX defaults, emissive factors, alpha enums, textures and flags. Both PBR forms remain supported; no mandated number of parsers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_materials",
+          "detail": "Collection parser embeds material defaults and both complete PBR protocols.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "material_extensions",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion further rounds all material extension objects.",
+      "baseline_defect": "Eleven extension object protocols are embedded in the material collection branch.",
+      "criterion": "Make supported material extension variation locally maintainable without repeated collection mechanics.",
+      "acceptance": "Cover clearcoat, IOR, specular, transmission, volume, sheen, emissive strength, iridescence, diffuse transmission, anisotropy and dispersion; retain each fields/textures/defaults, presence flags, unknown skipping/error propagation. Scalar-only extensions may share schema with others; no compulsory helper per extension. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_materials",
+          "detail": "Eleven extension object protocols are embedded in the material collection branch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion resource collections.",
+      "baseline_defect": "Image URI/bufferView/MIME/name/extras interpretation is embedded in collection mechanics.",
+      "criterion": "Make image object interpretation focused within resource parsing.",
+      "acceptance": "Retain URI, bufferView, MIME, names, opaque extensions/extras and early errors. Reusing common record traversal is valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_images",
+          "detail": "Image URI/bufferView/MIME/name/extras interpretation is embedded in collection mechanics.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "texture_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion texture objects and basisu/webp.",
+      "baseline_defect": "Resource iteration contains source/sampler and two alternative-image extension walks.",
+      "criterion": "Localize texture source and extension interpretation.",
+      "acceptance": "Preserve base image plus independent basisu/webp flags and images, property order, opaque extension count and partial failures; do not choose a single preferred image during parsing. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_textures",
+          "detail": "Resource iteration contains source/sampler and two alternative-image extension walks.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sampler_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion sampler collection.",
+      "baseline_defect": "Sampler defaults and filtering/wrap property walks mixed with collection allocation.",
+      "criterion": "Make sampler interpretation a focused resource policy.",
+      "acceptance": "Wrap S/T defaults repeat, filter/wrap casts, names/extras/extensions and unknown handling retained. A shared resource parser with sampler metadata qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_samplers",
+          "detail": "Sampler defaults and filtering/wrap property walks mixed with collection allocation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "buffer_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion buffer collection.",
+      "baseline_defect": "Buffer URI/length/name ownership protocol mixed with allocation/traversal.",
+      "criterion": "Keep buffer metadata interpretation focused apart from collection mechanics.",
+      "acceptance": "Retain byteLength/URI/name, extras/extensions, duplicate string failure and partial publication; acquisition remains a separate concern from metadata parsing. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_buffers",
+          "detail": "Buffer URI/length/name ownership protocol mixed with allocation/traversal.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "meshopt_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 EXT/KHR meshopt descriptor expansion.",
+      "baseline_defect": "Two full compression-property walks duplicated within buffer-view parsing.",
+      "criterion": "Make meshopt descriptor interpretation consistently maintained for EXT and KHR.",
+      "acceptance": "Both aliases set presence, KHR also sets is_khr; preserve buffer/offset/size/stride/count, modes attributes/triangles/indices and filters none/octahedral/quaternion/exponential/color, unknown skip and errors. Do not bundle this with file loading. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_buffer_views",
+          "detail": "Two full compression-property walks duplicated within buffer-view parsing.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "skin_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion skin collection.",
+      "baseline_defect": "Skin object refs and ownership are embedded in collection loop.",
+      "criterion": "Make skin object interpretation focused.",
+      "acceptance": "Retain skeleton and inverseBindMatrices primitive checks, joints ordering and reference placeholders, names/extras/extensions and failure handling. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_skins",
+          "detail": "Skin object refs and ownership are embedded in collection loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "camera_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion camera perspective/orthographic branch trees.",
+      "baseline_defect": "Camera union selection and projection fields nested in collection mechanics.",
+      "criterion": "Localize camera projection interpretation and union selection.",
+      "acceptance": "Second projection object rejected even same type, type set before field traversal; perspective optional aspect/zfar flags, orthographic fields and projection-local extras distinct from camera extras; no inference from type string. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_cameras",
+          "detail": "Camera union selection and projection fields nested in collection mechanics.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "light_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion light and spot objects.",
+      "baseline_defect": "Light defaults/type/color and spot branch embedded in collection loop.",
+      "criterion": "Keep light/spot interpretation focused.",
+      "acceptance": "White/intensity1, inner0 outerpi/4, color3, directional/point/spot, range, name/extras/unknown handling preserved. No additional light extension support required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_lights",
+          "detail": "Light defaults/type/color and spot branch embedded in collection loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "node_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 node transform, refs and GPU instancing.",
+      "baseline_defect": "Node collection carries TRS/matrix and nested light/instancing protocols.",
+      "criterion": "Localize node object semantics and nested extension interpretation.",
+      "acceptance": "Identity rotation/scale/matrix defaults, has flags, TRS/matrix cardinalities, weights and references preserved; GPU attributes and punctual light use original flags/errors; no automatic TRS/matrix conflict validation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_nodes",
+          "detail": "Node collection carries TRS/matrix and nested light/instancing protocols.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "scene_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion scene object collection.",
+      "baseline_defect": "Scene names, node references and owned extras are mixed with collection allocation and traversal.",
+      "criterion": "Make scene object interpretation focused within collection parsing.",
+      "acceptance": "Preserve scene nodes ordering, placeholders, names, extras/extensions and unknown skipping. Shared record traversal qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_scenes,cgltf_parse_json_variants",
+          "detail": "Two small object protocols each repeat allocation/string/extras machinery inside collections.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "variant_objects",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion root material-variant object collection.",
+      "baseline_defect": "Variant names and extras acquisition are mixed with collection allocation and traversal.",
+      "criterion": "Make material-variant record interpretation focused within collection parsing.",
+      "acceptance": "Preserve variant names/extras and unknown skipping with duplicate string and partial ownership errors. Shared record traversal qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_scenes,cgltf_parse_json_variants",
+          "detail": "Two small object protocols each repeat allocation/string/extras machinery inside collections.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "animation_sampler",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 and final stage2 sampler collection.",
+      "baseline_defect": "Sampler input/output/interpolation and owned payloads nested within animation enumeration.",
+      "criterion": "Make animation sampler interpretation focused within animation parsing.",
+      "acceptance": "Preserve input/output placeholders, interpolation strings LINEAR/STEP/CUBICSPLINE and unknown behavior, array publication before element parse, extras/extensions partial ownership. Scalar string mapping alone does not resolve nesting. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_animations",
+          "detail": "Sampler input/output/interpolation and owned payloads nested within animation enumeration.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "animation_channel",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 and final stage2 channel target objects.",
+      "baseline_defect": "Channel sampler reference and target node/path/payload parsing embedded several levels deep.",
+      "criterion": "Make channel target interpretation focused independently of sampler parsing.",
+      "acceptance": "Preserve sampler placeholder relative to animation, target node/path translation/rotation/scale/weights, target-local extras/extensions stored on channel, unknown skip and error propagation. Shared animation object traversal qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_animations",
+          "detail": "Channel sampler reference and target node/path/payload parsing embedded several levels deep.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "reference_arrays",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 reference-array publication and writer handoff.",
+      "baseline_defect": "Children/joints/scene nodes repeat allocation and reference-token loops.",
+      "criterion": "Maintain reference-array construction consistently with its downstream serialization contract.",
+      "acceptance": "Preserve LEGACY vs JSON, duplicate pointer, overflow/NOMEM and zero allocation, pointer/count publication before raw ref fill; writer emits based on non-null member pointer including empty arrays, retains order and existing signed loop bounds. No new wrapper type required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json_nodes,cgltf_parse_json_skins,cgltf_parse_json_scenes",
+          "detail": "Children/joints/scene nodes repeat allocation and reference-token loops.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write",
+          "detail": "Scene nodes and skin joints use pointer presence, signed reference counts and pointer differences.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "root_lifetime",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Root dispatch folded into parse lifecycle.",
+      "baseline_defect": "Nested root/extension branches use gotos alongside token/data cleanup and error translation.",
+      "criterion": "Make document interpretation and parse lifetime/error handling coherently coordinated.",
+      "acceptance": "Free tokens before parse status translation; free partial data on negative result; NOMEM\u2192out_of_memory LEGACY\u2192legacy_gltf elseinvalid; pointer-fixup failure frees data; json/source and output published only after fixup success. Shared cleanup or equivalent structured flow valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "cgltf_parse_json",
+          "detail": "Nested root/extension branches use gotos alongside token/data cleanup and error translation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "lexical_strings",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Tokenizer string expansion/deepening.",
+      "baseline_defect": "Escape scanning, token allocation/parent publication and rollback sit in main scanner.",
+      "criterion": "Give string token production a focused state-transition contract.",
+      "acceptance": "Count-only and actual tokens succeed consistently; quoted token excludes quotes, supported escapes and four hex scan rules unchanged; invalid/partial/capacity failure rewinds start, count/parent-size only on success, parent-links mode retained. No new stricter JSON validation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "jsmn_parse",
+          "detail": "Escape scanning, token allocation/parent publication and rollback sit in main scanner.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "lexical_primitives",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Tokenizer primitive expansion/deepening.",
+      "baseline_defect": "Primitive delimiter scanning and allocation/publication mixed into dispatcher.",
+      "criterion": "Give primitive token production a focused state-transition contract.",
+      "acceptance": "Preserve non-strict colon delimiter, strict end-of-input PART, ASCII validity, rewind onfailure, pos-- at delimiter, count-only no allocation, parent/count success publication. Shared lexical engine may satisfy both items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf.h",
+          "symbol": "jsmn_parse",
+          "detail": "Primitive delimiter scanning and allocation/publication mixed into dispatcher.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "writer_delimiters",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 171 line/indent blocks.",
+      "baseline_defect": "Repeated opening/closing/comma/indent state machine scattered through output families.",
+      "criterion": "Maintain delimiter and indentation state consistently across affected writer paths.",
+      "acceptance": "Count and emit paths use same byte accounting; opening writes before depth increment, closing decrements before indentation, comma reset/publication preserved. Literal unlit {} leaves existing comma state unchanged; do not silently fix current formatting behavior. Reconnecting existing line operation is valid if exact behavior preserved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write,cgltf_write_node,cgltf_write_accessor",
+          "detail": "Repeated opening/closing/comma/indent state machine scattered through output families.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "texture_transform_output",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 texture-transform writer folded into three macros.",
+      "baseline_defect": "Three texture-info variants repeat nested transform output and extension bookkeeping.",
+      "criterion": "Make transform serialization consistently maintained across texture-info forms.",
+      "acceptance": "Preserve transform presence/flag, offset0/scale1 suppression, rotation0 suppression and has_texcoord gate with default-1; normal scale vs occlusion strength and outer texture presence gates remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "CGLTF_WRITE_TEXTURE_INFO,CGLTF_WRITE_NORMAL_TEXTURE_INFO,CGLTF_WRITE_OCCLUSION_TEXTURE_INFO",
+          "detail": "Three texture-info variants repeat nested transform output and extension bookkeeping.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mesh_output",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 mesh/primitive/morph serializer folding.",
+      "baseline_defect": "Root traversal owns nested primitive refs, attributes, morph targets and mesh properties.",
+      "criterion": "Keep mesh and primitive serialization focused apart from document traversal.",
+      "acceptance": "Preserve primitive mode default4 omission, ref bases, attributes evenempty, targets gatedcount, weights positivecount, names/extras and ordered objects. A cohesive mesh serializer can include primitive work. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write",
+          "detail": "Root traversal owns nested primitive refs, attributes, morph targets and mesh properties.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "primitive_extension_output",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 Draco/material mappings output.",
+      "baseline_defect": "Root primitive branch mixes extension eligibility/flags with mapping serialization.",
+      "criterion": "Localize primitive extension output and its registration policy.",
+      "acceptance": "Draco used flag plus required when attributes empty OR indices null; attributes reference same accessor base. Variant mappings count>0 emit each record with singleton variant array and extras, original order; equivalent shared extension emitter valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write",
+          "detail": "Root primitive branch mixes extension eligibility/flags with mapping serialization.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "material_output",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Further expansion material serializer.",
+      "baseline_defect": "Root owns core PBR, every material extension and texture serialization.",
+      "criterion": "Make material serialization a focused policy independent of root enumeration.",
+      "acceptance": "Preserve all supported extension flags and emission order/default suppression; alpha cutoff only MASK, volume distance only<FLT_MAX, two PBR forms, normal/occlusion/emissive texture variants, extras. No requirement to mirror parser decomposition. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write",
+          "detail": "Root owns core PBR, every material extension and texture serialization.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "animation_output",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 animation/sampler/channel serialization.",
+      "baseline_defect": "Root writer contains sampler/channel arrays and nested target object construction.",
+      "criterion": "Keep animation output semantics focused within document writing.",
+      "acceptance": "Positive count gates, interpolation/path strings including invalid, sampler index relative to animation and accessor/node bases, channel extras outside target and animation extras preserved. Shared animation serializer can handle all subobjects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write",
+          "detail": "Root writer contains sampler/channel arrays and nested target object construction.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "scene_output",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 scene record writer.",
+      "baseline_defect": "Scene names/nodes/extras and reference index formatting embedded in root loop.",
+      "criterion": "Make scene record output focused.",
+      "acceptance": "Keep pointer-gated nodes including empty arrays, original signed loop/cast/index formatting and names/extras; no count-only replacement for pointer guard. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write",
+          "detail": "Scene names/nodes/extras and reference index formatting embedded in root loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "skin_output",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 skin record writer.",
+      "baseline_defect": "Root loop embeds skeleton/inverse-bind refs, joint formatting and metadata.",
+      "criterion": "Make skin record output focused.",
+      "acceptance": "Preserve nodes/accessor index bases, joint pointer gate, signed bounds/order, name/extras; same reference writer may satisfy scene and skin contracts. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write",
+          "detail": "Root loop embeds skeleton/inverse-bind refs, joint formatting and metadata.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "camera_output",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 camera projection writer.",
+      "baseline_defect": "Root loop contains union/type emission and projection-specific suppression.",
+      "criterion": "Localize camera projection output.",
+      "acceptance": "Unknown type omits type and projection, name/extras still written; orthographic numeric defaults-1, perspective aspect/zfar presence flags, yfov/znear defaults-1 and projection extras preserved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write",
+          "detail": "Root loop contains union/type emission and projection-specific suppression.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "glb_framing",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 and stage2 GLB binary eligibility/size flow.",
+      "baseline_defect": "File lifecycle contains header/chunk sizing, padding and optional binary emission.",
+      "criterion": "Make GLB framing a focused output contract.",
+      "acceptance": "Use actual JSON count excluding NUL, pad JSON spaces and BIN zeros to4; BIN iff pointer nonnull AND size>0; envelope and chunk lengths include correct padding; keep existing byte representation, file error/malloc/short-write semantics, no mandatory new error handling. JSON plain file also excludes NUL. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper, rename or relocation retaining the same mixed decisions or repeated policy does not resolve this item."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cgltf_write.h",
+          "symbol": "cgltf_write_file",
+          "detail": "File lifecycle contains header/chunk sizing, padding and optional binary emission.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "jkuhlmann_cgltf_dim",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "aggregation": "equal weight per item; each item contributes one point",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "Unchanged public transform API, scalar leaves and callback/default stdio primitives are not independent defects.",
+      "Compilation, tests, behavior-only fixes and cosmetic names do not earn rubric credit."
+    ]
+  }
+}

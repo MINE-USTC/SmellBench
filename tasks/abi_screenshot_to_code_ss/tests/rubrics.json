@@ -1,0 +1,342 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "abi_screenshot_to_code_ss",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "SE01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Intake, expansion round 1",
+      "baseline_defect": "Temporary and direct persistence repeat prefix/MIME/base64/size admission alongside the retained decoder.",
+      "criterion": "Unify uploaded image admission across temporary and direct persistence.",
+      "acceptance": "Both entry points derive supported MIME, strict decoding and size admission from common policy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Sharing only the MIME constant leaves duplicated admission."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "persist_data_url_as_temporary_asset",
+          "detail": "Temporary and direct persistence repeat prefix/MIME/base64/size admission alongside the retained decoder.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "persist_data_url_as_asset",
+          "detail": "Temporary and direct persistence repeat prefix/MIME/base64/size admission alongside the retained decoder.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "identity",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Durability plus promotion identity integration",
+      "baseline_defect": "Staging, direct persistence and promotion duplicate digest-to-ID naming; promotion separately recognizes the generated grammar.",
+      "criterion": "Coordinate content identity generation and staged identity recognition.",
+      "acceptance": "Creation and recognition use coherent identity policy; promotion derives permanent content identity from actual bytes, not merely the supplied lookup ID. No separate literal/hash-length points. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share durable writing but retain independently maintained ID producers and recognizer."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "promote_temporary_asset_id",
+          "detail": "Staging, direct persistence and promotion duplicate digest-to-ID naming; promotion separately recognizes the generated grammar.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "persist_data_url_as_temporary_asset",
+          "detail": "Staging, direct persistence and promotion duplicate digest-to-ID naming; promotion separately recognizes the generated grammar.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "RA02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Durability, expansion rounds 1\u20132",
+      "baseline_defect": "Direct and promoted assets separately select permanent filenames/destinations and write only absent files alongside the retained finalizer.",
+      "criterion": "Unify durable destination and write-once publication policy.",
+      "acceptance": "Both durable entry paths use common destination/deduplication policy; staged storage may retain its different destination. Identity and public URL formation are assessed separately. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only share the digest function while durable destination/write policy remains copied."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "persist_data_url_as_asset",
+          "detail": "Direct and promoted assets separately select permanent filenames/destinations and write only absent files alongside the retained finalizer.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "promote_temporary_asset_id",
+          "detail": "Direct and promoted assets separately select permanent filenames/destinations and write only absent files alongside the retained finalizer.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "publication_url",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Durability and final metadata base-URL interpretation",
+      "baseline_defect": "Promotion manually strips the base URL and appends local-assets while direct persistence uses _asset_url.",
+      "criterion": "Unify durable public URL construction across direct persistence and promotion.",
+      "acceptance": "The existing base/route/filename composition has one maintained definition; filtered metadata may supply the base without dictating a specific parameter list. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share file writes while leaving independent URL formatting."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "promote_temporary_asset_id",
+          "detail": "Promotion manually strips the base URL and appends local-assets while direct persistence uses _asset_url.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "persist_data_url_as_asset",
+          "detail": "Promotion manually strips the base URL and appends local-assets while direct persistence uses _asset_url.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "SE03",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Staged metadata, round 3 and revised eligibility integration",
+      "baseline_defect": "Staging writes JSON independently of _write_metadata; promotion separately parses/filter fields rather than sharing _read_metadata contract.",
+      "criterion": "Coordinate staged metadata production and consumption through a coherent contract.",
+      "acceptance": "Field names, permitted string values, missing/invalid metadata handling and empty-versus-missing interpretation no longer have duplicate definitions. No mandatory metadata class or serializer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share JSON load/dump syntax only while field interpretation remains independently maintained."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "persist_data_url_as_temporary_asset",
+          "detail": "Staging writes JSON independently of _write_metadata; promotion separately parses/filter fields rather than sharing _read_metadata contract.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "promote_temporary_asset_id",
+          "detail": "Staging writes JSON independently of _write_metadata; promotion separately parses/filter fields rather than sharing _read_metadata contract.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "staged_lookup",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Promotion search and metadata precedence, expansion round 2/original deepening",
+      "baseline_defect": "Promotion repeats _temporary_asset_path format search and MIME fallback, then embeds durable effects inside the search.",
+      "criterion": "Unify staged file selection and MIME precedence policy.",
+      "acceptance": "Promotion and any supported lookup path share ordered format search and stored-MIME-versus-extension fallback. Reusing a lookup or unifying the lifecycle qualifies; no required tuple return or separate search phase. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Repair metadata parsing alone while search/precedence policy remains duplicated."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/store.py",
+          "symbol": "promote_temporary_asset_id",
+          "detail": "Promotion repeats _temporary_asset_path format search and MIME fallback, then embeds durable effects inside the search.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "local_origin",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Local transport, expansion rounds 1\u20132",
+      "baseline_defect": "URL scheme/host/route classification is copied in data conversion, saved attachments and both provider loops.",
+      "criterion": "Unify local asset origin and route eligibility across all affected transport consumers.",
+      "acceptance": "The helper, attachment and hosted request paths use common classification policy. Omission for attachments and pass-through for model requests remain valid distinct responses. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share a host constant but retain independent scheme/route decisions."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/local_assets.py",
+          "symbol": "local_asset_url_to_data_url",
+          "detail": "URL scheme/host/route classification is copied in data conversion, saved attachments and both provider loops.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/tools.py",
+          "symbol": "run_save_assets",
+          "detail": "URL scheme/host/route classification is copied in data conversion, saved attachments and both provider loops.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/runtime.py",
+          "symbol": "execute_single_edit",
+          "detail": "URL scheme/host/route classification is copied in data conversion, saved attachments and both provider loops.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "local_path",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Local transport containment, expansion rounds 1\u20132",
+      "baseline_defect": "Each transport consumer unquotes paths, checks root containment and tests file existence independently.",
+      "criterion": "Unify local asset filesystem resolution and containment policy.",
+      "acceptance": "Byte/data conversion, attachments and both hosted request paths derive file eligibility from common policy; classification can be repaired separately. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Centralize URL classification while leaving repeated containment decisions."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/local_assets.py",
+          "symbol": "local_asset_url_to_data_url",
+          "detail": "Each transport consumer unquotes paths, checks root containment and tests file existence independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/tools.py",
+          "symbol": "run_save_assets",
+          "detail": "Each transport consumer unquotes paths, checks root containment and tests file existence independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/runtime.py",
+          "symbol": "remove_background_once",
+          "detail": "Each transport consumer unquotes paths, checks root containment and tests file existence independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "local_read",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Local transport reading and MIME fallback",
+      "baseline_defect": "MIME guessing/default and byte reads are separately maintained across helper, saved attachment and runtime branches.",
+      "criterion": "Unify eligible local asset byte/MIME retrieval policy.",
+      "acceptance": "All affected retrieval paths derive bytes and fallback MIME from common policy while preserving supported error/timing semantics. No compulsory bytes/MIME tuple. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Centralize path resolution but keep independently defined MIME fallback/read policy in consumers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/local_assets.py",
+          "symbol": "local_asset_url_to_data_url",
+          "detail": "MIME guessing/default and byte reads are separately maintained across helper, saved attachment and runtime branches.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/uploaded_assets/tools.py",
+          "symbol": "run_save_assets",
+          "detail": "MIME guessing/default and byte reads are separately maintained across helper, saved attachment and runtime branches.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/runtime.py",
+          "symbol": "execute_single_edit",
+          "detail": "MIME guessing/default and byte reads are separately maintained across helper, saved attachment and runtime branches.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "RA05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Hosted submissions, expansion round 2/revised deepening",
+      "baseline_defect": "Both model loops reproduce base64 data-URL conversion alongside the supported converter.",
+      "criterion": "Unify local-to-data-URL serialization for hosted image requests.",
+      "acceptance": "Both hosted request paths and the converter use common data-URL construction policy. Ordered submissions, prompt timing and pass-through are constraints; batching may be composed or relocated equivalently. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Share byte retrieval but leave independent data-URL encoders in both loops."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/runtime.py",
+          "symbol": "remove_background_once",
+          "detail": "Both model loops reproduce base64 data-URL conversion alongside the supported converter.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/runtime.py",
+          "symbol": "execute_single_edit",
+          "detail": "Both model loops reproduce base64 data-URL conversion alongside the supported converter.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/local_assets.py",
+          "symbol": "local_asset_url_to_data_url",
+          "detail": "Both model loops reproduce base64 data-URL conversion alongside the supported converter.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "CF09",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Extraction preview, expansion round 3/revised index integration",
+      "baseline_defect": "Crop loop duplicates retained preview decoder admission and decoding before separate durable persistence.",
+      "criterion": "Eliminate duplicated crop-preview decoding policy without conflating preview and durable admission.",
+      "acceptance": "The preview helper and extraction path no longer independently define preview eligibility/decoding. A configurable common decoder or separate coherent preview policy qualifies. Preserve three-format/no-storage-cap preview and attachment index association independently of durable outcome. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Use storage acceptance for preview, or merely move duplicate preview checks to another wrapper."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "backend/agent/tools/extract_assets.py",
+          "symbol": "run_extract_assets",
+          "detail": "Crop loop duplicates retained preview decoder admission and decoding before separate durable persistence.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "1.0",
+    "case_id": "abi--screenshot-to-code--shotgun_surgery",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "aggregation": "Equally weighted independent criteria; score each obligation once.",
+    "derivation": "Derived from the expansion log and revision_v1 deepening log, checked against packaged expanded.diff, interaction_delta.diff, and final environment/smell.diff. post.diff is empty. No item is based solely on a historical intention."
+  }
+}

@@ -1,0 +1,3 @@
+Remove obsolete implementation paths in the workspace retrieval code. Establish reachability from supported tool entry points and follow result production, protocol lifecycle, pagination, buffering and output progress across their consumers. Preserve all supported search modes, formatting, context windows, ordering, cancellation, errors and public contracts. Retain initialization and state that still serve live operations. Keep original tests and configuration unchanged.
+
+The obsolete retrieval paths are mixed with live grep result/content production, protocol pagination, output progress and cancellation. Trace which values can reach each consumer before deleting code, and retain state that still serves supported workspace-search modes.

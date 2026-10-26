@@ -1,0 +1,3324 @@
+diff --git a/src/core/ProfileOperations.ts b/src/core/ProfileOperations.ts
+index b73ec6e..af296fb 100644
+--- a/src/core/ProfileOperations.ts
++++ b/src/core/ProfileOperations.ts
+@@ -1,272 +1,73 @@
+-import { Debug } from "../lib/Debug";
+-import { api } from "../lib/environment";
+-import { Utils } from "../lib/Utils";
+-import { CompiledProxyRule, CompiledProxyRulesInfo, getSmartProfileTypeConfig, ProxyRule, ProxyRulesSubscription, ResultHolder, RulesSubscriptionListType, SettingsConfig, SmartProfile, SmartProfileBase, SmartProfileCompiled, SmartProfileType } from "./definitions";
+-import { ProxyRules } from "./ProxyRules";
+-import { Settings } from "./Settings";
+-import { SettingsOperation } from "./SettingsOperation";
+-
+-export class ProfileOperations {
+-
+-	public static addUpdateProfile(smartProfile: SmartProfile, settings?: SettingsConfig) {
+-		settings ??= Settings.current;
+-
+-		if (smartProfile.profileId) {
+-			let existingProfile = ProfileOperations.findSmartProfileById(smartProfile.profileId, settings.proxyProfiles);
+ 
+-			if (existingProfile) {
+-				Object.assign(existingProfile, smartProfile);
+-				return;
+-			}
+-		}
+-		ProfileOperations.ensureProfileId(smartProfile);
+-		settings.proxyProfiles.push(smartProfile);
+-	}
+-
+-	public static ensureProfileId(smartProfile: SmartProfile) {
+-		if (!smartProfile.profileId)
+-			smartProfile.profileId = 'profile-' + Utils.getNewUniqueIdString();
+-	}
+ 
+-	public static deleteProfile(smartProfileId: string): ResultHolder {
+-		let result = new ResultHolder();
+-		let settings = Settings.current;
+ 
+-		let existingProfileIndex = ProfileOperations.findSmartProfileIndexById(smartProfileId, settings.proxyProfiles);
+-		if (existingProfileIndex == -1) {
+-			Debug.warn(`deleteProfile failed for profile id = ${smartProfileId}`);
+-			result.success = false;
++import { ResultHolder, SettingsConfig, SmartProfile, SmartProfileBase, SmartProfileCompiled, SmartProfileType } from "./definitions";
+ 
+-			// Failed to delete the selected profile.
+-			result.message = api.i18n.getMessage('settingsProfilesDeleteFailed');
+-			return result;
+-		}
+-		let existingProfile = settings.proxyProfiles[existingProfileIndex];
+-		if (existingProfile.profileTypeConfig.builtin) {
+-			result.success = false;
+ 
+-			// Cannot delete built-in profiles
+-			result.message = api.i18n.getMessage('settingsProfilesDeleteBuiltinFail');
+-			return result;
+-		}
+-		settings.proxyProfiles.splice(existingProfileIndex, 1);
++import { SettingsOperation } from "./SettingsOperation";
+ 
+-		result.success = true;
+-		return result;
++export class ProfileOperations {
++	public static addUpdateProfile(smartProfile: SmartProfile, settings?: SettingsConfig){
++		return SettingsOperation.addUpdateProfile(smartProfile, settings);
+ 	}
+ 
+-	public static profileTypeSupportsRules(profileType: SmartProfileType): boolean {
+-		switch (profileType) {
+-			case SmartProfileType.SmartRules:
+-			case SmartProfileType.AlwaysEnabledBypassRules:
+-			case SmartProfileType.IgnoreFailureRules:
+-				return true;
+-
+-			case SmartProfileType.Direct:
+-			case SmartProfileType.SystemProxy:
+-			default:
+-				return false;
+-		}
++	public static ensureProfileId(smartProfile: SmartProfile){
++		return SettingsOperation.ensureProfileId(smartProfile);
+ 	}
+-	public static profileTypeSupportsSubscriptions(profileType: SmartProfileType): boolean {
+-		switch (profileType) {
+-			case SmartProfileType.SmartRules:
+-			case SmartProfileType.AlwaysEnabledBypassRules:
+-				return true;
+ 
+-			case SmartProfileType.IgnoreFailureRules:
+-			case SmartProfileType.Direct:
+-			case SmartProfileType.SystemProxy:
+-			default:
+-				return false;
+-		}
++	public static deleteProfile(smartProfileId: string): ResultHolder{
++		return SettingsOperation.deleteProfile(smartProfileId);
+ 	}
+ 
+-	public static getActiveSmartProfile(): SmartProfile {
+-		let settings = Settings.current;
+-
+-		let smartProfile = ProfileOperations.findSmartProfileById(settings.activeProfileId, settings.proxyProfiles);
+-		if (smartProfile == null) {
+-			Debug.warn(`No active profile found`);
+-			return null;
+-		}
+-		return smartProfile;
++	public static profileTypeSupportsRules(profileType: SmartProfileType): boolean{
++		return SettingsOperation.profileTypeSupportsRules(profileType);
+ 	}
+ 
+-	public static getIgnoreFailureRulesProfile(): SmartProfile {
+-		let settings = Settings.current;
+-
+-		let smartProfile = ProfileOperations.findFirstSmartProfileType(SmartProfileType.IgnoreFailureRules, settings.proxyProfiles);
+-		if (smartProfile == null) {
+-			smartProfile = new SmartProfile();
+-			smartProfile.profileType = SmartProfileType.IgnoreFailureRules;
+-			smartProfile.profileTypeConfig = getSmartProfileTypeConfig(SmartProfileType.IgnoreFailureRules);
+-			smartProfile.profileName = 'Ignore Failure Rules';
+-
+-			ProfileOperations.addUpdateProfile(smartProfile);
+-		}
+-		return smartProfile;
++	public static profileTypeSupportsSubscriptions(profileType: SmartProfileType): boolean{
++		return SettingsOperation.profileTypeSupportsSubscriptions(profileType);
+ 	}
+ 
+-	static findFirstSmartProfileType(profileType: SmartProfileType, profiles: SmartProfile[]): SmartProfile | null {
+-		return profiles.find((a) => a.profileType === profileType);
++	public static getActiveSmartProfile(): SmartProfile{
++		return SettingsOperation.getActiveSmartProfile();
+ 	}
+ 
+-	public static findSmartProfileById(id: string, profiles: SmartProfile[]): SmartProfile | null {
+-		return profiles.find((a) => a.profileId === id);
+-	}
+-	static findSmartProfileIndexById(id: string, profiles: SmartProfile[]): number {
+-		return profiles.findIndex((a) => a.profileId === id);
++	public static getIgnoreFailureRulesProfile(): SmartProfile{
++		return SettingsOperation.getIgnoreFailureRulesProfile();
+ 	}
+ 
+-	public static compileSmartProfile(profile: SmartProfile): SmartProfileCompiled {
+-		let compiledProfile = new SmartProfileCompiled();
+-
+-		ProfileOperations.copySmartProfileBase(profile, compiledProfile);
+-
+-		ProfileOperations.compileSmartProfileRuleInternal(profile, compiledProfile);
+-
+-		if (compiledProfile.profileProxyServerId) {
+-			// the proxy server is derived from what is available
+-			compiledProfile.profileProxyServer = SettingsOperation.findProxyServerById(compiledProfile.profileProxyServerId);
+-		}
+-
+-		return compiledProfile;
++	static findFirstSmartProfileType(profileType: SmartProfileType, profiles: SmartProfile[]): SmartProfile | null{
++		return SettingsOperation.findFirstSmartProfileType(profileType, profiles);
+ 	}
+ 
+-	//** Compiles the rules and assigns to the `SmartProfileCompiled` */
+-	private static compileSmartProfileRuleInternal(profile: SmartProfile, compiledProfile: SmartProfileCompiled) {
+-
+-		compiledProfile.compiledRules = new CompiledProxyRulesInfo();
+-
+-		if (profile.proxyRules && profile.proxyRules.length) {
+-
+-			let compiledInfo = ProxyRules.compileRules(profile, profile.proxyRules);
+-
+-			compiledProfile.compiledRules.Rules = compiledInfo?.compiledList ?? [];
+-			compiledProfile.compiledRules.WhitelistRules = compiledInfo?.compiledWhiteList ?? [];
+-		}
+-		else {
+-			compiledProfile.compiledRules.Rules = [];
+-			compiledProfile.compiledRules.WhitelistRules = [];
+-		}
+-
+-		// the subscription rules
+-		if (profile.rulesSubscriptions && profile.rulesSubscriptions.length > 0) {
+-
+-			let subscriptionRules: CompiledProxyRule[] = [];
+-			let whitelistSubscriptionRules: CompiledProxyRule[] = [];
+-
+-			for (const subscription of profile.rulesSubscriptions) {
+-				if (!subscription.enabled)
+-					continue;
+-
+-				// Reversed: proxy rules bypass, whitelist rules force
+-				const isReversed = subscription.rulesListType === RulesSubscriptionListType.Reversed;
+-
+-				if (subscription.proxyRules &&
+-					subscription.proxyRules.length > 0) {
+-
+-					let subRules = ProxyRules.compileRulesSubscription(subscription.proxyRules);
+-					if (subRules) {
+-						if (isReversed)
+-							whitelistSubscriptionRules = whitelistSubscriptionRules.concat(subRules);
+-						else
+-							subscriptionRules = subscriptionRules.concat(subRules);
+-					}
+-				}
+-
+-				if (subscription.whitelistRules &&
+-					subscription.whitelistRules.length > 0) {
+-
+-					let subWhitelistRules = ProxyRules.compileRulesSubscription(subscription.whitelistRules, true);
+-					if (subWhitelistRules) {
+-						if (isReversed)
+-							subscriptionRules = subscriptionRules.concat(subWhitelistRules);
+-						else
+-							whitelistSubscriptionRules = whitelistSubscriptionRules.concat(subWhitelistRules);
+-					}
+-				}
+-			}
+-
+-			compiledProfile.compiledRules.SubscriptionRules = subscriptionRules;
+-			compiledProfile.compiledRules.WhitelistSubscriptionRules = whitelistSubscriptionRules;
+-		}
++	public static findSmartProfileById(id: string, profiles: SmartProfile[]): SmartProfile | null{
++		return SettingsOperation.findSmartProfileById(id, profiles);
+ 	}
+ 
+-	public static getSmartProfileBaseList(profiles: SmartProfile[]): SmartProfileBase[] {
+-		let result: SmartProfileBase[] = [];
+-
+-		for (const profile of profiles) {
+-			let baseProfile = new SmartProfileBase();
+-
+-			ProfileOperations.copySmartProfileBase(profile, baseProfile);
+-			result.push(baseProfile);
+-		}
+-
+-		return result;
++	static findSmartProfileIndexById(id: string, profiles: SmartProfile[]): number{
++		return SettingsOperation.findSmartProfileIndexById(id, profiles);
+ 	}
+ 
+-	public static getSmartProfileBase(profile: SmartProfile): SmartProfileBase {
+-		let baseProfile = new SmartProfileBase();
+-
+-		ProfileOperations.copySmartProfileBase(profile, baseProfile);
+-		return baseProfile;
++	public static compileSmartProfile(profile: SmartProfile): SmartProfileCompiled{
++		return SettingsOperation.compileSmartProfile(profile);
+ 	}
+ 
+-	public static copySmartProfileBase(fromProfile: SmartProfileBase, toProfile: SmartProfileBase, copyConfig: boolean = true) {
+-		toProfile.profileType = fromProfile.profileType;
+-		toProfile.profileId = fromProfile.profileId;
+-		toProfile.profileName = fromProfile.profileName;
+-		toProfile.enabled = fromProfile.enabled;
+-		toProfile.profileProxyServerId = fromProfile.profileProxyServerId;
+-		if (copyConfig) {
+-			toProfile.profileTypeConfig = {
+-				builtin: fromProfile.profileTypeConfig.builtin,
+-				editable: fromProfile.profileTypeConfig.editable,
+-				selectable: fromProfile.profileTypeConfig.selectable,
+-				supportsSubscriptions: fromProfile.profileTypeConfig.supportsSubscriptions,
+-				supportsProfileProxy: fromProfile.profileTypeConfig.supportsProfileProxy,
+-				customProxyPerRule: fromProfile.profileTypeConfig.customProxyPerRule,
+-				canBeDisabled: fromProfile.profileTypeConfig.canBeDisabled,
+-				supportsRuleActionWhitelist: fromProfile.profileTypeConfig.supportsRuleActionWhitelist,
+-				defaultRuleActionIsWhitelist: fromProfile.profileTypeConfig.defaultRuleActionIsWhitelist,
+-			};
+-		}
++	public static getSmartProfileBaseList(profiles: SmartProfile[]): SmartProfileBase[]{
++		return SettingsOperation.getSmartProfileBaseList(profiles);
+ 	}
+ 
+-	public static copySmartProfile(fromProfile: SmartProfile, toProfile: SmartProfile, copyConfig: boolean = true) {
+-		ProfileOperations.copySmartProfileBase(fromProfile, toProfile, copyConfig);
+-
+-		let proxyRules: ProxyRule[] = [];
+-		if (fromProfile.proxyRules) {
+-			for (const srcRule of fromProfile.proxyRules) {
+-				let copyRule = new ProxyRule();
+-				copyRule.CopyFrom(srcRule);
+-
+-				if (copyRule.isValid())
+-					proxyRules.push(copyRule);
+-			}
+-		}
+-		toProfile.proxyRules = proxyRules;
++	public static getSmartProfileBase(profile: SmartProfile): SmartProfileBase{
++		return SettingsOperation.getSmartProfileBase(profile);
++	}
+ 
+-		let ruleSubs: ProxyRulesSubscription[] = [];
+-		if (fromProfile.rulesSubscriptions) {
+-			for (const ruleSub of fromProfile.rulesSubscriptions) {
+-				let copyRuleSub = new ProxyRulesSubscription();
+-				copyRuleSub.CopyFrom(ruleSub);
++	public static copySmartProfileBase(fromProfile: SmartProfileBase, toProfile: SmartProfileBase, copyConfig: boolean = true){
++		return SettingsOperation.copySmartProfileBase(fromProfile, toProfile, copyConfig);
++	}
+ 
+-				if (copyRuleSub.isValid())
+-					ruleSubs.push(copyRuleSub);
+-			}
+-		}
+-		toProfile.rulesSubscriptions = ruleSubs;
++	public static copySmartProfile(fromProfile: SmartProfile, toProfile: SmartProfile, copyConfig: boolean = true){
++		return SettingsOperation.copySmartProfile(fromProfile, toProfile, copyConfig);
+ 	}
+ 
+-	public static resetProfileTypeConfig(profile: SmartProfile) {
+-		let profileTypeConfig = getSmartProfileTypeConfig(profile.profileType);
+-		if (profileTypeConfig) {
+-			profile.profileTypeConfig = profileTypeConfig;
+-		}
++	public static resetProfileTypeConfig(profile: SmartProfile){
++		return SettingsOperation.resetProfileTypeConfig(profile);
+ 	}
+ }
+diff --git a/src/core/ProfileRules.ts b/src/core/ProfileRules.ts
+index 92f7646..9341c49 100644
+--- a/src/core/ProfileRules.ts
++++ b/src/core/ProfileRules.ts
+@@ -1,350 +1,47 @@
+-import { api } from "../lib/environment";
+-import { Utils } from "../lib/Utils";
+-import { ProxyRule, ProxyRuleType, RuleId, SmartProfile, ProxyRuleSpecialProxyServer, ProxyServer } from "./definitions";
+-import { ProfileOperations } from "./ProfileOperations";
+-import { SettingsOperation } from "./SettingsOperation";
+-import { Settings } from "./Settings";
+-
+-export class ProfileRules {
+-
+ 
+-	public static toggleRule(hostName: string, ruleId?: RuleId) {
+ 
+-		let smartProfile = ProfileOperations.getActiveSmartProfile();
+-		if (smartProfile == null)
+-			return;
++import { ProxyRule, RuleId } from "./definitions";
+ 
+-		if (!ProfileOperations.profileTypeSupportsRules(smartProfile.profileType))
+-			return;
+-
+-		if (ruleId > 0) {
+-			let rule = ProfileRules.getRuleById(smartProfile, ruleId);
+-
+-			if (rule != null) {
+-				ProfileRules.toggleExistingRule(smartProfile, rule);
+-				return;
+-			}
+-		}
++import { SettingsOperation } from "./SettingsOperation";
+ 
+-		if (!Utils.isNotInternalHostName(hostName))
+-			// this is an extra check!
+-			return;
+ 
+-		ProfileRules.toggleRuleByHostname(smartProfile, hostName);
++export class ProfileRules {
++	public static toggleRule(hostName: string, ruleId?: RuleId){
++		return SettingsOperation.toggleRule(hostName, ruleId);
+ 	}
+ 
+ 	public static removeByHostname(hostName: string, ruleId?: number): {
+ 		success: boolean,
+ 		message: string,
+ 		rule: ProxyRule
+-	} {
+-		let smartProfile = ProfileOperations.getActiveSmartProfile();
+-		if (smartProfile == null)
+-			return;
+-
+-		if (!smartProfile.profileTypeConfig.editable) {
+-			return {
+-				success: false,
+-				message: api.i18n.getMessage("settingsEnableByDomainSmartProfileNonEditable").replace("{0}", smartProfile.profileName),
+-				rule: null
+-			};
+-		}
+-
+-		// get the rule for the source
+-		let rule: ProxyRule;
+-
+-		if (ruleId > 0)
+-			rule = ProfileRules.getRuleById(smartProfile, ruleId);
+-		else
+-			rule = ProfileRules.getRuleByHostname(smartProfile, hostName);
+-
+-		if (rule != null) {
+-			ProfileRules.removeRule(smartProfile, rule);
+-
+-			return {
+-				success: true,
+-				message: null,
+-				rule: rule
+-			};
+-		}
+-		return {
+-			success: false,
+-			message: api.i18n.getMessage("settingsNoRuleFoundForDomain").replace("{0}", hostName),
+-			rule: null
+-		};
++	}{
++		return SettingsOperation.removeByHostname(hostName, ruleId);
+ 	}
+ 
+-	public static enableByHostnameListIgnoreFailureRules(hostnameList: string[]) {
+-		if (!hostnameList || !hostnameList.length)
+-			return {
+-				success: false,
+-				message: api.i18n.getMessage("settingsEnableByDomainInvalid")
+-			};
+-
+-		let ignoreRulesProfile = ProfileOperations.getIgnoreFailureRulesProfile();
+-		if (ignoreRulesProfile == null)
+-			// TODO: this message is a temporary workaround, an UI is needed for popup in Add to Ignore List
+-			return {
+-				success: false,
+-				message: 'Ignore rules profile not found'
+-			};
+-
+-		for (let hostName of hostnameList) {
+-			let enableResult = ProfileRules.enableByHostnameInternal(ignoreRulesProfile, hostName);
+-			if (enableResult && !enableResult.success) {
+-				return {
+-					success: false,
+-					message: enableResult.message || `Failed to add host '${hostName}' to ignore rules`
+-				};
+-			}
+-		}
+-		return {
+-			success: true,
+-			message: null
+-		};
++	public static enableByHostnameListIgnoreFailureRules(hostnameList: string[]){
++		return SettingsOperation.enableByHostnameListIgnoreFailureRules(hostnameList);
+ 	}
+ 
+ 	public static enableByHostnameList(hostnameList: string[]): {
+ 		success: boolean,
+ 		message: string
+-	} {
+-		if (!hostnameList || !hostnameList.length)
+-			return {
+-				success: false,
+-				message: api.i18n.getMessage("settingsEnableByDomainInvalid")
+-			};
+-
+-		let smartProfile = ProfileOperations.getActiveSmartProfile();
+-		if (smartProfile == null)
+-			// TODO: this message is a temporary workaround, an UI is needed for popup in Add to Ignore List
+-			return {
+-				success: false,
+-				message: 'Please select a profile first.'
+-			};
+-
+-		if (!smartProfile.profileTypeConfig.editable ||
+-			!ProfileOperations.profileTypeSupportsRules(smartProfile.profileType)) {
+-			return {
+-				success: false,
+-				message: api.i18n.getMessage("settingsEnableByDomainSmartProfileNonEditable").replace("{0}", smartProfile.profileName),
+-			};
+-		}
+-
+-		for (let hostName of hostnameList) {
+-			let enableResult = ProfileRules.enableByHostnameInternal(smartProfile, hostName);
+-			if (enableResult && !enableResult.success) {
+-				return {
+-					success: false,
+-					message: enableResult.message || `Failed to add host '${hostName}' to rules`
+-				};
+-			}
+-		}
+-		return {
+-			success: true,
+-			message: null
+-		};
++	}{
++		return SettingsOperation.enableByHostnameList(hostnameList);
+ 	}
+ 
+ 	public static enableByHostname(hostname: string): {
+ 		success: boolean,
+ 		message: string,
+ 		rule: ProxyRule
+-	} {
+-		let smartProfile = ProfileOperations.getActiveSmartProfile();
+-		if (smartProfile == null)
+-			return;
+-
+-		if (!smartProfile.profileTypeConfig.editable ||
+-			!ProfileOperations.profileTypeSupportsRules(smartProfile.profileType)) {
+-			return {
+-				success: false,
+-				message: api.i18n.getMessage("settingsEnableByDomainSmartProfileNonEditable").replace("{0}", smartProfile.profileName),
+-				rule: null
+-			};
+-		}
+-
+-		return ProfileRules.enableByHostnameInternal(smartProfile, hostname);
++	}{
++		return SettingsOperation.enableByHostname(hostname);
+ 	}
+ 
+ 	public static changeProxyForRule(ruleId: number, proxyServerId: string): {
+ 		success: boolean,
+ 		message: string,
+ 		rule: ProxyRule
+-	} {
+-		let smartProfile = ProfileOperations.getActiveSmartProfile();
+-		if (smartProfile == null) {
+-			return {
+-				success: false,
+-				message: "No active profile found",
+-				rule: null
+-			};
+-		}
+-
+-		if (!smartProfile.profileTypeConfig.editable ||
+-			!ProfileOperations.profileTypeSupportsRules(smartProfile.profileType)) {
+-			return {
+-				success: false,
+-				message: api.i18n.getMessage("settingsEnableByDomainSmartProfileNonEditable").replace("{0}", smartProfile.profileName),
+-				rule: null
+-			};
+-		}
+-
+-		// Find the rule by ID
+-		let rule = ProfileRules.getRuleById(smartProfile, ruleId);
+-		if (rule == null) {
+-			return {
+-				success: false,
+-				message: "Rule not found",
+-				rule: null
+-			};
+-		}
+-
+-		// Validate proxy server ID and get proxy server object
+-		let proxyServer: ProxyServer = null;
+-		if (proxyServerId === ProxyRuleSpecialProxyServer.DefaultGeneral || 
+-			proxyServerId === ProxyRuleSpecialProxyServer.ProfileProxy) {
+-			// Special proxy server IDs - proxy should be null
+-			proxyServer = null;
+-		} else {
+-			// Check if it's a valid proxy server
+-			proxyServer = SettingsOperation.findProxyServerById(proxyServerId);
+-			if (proxyServer == null) {
+-				return {
+-					success: false,
+-					message: "Invalid proxy server ID",
+-					rule: null
+-				};
+-			}
+-		}
+-
+-		// Update both proxy server ID and proxy object
+-		rule.proxyServerId = proxyServerId;
+-		rule.proxy = proxyServer;
+-
+-		return {
+-			success: true,
+-			message: null,
+-			rule: rule
+-		};
+-	}
+-
+-	private static enableByHostnameInternal(smartProfile: SmartProfile, hostname: string): {
+-		success: boolean,
+-		message: string,
+-		rule: ProxyRule
+-	} {
+-		// current url should be valid
+-		if (!Utils.isNotInternalHostName(hostname))
+-			// The selected domain is not valid
+-			return {
+-				success: false,
+-				message: api.i18n.getMessage("settingsEnableByDomainInvalid"),
+-				rule: null
+-			};
+-
+-		// the domain should be the source
+-		let rule = ProfileRules.getRuleByHostname(smartProfile, hostname);
+-
+-		if (rule != null) {
+-			if (!rule.enabled) {
+-				rule.enabled = true;
+-				return {
+-					success: true,
+-					message: null,
+-					rule: rule
+-				};
+-			}
+-
+-			// Rule for the domain already exists
+-			return {
+-				success: true,
+-				message: api.i18n.getMessage("settingsEnableByDomainExists"),
+-				rule: rule
+-			};
+-		}
+-
+-		rule = ProfileRules.addRuleByHostname(smartProfile, hostname);
+-
+-		return {
+-			success: true,
+-			message: null,
+-			rule: rule
+-		};
+-	}
+-
+-	private static getRuleById(smartProfile: SmartProfile, ruleId: number) {
+-		return smartProfile.proxyRules.find(rule => rule.ruleId == ruleId);
+-	}
+-
+-	private static getRuleByHostname(smartProfile: SmartProfile, hostName: string) {
+-		return smartProfile.proxyRules.find(rule => rule.hostName == hostName);
+-	}
+-
+-	private static toggleRuleByHostname(smartProfile: SmartProfile, hostName: string) {
+-
+-		// the domain should be the source
+-		let rule = ProfileRules.getRuleByHostname(smartProfile, hostName);
+-
+-		if (rule == null) {
+-			if (!Utils.isNotInternalHostName(hostName))
+-				// this is an extra check!
+-				return;
+-
+-			ProfileRules.addRuleByHostname(smartProfile, hostName);
+-		} else {
+-			ProfileRules.toggleExistingRule(smartProfile, rule);
+-		}
+-	}
+-
+-	private static toggleExistingRule(smartProfile: SmartProfile, rule: ProxyRule) {
+-		if (rule.enabled) {
+-			if (Settings.current?.options?.deleteRuleWhenDisabledFromPopup) {
+-				ProfileRules.removeRule(smartProfile, rule);
+-			} else {
+-				rule.enabled = false;
+-			}
+-		} else {
+-			rule.enabled = true;
+-		}
+-	}
+-
+-	private static addRuleByHostname(smartProfile: SmartProfile, hostname: string): ProxyRule {
+-
+-		let rule = new ProxyRule();
+-		rule.ruleType = ProxyRuleType.DomainSubdomain;
+-		rule.ruleSearch = hostname;
+-		rule.autoGeneratePattern = true;
+-		rule.hostName = hostname;
+-		rule.enabled = true;
+-		rule.proxy = null;
+-
+-		if (smartProfile.profileTypeConfig.defaultRuleActionIsWhitelist == true)
+-			// NOTE: in AlwaysEnabled mode the default rule type is Whitelist
+-			rule.whiteList = true;
+-
+-		// add and save it
+-		ProfileRules.addRule(smartProfile, rule);
+-
+-		return rule;
+-	}
+-
+-	private static addRule(smartProfile: SmartProfile, rule: ProxyRule) {
+-
+-		do {
+-			// making sure the ruleId is unique
+-			var isDuplicateRuleId = smartProfile.proxyRules.some(r => r.ruleId == rule.ruleId);
+-
+-			if (isDuplicateRuleId)
+-				rule.ruleId = Utils.getNewUniqueIdNumber();
+-		} while (isDuplicateRuleId);
+-
+-		smartProfile.proxyRules.push(rule);
+-	}
+-
+-	private static removeRule(smartProfile: SmartProfile, rule: ProxyRule) {
+-		let itemIndex = smartProfile.proxyRules.indexOf(rule);
+-		if (itemIndex > -1) {
+-			smartProfile.proxyRules.splice(itemIndex, 1);
+-		}
++	}{
++		return SettingsOperation.changeProxyForRule(ruleId, proxyServerId);
+ 	}
+ }
+diff --git a/src/core/ProxyRules.ts b/src/core/ProxyRules.ts
+index 5336dc0..9e7b6cf 100644
+--- a/src/core/ProxyRules.ts
++++ b/src/core/ProxyRules.ts
+@@ -14,491 +14,57 @@
+  * You should have received a copy of the GNU General Public License
+  * along with SmartProxy.  If not, see <http://www.gnu.org/licenses/>.
+  */
+-import { Debug } from "../lib/Debug";
+-import { ProxyRuleType, CompiledProxyRule, ProxyRule, CompiledProxyRuleType, SubscriptionProxyRule, CompiledProxyRuleSource, CompiledProxyRulesInfo, CompiledProxyRulesMatchedSource, ProxyRuleSpecialProxyServer, SmartProfileBase } from "./definitions";
+-import { Utils } from "../lib/Utils";
+-import { SettingsOperation } from "./SettingsOperation";
+-import { api } from "../lib/environment";
+ 
+-function regexHostMatches(rule: CompiledProxyRule, host: string): boolean {
+-	if (rule.regex.test(host))
+-		return true;
++import { CompiledProxyRule, ProxyRule, SubscriptionProxyRule, CompiledProxyRulesInfo, CompiledProxyRulesMatchedSource, SmartProfileBase } from "./definitions";
+ 
+-	let normalizedHost = Utils.normalizeIpForMatching(host);
+-	return normalizedHost != null && normalizedHost !== host && rule.regex.test(normalizedHost);
+-}
++import { SettingsOperation } from "./SettingsOperation";
+ 
+-export class ProxyRules {
+ 
++export class ProxyRules {
+ 	public static compileRules(profile: SmartProfileBase, proxyRules: ProxyRule[]): {
+ 		compiledList: CompiledProxyRule[],
+ 		compiledWhiteList: CompiledProxyRule[]
+-	} {
+-		if (!proxyRules)
+-			return;
+-
+-		let compiledList: CompiledProxyRule[] = [];
+-		let compiledWhiteList: CompiledProxyRule[] = [];
+-
+-		for (let i = 0; i < proxyRules.length; i++) {
+-			const rule = proxyRules[i];
+-
+-			if (!rule.enabled)
+-				continue;
+-
+-			let newCompiled = new CompiledProxyRule();
+-
+-			newCompiled.ruleId = rule.ruleId;
+-			newCompiled.whiteList = rule.whiteList;
+-			newCompiled.noProxyPerOrigin = rule.noProxyPerOrigin;
+-			newCompiled.hostName = rule.hostName;
+-			newCompiled.proxy = rule.proxy;
+-			if (rule.proxyServerId == ProxyRuleSpecialProxyServer.DefaultGeneral) {
+-				newCompiled.proxy = null;
+-			} else if (rule.proxyServerId == ProxyRuleSpecialProxyServer.ProfileProxy) {
+-				if (profile.profileProxyServerId) {
+-					// the proxy is derived from profile
+-					let profileProxy = SettingsOperation.findProxyServerById(profile.profileProxyServerId);
+-					if (profileProxy) {
+-						newCompiled.proxy = profileProxy;
+-					}
+-				}
+-			}
+-
+-			newCompiled.compiledRuleSource = CompiledProxyRuleSource.Rules;
+-
+-			switch (rule.ruleType) {
+-				case ProxyRuleType.Exact:
+-					newCompiled.search = rule.ruleExact.toLowerCase();
+-					newCompiled.compiledRuleType = CompiledProxyRuleType.Exact;
+-					break;
+-
+-				case ProxyRuleType.DomainSubdomain:
+-					newCompiled.search = rule.ruleSearch.toLowerCase();
+-					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchDomainSubdomain;
+-					break;
+-
+-				case ProxyRuleType.MatchPatternHost:
+-					{
+-						let regex = Utils.matchPatternToRegExp(rule.rulePattern, false, true);
+-						if (regex == null)
+-							continue;
+-						newCompiled.regex = regex;
+-						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexHost;
+-					}
+-					break;
+-
+-				case ProxyRuleType.MatchPatternUrl:
+-					{
+-						let regex = Utils.matchPatternToRegExp(rule.rulePattern, true, false);
+-						if (regex == null)
+-							continue;
+-						newCompiled.regex = regex;
+-						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexUrl;
+-					}
+-					break;
+-
+-				case ProxyRuleType.RegexHost:
+-					{
+-						// This simple construction is good enough. TODO: This ^(?:)$ is not needed?
+-						newCompiled.regex = new RegExp(rule.ruleRegex, "i");
+-						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexHost;
+-					}
+-					break;
+-
+-				case ProxyRuleType.RegexUrl:
+-					{
+-						// This simple construction is good enough. TODO: This ^(?:)$ is not needed?
+-						newCompiled.regex = new RegExp(rule.ruleRegex);
+-						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexUrl;
+-					}
+-					break;
+-
+-				case ProxyRuleType.DomainExact:
+-					newCompiled.search = rule.ruleSearch.toLowerCase();
+-					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchDomain;
+-					break;
+-
+-				case ProxyRuleType.DomainAndPath:
+-					newCompiled.search = rule.ruleSearch.toLowerCase();
+-					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchDomainAndPath;
+-					break;
+-
+-				case ProxyRuleType.DomainSubdomainAndPath:
+-					newCompiled.search = rule.ruleSearch.toLowerCase();
+-					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchDomainSubdomainAndPath;
+-					break;
+-
+-				case ProxyRuleType.SearchUrl:
+-					newCompiled.search = rule.ruleSearch.toLowerCase();
+-					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchUrl;
+-					break;
+-
+-				case ProxyRuleType.IpCidrNotation:
+-					{
+-						let regex = Utils.ipCidrNotationToRegExp(rule.ruleSearch, rule.rulePattern);
+-						if (regex == null) {
+-							Debug.warn(`Failed to compile CIDR rule ${rule.ruleSearch}/${rule.rulePattern} to regex`, rule);
+-							continue;
+-						}
+-						newCompiled.regex = regex;
+-						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexHost;
+-					}
+-					break;
+-
+-				default:
+-					continue;
+-			}
+-			if (rule.whiteList) {
+-				compiledWhiteList.push(newCompiled);
+-			}
+-			else
+-				compiledList.push(newCompiled);
+-		}
+-
+-		return {
+-			compiledList,
+-			compiledWhiteList
+-		};
++	}{
++		return SettingsOperation.compileRules(profile, proxyRules);
+ 	}
+ 
+-	public static compileRulesSubscription(rules: SubscriptionProxyRule[], markAsWhitelisted: boolean = null): CompiledProxyRule[] {
+-		if (!rules)
+-			return [];
+-
+-		let compiledList: CompiledProxyRule[] = [];
+-		for (const rule of rules) {
+-
+-			let newCompiled = new CompiledProxyRule();
+-			newCompiled.search = rule.search;
+-			newCompiled.compiledRuleSource = CompiledProxyRuleSource.Subscriptions;
+-
+-			if (markAsWhitelisted === true)
+-				newCompiled.whiteList = true;
+-
+-			newCompiled.compiledRuleType = rule.importedRuleType;
+-
+-			switch (rule.importedRuleType) {
+-				case CompiledProxyRuleType.RegexHost:
+-					newCompiled.regex = new RegExp(rule.regex, "i");
+-					break;
+-
+-				case CompiledProxyRuleType.RegexUrl:
+-					newCompiled.regex = new RegExp(rule.regex);
+-					break;
+-
+-				case CompiledProxyRuleType.Exact:
+-				case CompiledProxyRuleType.SearchUrl:
+-				case CompiledProxyRuleType.SearchDomain:
+-				case CompiledProxyRuleType.SearchDomainSubdomain:
+-				case CompiledProxyRuleType.SearchDomainAndPath:
+-				case CompiledProxyRuleType.SearchDomainSubdomainAndPath:
+-					break;
+-
+-				default:
+-					Debug.error('compileRulesSubscription: Invalid importedRuleType of ' + rule.importedRuleType);
+-					continue;
+-			}
+-			compiledList.push(newCompiled);
+-		}
+-
+-		return compiledList;
++	public static compileRulesSubscription(rules: SubscriptionProxyRule[], markAsWhitelisted: boolean = null): CompiledProxyRule[]{
++		return SettingsOperation.compileRulesSubscription(rules, markAsWhitelisted);
+ 	}
+ 
+ 	public static findMatchedDomainListInRulesInfo(domainList: string[], compiledRules: CompiledProxyRulesInfo): {
+ 		compiledRule: CompiledProxyRule,
+ 		matchedRuleSource: CompiledProxyRulesMatchedSource
+-	}[] {
+-		let result = [];
+-		for (const domain of domainList) {
+-
+-			let matchResult = ProxyRules.findMatchedDomainInRulesInfo(domain, compiledRules);
+-			result.push(matchResult);
+-		}
+-
+-		return result;
++	}[]{
++		return SettingsOperation.findMatchedDomainListInRulesInfo(domainList, compiledRules);
+ 	}
+ 
+ 	public static findMatchedDomainInRulesInfo(searchDomain: string, compiledRules: CompiledProxyRulesInfo): {
+ 		compiledRule: CompiledProxyRule,
+ 		matchedRuleSource: CompiledProxyRulesMatchedSource
+-	} | null {
+-		let url = searchDomain.toLowerCase();
+-		if (!url.includes(":/"))
+-			url = "http://" + url;
+-
+-		return ProxyRules.findMatchedUrlInRulesInfo(url, compiledRules);
++	} | null{
++		return SettingsOperation.findMatchedDomainInRulesInfo(searchDomain, compiledRules);
+ 	}
+ 
+ 	public static findMatchedUrlInRulesInfo(searchUrl: string, compiledRules: CompiledProxyRulesInfo): {
+ 		compiledRule: CompiledProxyRule,
+ 		matchedRuleSource: CompiledProxyRulesMatchedSource
+-	} | null {
+-		// user whitelist rules (skip proxy)
+-		let userWhitelistMatchedRule = ProxyRules.findMatchedUrlInRules(searchUrl, compiledRules.WhitelistRules)
+-		if (userWhitelistMatchedRule) {
+-			return {
+-				compiledRule: userWhitelistMatchedRule,
+-				matchedRuleSource: CompiledProxyRulesMatchedSource.WhitelistRules
+-			};
+-		}
+-
+-		// user proxy rules (apply proxy)
+-		let userMatchedRule = ProxyRules.findMatchedUrlInRules(searchUrl, compiledRules.Rules);
+-		if (userMatchedRule) {
+-			return {
+-				compiledRule: userMatchedRule,
+-				matchedRuleSource: CompiledProxyRulesMatchedSource.Rules
+-			};
+-		}
+-
+-		// subscription whitelist rules (skip proxy)
+-		let subWhitelistMatchedRule = ProxyRules.findMatchedUrlInRules(searchUrl, compiledRules.WhitelistSubscriptionRules)
+-		if (subWhitelistMatchedRule) {
+-			return {
+-				compiledRule: subWhitelistMatchedRule,
+-				matchedRuleSource: CompiledProxyRulesMatchedSource.WhitelistSubscriptionRules
+-			};
+-		}
+-
+-		// subscription proxy rules (apply proxy)
+-		let subMatchedRule = ProxyRules.findMatchedUrlInRules(searchUrl, compiledRules.SubscriptionRules);
+-		if (subMatchedRule) {
+-			return {
+-				compiledRule: subMatchedRule,
+-				matchedRuleSource: CompiledProxyRulesMatchedSource.SubscriptionRules
+-			};
+-		}
+-
+-		return null;
++	} | null{
++		return SettingsOperation.findMatchedUrlInRulesInfo(searchUrl, compiledRules);
+ 	}
+ 
+-	public static findMatchedDomainRule(searchDomain: string, rules: CompiledProxyRule[]): CompiledProxyRule | null {
+-		let url = searchDomain.toLowerCase();
+-		if (!url.includes(":/"))
+-			url = "http://" + url;
+-
+-		return ProxyRules.findMatchedUrlInRules(url, rules);
++	public static findMatchedDomainRule(searchDomain: string, rules: CompiledProxyRule[]): CompiledProxyRule | null{
++		return SettingsOperation.findMatchedDomainRule(searchDomain, rules);
+ 	}
+ 
+-	public static findMatchedUrlInRules(searchUrl: string, rules: CompiledProxyRule[]): CompiledProxyRule | null {
+-		if (rules == null || rules.length == 0)
+-			return null;
+-
+-		let domainHostLowerCase: string;
+-		let schemaLessUrlLowerCase: string;
+-		let lowerCaseUrl = searchUrl.toLowerCase();
+-
+-		try {
+-			for (let rule of rules) {
+-
+-				switch (rule.compiledRuleType) {
+-					case CompiledProxyRuleType.SearchDomainSubdomain:
+-
+-						if (domainHostLowerCase == null) {
+-							domainHostLowerCase = Utils.extractHostNameFromUrl(lowerCaseUrl);
+-							if (domainHostLowerCase == null) {
+-								continue;
+-							}
+-						}
+-						// domain
+-						if (domainHostLowerCase == rule.search)
+-							return rule;
+-
+-						// subdomains
+-						if (domainHostLowerCase.endsWith('.' + rule.search))
+-							return rule;
+-
+-						break;
+-
+-					case CompiledProxyRuleType.SearchDomainSubdomainAndPath:
+-
+-						if (schemaLessUrlLowerCase == null) {
+-							schemaLessUrlLowerCase = Utils.removeSchemaFromUrl(lowerCaseUrl);
+-							if (schemaLessUrlLowerCase == null) {
+-								continue;
+-							}
+-						}
+-						if (schemaLessUrlLowerCase.startsWith(rule.search))
+-							return rule;
+-
+-						let ruleSearchHost = Utils.extractHostNameFromInvalidUrl(rule.search);
+-						if (ruleSearchHost != null) {
+-
+-							if (domainHostLowerCase == null) {
+-								domainHostLowerCase = Utils.extractHostNameFromUrl(lowerCaseUrl);
+-								if (domainHostLowerCase == null) {
+-									continue;
+-								}
+-							}
+-
+-							// should be the same
+-							if (ruleSearchHost != domainHostLowerCase && !domainHostLowerCase.endsWith('.' + ruleSearchHost))
+-								continue;
+-
+-							// after this state, we are sure that the url is for the same domain, now just checking the path
+-						}
+-
+-						// subdomains
+-						if (schemaLessUrlLowerCase.includes('.' + rule.search))
+-							return rule;
+-						break;
+-
+-					case CompiledProxyRuleType.SearchDomainAndPath:
+-
+-						if (schemaLessUrlLowerCase == null) {
+-							schemaLessUrlLowerCase = Utils.removeSchemaFromUrl(lowerCaseUrl);
+-							if (schemaLessUrlLowerCase == null) {
+-								continue;
+-							}
+-						}
+-						if (schemaLessUrlLowerCase.startsWith(rule.search))
+-							return rule;
+-
+-						break;
+-
+-					case CompiledProxyRuleType.SearchUrl:
+-
+-						if (lowerCaseUrl.startsWith(rule.search))
+-							return rule;
+-						break;
+-
+-					case CompiledProxyRuleType.RegexUrl:
+-						// Using original url with case sensitivity
+-						if (rule.regex.test(searchUrl))
+-							return rule;
+-						break;
+-
+-					case CompiledProxyRuleType.RegexHost:
+-
+-						if (domainHostLowerCase == null) {
+-							domainHostLowerCase = Utils.extractHostNameFromUrl(lowerCaseUrl);
+-							if (domainHostLowerCase == null) {
+-								continue;
+-							}
+-						}
+-
+-						if (regexHostMatches(rule, domainHostLowerCase))
+-							return rule;
+-						break;
+-
+-					case CompiledProxyRuleType.SearchDomain:
+-
+-						if (domainHostLowerCase == null) {
+-							domainHostLowerCase = Utils.extractHostNameFromUrl(lowerCaseUrl);
+-							if (domainHostLowerCase == null) {
+-								continue;
+-							}
+-						}
+-						if (rule.search == domainHostLowerCase)
+-							return rule;
+-						break;
+-
+-					case CompiledProxyRuleType.Exact:
+-
+-						if (lowerCaseUrl == rule.search)
+-							return rule;
+-						break;
+-				}
+-			}
+-
+-			// if we have reached here no rule matched, but we might have a rule with domain and port
+-			// if we had a rule with domain, we need to check for port as well
+-			if (domainHostLowerCase != null) {
+-				let domainHostWithPort = Utils.extractHostFromUrl(lowerCaseUrl);
+-
+-				if (domainHostWithPort != domainHostLowerCase) {
+-
+-					// host has port part, doing a recheck
+-					domainHostLowerCase = domainHostWithPort;
+-
+-					for (let rule of rules) {
+-
+-						// NOTE: Only rules that work on hostName should be checked, others can be ignored
+-						switch (rule.compiledRuleType) {
+-
+-							case CompiledProxyRuleType.SearchDomainSubdomain:
+-
+-								// domain
+-								if (domainHostLowerCase == rule.search)
+-									return rule;
+-
+-								// subdomains
+-								if (domainHostLowerCase.endsWith('.' + rule.search))
+-									return rule;
+-
+-								break;
+-
+-							case CompiledProxyRuleType.SearchDomainSubdomainAndPath:
+-
+-								if (schemaLessUrlLowerCase == null) {
+-									schemaLessUrlLowerCase = Utils.removeSchemaFromUrl(lowerCaseUrl);
+-									if (schemaLessUrlLowerCase == null) {
+-										continue;
+-									}
+-								}
+-								if (schemaLessUrlLowerCase.startsWith(rule.search))
+-									return rule;
+-
+-								let ruleSearchHost = Utils.extractHostFromInvalidUrl(rule.search);
+-								if (ruleSearchHost != null) {
+-									// should be the same
+-									if (ruleSearchHost != domainHostLowerCase && !domainHostLowerCase.endsWith('.' + ruleSearchHost))
+-										continue;
+-
+-									// after this state, we are sure that the url is for the same domain, now just checking the path
+-								}
+-
+-								// subdomains
+-								if (schemaLessUrlLowerCase.includes('.' + rule.search))
+-									return rule;
+-								break;
+-
+-							case CompiledProxyRuleType.RegexHost:
+-
+-								if (regexHostMatches(rule, domainHostLowerCase))
+-									return rule;
+-								break;
+-
+-							case CompiledProxyRuleType.SearchDomain:
+-
+-								if (rule.search == domainHostLowerCase)
+-									return rule;
+-								break;
+-
+-							case CompiledProxyRuleType.Exact:
+-							case CompiledProxyRuleType.RegexUrl:
+-							case CompiledProxyRuleType.SearchUrl:
+-							case CompiledProxyRuleType.SearchDomainAndPath:
+-								break;
+-						}
+-					}
+-				}
+-			}
+-		} catch (e) {
+-			Debug.warn(`findMatchForUrl failed for ${searchUrl}`, e);
+-		}
+-		return null;
++	public static findMatchedUrlInRules(searchUrl: string, rules: CompiledProxyRule[]): CompiledProxyRule | null{
++		return SettingsOperation.findMatchedUrlInRules(searchUrl, rules);
+ 	}
+ 
+ 	public static validateRule(rule: ProxyRule): {
+ 		success: boolean, exist?: boolean, message?: string,
+ 		result?: any
+-	} {
+-		if (rule.hostName) {
+-			if (!Utils.isNotInternalHostName(rule.hostName)) {
+-				// 'source' is not valid '${rule.source}
+-				return { success: false, message: api.i18n.getMessage("settingsRuleSourceInvalidFormat").replace("{0}", rule.hostName) };
+-			}
+-		}
+-
+-		if (!rule.rule)
+-			// Rule doesn't have pattern defined
+-			return { success: false, message: api.i18n.getMessage("settingsRulePatternIsEmpty") };
+-
+-		if (rule["enabled"] == null)
+-			rule.enabled = true;
+-
+-		return { success: true };
++	}{
++		return SettingsOperation.validateRule(rule);
+ 	}
+ }
+diff --git a/src/core/SettingsOperation.ts b/src/core/SettingsOperation.ts
+index 9faf4a8..633d5cf 100644
+--- a/src/core/SettingsOperation.ts
++++ b/src/core/SettingsOperation.ts
+@@ -1,3 +1,14 @@
++type SubscriptionTimerType = { timerId: NodeJS.Timeout, subscriptionId: string, refreshRate: number };
++import { CountryCode } from "../lib/CountryCode";
++import { RuleImporter } from "../lib/RuleImporter";
++import { ProxyImporter } from "../lib/ProxyImporter";
++function regexHostMatches(rule: CompiledProxyRule, host: string): boolean {
++	if (rule.regex.test(host))
++		return true;
++
++	let normalizedHost = Utils.normalizeIpForMatching(host);
++	return normalizedHost != null && normalizedHost !== host && rule.regex.test(normalizedHost);
++}
+ /*
+  * This file is part of SmartProxy <https://github.com/salarcode/SmartProxy>,
+  * Copyright (C) 2025 Salar Khalilzadeh <salar2k@gmail.com>
+@@ -16,10 +27,10 @@
+  */
+ import { api } from "../lib/environment";
+ import { PolyFill } from "../lib/PolyFill";
+-import { Debug } from "../lib/Debug";
++import { Debug, DiagDebug } from "../lib/Debug";
+ import { Settings } from "./Settings";
+ import { Utils } from "../lib/Utils";
+-import { GeneralOptions, ProxyRule, ProxyRulesSubscription, ProxyServer, ProxyServerFromSubscription, ProxyServerSubscription, SettingsConfig, SmartProfile, UpdateInfo } from "./definitions";
++import { GeneralOptions, ProxyRule, ProxyRulesSubscription, ProxyServer, ProxyServerFromSubscription, ProxyServerSubscription, SettingsConfig, SmartProfile, UpdateInfo, CompiledProxyRule, CompiledProxyRulesInfo, getSmartProfileTypeConfig, ResultHolder, RulesSubscriptionListType, SmartProfileBase, SmartProfileCompiled, SmartProfileType, ProxyRuleType, RuleId, ProxyRuleSpecialProxyServer, CompiledProxyRuleType, SubscriptionProxyRule, CompiledProxyRuleSource, CompiledProxyRulesMatchedSource, ImportedProxyRule, SubscriptionStats } from "./definitions";
+ import { ProxyEngine } from "./ProxyEngine";
+ import { ProxyRules } from "./ProxyRules";
+ import { SubscriptionUpdater } from "./SubscriptionUpdater";
+@@ -1414,6 +1425,1573 @@ export class SettingsOperation {
+ 			);
+ 		});
+ 	}
++
++	public static addUpdateProfile(smartProfile: SmartProfile, settings?: SettingsConfig) {
++		settings ??= Settings.current;
++
++		if (smartProfile.profileId) {
++			let existingProfile = SettingsOperation.findSmartProfileById(smartProfile.profileId, settings.proxyProfiles);
++
++			if (existingProfile) {
++				Object.assign(existingProfile, smartProfile);
++				return;
++			}
++		}
++		SettingsOperation.ensureProfileId(smartProfile);
++		settings.proxyProfiles.push(smartProfile);
++	}
++
++	public static ensureProfileId(smartProfile: SmartProfile) {
++		if (!smartProfile.profileId)
++			smartProfile.profileId = 'profile-' + Utils.getNewUniqueIdString();
++	}
++
++	public static deleteProfile(smartProfileId: string): ResultHolder {
++		let result = new ResultHolder();
++		let settings = Settings.current;
++
++		let existingProfileIndex = SettingsOperation.findSmartProfileIndexById(smartProfileId, settings.proxyProfiles);
++		if (existingProfileIndex == -1) {
++			Debug.warn(`deleteProfile failed for profile id = ${smartProfileId}`);
++			result.success = false;
++
++			// Failed to delete the selected profile.
++			result.message = api.i18n.getMessage('settingsProfilesDeleteFailed');
++			return result;
++		}
++		let existingProfile = settings.proxyProfiles[existingProfileIndex];
++		if (existingProfile.profileTypeConfig.builtin) {
++			result.success = false;
++
++			// Cannot delete built-in profiles
++			result.message = api.i18n.getMessage('settingsProfilesDeleteBuiltinFail');
++			return result;
++		}
++		settings.proxyProfiles.splice(existingProfileIndex, 1);
++
++		result.success = true;
++		return result;
++	}
++
++	public static profileTypeSupportsRules(profileType: SmartProfileType): boolean {
++		switch (profileType) {
++			case SmartProfileType.SmartRules:
++			case SmartProfileType.AlwaysEnabledBypassRules:
++			case SmartProfileType.IgnoreFailureRules:
++				return true;
++
++			case SmartProfileType.Direct:
++			case SmartProfileType.SystemProxy:
++			default:
++				return false;
++		}
++	}
++
++	public static profileTypeSupportsSubscriptions(profileType: SmartProfileType): boolean {
++		switch (profileType) {
++			case SmartProfileType.SmartRules:
++			case SmartProfileType.AlwaysEnabledBypassRules:
++				return true;
++
++			case SmartProfileType.IgnoreFailureRules:
++			case SmartProfileType.Direct:
++			case SmartProfileType.SystemProxy:
++			default:
++				return false;
++		}
++	}
++
++	public static getActiveSmartProfile(): SmartProfile {
++		let settings = Settings.current;
++
++		let smartProfile = SettingsOperation.findSmartProfileById(settings.activeProfileId, settings.proxyProfiles);
++		if (smartProfile == null) {
++			Debug.warn(`No active profile found`);
++			return null;
++		}
++		return smartProfile;
++	}
++
++	public static getIgnoreFailureRulesProfile(): SmartProfile {
++		let settings = Settings.current;
++
++		let smartProfile = SettingsOperation.findFirstSmartProfileType(SmartProfileType.IgnoreFailureRules, settings.proxyProfiles);
++		if (smartProfile == null) {
++			smartProfile = new SmartProfile();
++			smartProfile.profileType = SmartProfileType.IgnoreFailureRules;
++			smartProfile.profileTypeConfig = getSmartProfileTypeConfig(SmartProfileType.IgnoreFailureRules);
++			smartProfile.profileName = 'Ignore Failure Rules';
++
++			SettingsOperation.addUpdateProfile(smartProfile);
++		}
++		return smartProfile;
++	}
++
++	static findFirstSmartProfileType(profileType: SmartProfileType, profiles: SmartProfile[]): SmartProfile | null {
++		return profiles.find((a) => a.profileType === profileType);
++	}
++
++	public static findSmartProfileById(id: string, profiles: SmartProfile[]): SmartProfile | null {
++		return profiles.find((a) => a.profileId === id);
++	}
++
++	static findSmartProfileIndexById(id: string, profiles: SmartProfile[]): number {
++		return profiles.findIndex((a) => a.profileId === id);
++	}
++
++	public static compileSmartProfile(profile: SmartProfile): SmartProfileCompiled {
++		let compiledProfile = new SmartProfileCompiled();
++
++		SettingsOperation.copySmartProfileBase(profile, compiledProfile);
++
++		SettingsOperation.compileSmartProfileRuleInternal(profile, compiledProfile);
++
++		if (compiledProfile.profileProxyServerId) {
++			// the proxy server is derived from what is available
++			compiledProfile.profileProxyServer = SettingsOperation.findProxyServerById(compiledProfile.profileProxyServerId);
++		}
++
++		return compiledProfile;
++	}
++
++	public static compileSmartProfileRuleInternal(profile: SmartProfile, compiledProfile: SmartProfileCompiled) {
++
++		compiledProfile.compiledRules = new CompiledProxyRulesInfo();
++
++		if (profile.proxyRules && profile.proxyRules.length) {
++
++			const rules: CompiledProxyRule[] = [];
++			const whitelist: CompiledProxyRule[] = [];
++			SettingsOperation.compileRules(profile, profile.proxyRules, (compiled, bypass) => {
++				if (bypass) whitelist.push(compiled);
++				else rules.push(compiled);
++			});
++			compiledProfile.compiledRules.Rules = rules;
++			compiledProfile.compiledRules.WhitelistRules = whitelist;
++		}
++		else {
++			compiledProfile.compiledRules.Rules = [];
++			compiledProfile.compiledRules.WhitelistRules = [];
++		}
++
++		// the subscription rules
++		if (profile.rulesSubscriptions && profile.rulesSubscriptions.length > 0) {
++
++			let subscriptionRules: CompiledProxyRule[] = [];
++			let whitelistSubscriptionRules: CompiledProxyRule[] = [];
++
++			for (const subscription of profile.rulesSubscriptions) {
++				if (!subscription.enabled)
++					continue;
++
++				// Reversed: proxy rules bypass, whitelist rules force
++				const isReversed = subscription.rulesListType === RulesSubscriptionListType.Reversed;
++
++				if (subscription.proxyRules &&
++					subscription.proxyRules.length > 0) {
++
++					SettingsOperation.compileRulesSubscription(subscription.proxyRules, null, compiled => {
++						if (isReversed) whitelistSubscriptionRules.push(compiled);
++						else subscriptionRules.push(compiled);
++					});
++				}
++
++				if (subscription.whitelistRules &&
++					subscription.whitelistRules.length > 0) {
++
++					SettingsOperation.compileRulesSubscription(subscription.whitelistRules, true, compiled => {
++						if (isReversed) subscriptionRules.push(compiled);
++						else whitelistSubscriptionRules.push(compiled);
++					});
++				}
++			}
++
++			compiledProfile.compiledRules.SubscriptionRules = subscriptionRules;
++			compiledProfile.compiledRules.WhitelistSubscriptionRules = whitelistSubscriptionRules;
++		}
++	}
++
++	public static getSmartProfileBaseList(profiles: SmartProfile[]): SmartProfileBase[] {
++		let result: SmartProfileBase[] = [];
++
++		for (const profile of profiles) {
++			let baseProfile = new SmartProfileBase();
++
++			SettingsOperation.copySmartProfileBase(profile, baseProfile);
++			result.push(baseProfile);
++		}
++
++		return result;
++	}
++
++	public static getSmartProfileBase(profile: SmartProfile): SmartProfileBase {
++		let baseProfile = new SmartProfileBase();
++
++		SettingsOperation.copySmartProfileBase(profile, baseProfile);
++		return baseProfile;
++	}
++
++	public static copySmartProfileBase(fromProfile: SmartProfileBase, toProfile: SmartProfileBase, copyConfig: boolean = true) {
++		toProfile.profileType = fromProfile.profileType;
++		toProfile.profileId = fromProfile.profileId;
++		toProfile.profileName = fromProfile.profileName;
++		toProfile.enabled = fromProfile.enabled;
++		toProfile.profileProxyServerId = fromProfile.profileProxyServerId;
++		if (copyConfig) {
++			toProfile.profileTypeConfig = {
++				builtin: fromProfile.profileTypeConfig.builtin,
++				editable: fromProfile.profileTypeConfig.editable,
++				selectable: fromProfile.profileTypeConfig.selectable,
++				supportsSubscriptions: fromProfile.profileTypeConfig.supportsSubscriptions,
++				supportsProfileProxy: fromProfile.profileTypeConfig.supportsProfileProxy,
++				customProxyPerRule: fromProfile.profileTypeConfig.customProxyPerRule,
++				canBeDisabled: fromProfile.profileTypeConfig.canBeDisabled,
++				supportsRuleActionWhitelist: fromProfile.profileTypeConfig.supportsRuleActionWhitelist,
++				defaultRuleActionIsWhitelist: fromProfile.profileTypeConfig.defaultRuleActionIsWhitelist,
++			};
++		}
++	}
++
++	public static copySmartProfile(fromProfile: SmartProfile, toProfile: SmartProfile, copyConfig: boolean = true) {
++		SettingsOperation.copySmartProfileBase(fromProfile, toProfile, copyConfig);
++
++		let proxyRules: ProxyRule[] = [];
++		if (fromProfile.proxyRules) {
++			for (const srcRule of fromProfile.proxyRules) {
++				let copyRule = new ProxyRule();
++				copyRule.CopyFrom(srcRule);
++
++				if (copyRule.isValid())
++					proxyRules.push(copyRule);
++			}
++		}
++		toProfile.proxyRules = proxyRules;
++
++		let ruleSubs: ProxyRulesSubscription[] = [];
++		if (fromProfile.rulesSubscriptions) {
++			for (const ruleSub of fromProfile.rulesSubscriptions) {
++				let copyRuleSub = new ProxyRulesSubscription();
++				copyRuleSub.CopyFrom(ruleSub);
++
++				if (copyRuleSub.isValid())
++					ruleSubs.push(copyRuleSub);
++			}
++		}
++		toProfile.rulesSubscriptions = ruleSubs;
++	}
++
++	public static resetProfileTypeConfig(profile: SmartProfile) {
++		let profileTypeConfig = getSmartProfileTypeConfig(profile.profileType);
++		if (profileTypeConfig) {
++			profile.profileTypeConfig = profileTypeConfig;
++		}
++	}
++
++	public static toggleRule(hostName: string, ruleId?: RuleId) {
++
++		let smartProfile = ProfileOperations.getActiveSmartProfile();
++		if (smartProfile == null)
++			return;
++
++		if (!ProfileOperations.profileTypeSupportsRules(smartProfile.profileType))
++			return;
++
++		if (ruleId > 0) {
++			let rule = SettingsOperation.getRuleById(smartProfile, ruleId);
++
++			if (rule != null) {
++				SettingsOperation.toggleExistingRule(smartProfile, rule);
++				return;
++			}
++		}
++
++		if (!Utils.isNotInternalHostName(hostName))
++			// this is an extra check!
++			return;
++
++		SettingsOperation.toggleRuleByHostname(smartProfile, hostName);
++	}
++
++	public static removeByHostname(hostName: string, ruleId?: number): {
++		success: boolean,
++		message: string,
++		rule: ProxyRule
++	} {
++		let smartProfile = ProfileOperations.getActiveSmartProfile();
++		if (smartProfile == null)
++			return;
++
++		if (!smartProfile.profileTypeConfig.editable) {
++			return {
++				success: false,
++				message: api.i18n.getMessage("settingsEnableByDomainSmartProfileNonEditable").replace("{0}", smartProfile.profileName),
++				rule: null
++			};
++		}
++
++		// get the rule for the source
++		let rule: ProxyRule;
++
++		if (ruleId > 0)
++			rule = SettingsOperation.getRuleById(smartProfile, ruleId);
++		else
++			rule = SettingsOperation.getRuleByHostname(smartProfile, hostName);
++
++		if (rule != null) {
++			SettingsOperation.removeRule(smartProfile, rule);
++
++			return {
++				success: true,
++				message: null,
++				rule: rule
++			};
++		}
++		return {
++			success: false,
++			message: api.i18n.getMessage("settingsNoRuleFoundForDomain").replace("{0}", hostName),
++			rule: null
++		};
++	}
++
++	public static enableByHostnameListIgnoreFailureRules(hostnameList: string[]) {
++		if (!hostnameList || !hostnameList.length)
++			return {
++				success: false,
++				message: api.i18n.getMessage("settingsEnableByDomainInvalid")
++			};
++
++		let ignoreRulesProfile = ProfileOperations.getIgnoreFailureRulesProfile();
++		if (ignoreRulesProfile == null)
++			// TODO: this message is a temporary workaround, an UI is needed for popup in Add to Ignore List
++			return {
++				success: false,
++				message: 'Ignore rules profile not found'
++			};
++
++		for (let hostName of hostnameList) {
++			let enableResult = SettingsOperation.enableByHostnameInternal(ignoreRulesProfile, hostName);
++			if (enableResult && !enableResult.success) {
++				return {
++					success: false,
++					message: enableResult.message || `Failed to add host '${hostName}' to ignore rules`
++				};
++			}
++		}
++		return {
++			success: true,
++			message: null
++		};
++	}
++
++	public static enableByHostnameList(hostnameList: string[]): {
++		success: boolean,
++		message: string
++	} {
++		if (!hostnameList || !hostnameList.length)
++			return {
++				success: false,
++				message: api.i18n.getMessage("settingsEnableByDomainInvalid")
++			};
++
++		let smartProfile = ProfileOperations.getActiveSmartProfile();
++		if (smartProfile == null)
++			// TODO: this message is a temporary workaround, an UI is needed for popup in Add to Ignore List
++			return {
++				success: false,
++				message: 'Please select a profile first.'
++			};
++
++		if (!smartProfile.profileTypeConfig.editable ||
++			!ProfileOperations.profileTypeSupportsRules(smartProfile.profileType)) {
++			return {
++				success: false,
++				message: api.i18n.getMessage("settingsEnableByDomainSmartProfileNonEditable").replace("{0}", smartProfile.profileName),
++			};
++		}
++
++		for (let hostName of hostnameList) {
++			let enableResult = SettingsOperation.enableByHostnameInternal(smartProfile, hostName);
++			if (enableResult && !enableResult.success) {
++				return {
++					success: false,
++					message: enableResult.message || `Failed to add host '${hostName}' to rules`
++				};
++			}
++		}
++		return {
++			success: true,
++			message: null
++		};
++	}
++
++	public static enableByHostname(hostname: string): {
++		success: boolean,
++		message: string,
++		rule: ProxyRule
++	} {
++		let smartProfile = ProfileOperations.getActiveSmartProfile();
++		if (smartProfile == null)
++			return;
++
++		if (!smartProfile.profileTypeConfig.editable ||
++			!ProfileOperations.profileTypeSupportsRules(smartProfile.profileType)) {
++			return {
++				success: false,
++				message: api.i18n.getMessage("settingsEnableByDomainSmartProfileNonEditable").replace("{0}", smartProfile.profileName),
++				rule: null
++			};
++		}
++
++		return SettingsOperation.enableByHostnameInternal(smartProfile, hostname);
++	}
++
++	public static changeProxyForRule(ruleId: number, proxyServerId: string): {
++		success: boolean,
++		message: string,
++		rule: ProxyRule
++	} {
++		let smartProfile = ProfileOperations.getActiveSmartProfile();
++		if (smartProfile == null) {
++			return {
++				success: false,
++				message: "No active profile found",
++				rule: null
++			};
++		}
++
++		if (!smartProfile.profileTypeConfig.editable ||
++			!ProfileOperations.profileTypeSupportsRules(smartProfile.profileType)) {
++			return {
++				success: false,
++				message: api.i18n.getMessage("settingsEnableByDomainSmartProfileNonEditable").replace("{0}", smartProfile.profileName),
++				rule: null
++			};
++		}
++
++		// Find the rule by ID
++		let rule = SettingsOperation.getRuleById(smartProfile, ruleId);
++		if (rule == null) {
++			return {
++				success: false,
++				message: "Rule not found",
++				rule: null
++			};
++		}
++
++		// Validate proxy server ID and get proxy server object
++		let proxyServer: ProxyServer = null;
++		if (proxyServerId === ProxyRuleSpecialProxyServer.DefaultGeneral || 
++			proxyServerId === ProxyRuleSpecialProxyServer.ProfileProxy) {
++			// Special proxy server IDs - proxy should be null
++			proxyServer = null;
++		} else {
++			// Check if it's a valid proxy server
++			proxyServer = SettingsOperation.findProxyServerById(proxyServerId);
++			if (proxyServer == null) {
++				return {
++					success: false,
++					message: "Invalid proxy server ID",
++					rule: null
++				};
++			}
++		}
++
++		// Update both proxy server ID and proxy object
++		rule.proxyServerId = proxyServerId;
++		rule.proxy = proxyServer;
++
++		return {
++			success: true,
++			message: null,
++			rule: rule
++		};
++	}
++
++	public static enableByHostnameInternal(smartProfile: SmartProfile, hostname: string): {
++		success: boolean,
++		message: string,
++		rule: ProxyRule
++	} {
++		// current url should be valid
++		if (!Utils.isNotInternalHostName(hostname))
++			// The selected domain is not valid
++			return {
++				success: false,
++				message: api.i18n.getMessage("settingsEnableByDomainInvalid"),
++				rule: null
++			};
++
++		// the domain should be the source
++		let rule = SettingsOperation.getRuleByHostname(smartProfile, hostname);
++
++		if (rule != null) {
++			if (!rule.enabled) {
++				rule.enabled = true;
++				return {
++					success: true,
++					message: null,
++					rule: rule
++				};
++			}
++
++			// Rule for the domain already exists
++			return {
++				success: true,
++				message: api.i18n.getMessage("settingsEnableByDomainExists"),
++				rule: rule
++			};
++		}
++
++		rule = SettingsOperation.addRuleByHostname(smartProfile, hostname);
++
++		return {
++			success: true,
++			message: null,
++			rule: rule
++		};
++	}
++
++	public static getRuleById(smartProfile: SmartProfile, ruleId: number) {
++		return smartProfile.proxyRules.find(rule => rule.ruleId == ruleId);
++	}
++
++	public static getRuleByHostname(smartProfile: SmartProfile, hostName: string) {
++		return smartProfile.proxyRules.find(rule => rule.hostName == hostName);
++	}
++
++	public static toggleRuleByHostname(smartProfile: SmartProfile, hostName: string) {
++
++		// the domain should be the source
++		let rule = SettingsOperation.getRuleByHostname(smartProfile, hostName);
++
++		if (rule == null) {
++			if (!Utils.isNotInternalHostName(hostName))
++				// this is an extra check!
++				return;
++
++			SettingsOperation.addRuleByHostname(smartProfile, hostName);
++		} else {
++			SettingsOperation.toggleExistingRule(smartProfile, rule);
++		}
++	}
++
++	public static toggleExistingRule(smartProfile: SmartProfile, rule: ProxyRule) {
++		if (rule.enabled) {
++			if (Settings.current?.options?.deleteRuleWhenDisabledFromPopup) {
++				SettingsOperation.removeRule(smartProfile, rule);
++			} else {
++				rule.enabled = false;
++			}
++		} else {
++			rule.enabled = true;
++		}
++	}
++
++	public static addRuleByHostname(smartProfile: SmartProfile, hostname: string): ProxyRule {
++
++		let rule = new ProxyRule();
++		rule.ruleType = ProxyRuleType.DomainSubdomain;
++		rule.ruleSearch = hostname;
++		rule.autoGeneratePattern = true;
++		rule.hostName = hostname;
++		rule.enabled = true;
++		rule.proxy = null;
++
++		if (smartProfile.profileTypeConfig.defaultRuleActionIsWhitelist == true)
++			// NOTE: in AlwaysEnabled mode the default rule type is Whitelist
++			rule.whiteList = true;
++
++		// add and save it
++		SettingsOperation.addRule(smartProfile, rule);
++
++		return rule;
++	}
++
++	public static addRule(smartProfile: SmartProfile, rule: ProxyRule) {
++
++		do {
++			// making sure the ruleId is unique
++			var isDuplicateRuleId = smartProfile.proxyRules.some(r => r.ruleId == rule.ruleId);
++
++			if (isDuplicateRuleId)
++				rule.ruleId = Utils.getNewUniqueIdNumber();
++		} while (isDuplicateRuleId);
++
++		smartProfile.proxyRules.push(rule);
++	}
++
++	public static removeRule(smartProfile: SmartProfile, rule: ProxyRule) {
++		let itemIndex = smartProfile.proxyRules.indexOf(rule);
++		if (itemIndex > -1) {
++			smartProfile.proxyRules.splice(itemIndex, 1);
++		}
++	}
++
++	public static compileRules(profile: SmartProfileBase, proxyRules: ProxyRule[], publish?: (compiled: CompiledProxyRule, bypass: boolean) => void): {
++		compiledList: CompiledProxyRule[],
++		compiledWhiteList: CompiledProxyRule[]
++	} {
++		if (!proxyRules)
++			return;
++
++		let compiledList: CompiledProxyRule[] = [];
++		let compiledWhiteList: CompiledProxyRule[] = [];
++
++		for (let i = 0; i < proxyRules.length; i++) {
++			const rule = proxyRules[i];
++
++			if (!rule.enabled)
++				continue;
++
++			let newCompiled = new CompiledProxyRule();
++
++			newCompiled.ruleId = rule.ruleId;
++			newCompiled.whiteList = rule.whiteList;
++			newCompiled.noProxyPerOrigin = rule.noProxyPerOrigin;
++			newCompiled.hostName = rule.hostName;
++			newCompiled.proxy = rule.proxy;
++			if (rule.proxyServerId == ProxyRuleSpecialProxyServer.DefaultGeneral) {
++				newCompiled.proxy = null;
++			} else if (rule.proxyServerId == ProxyRuleSpecialProxyServer.ProfileProxy) {
++				if (profile.profileProxyServerId) {
++					// the proxy is derived from profile
++					let profileProxy = SettingsOperation.findProxyServerById(profile.profileProxyServerId);
++					if (profileProxy) {
++						newCompiled.proxy = profileProxy;
++					}
++				}
++			}
++
++			newCompiled.compiledRuleSource = CompiledProxyRuleSource.Rules;
++
++			switch (rule.ruleType) {
++				case ProxyRuleType.Exact:
++					newCompiled.search = rule.ruleExact.toLowerCase();
++					newCompiled.compiledRuleType = CompiledProxyRuleType.Exact;
++					break;
++
++				case ProxyRuleType.DomainSubdomain:
++					newCompiled.search = rule.ruleSearch.toLowerCase();
++					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchDomainSubdomain;
++					break;
++
++				case ProxyRuleType.MatchPatternHost:
++					{
++						let regex = Utils.matchPatternToRegExp(rule.rulePattern, false, true);
++						if (regex == null)
++							continue;
++						newCompiled.regex = regex;
++						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexHost;
++					}
++					break;
++
++				case ProxyRuleType.MatchPatternUrl:
++					{
++						let regex = Utils.matchPatternToRegExp(rule.rulePattern, true, false);
++						if (regex == null)
++							continue;
++						newCompiled.regex = regex;
++						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexUrl;
++					}
++					break;
++
++				case ProxyRuleType.RegexHost:
++					{
++						// This simple construction is good enough. TODO: This ^(?:)$ is not needed?
++						newCompiled.regex = new RegExp(rule.ruleRegex, "i");
++						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexHost;
++					}
++					break;
++
++				case ProxyRuleType.RegexUrl:
++					{
++						// This simple construction is good enough. TODO: This ^(?:)$ is not needed?
++						newCompiled.regex = new RegExp(rule.ruleRegex);
++						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexUrl;
++					}
++					break;
++
++				case ProxyRuleType.DomainExact:
++					newCompiled.search = rule.ruleSearch.toLowerCase();
++					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchDomain;
++					break;
++
++				case ProxyRuleType.DomainAndPath:
++					newCompiled.search = rule.ruleSearch.toLowerCase();
++					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchDomainAndPath;
++					break;
++
++				case ProxyRuleType.DomainSubdomainAndPath:
++					newCompiled.search = rule.ruleSearch.toLowerCase();
++					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchDomainSubdomainAndPath;
++					break;
++
++				case ProxyRuleType.SearchUrl:
++					newCompiled.search = rule.ruleSearch.toLowerCase();
++					newCompiled.compiledRuleType = CompiledProxyRuleType.SearchUrl;
++					break;
++
++				case ProxyRuleType.IpCidrNotation:
++					{
++						let regex = Utils.ipCidrNotationToRegExp(rule.ruleSearch, rule.rulePattern);
++						if (regex == null) {
++							Debug.warn(`Failed to compile CIDR rule ${rule.ruleSearch}/${rule.rulePattern} to regex`, rule);
++							continue;
++						}
++						newCompiled.regex = regex;
++						newCompiled.compiledRuleType = CompiledProxyRuleType.RegexHost;
++					}
++					break;
++
++				default:
++					continue;
++			}
++			if (publish) {
++				publish(newCompiled, !!rule.whiteList);
++			} else if (rule.whiteList) {
++				compiledWhiteList.push(newCompiled);
++			}
++			else
++				compiledList.push(newCompiled);
++		}
++
++		return {
++			compiledList,
++			compiledWhiteList
++		};
++	}
++
++	public static compileRulesSubscription(rules: SubscriptionProxyRule[], markAsWhitelisted: boolean = null, publish?: (compiled: CompiledProxyRule) => void): CompiledProxyRule[] {
++		if (!rules)
++			return [];
++
++		let compiledList: CompiledProxyRule[] = [];
++		for (const rule of rules) {
++
++			let newCompiled = new CompiledProxyRule();
++			newCompiled.search = rule.search;
++			newCompiled.compiledRuleSource = CompiledProxyRuleSource.Subscriptions;
++
++			if (markAsWhitelisted === true)
++				newCompiled.whiteList = true;
++
++			newCompiled.compiledRuleType = rule.importedRuleType;
++
++			switch (rule.importedRuleType) {
++				case CompiledProxyRuleType.RegexHost:
++					newCompiled.regex = new RegExp(rule.regex, "i");
++					break;
++
++				case CompiledProxyRuleType.RegexUrl:
++					newCompiled.regex = new RegExp(rule.regex);
++					break;
++
++				case CompiledProxyRuleType.Exact:
++				case CompiledProxyRuleType.SearchUrl:
++				case CompiledProxyRuleType.SearchDomain:
++				case CompiledProxyRuleType.SearchDomainSubdomain:
++				case CompiledProxyRuleType.SearchDomainAndPath:
++				case CompiledProxyRuleType.SearchDomainSubdomainAndPath:
++					break;
++
++				default:
++					Debug.error('compileRulesSubscription: Invalid importedRuleType of ' + rule.importedRuleType);
++					continue;
++			}
++			if (publish) publish(newCompiled);
++			else compiledList.push(newCompiled);
++		}
++
++		return compiledList;
++	}
++
++	public static findMatchedDomainListInRulesInfo(domainList: string[], compiledRules: CompiledProxyRulesInfo): {
++		compiledRule: CompiledProxyRule,
++		matchedRuleSource: CompiledProxyRulesMatchedSource
++	}[] {
++		let result = [];
++		for (const domain of domainList) {
++
++			let matchResult = SettingsOperation.findMatchedDomainInRulesInfo(domain, compiledRules);
++			result.push(matchResult);
++		}
++
++		return result;
++	}
++
++	public static findMatchedDomainInRulesInfo(searchDomain: string, compiledRules: CompiledProxyRulesInfo): {
++		compiledRule: CompiledProxyRule,
++		matchedRuleSource: CompiledProxyRulesMatchedSource
++	} | null {
++		let url = searchDomain.toLowerCase();
++		if (!url.includes(":/"))
++			url = "http://" + url;
++
++		return SettingsOperation.findMatchedUrlInRulesInfo(url, compiledRules);
++	}
++
++	public static findMatchedUrlInRulesInfo(searchUrl: string, compiledRules: CompiledProxyRulesInfo): {
++		compiledRule: CompiledProxyRule,
++		matchedRuleSource: CompiledProxyRulesMatchedSource
++	} | null {
++		// user whitelist rules (skip proxy)
++		let userWhitelistMatchedRule = SettingsOperation.findMatchedUrlInRules(searchUrl, compiledRules.WhitelistRules)
++		if (userWhitelistMatchedRule) {
++			return {
++				compiledRule: userWhitelistMatchedRule,
++				matchedRuleSource: CompiledProxyRulesMatchedSource.WhitelistRules
++			};
++		}
++
++		// user proxy rules (apply proxy)
++		let userMatchedRule = SettingsOperation.findMatchedUrlInRules(searchUrl, compiledRules.Rules);
++		if (userMatchedRule) {
++			return {
++				compiledRule: userMatchedRule,
++				matchedRuleSource: CompiledProxyRulesMatchedSource.Rules
++			};
++		}
++
++		// subscription whitelist rules (skip proxy)
++		let subWhitelistMatchedRule = SettingsOperation.findMatchedUrlInRules(searchUrl, compiledRules.WhitelistSubscriptionRules)
++		if (subWhitelistMatchedRule) {
++			return {
++				compiledRule: subWhitelistMatchedRule,
++				matchedRuleSource: CompiledProxyRulesMatchedSource.WhitelistSubscriptionRules
++			};
++		}
++
++		// subscription proxy rules (apply proxy)
++		let subMatchedRule = SettingsOperation.findMatchedUrlInRules(searchUrl, compiledRules.SubscriptionRules);
++		if (subMatchedRule) {
++			return {
++				compiledRule: subMatchedRule,
++				matchedRuleSource: CompiledProxyRulesMatchedSource.SubscriptionRules
++			};
++		}
++
++		return null;
++	}
++
++	public static findMatchedDomainRule(searchDomain: string, rules: CompiledProxyRule[]): CompiledProxyRule | null {
++		let url = searchDomain.toLowerCase();
++		if (!url.includes(":/"))
++			url = "http://" + url;
++
++		return SettingsOperation.findMatchedUrlInRules(url, rules);
++	}
++
++	public static findMatchedUrlInRules(searchUrl: string, rules: CompiledProxyRule[]): CompiledProxyRule | null {
++		if (rules == null || rules.length == 0)
++			return null;
++
++		let domainHostLowerCase: string;
++		let schemaLessUrlLowerCase: string;
++		let lowerCaseUrl = searchUrl.toLowerCase();
++
++		try {
++			for (let rule of rules) {
++
++				switch (rule.compiledRuleType) {
++					case CompiledProxyRuleType.SearchDomainSubdomain:
++
++						if (domainHostLowerCase == null) {
++							domainHostLowerCase = Utils.extractHostNameFromUrl(lowerCaseUrl);
++							if (domainHostLowerCase == null) {
++								continue;
++							}
++						}
++						// domain
++						if (domainHostLowerCase == rule.search)
++							return rule;
++
++						// subdomains
++						if (domainHostLowerCase.endsWith('.' + rule.search))
++							return rule;
++
++						break;
++
++					case CompiledProxyRuleType.SearchDomainSubdomainAndPath:
++
++						if (schemaLessUrlLowerCase == null) {
++							schemaLessUrlLowerCase = Utils.removeSchemaFromUrl(lowerCaseUrl);
++							if (schemaLessUrlLowerCase == null) {
++								continue;
++							}
++						}
++						if (schemaLessUrlLowerCase.startsWith(rule.search))
++							return rule;
++
++						let ruleSearchHost = Utils.extractHostNameFromInvalidUrl(rule.search);
++						if (ruleSearchHost != null) {
++
++							if (domainHostLowerCase == null) {
++								domainHostLowerCase = Utils.extractHostNameFromUrl(lowerCaseUrl);
++								if (domainHostLowerCase == null) {
++									continue;
++								}
++							}
++
++							// should be the same
++							if (ruleSearchHost != domainHostLowerCase && !domainHostLowerCase.endsWith('.' + ruleSearchHost))
++								continue;
++
++							// after this state, we are sure that the url is for the same domain, now just checking the path
++						}
++
++						// subdomains
++						if (schemaLessUrlLowerCase.includes('.' + rule.search))
++							return rule;
++						break;
++
++					case CompiledProxyRuleType.SearchDomainAndPath:
++
++						if (schemaLessUrlLowerCase == null) {
++							schemaLessUrlLowerCase = Utils.removeSchemaFromUrl(lowerCaseUrl);
++							if (schemaLessUrlLowerCase == null) {
++								continue;
++							}
++						}
++						if (schemaLessUrlLowerCase.startsWith(rule.search))
++							return rule;
++
++						break;
++
++					case CompiledProxyRuleType.SearchUrl:
++
++						if (lowerCaseUrl.startsWith(rule.search))
++							return rule;
++						break;
++
++					case CompiledProxyRuleType.RegexUrl:
++						// Using original url with case sensitivity
++						if (rule.regex.test(searchUrl))
++							return rule;
++						break;
++
++					case CompiledProxyRuleType.RegexHost:
++
++						if (domainHostLowerCase == null) {
++							domainHostLowerCase = Utils.extractHostNameFromUrl(lowerCaseUrl);
++							if (domainHostLowerCase == null) {
++								continue;
++							}
++						}
++
++						if (regexHostMatches(rule, domainHostLowerCase))
++							return rule;
++						break;
++
++					case CompiledProxyRuleType.SearchDomain:
++
++						if (domainHostLowerCase == null) {
++							domainHostLowerCase = Utils.extractHostNameFromUrl(lowerCaseUrl);
++							if (domainHostLowerCase == null) {
++								continue;
++							}
++						}
++						if (rule.search == domainHostLowerCase)
++							return rule;
++						break;
++
++					case CompiledProxyRuleType.Exact:
++
++						if (lowerCaseUrl == rule.search)
++							return rule;
++						break;
++				}
++			}
++
++			// if we have reached here no rule matched, but we might have a rule with domain and port
++			// if we had a rule with domain, we need to check for port as well
++			if (domainHostLowerCase != null) {
++				let domainHostWithPort = Utils.extractHostFromUrl(lowerCaseUrl);
++
++				if (domainHostWithPort != domainHostLowerCase) {
++
++					// host has port part, doing a recheck
++					domainHostLowerCase = domainHostWithPort;
++
++					for (let rule of rules) {
++
++						// NOTE: Only rules that work on hostName should be checked, others can be ignored
++						switch (rule.compiledRuleType) {
++
++							case CompiledProxyRuleType.SearchDomainSubdomain:
++
++								// domain
++								if (domainHostLowerCase == rule.search)
++									return rule;
++
++								// subdomains
++								if (domainHostLowerCase.endsWith('.' + rule.search))
++									return rule;
++
++								break;
++
++							case CompiledProxyRuleType.SearchDomainSubdomainAndPath:
++
++								if (schemaLessUrlLowerCase == null) {
++									schemaLessUrlLowerCase = Utils.removeSchemaFromUrl(lowerCaseUrl);
++									if (schemaLessUrlLowerCase == null) {
++										continue;
++									}
++								}
++								if (schemaLessUrlLowerCase.startsWith(rule.search))
++									return rule;
++
++								let ruleSearchHost = Utils.extractHostFromInvalidUrl(rule.search);
++								if (ruleSearchHost != null) {
++									// should be the same
++									if (ruleSearchHost != domainHostLowerCase && !domainHostLowerCase.endsWith('.' + ruleSearchHost))
++										continue;
++
++									// after this state, we are sure that the url is for the same domain, now just checking the path
++								}
++
++								// subdomains
++								if (schemaLessUrlLowerCase.includes('.' + rule.search))
++									return rule;
++								break;
++
++							case CompiledProxyRuleType.RegexHost:
++
++								if (regexHostMatches(rule, domainHostLowerCase))
++									return rule;
++								break;
++
++							case CompiledProxyRuleType.SearchDomain:
++
++								if (rule.search == domainHostLowerCase)
++									return rule;
++								break;
++
++							case CompiledProxyRuleType.Exact:
++							case CompiledProxyRuleType.RegexUrl:
++							case CompiledProxyRuleType.SearchUrl:
++							case CompiledProxyRuleType.SearchDomainAndPath:
++								break;
++						}
++					}
++				}
++			}
++		} catch (e) {
++			Debug.warn(`findMatchForUrl failed for ${searchUrl}`, e);
++		}
++		return null;
++	}
++
++	public static validateRule(rule: ProxyRule): {
++		success: boolean, exist?: boolean, message?: string,
++		result?: any
++	} {
++		if (rule.hostName) {
++			if (!Utils.isNotInternalHostName(rule.hostName)) {
++				// 'source' is not valid '${rule.source}
++				return { success: false, message: api.i18n.getMessage("settingsRuleSourceInvalidFormat").replace("{0}", rule.hostName) };
++			}
++		}
++
++		if (!rule.rule)
++			// Rule doesn't have pattern defined
++			return { success: false, message: api.i18n.getMessage("settingsRulePatternIsEmpty") };
++
++		if (rule["enabled"] == null)
++			rule.enabled = true;
++
++		return { success: true };
++	}
++
++	public static serverSubscriptionTimers: SubscriptionTimerType[] = [{ timerId: null, subscriptionId: null, refreshRate: null }];
++
++	public static rulesSubscriptionTimers: SubscriptionTimerType[] = [{ timerId: null, subscriptionId: null, refreshRate: null }];
++
++	public static async reloadEmptyServerSubscriptions() {
++		/// Read subscriptions that are enabled but have no proxy
++		/// This method is async to prevent unnecessary blocking
++
++		for (let subscription of Settings.current.proxyServerSubscriptions) {
++			if (!subscription.enabled)
++				continue;
++
++			// ignore if already have proxies
++			if (subscription.proxies != null && subscription.proxies.length)
++				continue;
++
++			SettingsOperation.readServerSubscription(subscription.name);
++		}
++	}
++
++	public static setServerSubscriptionsRefreshTimers() {
++		// -------------------------
++		// Proxy Server Subscriptions
++		let serverExistingNames: string[] = [];
++		for (let subscription of Settings.current.proxyServerSubscriptions) {
++			DiagDebug?.trace("updateServerSubscriptions", `enabled:` + subscription.enabled, 'refreshRate:' + subscription.refreshRate);
++
++			// if disabled or refresh is not requested
++			if (!subscription.enabled || !(subscription.refreshRate > 0)) {
++				let existingTimerInfo = SettingsOperation.getServerSubscriptionIdTimer(subscription.name);
++				if (existingTimerInfo?.timer) {
++					clearInterval(existingTimerInfo.timer.timerId);
++
++					// remove from array
++					SettingsOperation.serverSubscriptionTimers.splice(existingTimerInfo.index, 1);
++				}
++				continue;
++			}
++
++			// it should be active, don't remove it
++			serverExistingNames.push(subscription.name);
++
++			let shouldCreate = false;
++			let serverTimerInfo = SettingsOperation.getServerSubscriptionIdTimer(subscription.name);
++			if (serverTimerInfo == null) {
++				// should be created
++				shouldCreate = true;
++			} else {
++
++				// should be updated if rates are changed
++				if (serverTimerInfo.timer.refreshRate != subscription.refreshRate) {
++					shouldCreate = true;
++					clearInterval(serverTimerInfo.timer.timerId);
++
++					// remove from array
++					SettingsOperation.serverSubscriptionTimers.splice(serverTimerInfo.index, 1);
++				}
++			}
++
++			if (shouldCreate) {
++				let interval = subscription.refreshRate * 60 * 1000;
++				let firstFetchTimeoutMs: number;
++
++				if (subscription.stats?.lastTryIsoDate) {
++					const timeSinceLastTry = Date.now() - (new Date(subscription.stats.lastTryIsoDate)).getTime();
++
++					firstFetchTimeoutMs = Math.max(0, interval - timeSinceLastTry);
++				} else {
++					firstFetchTimeoutMs = 0;
++				}
++
++				let timerId: NodeJS.Timeout;
++
++				if (firstFetchTimeoutMs) {
++					// This is like `setInterval`, but with an offset first invocation.
++					// And `clearInterval` also works on `setTimeout` IDs.
++					timerId = setTimeout(() => {
++						SettingsOperation.readServerSubscription(subscription.name);
++
++						// Start using `setInterval` from now on.
++						const intervalId = setInterval(
++							SettingsOperation.readServerSubscription,
++							interval,
++							subscription.name
++						);
++
++						// updating the reference
++						timerObj.timerId = intervalId;
++					}, firstFetchTimeoutMs);
++				}
++				else {
++
++					timerId = setInterval(
++						SettingsOperation.readServerSubscription,
++						interval,
++						subscription.name
++					);
++				}
++
++				const timerObj = {
++					timerId: timerId,
++					subscriptionId: subscription.name,
++					refreshRate: subscription.refreshRate
++				}
++				SettingsOperation.serverSubscriptionTimers.push(timerObj);
++			}
++		}
++		// remove the remaining timers
++		let remainingTimers = SettingsOperation.serverSubscriptionTimers.filter(timer => {
++			// not used or removed. Just unregister it then remove it
++			if (serverExistingNames.indexOf(timer.subscriptionId) === -1) {
++				clearInterval(timer.timerId);
++				return false;
++			}
++
++			// it is created or updated, don't remove it
++			return true;
++		});
++		SettingsOperation.serverSubscriptionTimers = remainingTimers;
++	}
++
++	public static readServerSubscription(subscriptionName: string) {
++		Debug.log("readServerSubscription", subscriptionName);
++		if (!subscriptionName)
++			return;
++
++		let subscription = Settings.current.proxyServerSubscriptions.find(item => item.name === subscriptionName);
++		if (!subscription) {
++			// the subscription is removed.
++			//remove the timer
++			let serverTimerInfo = SettingsOperation.getServerSubscriptionIdTimer(subscriptionName);
++
++			if (!serverTimerInfo)
++				return;
++
++			clearInterval(serverTimerInfo.timer.timerId);
++			SettingsOperation.serverSubscriptionTimers.splice(serverTimerInfo.index, 1);
++			return;
++		}
++		if (!subscription.stats) {
++			subscription.stats = new SubscriptionStats();
++		}
++
++		ProxyImporter.readFromServer(subscription,
++			function (response: {
++				success: boolean,
++				message: string,
++				result: ProxyServer[]
++			}) {
++				if (!response) return;
++
++				if (response.success) {
++					let count = response.result.length;
++
++					subscription.proxies = response.result;
++					const pendingLocalSubscriptions = { proxyServerSubscriptions: Settings.current.proxyServerSubscriptions };
++					subscription.totalCount = count;
++
++					SubscriptionStats.updateStats(subscription.stats, true);
++
++					if (!Settings.current.options.syncSettings) {
++						polyFillLib.storageLocalSet(pendingLocalSubscriptions, null, (error: Error) => {
++							Debug.error(`SettingsOperation.proxyServerSubscriptions error: ${error.message}`);
++						});
++					}
++					SettingsOperation.saveAllSync(false);
++
++					// Fire-and-forget: update country codes for proxy servers
++					SettingsOperation.updateProxyServersCountryCode(subscription.proxies);
++
++				} else {
++					SubscriptionStats.updateStats(subscription.stats, false);
++					Debug.warn("Failed to read proxy server subscription: " + subscriptionName);
++				}
++			},
++			function (error: Error) {
++				SubscriptionStats.updateStats(subscription.stats, false, error);
++				Debug.warn("Failed to read proxy server subscription: " + subscriptionName, subscription, error);
++			});
++	}
++
++	public static async reloadEmptyRulesSubscriptions() {
++		/// Read subscriptions that are enabled but have no rules defined
++		/// This method is async to prevent unnecessary blocking
++
++		for (const profile of Settings.current.proxyProfiles) {
++			if (!profile.rulesSubscriptions)
++				continue;
++
++			for (const subscription of profile.rulesSubscriptions) {
++				if (!subscription.enabled)
++					continue;
++
++				// ignore if already have proxies
++				if ((subscription.proxyRules != null && subscription.proxyRules.length) ||
++					(subscription.whitelistRules != null && subscription.whitelistRules.length))
++					continue;
++
++				SettingsOperation.readRulesSubscription(subscription);
++			}
++		}
++	}
++
++	public static setRulesSubscriptionsRefreshTimers() {
++		// -------------------------
++		// Proxy Rules Subscriptions
++		let ruleExistingIds: string[] = [];
++		for (const profile of Settings.current.proxyProfiles) {
++			if (!profile.rulesSubscriptions)
++				continue;
++
++			for (const subscription of profile.rulesSubscriptions) {
++
++				// if disabled or refresh is not requested
++				if (!subscription.enabled || !(subscription.refreshRate > 0)) {
++					// remove existing timers
++					let existingTimerInfo = SettingsOperation.getRulesSubscriptionIdTimer(subscription.id);
++					if (existingTimerInfo?.timer) {
++						clearInterval(existingTimerInfo.timer.timerId);
++
++						// remove from array
++						SettingsOperation.rulesSubscriptionTimers.splice(existingTimerInfo.index, 1);
++					}
++
++					continue;
++				}
++
++				// it should be active, don't remove it
++				ruleExistingIds.push(subscription.id);
++
++				let shouldCreate = false;
++				let ruleTimerInfo = SettingsOperation.getRulesSubscriptionIdTimer(subscription.id);
++				if (ruleTimerInfo == null) {
++					// should be created
++					shouldCreate = true;
++				} else {
++
++					// should be updated if rates are changed
++					if (ruleTimerInfo.timer.refreshRate != subscription.refreshRate) {
++						shouldCreate = true;
++						clearInterval(ruleTimerInfo.timer.timerId);
++
++						// remove from array
++						SettingsOperation.rulesSubscriptionTimers.splice(ruleTimerInfo.index, 1);
++					}
++				}
++
++				if (shouldCreate) {
++					let interval = subscription.refreshRate * 60 * 1000;
++					let firstFetchTimeoutMs: number;
++
++					if (subscription.stats?.lastTryIsoDate) {
++						const timeSinceLastTry = Date.now() - (new Date(subscription.stats.lastTryIsoDate)).getTime();
++
++						firstFetchTimeoutMs = Math.max(0, interval - timeSinceLastTry);
++					} else {
++						firstFetchTimeoutMs = 0;
++					}
++
++					let timerId: NodeJS.Timeout;
++
++					if (firstFetchTimeoutMs) {
++						// This is like `setInterval`, but with an offset first invocation.
++						// And `clearInterval` also works on `setTimeout` IDs.
++						timerId = setTimeout(() => {
++							SettingsOperation.readRulesSubscription(subscription);
++
++							// Start using `setInterval` from now on.
++							const intervalId = setInterval(
++								SettingsOperation.readRulesSubscription,
++								interval,
++								subscription
++							);
++
++							// updating the reference
++							timerObj.timerId = intervalId;
++						}, firstFetchTimeoutMs);
++					}
++					else {
++
++						timerId = setInterval(
++							SettingsOperation.readRulesSubscription,
++							interval,
++							subscription
++						);
++					}
++
++					const timerObj = {
++						timerId: timerId,
++						subscriptionId: subscription.id,
++						refreshRate: subscription.refreshRate
++					}
++					SettingsOperation.rulesSubscriptionTimers.push(timerObj);
++				}
++			}
++		}
++		// remove the remaining timers
++		let remainingTimers = SettingsOperation.rulesSubscriptionTimers.filter(timer => {
++			// not used or removed. Just unregister it then remove it
++			if (ruleExistingIds.indexOf(timer.subscriptionId) === -1) {
++				clearInterval(timer.timerId);
++				return false;
++			}
++
++			// it is created or updated, don't remove it
++			return true;
++		});
++		SettingsOperation.rulesSubscriptionTimers = remainingTimers;
++	}
++
++	public static readRulesSubscription(subscription: ProxyRulesSubscription) {
++		Debug.log("readRulesSubscription", subscription.name);
++		if (!subscription || !subscription.name)
++			return;
++
++		if (!subscription) {
++			// the subscription is removed.
++			//remove the timer
++			let rulesTimerInfo = SettingsOperation.getRulesSubscriptionIdTimer(subscription.id);
++
++			if (!rulesTimerInfo)
++				return;
++
++			clearInterval(rulesTimerInfo.timer.timerId);
++			SettingsOperation.rulesSubscriptionTimers.splice(rulesTimerInfo.index, 1);
++			return;
++		}
++		if (!subscription.stats) {
++			subscription.stats = new SubscriptionStats();
++		}
++
++		RuleImporter.readFromServerAndImport(subscription,
++			(importResult: {
++				success: boolean;
++				message: string;
++				rules: {
++					whiteList: ImportedProxyRule[];
++					blackList: ImportedProxyRule[];
++				};
++			}) => {
++				if (!importResult) return;
++
++				if (importResult.success) {
++
++					subscription.proxyRules = importResult.rules.blackList;
++					const pendingLocalSubscriptions = { proxyServerSubscriptions: Settings.current.proxyServerSubscriptions };
++					subscription.whitelistRules = importResult.rules.whiteList;
++					subscription.totalCount = importResult.rules.blackList.length + importResult.rules.whiteList.length;
++
++					SubscriptionStats.updateStats(subscription.stats, true);
++
++					if (!Settings.current.options.syncSettings) {
++						polyFillLib.storageLocalSet(pendingLocalSubscriptions, null, (error: Error) => {
++							Debug.error(`SettingsOperation.proxyServerSubscriptions error: ${error.message}`);
++						});
++					}
++					SettingsOperation.saveAllSync(false);
++
++					ProxyEngine.notifyProxyRulesChanged();
++
++				} else {
++					SubscriptionStats.updateStats(subscription.stats, false);
++					Debug.warn("Failed to read proxy rules subscription: " + subscription.name);
++				}
++			},
++			function (error: Error) {
++				SubscriptionStats.updateStats(subscription.stats, false, error);
++				Debug.warn("Failed to read proxy rules subscription: " + subscription.name, subscription, error);
++			});
++	}
++
++	public static _getSubscriptionIdTimer(timers: SubscriptionTimerType[], id: string)
++		: {
++			timer: SubscriptionTimerType,
++			index: number
++		} {
++		let index = timers.findIndex(timer => timer.subscriptionId === id);
++		if (index >= 0) {
++			return {
++				timer: timers[index],
++				index: index
++			};
++		}
++		return null;
++	}
++
++	public static getServerSubscriptionIdTimer(id: string)
++		: {
++			timer: SubscriptionTimerType,
++			index: number
++		} {
++		return SettingsOperation._getSubscriptionIdTimer(SettingsOperation.serverSubscriptionTimers, id);
++	}
++
++	public static getRulesSubscriptionIdTimer(id: string)
++		: {
++			timer: SubscriptionTimerType,
++			index: number
++		} {
++		return SettingsOperation._getSubscriptionIdTimer(SettingsOperation.rulesSubscriptionTimers, id);
++	}
++
++	public static async updateProxyServerSubscriptionsCountryCode(save: boolean = true) {
++		// Update country codes for all proxy server subscriptions
++		const proxyServerSubscriptions = Settings.current.proxyServerSubscriptions;
++
++		for (const subscription of proxyServerSubscriptions) {
++			if (!subscription.enabled || !subscription.proxies || !subscription.proxies.length) {
++				continue;
++			}
++
++			// Update country codes for this subscription's proxies (don't save yet)
++			await SettingsOperation.updateProxyServersCountryCode(subscription.proxies, false);
++		}
++
++		// Save once at the end if any updates were made
++		if (save) {
++			SettingsOperation.saveProxyServerSubscriptions();
++			SettingsOperation.saveAllSync(false);
++		}
++	}
++
++	public static async updateProxyServersCountryCode(proxies: ProxyServer[], save: boolean = true) {
++		if (!proxies || !proxies.length) return;
++
++		let updated = false;
++
++		try {
++			let proxiesToUpdate: any[] = [];
++			for (const proxy of proxies) {
++				// Skip if already has country code or no host
++				if (proxy.countryCode || !proxy.host) continue;
++
++				let ipAddress = proxy.host;
++
++				// Check if host is already an IP address
++				if (!Utils.isIPRelaxed(proxy.host)) {
++					// Need to resolve hostname to IP
++					try {
++						// Use Promise wrapper for DNS resolve
++						const dnsResult = await new Promise<any>((resolve, reject) => {
++							PolyFill.dnsResolve(proxy.host, [], resolve, reject);
++						});
++
++						if (dnsResult?.addresses?.length > 0) {
++							ipAddress = dnsResult.addresses[0];
++						} else {
++							continue; // Skip if DNS resolution failed
++						}
++					} catch (dnsError) {
++						// DNS resolution not supported or failed, skip this proxy
++						continue;
++					}
++				}
++
++				// Check if IP is local/private
++				if (Utils.isLocalIP(ipAddress)) {
++					proxy.countryCode = "LOCAL";
++					updated = true;
++					continue;
++				}
++
++				proxiesToUpdate.push({
++					proxy,
++					ipAddress
++				});
++			}
++
++			if (proxiesToUpdate.length > 0) {
++				CountryCode.ensureInitialized(() => {
++					for (const item of proxiesToUpdate) {
++						// Get country code from IP
++						const countryInfo = CountryCode.getRecord(item.ipAddress);
++						if (countryInfo?.isoCode) {
++							item.proxy.countryCode = countryInfo.isoCode;
++							updated = true;
++						}
++					}
++
++					// Save if any proxy was updated
++					if (updated && save) {
++						SettingsOperation.saveProxyServerSubscriptions();
++						SettingsOperation.saveAllSync(false);
++					}
++				})
++			}
++		} catch (error) {
++			Debug.warn("Failed to update subscription servers country code", error);
++		}
++	}
+ }
+ 
+ let me = SettingsOperation;
+diff --git a/src/core/SubscriptionUpdater.ts b/src/core/SubscriptionUpdater.ts
+index 1e5237b..9270eec 100644
+--- a/src/core/SubscriptionUpdater.ts
++++ b/src/core/SubscriptionUpdater.ts
+@@ -14,497 +14,41 @@
+  * You should have received a copy of the GNU General Public License
+  * along with SmartProxy.  If not, see <http://www.gnu.org/licenses/>.
+  */
+-import { Debug, DiagDebug } from "../lib/Debug";
+-import { Settings } from "./Settings";
+-import { ProxyImporter } from "../lib/ProxyImporter";
+-import { SettingsOperation } from "./SettingsOperation";
+-import { RuleImporter } from "../lib/RuleImporter";
+-import { ProxyEngine } from "./ProxyEngine";
+-import { ImportedProxyRule, ProxyRulesSubscription, ProxyServer, SubscriptionStats } from "./definitions";
+-import { Utils } from "../lib/Utils";
+-import { PolyFill } from "../lib/PolyFill";
+-import { CountryCode } from "../lib/CountryCode";
+-
+-export class SubscriptionUpdater {
+-	private static serverSubscriptionTimers: SubscriptionTimerType[] = [{ timerId: null, subscriptionId: null, refreshRate: null }];
+-	private static rulesSubscriptionTimers: SubscriptionTimerType[] = [{ timerId: null, subscriptionId: null, refreshRate: null }];
+-
+-	public static async reloadEmptyServerSubscriptions() {
+-		/// Read subscriptions that are enabled but have no proxy
+-		/// This method is async to prevent unnecessary blocking
+-
+-		for (let subscription of Settings.current.proxyServerSubscriptions) {
+-			if (!subscription.enabled)
+-				continue;
+-
+-			// ignore if already have proxies
+-			if (subscription.proxies != null && subscription.proxies.length)
+-				continue;
+-
+-			SubscriptionUpdater.readServerSubscription(subscription.name);
+-		}
+-	}
+-
+-	public static setServerSubscriptionsRefreshTimers() {
+-		// -------------------------
+-		// Proxy Server Subscriptions
+-		let serverExistingNames: string[] = [];
+-		for (let subscription of Settings.current.proxyServerSubscriptions) {
+-			DiagDebug?.trace("updateServerSubscriptions", `enabled:` + subscription.enabled, 'refreshRate:' + subscription.refreshRate);
+-
+-			// if disabled or refresh is not requested
+-			if (!subscription.enabled || !(subscription.refreshRate > 0)) {
+-				let existingTimerInfo = SubscriptionUpdater.getServerSubscriptionIdTimer(subscription.name);
+-				if (existingTimerInfo?.timer) {
+-					clearInterval(existingTimerInfo.timer.timerId);
+-
+-					// remove from array
+-					SubscriptionUpdater.serverSubscriptionTimers.splice(existingTimerInfo.index, 1);
+-				}
+-				continue;
+-			}
+-
+-			// it should be active, don't remove it
+-			serverExistingNames.push(subscription.name);
+-
+-			let shouldCreate = false;
+-			let serverTimerInfo = SubscriptionUpdater.getServerSubscriptionIdTimer(subscription.name);
+-			if (serverTimerInfo == null) {
+-				// should be created
+-				shouldCreate = true;
+-			} else {
+-
+-				// should be updated if rates are changed
+-				if (serverTimerInfo.timer.refreshRate != subscription.refreshRate) {
+-					shouldCreate = true;
+-					clearInterval(serverTimerInfo.timer.timerId);
+-
+-					// remove from array
+-					SubscriptionUpdater.serverSubscriptionTimers.splice(serverTimerInfo.index, 1);
+-				}
+-			}
+-
+-			if (shouldCreate) {
+-				let interval = subscription.refreshRate * 60 * 1000;
+-				let firstFetchTimeoutMs: number;
+-
+-				if (subscription.stats?.lastTryIsoDate) {
+-					const timeSinceLastTry = Date.now() - (new Date(subscription.stats.lastTryIsoDate)).getTime();
+-
+-					firstFetchTimeoutMs = Math.max(0, interval - timeSinceLastTry);
+-				} else {
+-					firstFetchTimeoutMs = 0;
+-				}
+-
+-				let timerId: NodeJS.Timeout;
+-
+-				if (firstFetchTimeoutMs) {
+-					// This is like `setInterval`, but with an offset first invocation.
+-					// And `clearInterval` also works on `setTimeout` IDs.
+-					timerId = setTimeout(() => {
+-						SubscriptionUpdater.readServerSubscription(subscription.name);
+-
+-						// Start using `setInterval` from now on.
+-						const intervalId = setInterval(
+-							SubscriptionUpdater.readServerSubscription,
+-							interval,
+-							subscription.name
+-						);
+ 
+-						// updating the reference
+-						timerObj.timerId = intervalId;
+-					}, firstFetchTimeoutMs);
+-				}
+-				else {
+ 
+-					timerId = setInterval(
+-						SubscriptionUpdater.readServerSubscription,
+-						interval,
+-						subscription.name
+-					);
+-				}
+ 
+-				const timerObj = {
+-					timerId: timerId,
+-					subscriptionId: subscription.name,
+-					refreshRate: subscription.refreshRate
+-				}
+-				SubscriptionUpdater.serverSubscriptionTimers.push(timerObj);
+-			}
+-		}
+-		// remove the remaining timers
+-		let remainingTimers = SubscriptionUpdater.serverSubscriptionTimers.filter(timer => {
+-			// not used or removed. Just unregister it then remove it
+-			if (serverExistingNames.indexOf(timer.subscriptionId) === -1) {
+-				clearInterval(timer.timerId);
+-				return false;
+-			}
+-
+-			// it is created or updated, don't remove it
+-			return true;
+-		});
+-		SubscriptionUpdater.serverSubscriptionTimers = remainingTimers;
+-	}
+-
+-	private static readServerSubscription(subscriptionName: string) {
+-		Debug.log("readServerSubscription", subscriptionName);
+-		if (!subscriptionName)
+-			return;
+-
+-		let subscription = Settings.current.proxyServerSubscriptions.find(item => item.name === subscriptionName);
+-		if (!subscription) {
+-			// the subscription is removed.
+-			//remove the timer
+-			let serverTimerInfo = SubscriptionUpdater.getServerSubscriptionIdTimer(subscriptionName);
+-
+-			if (!serverTimerInfo)
+-				return;
+-
+-			clearInterval(serverTimerInfo.timer.timerId);
+-			SubscriptionUpdater.serverSubscriptionTimers.splice(serverTimerInfo.index, 1);
+-			return;
+-		}
+-		if (!subscription.stats) {
+-			subscription.stats = new SubscriptionStats();
+-		}
+-
+-		ProxyImporter.readFromServer(subscription,
+-			function (response: {
+-				success: boolean,
+-				message: string,
+-				result: ProxyServer[]
+-			}) {
+-				if (!response) return;
+-
+-				if (response.success) {
+-					let count = response.result.length;
+-
+-					subscription.proxies = response.result;
+-					subscription.totalCount = count;
+-
+-					SubscriptionStats.updateStats(subscription.stats, true);
+-
+-					SettingsOperation.saveProxyServerSubscriptions();
+-					SettingsOperation.saveAllSync(false);
+-
+-					// Fire-and-forget: update country codes for proxy servers
+-					SubscriptionUpdater.updateProxyServersCountryCode(subscription.proxies);
+-
+-				} else {
+-					SubscriptionStats.updateStats(subscription.stats, false);
+-					Debug.warn("Failed to read proxy server subscription: " + subscriptionName);
+-				}
+-			},
+-			function (error: Error) {
+-				SubscriptionStats.updateStats(subscription.stats, false, error);
+-				Debug.warn("Failed to read proxy server subscription: " + subscriptionName, subscription, error);
+-			});
+-	}
+-
+-	public static async reloadEmptyRulesSubscriptions() {
+-		/// Read subscriptions that are enabled but have no rules defined
+-		/// This method is async to prevent unnecessary blocking
+-
+-		for (const profile of Settings.current.proxyProfiles) {
+-			if (!profile.rulesSubscriptions)
+-				continue;
+-
+-			for (const subscription of profile.rulesSubscriptions) {
+-				if (!subscription.enabled)
+-					continue;
+-
+-				// ignore if already have proxies
+-				if ((subscription.proxyRules != null && subscription.proxyRules.length) ||
+-					(subscription.whitelistRules != null && subscription.whitelistRules.length))
+-					continue;
+-
+-				SubscriptionUpdater.readRulesSubscription(subscription);
+-			}
+-		}
+-	}
+-
+-	public static setRulesSubscriptionsRefreshTimers() {
+-		// -------------------------
+-		// Proxy Rules Subscriptions
+-		let ruleExistingIds: string[] = [];
+-		for (const profile of Settings.current.proxyProfiles) {
+-			if (!profile.rulesSubscriptions)
+-				continue;
+-
+-			for (const subscription of profile.rulesSubscriptions) {
+-
+-				// if disabled or refresh is not requested
+-				if (!subscription.enabled || !(subscription.refreshRate > 0)) {
+-					// remove existing timers
+-					let existingTimerInfo = SubscriptionUpdater.getRulesSubscriptionIdTimer(subscription.id);
+-					if (existingTimerInfo?.timer) {
+-						clearInterval(existingTimerInfo.timer.timerId);
+-
+-						// remove from array
+-						SubscriptionUpdater.rulesSubscriptionTimers.splice(existingTimerInfo.index, 1);
+-					}
+-
+-					continue;
+-				}
+-
+-				// it should be active, don't remove it
+-				ruleExistingIds.push(subscription.id);
+-
+-				let shouldCreate = false;
+-				let ruleTimerInfo = SubscriptionUpdater.getRulesSubscriptionIdTimer(subscription.id);
+-				if (ruleTimerInfo == null) {
+-					// should be created
+-					shouldCreate = true;
+-				} else {
+-
+-					// should be updated if rates are changed
+-					if (ruleTimerInfo.timer.refreshRate != subscription.refreshRate) {
+-						shouldCreate = true;
+-						clearInterval(ruleTimerInfo.timer.timerId);
+-
+-						// remove from array
+-						SubscriptionUpdater.rulesSubscriptionTimers.splice(ruleTimerInfo.index, 1);
+-					}
+-				}
+-
+-				if (shouldCreate) {
+-					let interval = subscription.refreshRate * 60 * 1000;
+-					let firstFetchTimeoutMs: number;
+-
+-					if (subscription.stats?.lastTryIsoDate) {
+-						const timeSinceLastTry = Date.now() - (new Date(subscription.stats.lastTryIsoDate)).getTime();
+-
+-						firstFetchTimeoutMs = Math.max(0, interval - timeSinceLastTry);
+-					} else {
+-						firstFetchTimeoutMs = 0;
+-					}
+-
+-					let timerId: NodeJS.Timeout;
+-
+-					if (firstFetchTimeoutMs) {
+-						// This is like `setInterval`, but with an offset first invocation.
+-						// And `clearInterval` also works on `setTimeout` IDs.
+-						timerId = setTimeout(() => {
+-							SubscriptionUpdater.readRulesSubscription(subscription);
+-
+-							// Start using `setInterval` from now on.
+-							const intervalId = setInterval(
+-								SubscriptionUpdater.readRulesSubscription,
+-								interval,
+-								subscription
+-							);
+-
+-							// updating the reference
+-							timerObj.timerId = intervalId;
+-						}, firstFetchTimeoutMs);
+-					}
+-					else {
+-
+-						timerId = setInterval(
+-							SubscriptionUpdater.readRulesSubscription,
+-							interval,
+-							subscription
+-						);
+-					}
+-
+-					const timerObj = {
+-						timerId: timerId,
+-						subscriptionId: subscription.id,
+-						refreshRate: subscription.refreshRate
+-					}
+-					SubscriptionUpdater.rulesSubscriptionTimers.push(timerObj);
+-				}
+-			}
+-		}
+-		// remove the remaining timers
+-		let remainingTimers = SubscriptionUpdater.rulesSubscriptionTimers.filter(timer => {
+-			// not used or removed. Just unregister it then remove it
+-			if (ruleExistingIds.indexOf(timer.subscriptionId) === -1) {
+-				clearInterval(timer.timerId);
+-				return false;
+-			}
+-
+-			// it is created or updated, don't remove it
+-			return true;
+-		});
+-		SubscriptionUpdater.rulesSubscriptionTimers = remainingTimers;
+-	}
+-
+-	private static readRulesSubscription(subscription: ProxyRulesSubscription) {
+-		Debug.log("readRulesSubscription", subscription.name);
+-		if (!subscription || !subscription.name)
+-			return;
+-
+-		if (!subscription) {
+-			// the subscription is removed.
+-			//remove the timer
+-			let rulesTimerInfo = SubscriptionUpdater.getRulesSubscriptionIdTimer(subscription.id);
+-
+-			if (!rulesTimerInfo)
+-				return;
+-
+-			clearInterval(rulesTimerInfo.timer.timerId);
+-			SubscriptionUpdater.rulesSubscriptionTimers.splice(rulesTimerInfo.index, 1);
+-			return;
+-		}
+-		if (!subscription.stats) {
+-			subscription.stats = new SubscriptionStats();
+-		}
+-
+-		RuleImporter.readFromServerAndImport(subscription,
+-			(importResult: {
+-				success: boolean;
+-				message: string;
+-				rules: {
+-					whiteList: ImportedProxyRule[];
+-					blackList: ImportedProxyRule[];
+-				};
+-			}) => {
+-				if (!importResult) return;
++import { SettingsOperation } from "./SettingsOperation";
+ 
+-				if (importResult.success) {
+ 
+-					subscription.proxyRules = importResult.rules.blackList;
+-					subscription.whitelistRules = importResult.rules.whiteList;
+-					subscription.totalCount = importResult.rules.blackList.length + importResult.rules.whiteList.length;
++import { ProxyServer } from "./definitions";
+ 
+-					SubscriptionStats.updateStats(subscription.stats, true);
+ 
+-					SettingsOperation.saveProxyServerSubscriptions();
+-					SettingsOperation.saveAllSync(false);
+ 
+-					ProxyEngine.notifyProxyRulesChanged();
+ 
+-				} else {
+-					SubscriptionStats.updateStats(subscription.stats, false);
+-					Debug.warn("Failed to read proxy rules subscription: " + subscription.name);
+-				}
+-			},
+-			function (error: Error) {
+-				SubscriptionStats.updateStats(subscription.stats, false, error);
+-				Debug.warn("Failed to read proxy rules subscription: " + subscription.name, subscription, error);
+-			});
++export class SubscriptionUpdater {
++	public static async reloadEmptyServerSubscriptions(){
++		return SettingsOperation.reloadEmptyServerSubscriptions();
+ 	}
+ 
+-	private static _getSubscriptionIdTimer(timers: SubscriptionTimerType[], id: string)
+-		: {
+-			timer: SubscriptionTimerType,
+-			index: number
+-		} {
+-		let index = timers.findIndex(timer => timer.subscriptionId === id);
+-		if (index >= 0) {
+-			return {
+-				timer: timers[index],
+-				index: index
+-			};
+-		}
+-		return null;
++	public static setServerSubscriptionsRefreshTimers(){
++		return SettingsOperation.setServerSubscriptionsRefreshTimers();
+ 	}
+ 
+-	private static getServerSubscriptionIdTimer(id: string)
+-		: {
+-			timer: SubscriptionTimerType,
+-			index: number
+-		} {
+-		return SubscriptionUpdater._getSubscriptionIdTimer(SubscriptionUpdater.serverSubscriptionTimers, id);
++	public static async reloadEmptyRulesSubscriptions(){
++		return SettingsOperation.reloadEmptyRulesSubscriptions();
+ 	}
+ 
+-	private static getRulesSubscriptionIdTimer(id: string)
+-		: {
+-			timer: SubscriptionTimerType,
+-			index: number
+-		} {
+-		return SubscriptionUpdater._getSubscriptionIdTimer(SubscriptionUpdater.rulesSubscriptionTimers, id);
++	public static setRulesSubscriptionsRefreshTimers(){
++		return SettingsOperation.setRulesSubscriptionsRefreshTimers();
+ 	}
+ 
+-	public static async updateProxyServerSubscriptionsCountryCode(save: boolean = true) {
+-		// Update country codes for all proxy server subscriptions
+-		const proxyServerSubscriptions = Settings.current.proxyServerSubscriptions;
+-
+-		for (const subscription of proxyServerSubscriptions) {
+-			if (!subscription.enabled || !subscription.proxies || !subscription.proxies.length) {
+-				continue;
+-			}
+-
+-			// Update country codes for this subscription's proxies (don't save yet)
+-			await SubscriptionUpdater.updateProxyServersCountryCode(subscription.proxies, false);
+-		}
+-
+-		// Save once at the end if any updates were made
+-		if (save) {
+-			SettingsOperation.saveProxyServerSubscriptions();
+-			SettingsOperation.saveAllSync(false);
+-		}
++	public static async updateProxyServerSubscriptionsCountryCode(save: boolean = true){
++		return SettingsOperation.updateProxyServerSubscriptionsCountryCode(save);
+ 	}
+ 
+-	public static async updateProxyServersCountryCode(proxies: ProxyServer[], save: boolean = true) {
+-		if (!proxies || !proxies.length) return;
+-
+-		let updated = false;
+-
+-		try {
+-			let proxiesToUpdate: any[] = [];
+-			for (const proxy of proxies) {
+-				// Skip if already has country code or no host
+-				if (proxy.countryCode || !proxy.host) continue;
+-
+-				let ipAddress = proxy.host;
+-
+-				// Check if host is already an IP address
+-				if (!Utils.isIPRelaxed(proxy.host)) {
+-					// Need to resolve hostname to IP
+-					try {
+-						// Use Promise wrapper for DNS resolve
+-						const dnsResult = await new Promise<any>((resolve, reject) => {
+-							PolyFill.dnsResolve(proxy.host, [], resolve, reject);
+-						});
+-
+-						if (dnsResult?.addresses?.length > 0) {
+-							ipAddress = dnsResult.addresses[0];
+-						} else {
+-							continue; // Skip if DNS resolution failed
+-						}
+-					} catch (dnsError) {
+-						// DNS resolution not supported or failed, skip this proxy
+-						continue;
+-					}
+-				}
+-
+-				// Check if IP is local/private
+-				if (Utils.isLocalIP(ipAddress)) {
+-					proxy.countryCode = "LOCAL";
+-					updated = true;
+-					continue;
+-				}
+-
+-				proxiesToUpdate.push({
+-					proxy,
+-					ipAddress
+-				});
+-			}
+-
+-			if (proxiesToUpdate.length > 0) {
+-				CountryCode.ensureInitialized(() => {
+-					for (const item of proxiesToUpdate) {
+-						// Get country code from IP
+-						const countryInfo = CountryCode.getRecord(item.ipAddress);
+-						if (countryInfo?.isoCode) {
+-							item.proxy.countryCode = countryInfo.isoCode;
+-							updated = true;
+-						}
+-					}
+-
+-					// Save if any proxy was updated
+-					if (updated && save) {
+-						SettingsOperation.saveProxyServerSubscriptions();
+-						SettingsOperation.saveAllSync(false);
+-					}
+-				})
+-			}
+-		} catch (error) {
+-			Debug.warn("Failed to update subscription servers country code", error);
+-		}
++	public static async updateProxyServersCountryCode(proxies: ProxyServer[], save: boolean = true){
++		return SettingsOperation.updateProxyServersCountryCode(proxies, save);
+ 	}
+ }
+ 
+-type SubscriptionTimerType = { timerId: NodeJS.Timeout, subscriptionId: string, refreshRate: number };
+\ No newline at end of file
++

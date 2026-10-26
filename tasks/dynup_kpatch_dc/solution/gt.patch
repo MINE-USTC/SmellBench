@@ -1,0 +1,672 @@
+diff --git a/kpatch-build/create-diff-object.c b/kpatch-build/create-diff-object.c
+index 6967e34..3d01e71 100644
+--- a/kpatch-build/create-diff-object.c
++++ b/kpatch-build/create-diff-object.c
+@@ -2493,9 +2493,7 @@ static bool jump_table_group_filter(struct lookup_table *lookup,
+ {
+ 	struct rela *code = NULL, *key = NULL, *rela;
+ 	bool tracepoint = false, dynamic_debug = false;
++	struct lookup_result symbol;
+-	char *symbol_objname, *symbol_size;
+-	unsigned long symbol_addr, symbol_sympos;
+-	bool symbol_global, symbol_exported;
+ 	int i = 0;
+ 
+ 	/*
+@@ -2556,9 +2554,8 @@ static bool jump_table_group_filter(struct lookup_table *lookup,
+ 	 * module's jump label init.
+ 	 */
+ 
++	if (lookup_symbol(lookup, key->sym, &symbol) &&
++	    strcmp(symbol.objname, "vmlinux")) {
+-	if (lookup_symbol_fields(lookup, key->sym, &symbol_objname, &symbol_addr, &symbol_size,
+-			&symbol_sympos, &symbol_global, &symbol_exported) &&
+-	    strcmp(symbol_objname, "vmlinux")) {
+ 
+ 		/* The static key lives in a module -- not supported */
+ 
+@@ -2597,9 +2594,7 @@ static bool static_call_sites_group_filter(struct lookup_table *lookup,
+ {
+ 	struct rela *code = NULL, *key = NULL, *rela;
+ 	bool tracepoint = false;
++	struct lookup_result symbol;
+-	char *symbol_objname, *symbol_size;
+-	unsigned long symbol_addr, symbol_sympos;
+-	bool symbol_global, symbol_exported;
+ 	int i = 0;
+ 
+ 	/*
+@@ -2630,9 +2625,8 @@ static bool static_call_sites_group_filter(struct lookup_table *lookup,
+ 	 * jump_table_group_filter).
+ 	 */
+ 
++	if (lookup_symbol(lookup, key->sym, &symbol) &&
++	    strcmp(symbol.objname, "vmlinux")) {
+-	if (lookup_symbol_fields(lookup, key->sym, &symbol_objname, &symbol_addr, &symbol_size,
+-			&symbol_sympos, &symbol_global, &symbol_exported) &&
+-	    strcmp(symbol_objname, "vmlinux")) {
+ 
+ 		/* The key lives in a module -- not supported */
+ 
+@@ -3452,9 +3446,7 @@ static void kpatch_create_patches_sections(struct kpatch_elf *kelf,
+ 	struct section *sec, *relasec;
+ 	struct symbol *sym, *strsym;
+ 	struct rela *rela;
++	struct lookup_result symbol;
+-	char *symbol_objname, *symbol_size;
+-	unsigned long symbol_addr, symbol_sympos;
+-	bool symbol_global, symbol_exported;
+ 	struct kpatch_patch_func *funcs;
+ 
+ 	/* count patched functions */
+@@ -3486,16 +3478,15 @@ static void kpatch_create_patches_sections(struct kpatch_elf *kelf,
+ 		    sym->parent)
+ 			continue;
+ 
++		if (!lookup_symbol(table, sym, &symbol))
+-		if (!lookup_symbol_fields(table, sym, &symbol_objname, &symbol_addr, &symbol_size,
+-			&symbol_sympos, &symbol_global, &symbol_exported))
+ 			ERROR("can't find symbol '%s' in symbol table", sym->name);
+ 
++		if (sym->bind == STB_LOCAL && symbol.global)
+-		if (sym->bind == STB_LOCAL && symbol_global)
+ 			ERROR("can't find local symbol '%s' in symbol table", sym->name);
+ 
+ 		log_debug("lookup for %s: obj=%s sympos=%lu size=%lu",
++			  sym->name, symbol.objname, symbol.sympos,
++			  symbol.size);
+-			  sym->name, symbol_objname, symbol_sympos,
+-			  symbol_size ? strtoul(symbol_size, NULL, 0) : 0);
+ 
+ 		/*
+ 		 * Convert global symbols to local so other objects in the
+@@ -3508,10 +3499,10 @@ static void kpatch_create_patches_sections(struct kpatch_elf *kelf,
+ 				   GELF_ST_INFO(sym->bind, sym->type);
+ 
+ 		/* add entry in text section */
++		funcs[index].old_addr = symbol.addr;
++		funcs[index].old_size = symbol.size;
+-		funcs[index].old_addr = symbol_addr;
+-		funcs[index].old_size = symbol_size ? strtoul(symbol_size, NULL, 0) : 0;
+ 		funcs[index].new_size = sym->sym.st_size;
++		funcs[index].sympos = symbol.sympos;
+-		funcs[index].sympos = symbol_sympos;
+ 
+ 		/*
+ 		 * Add a relocation that will populate the
+@@ -3597,9 +3588,7 @@ static int function_ptr_rela(const struct rela *rela, struct kpatch_elf *kelf)
+ static bool need_klp_reloc(struct kpatch_elf *kelf, struct lookup_table *table,
+ 			   struct section *relasec, const struct rela *rela)
+ {
++	struct lookup_result symbol;
+-	char *symbol_objname, *symbol_size;
+-	unsigned long symbol_addr, symbol_sympos;
+-	bool symbol_global, symbol_exported;
+ 
+ 	if (is_debug_section(relasec))
+ 		return false;
+@@ -3686,8 +3675,7 @@ static bool need_klp_reloc(struct kpatch_elf *kelf, struct lookup_table *table,
+ 			!strchr(toc_rela(rela)->sym->name, '.');
+ 	}
+ 
++	if (!lookup_symbol(table, rela->sym, &symbol)) {
+-	if (!lookup_symbol_fields(table, rela->sym, &symbol_objname, &symbol_addr, &symbol_size,
+-			&symbol_sympos, &symbol_global, &symbol_exported)) {
+ 		/*
+ 		 * Assume the symbol lives in another .o in the patch module.
+ 		 * A normal rela should work.
+@@ -3697,7 +3685,7 @@ static bool need_klp_reloc(struct kpatch_elf *kelf, struct lookup_table *table,
+ 
+ 	if (rela->sym->bind == STB_LOCAL) {
+ 
++		if (symbol.global)
+-		if (symbol_global)
+ 			ERROR("can't find local symbol '%s' in symbol table",
+ 			      rela->sym->name);
+ 
+@@ -3709,7 +3697,7 @@ static bool need_klp_reloc(struct kpatch_elf *kelf, struct lookup_table *table,
+ 		return true;
+ 	}
+ 
++	if (symbol.exported) {
+-	if (symbol_exported) {
+ 
+ 		if (is_gcc6_localentry_bundled_sym(kelf, rela->sym)) {
+ 			/*
+@@ -3723,7 +3711,7 @@ static bool need_klp_reloc(struct kpatch_elf *kelf, struct lookup_table *table,
+ 			return true;
+ 		}
+ 
++		if (!strcmp(symbol.objname, "vmlinux")) {
+-		if (!strcmp(symbol_objname, "vmlinux")) {
+ 			/*
+ 			 * The symbol is exported by vmlinux.  Use a normal
+ 			 * rela.
+@@ -3741,7 +3729,7 @@ static bool need_klp_reloc(struct kpatch_elf *kelf, struct lookup_table *table,
+ 		return true;
+ 	}
+ 
++	if (symbol.global) {
+-	if (symbol_global) {
+ 		/*
+ 		 * The symbol is global in the to-be-patched object, but not
+ 		 * exported.  Use a klp relocation to work around the fact that
+@@ -3784,9 +3772,7 @@ static void kpatch_create_intermediate_sections(struct kpatch_elf *kelf,
+ 	struct symbol *strsym, *ksym_sec_sym;
+ 	struct kpatch_symbol *ksyms;
+ 	struct kpatch_relocation *krelas;
++	struct lookup_result symbol;
+-	char *symbol_objname, *symbol_size;
+-	unsigned long symbol_addr, symbol_sympos;
+-	bool symbol_global, symbol_exported;
+ 	bool special;
+ 	bool vmlinux = !strcmp(objname, "vmlinux");
+ 	struct special_section *s;
+@@ -3882,22 +3868,21 @@ static void kpatch_create_intermediate_sections(struct kpatch_elf *kelf,
+ 				ERROR("unsupported klp relocation reference to symbol '%s' in module-specific special section '%s'",
+ 				      rela->sym->name, relasec->base->name);
+ 
++			if (!lookup_symbol(table, rela->sym, &symbol))
+-			if (!lookup_symbol_fields(table, rela->sym, &symbol_objname, &symbol_addr, &symbol_size,
+-			&symbol_sympos, &symbol_global, &symbol_exported))
+ 				ERROR("can't find symbol '%s' in symbol table",
+ 				      rela->sym->name);
+ 
+ 			log_debug("lookup for %s: obj=%s sympos=%lu",
++			          rela->sym->name, symbol.objname,
++				  symbol.sympos);
+-			          rela->sym->name, symbol_objname,
+-				  symbol_sympos);
+ 
+ 			/* Fill in ksyms[index] */
+ 			if (vmlinux)
++				ksyms[index].src = symbol.addr;
+-				ksyms[index].src = symbol_addr;
+ 			else
+ 				/* for modules, src is discovered at runtime */
+ 				ksyms[index].src = 0;
++			ksyms[index].sympos = symbol.sympos;
+-			ksyms[index].sympos = symbol_sympos;
+ 			ksyms[index].type = rela->sym->type;
+ 			ksyms[index].bind = rela->sym->bind;
+ 
+@@ -3913,7 +3898,7 @@ static void kpatch_create_intermediate_sections(struct kpatch_elf *kelf,
+ 			ALLOC_LINK(rela2, &ksym_sec->rela->relas);
+ 			rela2->sym = strsym;
+ 			rela2->type = absolute_rela_type(kelf);
++			rela2->addend = offset_of_string(&kelf->strings, symbol.objname);
+-			rela2->addend = offset_of_string(&kelf->strings, symbol_objname);
+ 			rela2->offset = (unsigned int)(index * sizeof(*ksyms) + \
+ 					offsetof(struct kpatch_symbol, objname));
+ 
+@@ -3923,7 +3908,7 @@ static void kpatch_create_intermediate_sections(struct kpatch_elf *kelf,
+ 				rela->addend -= rela->sym->sym.st_value;
+ 			krelas[index].addend = rela->addend;
+ 			krelas[index].type = rela->type;
++			krelas[index].external = !vmlinux && symbol.exported;
+-			krelas[index].external = !vmlinux && symbol_exported;
+ 
+ 			/* add rela to fill in krelas[index].dest field */
+ 			ALLOC_LINK(rela2, &krela_sec->rela->relas);
+diff --git a/kpatch-build/lookup.c b/kpatch-build/lookup.c
+index ae93d60..ca84bf2 100644
+--- a/kpatch-build/lookup.c
++++ b/kpatch-build/lookup.c
+@@ -41,17 +41,21 @@
+ #include "log.h"
+ 
+ struct object_symbol {
++	unsigned long addr;
++	unsigned long size;
+ 	char *name;
++	int type, bind;
++};
++
++struct export_symbol {
++	char *name;
++	char *objname;
+ };
+ 
+ struct lookup_table {
+ 	int obj_nr, exp_nr;
+ 	struct object_symbol *obj_syms;
++	struct export_symbol *exp_syms;
+-	unsigned long *obj_addrs;
+-	char **obj_sizes;
+-	int *obj_types, *obj_binds;
+-	char **exp_names;
+-	char **exp_objects;
+ 	char *objname;
+ };
+ 
+@@ -61,8 +65,8 @@ struct lookup_table {
+ #define for_each_obj_symbol_continue(ndx, iter, table) \
+ 	for (iter = table->obj_syms + ndx; ndx < table->obj_nr; ndx++, iter++)
+ 
++#define for_each_exp_symbol(ndx, iter, table) \
++	for (ndx = 0, iter = table->exp_syms; ndx < table->exp_nr; ndx++, iter++)
+-#define for_each_exp_symbol(ndx, table) \
+-	for (ndx = 0; ndx < table->exp_nr; ndx++)
+ 
+ static bool maybe_discarded_sym(const char *name)
+ {
+@@ -100,11 +104,11 @@ static bool locals_match(struct lookup_table *table, int idx,
+ 
+ 	i = idx + 1;
+ 	for_each_obj_symbol_continue(i, table_sym, table) {
++		if (table_sym->type == STT_FILE)
+-		if (table->obj_types[i] == STT_FILE)
+ 			break;
++		if (table_sym->bind != STB_LOCAL)
+-		if (table->obj_binds[i] != STB_LOCAL)
+ 			continue;
++		if (table_sym->type != STT_FUNC && table_sym->type != STT_OBJECT)
+-		if (table->obj_types[i] != STT_FUNC && table->obj_types[i] != STT_OBJECT)
+ 			continue;
+ 
+ 		found = 0;
+@@ -115,7 +119,7 @@ static bool locals_match(struct lookup_table *table, int idx,
+ 			if (sym->bind != STB_LOCAL)
+ 				continue;
+ 
++			if (sym->type == table_sym->type &&
+-			if (sym->type == table->obj_types[i] &&
+ 			    !strcmp(sym->name, table_sym->name)) {
+ 				found = 1;
+ 				break;
+@@ -144,14 +148,14 @@ static bool locals_match(struct lookup_table *table, int idx,
+ 		found = 0;
+ 		i = idx + 1;
+ 		for_each_obj_symbol_continue(i, table_sym, table) {
++			if (table_sym->type == STT_FILE)
+-			if (table->obj_types[i] == STT_FILE)
+ 				break;
++			if (table_sym->bind != STB_LOCAL)
+-			if (table->obj_binds[i] != STB_LOCAL)
+ 				continue;
+ 			if (maybe_discarded_sym(table_sym->name))
+ 				continue;
+ 
++			if (sym->type == table_sym->type &&
+-			if (sym->type == table->obj_types[i] &&
+ 			    !strcmp(sym->name, table_sym->name)) {
+ 				found = 1;
+ 				break;
+@@ -192,7 +196,7 @@ static void find_local_syms(struct lookup_table *table, struct symbol *file_sym,
+ 	int i;
+ 
+ 	for_each_obj_symbol(i, sym, table) {
++		if (sym->type != STT_FILE)
+-		if (table->obj_types[i] != STT_FILE)
+ 			continue;
+ 		if (strcmp(file_sym->name, sym->name))
+ 			continue;
+@@ -244,6 +248,28 @@ static void find_local_syms_multiple(struct lookup_table *table,
+ 	}
+ }
+ 
++/* Strip the path and replace '-' with '_' */
++static char *make_modname(char *modname)
++{
++	char *cur, *name;
++
++	if (!modname)
++		return NULL;
++
++	name = strdup(basename(modname));
++	if (!name)
++		ERROR("strdup");
++
++	cur = name; /* use cur as tmp */
++	while (*cur != '\0') {
++		if (*cur == '-')
++			*cur = '_';
++		cur++;
++	}
++
++	return name;
++}
++
+ static void symtab_read(struct lookup_table *table, char *path)
+ {
+ 	FILE *file;
+@@ -267,13 +293,6 @@ static void symtab_read(struct lookup_table *table, char *path)
+ 	if (!table->obj_syms)
+ 		ERROR("malloc table.obj_syms");
+ 	memset(table->obj_syms, 0, alloc_nr * sizeof(*table->obj_syms));
+-	table->obj_addrs = calloc((size_t)alloc_nr, sizeof(*table->obj_addrs));
+-	table->obj_sizes = calloc((size_t)alloc_nr, sizeof(*table->obj_sizes));
+-	table->obj_types = calloc((size_t)alloc_nr, sizeof(*table->obj_types));
+-	table->obj_binds = calloc((size_t)alloc_nr, sizeof(*table->obj_binds));
+-	if (!table->obj_addrs || !table->obj_sizes ||
+-	    !table->obj_types || !table->obj_binds)
+-		ERROR("malloc object metadata");
+ 
+ 	rewind(file);
+ 
+@@ -310,29 +329,27 @@ static void symtab_read(struct lookup_table *table, char *path)
+ 		    !strcmp(type, "SECTION"))
+ 			continue;
+ 
++		table->obj_syms[i].addr = addr;
++		table->obj_syms[i].size = strtoul(size, NULL, 0);
+-		table->obj_addrs[i] = addr;
+-		table->obj_sizes[i] = strdup(size);
+-		if (!table->obj_sizes[i])
+-			ERROR("strdup");
+ 
+ 		if (!strcmp(bind, "LOCAL")) {
++			table->obj_syms[i].bind = STB_LOCAL;
+-			table->obj_binds[i] = STB_LOCAL;
+ 		} else if (!strcmp(bind, "GLOBAL")) {
++			table->obj_syms[i].bind = STB_GLOBAL;
+-			table->obj_binds[i] = STB_GLOBAL;
+ 		} else if (!strcmp(bind, "WEAK")) {
++			table->obj_syms[i].bind = STB_WEAK;
+-			table->obj_binds[i] = STB_WEAK;
+ 		} else {
+ 			ERROR("unknown symbol bind %s", bind);
+ 		}
+ 
+ 		if (!strcmp(type, "NOTYPE")) {
++			table->obj_syms[i].type = STT_NOTYPE;
+-			table->obj_types[i] = STT_NOTYPE;
+ 		} else if (!strcmp(type, "OBJECT")) {
++			table->obj_syms[i].type = STT_OBJECT;
+-			table->obj_types[i] = STT_OBJECT;
+ 		} else if (!strcmp(type, "FUNC")) {
++			table->obj_syms[i].type = STT_FUNC;
+-			table->obj_types[i] = STT_FUNC;
+ 		} else if (!strcmp(type, "FILE")) {
++			table->obj_syms[i].type = STT_FILE;
+-			table->obj_types[i] = STT_FILE;
+ 		} else {
+ 			ERROR("unknown symbol type %s", type);
+ 		}
+@@ -388,10 +405,11 @@ static void symvers_read(struct lookup_table *table, char *path)
+ 	if (table->exp_nr && !mod_column)
+ 		ERROR("Module.symvers: invalid format");
+ 
++	table->exp_syms = malloc(table->exp_nr * sizeof(*table->exp_syms));
++	if (!table->exp_syms)
++		ERROR("malloc table.exp_syms");
++	memset(table->exp_syms, 0,
++	       table->exp_nr * sizeof(*table->exp_syms));
+-	table->exp_names = calloc((size_t)table->exp_nr, sizeof(*table->exp_names));
+-	table->exp_objects = calloc((size_t)table->exp_nr, sizeof(*table->exp_objects));
+-	if (!table->exp_names || !table->exp_objects)
+-		ERROR("malloc export table");
+ 
+ 	rewind(file);
+ 	for (i = 0; fgets(line, 4096, file); i++) {
+@@ -412,24 +430,10 @@ static void symvers_read(struct lookup_table *table, char *path)
+ 		if (!symname)
+ 			perror("strdup");
+ 
++		objname = make_modname(mod);
+-		objname = strdup(basename(mod));
+-		if (!objname)
+-			ERROR("strdup");
+ 
++		table->exp_syms[i].name = symname;
++		table->exp_syms[i].objname = objname;
+-		table->exp_names[i] = symname;
+-		table->exp_objects[i] = objname;
+-	}
+-
+-	for (i = 0; i < table->exp_nr; i++) {
+-		char *cur = table->exp_objects[i];
+-
+-		if (!cur)
+-			continue;
+-		while (*cur) {
+-			if (*cur == '-')
+-				*cur = '_';
+-			cur++;
+-		}
+ 	}
+ 
+ 	fclose(file);
+@@ -458,41 +462,30 @@ void lookup_close(struct lookup_table *table)
+ {
+ 	int i;
+ 	struct object_symbol *obj_sym;
++	struct export_symbol *exp_sym;
+ 
++	for_each_obj_symbol(i, obj_sym, table)
+-	for_each_obj_symbol(i, obj_sym, table) {
+ 		free(obj_sym->name);
+-		free(table->obj_sizes[i]);
+-	}
+ 	free(table->obj_syms);
++
++	for_each_exp_symbol(i, exp_sym, table) {
++		free(exp_sym->name);
++		free(exp_sym->objname);
+-	free(table->obj_addrs);
+-	free(table->obj_sizes);
+-	free(table->obj_types);
+-	free(table->obj_binds);
+-
+-	for_each_exp_symbol(i, table) {
+-		free(table->exp_names[i]);
+-		free(table->exp_objects[i]);
+ 	}
++	free(table->exp_syms);
+-	free(table->exp_names);
+-	free(table->exp_objects);
+ 	free(table);
+ }
+ 
+ static bool lookup_local_symbol(struct lookup_table *table,
+ 				struct symbol *lookup_sym,
++				struct lookup_result *result)
+-				char **objname, unsigned long *addr,
+-		char **size, unsigned long *sympos,
+-		bool *global, bool *exported)
+ {
+ 	struct object_symbol *sym;
++	unsigned long sympos = 0;
+-	unsigned long position = 0;
+ 	int i, in_file = 0;
+ 	bool found = false;
+ 
++	memset(result, 0, sizeof(*result));
+-	*objname = NULL;
+-	*addr = *sympos = 0;
+-	*size = NULL;
+-	*global = *exported = false;
+ 	for_each_obj_symbol(i, sym, table) {
+ 		if (lookup_sym->lookup_table_file_sym == sym) {
+ 			in_file = 1;
+@@ -502,18 +495,20 @@ static bool lookup_local_symbol(struct lookup_table *table,
+ 		if (!in_file)
+ 			continue;
+ 
++		if (sym->type == STT_FILE)
+-		if (table->obj_types[i] == STT_FILE)
+ 			break;
+ 
++		if (sym->bind == STB_LOCAL && !strcmp(sym->name,
+-		if (table->obj_binds[i] == STB_LOCAL && !strcmp(sym->name,
+ 					lookup_sym->name)) {
+ 			if (found)
+ 				ERROR("duplicate local symbol found for %s",
+ 						lookup_sym->name);
+ 
++			result->objname		= table->objname;
++			result->addr		= sym->addr;
++			result->size		= sym->size;
++			result->global		= false;
++			result->exported	= false;
+-			(*objname)		= table->objname;
+-			(*addr)		= table->obj_addrs[i];
+-			(*size)		= table->obj_sizes[i];
+ 			found = true;
+ 		}
+ 	}
+@@ -527,113 +522,84 @@ static bool lookup_local_symbol(struct lookup_table *table,
+ 	 * calcuate the actual sympos.
+ 	 */
+ 	for_each_obj_symbol(i, sym, table) {
++		if (sym->bind == STB_LOCAL &&
+-		if (table->obj_binds[i] == STB_LOCAL &&
+ 		    !strcmp(sym->name, lookup_sym->name) &&
++		    sym->addr <= result->addr)
++			sympos++;
+-		    table->obj_addrs[i] <= (*addr))
+-			position++;
+ 	}
++	result->sympos = sympos;
+-	(*sympos) = position;
+ 	return true;
+ }
+ 
+ static bool lookup_exported_symbol(struct lookup_table *table, char *name,
++				   struct lookup_result *result)
+-				   char **objname, unsigned long *addr,
+-		char **size, unsigned long *sympos,
+-		bool *global, bool *exported)
+ {
++	struct export_symbol *sym;
+ 	int i;
+ 
++	if (result)
++		memset(result, 0, sizeof(*result));
+-	if (objname) {
+-		*objname = NULL;
+-		*addr = *sympos = 0;
+-	*size = NULL;
+-		*global = *exported = false;
+-	}
+ 
++	for_each_exp_symbol(i, sym, table) {
++		if (!strcmp(sym->name, name)) {
+-	for_each_exp_symbol(i, table) {
+-		if (!strcmp(table->exp_names[i], name)) {
+ 
++			if (!result)
+-			if (!objname)
+ 				return true;
+ 
++			if (result->objname)
+-			if ((*objname))
+ 				ERROR("duplicate exported symbol found for %s", name);
+ 
++			result->objname		= sym->objname;
++			result->addr		= 0; /* determined at runtime */
++			result->size		= 0; /* not used for exported symbols */
++			result->sympos		= 0; /* always 0 for exported symbols */
++			result->global		= true;
++			result->exported	= true;
+-			(*objname)		= table->exp_objects[i];
+-			(*addr)		= 0; /* determined at runtime */
+-			(*size)		= NULL; /* not used for exported symbols */
+-			(*sympos)		= 0; /* always 0 for exported symbols */
+-			(*global)		= true;
+-			(*exported)	= true;
+ 		}
+ 	}
+ 
++	return result && result->objname;
+-	return objname && *objname;
+ }
+ 
+ bool is_exported(struct lookup_table *table, char *name)
+ {
++	return lookup_exported_symbol(table, name, NULL);
+-	return lookup_exported_symbol(table, name, NULL, NULL, NULL, NULL, NULL, NULL);
+ }
+ 
+ static bool lookup_global_symbol(struct lookup_table *table, char *name,
++				 struct lookup_result *result)
+-				 char **objname, unsigned long *addr,
+-		char **size, unsigned long *sympos,
+-		bool *global, bool *exported)
+ {
+ 	struct object_symbol *sym;
+ 	int i;
+ 
++	memset(result, 0, sizeof(*result));
+-	*objname = NULL;
+-	*addr = *sympos = 0;
+-	*size = NULL;
+-	*global = *exported = false;
+ 	for_each_obj_symbol(i, sym, table) {
++		if ((sym->bind == STB_GLOBAL || sym->bind == STB_WEAK) &&
+-		if ((table->obj_binds[i] == STB_GLOBAL || table->obj_binds[i] == STB_WEAK) &&
+ 		    !strcmp(sym->name, name)) {
+ 
++			if (result->objname)
+-			if ((*objname))
+ 				ERROR("duplicate global symbol found for %s", name);
+ 
++			result->objname		= table->objname;
++			result->addr		= sym->addr;
++			result->size		= sym->size;
++			result->sympos		= 0; /* always 0 for global symbols */
++			result->global		= true;
++			result->exported	= is_exported(table, name);
+-			(*objname)		= table->objname;
+-			(*addr)		= table->obj_addrs[i];
+-			(*size)		= table->obj_sizes[i];
+-			(*exported) = is_exported(table, name);
+ 		}
+ 	}
+ 
++	return !!result->objname;
+-	return !!(*objname);
+ }
+ 
++bool lookup_symbol(struct lookup_table *table, struct symbol *sym,
++		   struct lookup_result *result)
+-bool lookup_symbol_fields(struct lookup_table *table, struct symbol *sym,
+-		   char **objname, unsigned long *addr,
+-		char **size, unsigned long *sympos,
+-		bool *global, bool *exported)
+ {
++	if (lookup_local_symbol(table, sym, result))
+-	if (lookup_local_symbol(table, sym, objname, addr, size, sympos, global, exported)) {
+-		*global = false;
+-		*exported = false;
+ 		return true;
+-	}
+ 
++	if (lookup_global_symbol(table, sym->name, result))
+-	if (lookup_global_symbol(table, sym->name, objname, addr, size, sympos, global, exported)) {
+-		*sympos = 0;
+-		*global = true;
+ 		return true;
+-	}
+-
+-	return lookup_exported_symbol(table, sym->name, objname, addr, size, sympos, global, exported);
+-}
+-
+-
+-bool lookup_symbol(struct lookup_table *table, struct symbol *sym,
+-                   struct lookup_result *result)
+-{
+-	char *size;
+-	bool found;
+ 
++	return lookup_exported_symbol(table, sym->name, result);
+-	found = lookup_symbol_fields(table, sym, &result->objname, &result->addr,
+-		&size, &result->sympos, &result->global, &result->exported);
+-	result->size = size ? strtoul(size, NULL, 0) : 0;
+-	return found;
+ }
+diff --git a/kpatch-build/lookup.h b/kpatch-build/lookup.h
+index a9e4641..e1277f1 100644
+--- a/kpatch-build/lookup.h
++++ b/kpatch-build/lookup.h
+@@ -17,10 +17,6 @@ struct lookup_result {
+ struct lookup_table *lookup_open(char *symtab_path, char *objname,
+ 				 char *symvers_path, struct kpatch_elf *kelf);
+ void lookup_close(struct lookup_table *table);
+-bool lookup_symbol_fields(struct lookup_table *table, struct symbol *sym,
+-                         char **objname, unsigned long *addr,
+-                         char **size, unsigned long *sympos,
+-                         bool *global, bool *exported);
+ bool lookup_symbol(struct lookup_table *table, struct symbol *sym,
+ 		   struct lookup_result *result);
+ 

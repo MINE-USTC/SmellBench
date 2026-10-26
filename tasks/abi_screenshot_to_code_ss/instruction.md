@@ -1,0 +1,5 @@
+Refactor the backend's uploaded and extracted image asset lifecycle to reduce shotgun surgery. Shared admission, staging, publication and local-image transport rules are maintained separately in production workflows. Recover coherent ownership of those rules while preserving existing behavior and legitimate differences between consumers.
+
+The shared asset rule spans temporary uploads, promotion and direct extraction, saved-image attachments and local URL delivery. Reconcile admission, deduplication and publication decisions across these lifecycles while retaining the different commitments made by staged and durable assets.
+
+Keep supported entry points, tool results and ordering, metadata fallback, content-addressed deduplication, URL handling, rejection behavior, and image attachments compatible. Preserve the distinction between temporary uploads, committed extracted assets and preview-only images. Keep the original tests and configuration unchanged, and run the backend's original pytest suite and pyright checks. A concise shared implementation is welcome; no particular architecture is required.

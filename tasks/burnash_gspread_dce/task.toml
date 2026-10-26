@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/burnash_gspread_dce"
+version = "1.0.0"
+description = "Refactor an injected dead_code_elimination smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "dead_code_elimination", "python"]
+
+[metadata]
+repo_name = "gspread"
+repo_url = "https://github.com/burnash/gspread"
+git_commit = "7ca71eaa4658320b89f82f49620dac6891986cdd"
+language = "Python"
+smell_type = "dead_code_elimination"
+prompt_mode = "natural"
+apt_packages = []
+smell_checker_match_count = 8
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 7
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"  # baseline; agent defaults to public networking
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/burnash/gspread", CC_FORBIDDEN_REPO_URL = "gspread", CC_FORBIDDEN_REPO_NAME = "gspread" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

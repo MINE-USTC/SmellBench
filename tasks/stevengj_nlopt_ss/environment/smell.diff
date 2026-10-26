@@ -1,0 +1,1763 @@
+diff --git a/src/algs/auglag/auglag.c b/src/algs/auglag/auglag.c
+index 465e980..69169b7 100644
+--- a/src/algs/auglag/auglag.c
++++ b/src/algs/auglag/auglag.c
+@@ -5,6 +5,7 @@
+ 
+ #include "auglag.h"
+ 
++
+ int auglag_verbose = 0;
+ 
+ #define MIN(a,b) ((a) < (b) ? (a) : (b))
+@@ -35,11 +36,11 @@ static double auglag(unsigned n, const double *x, double *grad, void *data)
+ 
+      L = d->f(n, x, grad, d->f_data);
+      ++ *(d->stop->nevals_p);
+-     if (nlopt_stop_forced(d->stop)) return L;
++     if (((d->stop)->force_stop && *(d->stop)->force_stop)) return L;
+ 
+      for (ii = i = 0; i < d->p; ++i) {
+ 	  nlopt_eval_constraint(restmp, gradtmp, d->h + i, n, x);
+-	  if (nlopt_stop_forced(d->stop)) return L;
++	  if (((d->stop)->force_stop && *(d->stop)->force_stop)) return L;
+ 	  for (k = 0; k < d->h[i].m; ++k) {
+ 	       double h = restmp[k] + lambda[ii++] / rho;
+ 	       L += 0.5 * rho * h*h;
+@@ -50,7 +51,7 @@ static double auglag(unsigned n, const double *x, double *grad, void *data)
+ 
+      for (ii = i = 0; i < d->m; ++i) {
+ 	  nlopt_eval_constraint(restmp, gradtmp, d->fc + i, n, x);
+-	  if (nlopt_stop_forced(d->stop)) return L;
++	  if (((d->stop)->force_stop && *(d->stop)->force_stop)) return L;
+ 	  for (k = 0; k < d->fc[i].m; ++k) {
+ 	       double fc = restmp[k] + mu[ii++] / rho;
+ 	       if (fc > 0) {
+@@ -155,13 +156,13 @@ nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
+ 	  double con2 = 0;
+ 	  ++ *(d.stop->nevals_p);
+ 	  fcur = f(n, xcur, NULL, f_data);
+-	  if (nlopt_stop_forced(stop)) {
++	  if (((stop)->force_stop && *(stop)->force_stop)) {
+ 	       ret = NLOPT_FORCED_STOP; goto done; }
+ 	  penalty = 0;
+ 	  feasible = 1;
+ 	  for (i = 0; i < d.p; ++i) {
+ 	       nlopt_eval_constraint(d.restmp, NULL, d.h + i, n, xcur);
+-	       if (nlopt_stop_forced(stop)) {
++	       if (((stop)->force_stop && *(stop)->force_stop)) {
+ 		    ret = NLOPT_FORCED_STOP; goto done; }
+ 	       for (k = 0; k < d.h[i].m; ++k) {
+ 		    double hi = d.restmp[k];
+@@ -172,7 +173,7 @@ nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
+ 	  }
+ 	  for (i = 0; i < d.m; ++i) {
+ 	       nlopt_eval_constraint(d.restmp, NULL, d.fc + i, n, xcur);
+-	       if (nlopt_stop_forced(stop)) {
++	       if (((stop)->force_stop && *(stop)->force_stop)) {
+ 		    ret = NLOPT_FORCED_STOP; goto done; }
+ 	       for (k = 0; k < d.fc[i].m; ++k) {
+ 		    double fci = d.restmp[k];
+@@ -210,7 +211,7 @@ nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
+ 	  
+ 	  ++ *(d.stop->nevals_p);
+ 	  fcur = f(n, xcur, NULL, f_data);
+-	  if (nlopt_stop_forced(stop)) {
++	  if (((stop)->force_stop && *(stop)->force_stop)) {
+ 	       ret = NLOPT_FORCED_STOP; goto done; }
+ 	  if (auglag_verbose)
+ 	       printf("auglag: fcur = %g\n", fcur);
+@@ -220,7 +221,7 @@ nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
+ 	  feasible = 1;
+ 	  for (i = ii = 0; i < d.p; ++i) {
+ 	       nlopt_eval_constraint(d.restmp, NULL, d.h + i, n, xcur);
+-	       if (nlopt_stop_forced(stop)) {
++	       if (((stop)->force_stop && *(stop)->force_stop)) {
+ 		    ret = NLOPT_FORCED_STOP; goto done; }
+ 	       for (k = 0; k < d.h[i].m; ++k) {
+ 		    double hi = d.restmp[k];
+@@ -233,7 +234,7 @@ nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
+ 	  }
+ 	  for (i = ii = 0; i < d.m; ++i) {
+ 	       nlopt_eval_constraint(d.restmp, NULL, d.fc + i, n, xcur);
+-	       if (nlopt_stop_forced(stop)) {
++	       if (((stop)->force_stop && *(stop)->force_stop)) {
+ 		    ret = NLOPT_FORCED_STOP; goto done; }
+ 	       for (k = 0; k < d.fc[i].m; ++k) {
+ 		    double fci = d.restmp[k];
+@@ -262,25 +263,40 @@ nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
+ 	  if ((feasible && (!minf_feasible || penalty < minf_penalty
+ 			    || fcur < *minf)) || 
+ 	      (!minf_feasible && penalty < minf_penalty)) {
+-	       ret = NLOPT_SUCCESS;
+-	       if (feasible) {
+-		    if (fcur < stop->minf_max) 
+-			 ret = NLOPT_MINF_MAX_REACHED;
+-		    else if (nlopt_stop_ftol(stop, fcur, *minf)) 
+-			 ret = NLOPT_FTOL_REACHED;
+-		    else if (nlopt_stop_x(stop, xcur, x))
+-			 ret = NLOPT_XTOL_REACHED;
+-	       }
+-	       *minf = fcur;
+-	       minf_penalty = penalty;
+-	       minf_feasible = feasible;
+-	       memcpy(x, xcur, sizeof(double) * n);
++               double previous = *minf, movement = 0, magnitude = 0;
++               int absolute_step = stop->xtol_abs != NULL;
++               ret = NLOPT_SUCCESS;
++               if (feasible && fcur < stop->minf_max)
++                    ret = NLOPT_MINF_MAX_REACHED;
++               for (i = 0; i < n; ++i) {
++                    double next = xcur[i];
++                    if (feasible && ret == NLOPT_SUCCESS) {
++                         double dx = fabs(next - x[i]);
++                         movement += stop->x_weights ? stop->x_weights[i] * dx : dx;
++                         magnitude += stop->x_weights ? stop->x_weights[i] * fabs(next) : fabs(next);
++                         if (absolute_step && dx >= stop->xtol_abs[i]) absolute_step = 0;
++                    }
++                    x[i] = next;
++               }
++               *minf = fcur;
++               minf_penalty = penalty;
++               minf_feasible = feasible;
++               if (minf_feasible && ret == NLOPT_SUCCESS) {
++                    double change = fabs(*minf - previous);
++                    if (!nlopt_isinf(previous) &&
++                        (change < stop->ftol_abs ||
++                         change < stop->ftol_rel * (fabs(*minf) + fabs(previous)) * 0.5 ||
++                         (stop->ftol_rel > 0 && *minf == previous)))
++                         ret = NLOPT_FTOL_REACHED;
++                    else if (movement < stop->xtol_rel * magnitude || absolute_step)
++                         ret = NLOPT_XTOL_REACHED;
++               }
+ 	       if (ret != NLOPT_SUCCESS) break;
+ 	  }
+ 
+-	  if (nlopt_stop_forced(stop)) {ret = NLOPT_FORCED_STOP; break;}
+-	  if (nlopt_stop_evals(stop)) {ret = NLOPT_MAXEVAL_REACHED; break;}
+-          if (nlopt_stop_time(stop)) {ret = NLOPT_MAXTIME_REACHED; break;}
++	  if (((stop)->force_stop && *(stop)->force_stop)) {ret = NLOPT_FORCED_STOP; break;}
++	  if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) {ret = NLOPT_MAXEVAL_REACHED; break;}
++          if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) {ret = NLOPT_MAXTIME_REACHED; break;}
+ 
+ 	  /* TODO: use some other stopping criterion on ICM? */
+ 	  /* The paper uses ICM <= epsilon and DFM <= epsilon, where
+diff --git a/src/algs/bobyqa/bobyqa.c b/src/algs/bobyqa/bobyqa.c
+index 0290abe..0833338 100644
+--- a/src/algs/bobyqa/bobyqa.c
++++ b/src/algs/bobyqa/bobyqa.c
+@@ -593,9 +593,9 @@ L260:
+ 	    goto L340;
+ 	}
+ 
+-	if (nlopt_stop_forced(stop)) return NLOPT_FORCED_STOP;
+-	else if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+-	else if (nlopt_stop_time(stop)) return NLOPT_MAXTIME_REACHED;
++	if (((stop)->force_stop && *(stop)->force_stop)) return NLOPT_FORCED_STOP;
++	else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) return NLOPT_MAXEVAL_REACHED;
++	else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) return NLOPT_MAXTIME_REACHED;
+ 
+ 	ih = 0;
+ 	i__2 = *n;
+@@ -680,10 +680,10 @@ L260:
+ 	if (f < fval[*kopt]) {
+ 	    *kopt = kpt;
+ 	}
+-	if (nlopt_stop_forced(stop)) return NLOPT_FORCED_STOP;
++	if (((stop)->force_stop && *(stop)->force_stop)) return NLOPT_FORCED_STOP;
+ 	else if (f < stop->minf_max) return NLOPT_MINF_MAX_REACHED;
+-	else if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+-	else if (nlopt_stop_time(stop)) return NLOPT_MAXTIME_REACHED;
++	else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) return NLOPT_MAXEVAL_REACHED;
++	else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) return NLOPT_MAXTIME_REACHED;
+ 
+ 	diff = f - vquad;
+ 
+@@ -1939,10 +1939,10 @@ L50:
+ 	temp = xpt[nf + ipt * xpt_dim1] * xpt[nf + jpt * xpt_dim1];
+ 	hq[ih] = (fbeg - fval[ipt + 1] - fval[jpt + 1] + f) / temp;
+     }
+-    if (nlopt_stop_forced(stop)) return NLOPT_FORCED_STOP;
++    if (((stop)->force_stop && *(stop)->force_stop)) return NLOPT_FORCED_STOP;
+     else if (f < stop->minf_max) return NLOPT_MINF_MAX_REACHED;
+-    else if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+-    else if (nlopt_stop_time(stop)) return NLOPT_MAXTIME_REACHED;
++    else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) return NLOPT_MAXEVAL_REACHED;
++    else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) return NLOPT_MAXTIME_REACHED;
+     if (nf < *npt) {
+ 	goto L50;
+     }
+@@ -1974,6 +1974,8 @@ static nlopt_result bobyqb_(int *n, int *npt, double *x,
+     double den, one, ten, dsq, rho, sum, two, diff, half, beta, gisq;
+     int knew;
+     double temp, suma, sumb, bsum, fopt;
++    double objective_change;
++    int objective_small;
+     int kopt, nptm;
+     double zero, curv;
+     int ksav;
+@@ -2572,9 +2574,9 @@ L360:
+ /* L380: */
+     }
+ 
+-    if (nlopt_stop_forced(stop)) rc = NLOPT_FORCED_STOP;
+-    else if (nlopt_stop_evals(stop)) rc = NLOPT_MAXEVAL_REACHED;
+-    else if (nlopt_stop_time(stop)) rc = NLOPT_MAXTIME_REACHED;
++    if (((stop)->force_stop && *(stop)->force_stop)) rc = NLOPT_FORCED_STOP;
++    else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) rc = NLOPT_MAXEVAL_REACHED;
++    else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) rc = NLOPT_MAXTIME_REACHED;
+     if (rc != NLOPT_SUCCESS) goto L720;
+ 
+     ++ *(stop->nevals_p);
+@@ -2618,7 +2620,10 @@ L360:
+ 	d__1 = w[*npt + k];
+ 	vquad += half * pq[k] * (d__1 * d__1);
+     }
+-    diff = f - fopt - vquad;
++    objective_change = f - fopt;
++    objective_small = !nlopt_isinf(fopt) &&
++         fabs(objective_change) < stop->ftol_abs;
++    diff = objective_change - vquad;
+     diffc = diffb;
+     diffb = diffa;
+     diffa = fabs(diff);
+@@ -2635,7 +2640,7 @@ L360:
+ 	  rc = NLOPT_ROUNDOFF_LIMITED; /* or FTOL_REACHED? */
+ 	  goto L720;
+ 	}
+-	ratio = (f - fopt) / vquad;
++	ratio = objective_change / vquad;
+ 	if (ratio <= tenth) {
+ /* Computing MIN */
+ 	    d__1 = half * delta;
+@@ -2781,6 +2786,9 @@ L360:
+ /*     Update XOPT, GOPT and KOPT if the new calculated F is less than FOPT. */
+ 
+     if (f < fopt) {
++        if (!nlopt_isinf(fopt) &&
++            (fabs(objective_change) < stop->ftol_rel * (fabs(f) + fabs(fopt)) * 0.5 ||
++             (stop->ftol_rel > 0 && f == fopt))) objective_small = 1;
+ 	kopt = knew;
+ 	xoptsq = zero;
+ 	ih = 0;
+@@ -2815,7 +2823,7 @@ L360:
+ 		gopt[i__] += temp * xpt[k + i__ * xpt_dim1];
+ 	    }
+ 	}
+-	if (nlopt_stop_ftol(stop, f, fopt)) {
++	if (objective_small) {
+              rc = NLOPT_FTOL_REACHED;
+ 	     goto L720;
+         }
+diff --git a/src/algs/cdirect/cdirect.c b/src/algs/cdirect/cdirect.c
+index e01616d..483f9a8 100644
+--- a/src/algs/cdirect/cdirect.c
++++ b/src/algs/cdirect/cdirect.c
+@@ -73,6 +73,7 @@ typedef struct {
+      double *work; /* workspace, of length >= 2*n */
+      int *iwork; /* workspace, length >= n */
+      double minf, *xmin; /* minimum so far */
++     double iteration_f, change, scale;
+      
+      /* red-black tree of hyperrects, sorted by (d,f,age) in
+ 	lexographical order */
+@@ -136,13 +137,15 @@ static void sort_fv(int n, double *fv, int *isort)
+ static double function_eval(const double *x, params *p) {
+      double f = p->f(p->n, x, NULL, p->f_data);
+      if (f < p->minf) {
++          p->change = fabs(f - p->iteration_f);
+ 	  p->minf = f;
+ 	  memcpy(p->xmin, x, sizeof(double) * p->n);
++          p->scale = fabs(p->minf) + fabs(p->iteration_f);
+      }
+      ++ *(p->stop->nevals_p);
+      return f;
+ }
+-#define FUNCTION_EVAL(fv,x,p,freeonerr) fv = function_eval(x, p); if (nlopt_stop_forced((p)->stop)) { free(freeonerr); return NLOPT_FORCED_STOP; } else if (p->minf < p->stop->minf_max) { free(freeonerr); return NLOPT_MINF_MAX_REACHED; } else if (nlopt_stop_evals((p)->stop)) { free(freeonerr); return NLOPT_MAXEVAL_REACHED; } else if (nlopt_stop_time((p)->stop)) { free(freeonerr); return NLOPT_MAXTIME_REACHED; }
++#define FUNCTION_EVAL(fv,x,p,freeonerr) fv = function_eval(x, p); if ((((p)->stop)->force_stop && *((p)->stop)->force_stop)) { free(freeonerr); return NLOPT_FORCED_STOP; } else if (p->minf < p->stop->minf_max) { free(freeonerr); return NLOPT_MINF_MAX_REACHED; } else if ((((p)->stop)->maxeval > 0 && *((p)->stop)->nevals_p >= ((p)->stop)->maxeval)) { free(freeonerr); return NLOPT_MAXEVAL_REACHED; } else if ((((p)->stop)->maxtime > 0 && nlopt_seconds() - ((p)->stop)->start >= ((p)->stop)->maxtime)) { free(freeonerr); return NLOPT_MAXTIME_REACHED; }
+ 
+ #define THIRD (0.3333333333333333333333)
+ 
+@@ -502,7 +505,8 @@ nlopt_result cdirect_unscaled(int n, nlopt_func f, void *f_data,
+      p.f = f;
+      p.f_data = f_data;
+      p.xmin = x;
+-     p.minf = HUGE_VAL;
++     p.minf = p.iteration_f = HUGE_VAL;
++     p.change = p.scale = 0;
+      p.work = 0;
+      p.iwork = 0;
+      p.hull = 0;
+@@ -535,10 +539,15 @@ nlopt_result cdirect_unscaled(int n, nlopt_func f, void *f_data,
+      if (ret != NLOPT_SUCCESS) goto done;
+ 
+      while (1) {
+-	  double minf0 = p.minf;
++	  p.iteration_f = p.minf;
+ 	  ret = divide_good_rects(&p);
+ 	  if (ret != NLOPT_SUCCESS) goto done;
+-	  if (p.minf < minf0 && nlopt_stop_f(p.stop, p.minf, minf0)) {
++	  if (p.minf < p.iteration_f &&
++              (p.minf <= p.stop->minf_max ||
++               (!nlopt_isinf(p.iteration_f) &&
++                (p.change < p.stop->ftol_abs ||
++                 p.change < p.stop->ftol_rel * p.scale * 0.5 ||
++                 (p.stop->ftol_rel > 0 && p.minf == p.iteration_f))))) {
+ 	       ret = NLOPT_FTOL_REACHED;
+ 	       goto done;
+ 	  }
+diff --git a/src/algs/cdirect/hybrid.c b/src/algs/cdirect/hybrid.c
+index 4af08d4..a186eb3 100644
+--- a/src/algs/cdirect/hybrid.c
++++ b/src/algs/cdirect/hybrid.c
+@@ -46,6 +46,7 @@ typedef struct {
+      nlopt_stopping *stop; /* stopping criteria */
+      nlopt_func f; void *f_data;
+      double minf, *xmin; /* min so far */
++     double division_f, change, scale;
+      rb_tree rtree; /* red-black tree of rects, sorted by (d,-f,-a) */
+      int age; /* age for next new rect */
+      double *work; /* workspace of length >= 2*n */
+@@ -103,8 +104,10 @@ static nlopt_result optimize_rect(double *r, params *p)
+      r[1] = -minf;
+      if (ret > 0) {
+ 	  if (minf < p->minf) {
++               p->change = fabs(minf - p->division_f);
+ 	       p->minf = minf;
+ 	       memcpy(p->xmin, x, sizeof(double) * n);
++               p->scale = fabs(p->minf) + fabs(p->division_f);
+ 	       if (ret == NLOPT_MINF_MAX_REACHED) return ret;
+ 	  }
+ 	  return NLOPT_SUCCESS;
+@@ -139,7 +142,7 @@ static nlopt_result divide_largest(params *p)
+      int L = p->L;
+      int n = p->n;
+      rb_node *node = nlopt_rb_tree_max(&p->rtree); /* just using it as a heap */
+-     double minf_start = p->minf;
++
+      double *r = node->k, *rnew = NULL;
+      double *x = r + 3, *c = x + n, *w = c + n;
+      const double *lb = p->lb, *ub = p->ub;
+@@ -147,6 +150,8 @@ static nlopt_result divide_largest(params *p)
+      double wmax;
+      nlopt_result ret;
+ 
++     p->division_f = p->minf;
++
+      /* printf("rect:, %d, %g, %g, %g, %g\n", p->stop->nevals_p, c[0], c[1], w[0], w[1]); */
+ 
+      /* check xtol */
+@@ -220,7 +225,12 @@ static nlopt_result divide_largest(params *p)
+ 	       }
+ 	  }
+      }
+-     if (p->minf < minf_start && nlopt_stop_f(p->stop, p->minf, minf_start))
++     if (p->minf < p->division_f &&
++         (p->minf <= p->stop->minf_max ||
++          (!nlopt_isinf(p->division_f) &&
++           (p->change < p->stop->ftol_abs ||
++            p->change < p->stop->ftol_rel * p->scale * 0.5 ||
++            (p->stop->ftol_rel > 0 && p->minf == p->division_f)))))
+ 	  return NLOPT_FTOL_REACHED;
+      return NLOPT_SUCCESS;
+ }
+@@ -247,7 +257,8 @@ nlopt_result cdirect_hybrid_unscaled(int n, nlopt_func f, void *f_data,
+      p.stop = stop;
+      p.f = f;
+      p.f_data = f_data;
+-     p.minf = HUGE_VAL;
++     p.minf = p.division_f = HUGE_VAL;
++     p.change = p.scale = 0;
+      p.xmin = x;
+      p.age = 0;
+      p.work = 0;
+diff --git a/src/algs/cobyla/cobyla.c b/src/algs/cobyla/cobyla.c
+index 118a724..1c45aed 100644
+--- a/src/algs/cobyla/cobyla.c
++++ b/src/algs/cobyla/cobyla.c
+@@ -101,18 +101,18 @@ static int func_wrap(int ni, int mi, double *x, double *f, double *con,
+      nlopt_unscale(n, s->scale, xtmp, xtmp);
+ 
+      *f = s->f(n, xtmp, NULL, s->f_data);
+-     if (nlopt_stop_forced(s->stop)) return 1;
++     if (((s->stop)->force_stop && *(s->stop)->force_stop)) return 1;
+      i = 0;
+      for (j = 0; j < s->m_orig; ++j) {
+ 	  nlopt_eval_constraint(con + i, NULL, s->fc+j, n, xtmp);
+-	  if (nlopt_stop_forced(s->stop)) return 1;
++	  if (((s->stop)->force_stop && *(s->stop)->force_stop)) return 1;
+ 	  for (k = 0; k < s->fc[j].m; ++k)
+ 	       con[i + k] = -con[i + k];
+ 	  i += s->fc[j].m;
+      }
+      for (j = 0; j < s->p; ++j) {
+ 	  nlopt_eval_constraint(con + i, NULL, s->h+j, n, xtmp);
+-	  if (nlopt_stop_forced(s->stop)) return 1;
++	  if (((s->stop)->force_stop && *(s->stop)->force_stop)) return 1;
+ 	  for (k = 0; k < s->h[j].m; ++k)
+ 	       con[(i + s->h[j].m) + k] = -con[i + k];
+ 	  i += 2 * s->h[j].m;
+@@ -571,10 +571,10 @@ static nlopt_result cobylb(int *n, int *m, int *mpp,
+      #*&!%*@ Fortran-66 spaghetti code */
+ 
+ L40:
+-  if (nlopt_stop_forced(stop)) rc = NLOPT_FORCED_STOP;
++  if (((stop)->force_stop && *(stop)->force_stop)) rc = NLOPT_FORCED_STOP;
+   else if (*(stop->nevals_p) > 0) {
+-       if (nlopt_stop_evals(stop)) rc = NLOPT_MAXEVAL_REACHED;
+-       else if (nlopt_stop_time(stop)) rc = NLOPT_MAXTIME_REACHED;
++       if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) rc = NLOPT_MAXEVAL_REACHED;
++       else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) rc = NLOPT_MAXTIME_REACHED;
+   }
+   if (rc != NLOPT_SUCCESS) goto L600;
+ 
+@@ -1135,7 +1135,7 @@ L550:
+      place that Powell checks the x tolerance (rho > rhoend). */
+   {
+        double fbest = ifull == 1 ? f : datmat[mp + np * datmat_dim1];
+-       if (fbest < *minf && nlopt_stop_ftol(stop, fbest, *minf)) {
++       if (fbest < *minf && (!nlopt_isinf((*minf)) && (fabs((fbest) - (*minf)) < (stop)->ftol_abs || fabs((fbest) - (*minf)) < (stop)->ftol_rel * (fabs((fbest)) + fabs((*minf))) * 0.5 || ((stop)->ftol_rel > 0 && (fbest) == (*minf))))) {
+ 	    rc = NLOPT_FTOL_REACHED;
+ 	    goto L600;
+        }
+diff --git a/src/algs/crs/crs.c b/src/algs/crs/crs.c
+index c74b4a8..308721b 100644
+--- a/src/algs/crs/crs.c
++++ b/src/algs/crs/crs.c
+@@ -26,6 +26,7 @@
+ #include "crs.h"
+ #include "redblack.h"
+ 
++
+ /* Controlled Random Search 2 (CRS2) with "local mutation", as defined
+    by:
+        P. Kaelo and M. M. Ali, "Some variants of the controlled random
+@@ -132,10 +133,10 @@ static nlopt_result crs_trial(crs_data *d)
+      do {
+      	  d->p[0] = d->f(n, d->p + 1, NULL, d->f_data);
+ 	  ++ *(d->stop->nevals_p);
+-	  if (nlopt_stop_forced(d->stop)) return NLOPT_FORCED_STOP;
++	  if (((d->stop)->force_stop && *(d->stop)->force_stop)) return NLOPT_FORCED_STOP;
+ 	  if (d->p[0] < worst->k[0]) break;
+-	  if (nlopt_stop_evals(d->stop)) return NLOPT_MAXEVAL_REACHED;
+-	  if (nlopt_stop_time(d->stop)) return NLOPT_MAXTIME_REACHED;
++	  if (((d->stop)->maxeval > 0 && *(d->stop)->nevals_p >= (d->stop)->maxeval)) return NLOPT_MAXEVAL_REACHED;
++	  if (((d->stop)->maxtime > 0 && nlopt_seconds() - (d->stop)->start >= (d->stop)->maxtime)) return NLOPT_MAXTIME_REACHED;
+ 	  if (mutation) {
+ 	       for (i = 0; i < n; ++i) {
+ 		    double w = nlopt_urand(0.,1.);
+@@ -206,8 +207,8 @@ static nlopt_result crs_init(crs_data *d, int n, const double *x,
+      ++ *(stop->nevals_p);
+      if (!nlopt_rb_tree_insert(&d->t, d->ps)) return NLOPT_OUT_OF_MEMORY;
+      if (d->ps[0] < stop->minf_max) return NLOPT_MINF_MAX_REACHED;
+-     if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+-     if (nlopt_stop_time(stop)) return NLOPT_MAXTIME_REACHED;
++     if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) return NLOPT_MAXEVAL_REACHED;
++     if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) return NLOPT_MAXTIME_REACHED;
+      for (i = 1; i < d->N; ++i) {
+ 	  double *k = d->ps + i*(n+1);
+ 	  if (d->s) 
+@@ -221,8 +222,8 @@ static nlopt_result crs_init(crs_data *d, int n, const double *x,
+ 	  ++ *(stop->nevals_p);
+ 	  if (!nlopt_rb_tree_insert(&d->t, k)) return NLOPT_OUT_OF_MEMORY;
+ 	  if (k[0] < stop->minf_max) return NLOPT_MINF_MAX_REACHED;
+-	  if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+-	  if (nlopt_stop_time(stop)) return NLOPT_MAXTIME_REACHED;	  
++	  if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) return NLOPT_MAXEVAL_REACHED;
++	  if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) return NLOPT_MAXTIME_REACHED;	  
+      }
+ 
+      return NLOPT_SUCCESS;;
+@@ -250,20 +251,41 @@ nlopt_result crs_minimize(int n, nlopt_func f, void *f_data,
+      while (ret == NLOPT_SUCCESS) {
+ 	  if (NLOPT_SUCCESS == (ret = crs_trial(&d))) {
+ 	       best = nlopt_rb_tree_min(&d.t);
+-	       if (best->k[0] < *minf) {
+-		    if (best->k[0] < stop->minf_max)
+-			 ret = NLOPT_MINF_MAX_REACHED;
+-		    else if (nlopt_stop_f(stop, best->k[0], *minf))
+-			 ret = NLOPT_FTOL_REACHED;
+-		    else if (nlopt_stop_x(stop, best->k + 1, x))
+-			 ret = NLOPT_XTOL_REACHED;
+-		    *minf = best->k[0];
+-		    memcpy(x, best->k + 1, sizeof(double) * n);
+-	       }
++               if (best->k[0] < *minf) {
++                    int j, absolute_step = stop->xtol_abs != NULL;
++                    double previous = *minf, movement = 0, magnitude = 0;
++                    if (best->k[0] < stop->minf_max)
++                         ret = NLOPT_MINF_MAX_REACHED;
++                    else if (best->k[0] <= stop->minf_max)
++                         ret = NLOPT_FTOL_REACHED;
++                    for (j = 0; j < n; ++j) {
++                         double next = best->k[j + 1], dx = fabs(next - x[j]);
++                         if (stop->x_weights) {
++                              movement += stop->x_weights[j] * dx;
++                              magnitude += stop->x_weights[j] * fabs(next);
++                         } else {
++                              movement += dx;
++                              magnitude += fabs(next);
++                         }
++                         x[j] = next;
++                         if (absolute_step && dx >= stop->xtol_abs[j]) absolute_step = 0;
++                    }
++                    *minf = best->k[0];
++                    if (ret == NLOPT_SUCCESS && !nlopt_isinf(previous)) {
++                         double change = fabs(*minf - previous);
++                         if (change < stop->ftol_abs ||
++                             change < stop->ftol_rel * (fabs(*minf) + fabs(previous)) * 0.5 ||
++                             (stop->ftol_rel > 0 && *minf == previous))
++                              ret = NLOPT_FTOL_REACHED;
++                    }
++                    if (ret == NLOPT_SUCCESS &&
++                        (movement < stop->xtol_rel * magnitude || absolute_step))
++                         ret = NLOPT_XTOL_REACHED;
++               }
+ 	       if (ret != NLOPT_SUCCESS) {
+-		    if (nlopt_stop_evals(stop)) 
++		    if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) 
+ 			 ret = NLOPT_MAXEVAL_REACHED;
+-		    else if (nlopt_stop_time(stop)) 
++		    else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) 
+ 			 ret = NLOPT_MAXTIME_REACHED;
+ 	       }
+ 	  }
+diff --git a/src/algs/isres/isres.c b/src/algs/isres/isres.c
+index 196dfc4..41bfdae 100644
+--- a/src/algs/isres/isres.c
++++ b/src/algs/isres/isres.c
+@@ -26,6 +26,7 @@
+ 
+ #include "isres.h"
+ 
++
+ /* Improved Stochastic Ranking Evolution Strategy (ISRES) algorithm
+    for nonlinearly-constrained global optimization, based on
+    the method described in:
+@@ -133,16 +134,17 @@ nlopt_result isres_minimize(int n, nlopt_func f, void *f_data,
+ 	  /* evaluate f and constraint violations for whole population */
+ 	  for (k = 0; k < population; ++k) {
+ 	       int feasible = 1;
+-	       double gpenalty;
++	       double gpenalty, effective_penalty;
++               int penalty_small;
+ 	       ++ *(stop->nevals_p);
+ 	       fval[k] = f(n, xs + k*n, NULL, f_data);
+-	       if (nlopt_stop_forced(stop)) { 
++	       if (((stop)->force_stop && *(stop)->force_stop)) { 
+ 		    ret = NLOPT_FORCED_STOP; goto done; }
+ 	       penalty[k] = 0;
+ 	       for (c = 0; c < m; ++c) { /* inequality constraints */
+ 		    nlopt_eval_constraint(results, NULL,
+ 					  fc + c, n, xs + k*n);
+-		    if (nlopt_stop_forced(stop)) { 
++		    if (((stop)->force_stop && *(stop)->force_stop)) { 
+ 			 ret = NLOPT_FORCED_STOP; goto done; }
+ 		    for (ires = 0; ires < fc[c].m; ++ires) {
+ 			 double gval = results[ires];
+@@ -155,7 +157,7 @@ nlopt_result isres_minimize(int n, nlopt_func f, void *f_data,
+ 	       for (c = m; c < mp; ++c) { /* equality constraints */
+ 		    nlopt_eval_constraint(results, NULL,
+ 					  h + (c-m), n, xs + k*n);
+-		    if (nlopt_stop_forced(stop)) { 
++		    if (((stop)->force_stop && *(stop)->force_stop)) { 
+ 			 ret = NLOPT_FORCED_STOP; goto done; }
+ 		    for (ires = 0; ires < h[c-m].m; ++ires) {
+ 			 double hval = results[ires];
+@@ -164,6 +166,14 @@ nlopt_result isres_minimize(int n, nlopt_func f, void *f_data,
+ 		    }
+ 	       }
+ 	       if (penalty[k] > 0) all_feasible = 0;
++               effective_penalty = feasible ? 0 : penalty[k];
++               penalty_small = effective_penalty <= stop->minf_max;
++               if (!penalty_small && !nlopt_isinf(minf_penalty)) {
++                    double change = fabs(effective_penalty - minf_penalty);
++                    penalty_small = change < stop->ftol_abs ||
++                         change < stop->ftol_rel * (fabs(effective_penalty) + fabs(minf_penalty)) * 0.5 ||
++                         (stop->ftol_rel > 0 && effective_penalty == minf_penalty);
++               }
+ 
+ 	       /* convergence criteria (FIXME: improve?) */
+ 
+@@ -173,28 +183,41 @@ nlopt_result isres_minimize(int n, nlopt_func f, void *f_data,
+ 
+ 	       if ((penalty[k] <= minf_penalty || feasible)
+ 		   && (fval[k] <= *minf || minf_gpenalty > 0)
+-		   && ((feasible ? 0 : penalty[k]) != minf_penalty
++		   && (effective_penalty != minf_penalty
+ 		       || fval[k] != *minf)) {
+-		    if (fval[k] < stop->minf_max && feasible) 
+-			 ret = NLOPT_MINF_MAX_REACHED;
+-		    else if (!nlopt_isinf(*minf)) {
+-			 if (nlopt_stop_f(stop, fval[k], *minf)
+-			     && nlopt_stop_f(stop, feasible ? 0 : penalty[k], 
+-					     minf_penalty))
+-			      ret = NLOPT_FTOL_REACHED;
+-			 else if (nlopt_stop_x(stop, xs+k*n, x))
+-			      ret = NLOPT_XTOL_REACHED;
+-		    }
+-		    memcpy(x, xs+k*n, sizeof(double)*n);
+-		    *minf = fval[k];
+-		    minf_penalty = feasible ? 0 : penalty[k];
+-		    minf_gpenalty = feasible ? 0 : gpenalty;
++                    double previous = *minf, movement = 0, magnitude = 0;
++                    int absolute_step = stop->xtol_abs != NULL;
++                    if (fval[k] < stop->minf_max && feasible)
++                         ret = NLOPT_MINF_MAX_REACHED;
++                    for (j = 0; j < n; ++j) {
++                         double next = xs[k*n+j];
++                         if (ret == NLOPT_SUCCESS && !nlopt_isinf(previous)) {
++                              double dx = fabs(next - x[j]);
++                              movement += stop->x_weights ? stop->x_weights[j] * dx : dx;
++                              magnitude += stop->x_weights ? stop->x_weights[j] * fabs(next) : fabs(next);
++                              if (absolute_step && dx >= stop->xtol_abs[j]) absolute_step = 0;
++                         }
++                         x[j] = next;
++                    }
++                    *minf = fval[k];
++                    minf_penalty = effective_penalty;
++                    minf_gpenalty = feasible ? 0 : gpenalty;
++                    if (ret == NLOPT_SUCCESS && !nlopt_isinf(previous)) {
++                         double change = fabs(*minf - previous);
++                         if (penalty_small &&
++                             (*minf <= stop->minf_max || change < stop->ftol_abs ||
++                              change < stop->ftol_rel * (fabs(*minf) + fabs(previous)) * 0.5 ||
++                              (stop->ftol_rel > 0 && *minf == previous)))
++                              ret = NLOPT_FTOL_REACHED;
++                         else if (movement < stop->xtol_rel * magnitude || absolute_step)
++                              ret = NLOPT_XTOL_REACHED;
++                    }
+ 		    if (ret != NLOPT_SUCCESS) goto done;
+ 	       }
+ 
+-	       if (nlopt_stop_forced(stop)) ret = NLOPT_FORCED_STOP;
+-	       else if (nlopt_stop_evals(stop)) ret = NLOPT_MAXEVAL_REACHED;
+-	       else if (nlopt_stop_time(stop)) ret = NLOPT_MAXTIME_REACHED;
++	       if (((stop)->force_stop && *(stop)->force_stop)) ret = NLOPT_FORCED_STOP;
++	       else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) ret = NLOPT_MAXEVAL_REACHED;
++	       else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) ret = NLOPT_MAXTIME_REACHED;
+ 	       if (ret != NLOPT_SUCCESS) goto done;
+ 	  }
+ 
+diff --git a/src/algs/luksan/plip.c b/src/algs/luksan/plip.c
+index a0bdc9f..07c1d82 100644
+--- a/src/algs/luksan/plip.c
++++ b/src/algs/luksan/plip.c
+@@ -4,6 +4,28 @@
+ #include <string.h>
+ #include "luksan.h"
+ 
++static int plip_dx_converged(const nlopt_stopping *stop, const double *x, const double *dx)
++{
++    unsigned j;
++    double delta = 0, size = 0;
++    if (stop->x_weights) {
++        for (j = 0; j < stop->n; ++j)
++            delta += stop->x_weights[j] * fabs(dx[j]);
++        for (j = 0; j < stop->n; ++j)
++            size += stop->x_weights[j] * fabs(x[j]);
++    } else {
++        for (j = 0; j < stop->n; ++j)
++            delta += fabs(dx[j]);
++        for (j = 0; j < stop->n; ++j)
++            size += fabs(x[j]);
++    }
++    if (delta < stop->xtol_rel * size) return 1;
++    if (!stop->xtol_abs) return 0;
++    for (j = 0; j < stop->n; ++j)
++        if (fabs(dx[j]) >= stop->xtol_abs[j]) return 0;
++    return 1;
++}
++
+ #define MAX2(a,b) ((a) > (b) ? (a) : (b))
+ #define MIN2(a,b) ((a) < (b) ? (a) : (b))
+ 
+@@ -278,7 +300,7 @@ static void plip_(int *nf, int *nb, double *x, int *
+     *f = objgrad(*nf, &x[1], &gf[1], objgrad_data);
+     ++*(stop->nevals_p);
+     ++stat_1->nfg;
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11190; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11190; }
+ L11120:
+     luksan_pytrcg__(nf, nf, &ix[1], &gf[1], &umax, gmax, &kbf, &iold);
+     luksan_pyfut1__(nf, f, &fo, &umax, gmax, xstop, stop, tolg,
+@@ -288,7 +310,7 @@ L11120:
+     if (*iterm != 0) {
+ 	goto L11190;
+     }
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11190; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11190; }
+     if (kbf > 0 && rmax > 0.) {
+ 	luksan_pyrmc0__(nf, &n, &ix[1], &gf[1], &eps8, &umax, gmax, &rmax, &
+ 		iold, &irest);
+@@ -311,7 +333,7 @@ L11130:
+     if (*iterm != 0) {
+ 	goto L11190;
+     }
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11190; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11190; }
+ 
+ /*     DIRECTION DETERMINATION */
+ 
+@@ -361,7 +383,7 @@ L11130:
+     if (*iterm != 0) {
+ 	goto L11190;
+     }
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11190; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11190; }
+     if (irest != 0) {
+ 	goto L11130;
+     }
+@@ -399,7 +421,16 @@ L11174:
+     luksan_mxuneg__(nf, &go[1], &s[1], &ix[1], &kbf);
+     luksan_pytrcd__(nf, &x[1], &ix[1], &xo[1], &gf[1], &go[1], &r__, f, &fo, &
+ 	    p, &po, &dmax__, &kbf, &kd, &ld, &iters);
+-    xstop = nlopt_stop_dx(stop, &x[1], &xo[1]);
++    if (kbf > 0) {
++        int coordinate;
++        for (coordinate = 1; coordinate <= *nf; ++coordinate) {
++            if (ix[coordinate] < 0) {
++                xo[coordinate] = 0.;
++                go[coordinate] = 0.;
++            }
++        }
++    }
++    xstop = plip_dx_converged(stop, &x[1], &xo[1]);
+     luksan_mxucop__(nf, &gf[1], &so[1], &ix[1], &kbf);
+     if (nn < *mf) {
+ 	luksan_pulsp3__(nf, &nn, mf, &xm[1], &gr[1], &xo[1], &go[1], &r__, &
+diff --git a/src/algs/luksan/plis.c b/src/algs/luksan/plis.c
+index 32ade30..d5095ca 100644
+--- a/src/algs/luksan/plis.c
++++ b/src/algs/luksan/plis.c
+@@ -4,6 +4,28 @@
+ #include <string.h>
+ #include "luksan.h"
+ 
++static int plis_dx_converged(const nlopt_stopping *stop, const double *x, const double *dx)
++{
++    unsigned j;
++    double delta = 0, size = 0;
++    if (stop->x_weights) {
++        for (j = 0; j < stop->n; ++j)
++            delta += stop->x_weights[j] * fabs(dx[j]);
++        for (j = 0; j < stop->n; ++j)
++            size += stop->x_weights[j] * fabs(x[j]);
++    } else {
++        for (j = 0; j < stop->n; ++j)
++            delta += fabs(dx[j]);
++        for (j = 0; j < stop->n; ++j)
++            size += fabs(x[j]);
++    }
++    if (delta < stop->xtol_rel * size) return 1;
++    if (!stop->xtol_abs) return 0;
++    for (j = 0; j < stop->n; ++j)
++        if (fabs(dx[j]) >= stop->xtol_abs[j]) return 0;
++    return 1;
++}
++
+ #define MAX2(a,b) ((a) > (b) ? (a) : (b))
+ #define MIN2(a,b) ((a) < (b) ? (a) : (b))
+ 
+@@ -260,7 +282,7 @@ static void plis_(int *nf, int *nb, double *x, int *
+     *f = objgrad(*nf, &x[1], &gf[1], objgrad_data);
+     ++*(stop->nevals_p);
+     ++stat_1->nfg;
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11190; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11190; }
+ L11120:
+     luksan_pytrcg__(nf, nf, &ix[1], &gf[1], &umax, gmax, &kbf, &iold);
+     luksan_pyfut1__(nf, f, &fo, &umax, gmax, xstop, stop, tolg,
+@@ -270,7 +292,7 @@ L11120:
+     if (*iterm != 0) {
+ 	goto L11190;
+     }
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11190; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11190; }
+     if (kbf > 0 && rmax > 0.) {
+ 	luksan_pyrmc0__(nf, &n, &ix[1], &gf[1], &eps8, &umax, gmax, &rmax, &
+ 		iold, &irest);
+@@ -368,7 +390,7 @@ L12620:
+     if (*iterm != 0) {
+ 	goto L11190;
+     }
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11190; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11190; }
+     if (irest != 0) {
+ 	goto L11130;
+     }
+@@ -405,7 +427,16 @@ L11174:
+     }
+     luksan_pytrcd__(nf, &x[1], &ix[1], &xo[1], &gf[1], &go[1], &r__, f, &fo, &
+ 	    p, &po, &dmax__, &kbf, &kd, &ld, &iters);
+-    xstop = nlopt_stop_dx(stop, &x[1], &xo[1]);
++    if (kbf > 0) {
++        int coordinate;
++        for (coordinate = 1; coordinate <= *nf; ++coordinate) {
++            if (ix[coordinate] < 0) {
++                xo[coordinate] = 0.;
++                go[coordinate] = 0.;
++            }
++        }
++    }
++    xstop = plis_dx_converged(stop, &x[1], &xo[1]);
+ L11175:
+     if (kbf > 0) {
+ 	luksan_mxvine__(nf, &ix[1]);
+diff --git a/src/algs/luksan/pnet.c b/src/algs/luksan/pnet.c
+index 7f7799c..7a6d118 100644
+--- a/src/algs/luksan/pnet.c
++++ b/src/algs/luksan/pnet.c
+@@ -4,6 +4,28 @@
+ #include <string.h>
+ #include "luksan.h"
+ 
++static int pnet_dx_converged(const nlopt_stopping *stop, const double *x, const double *dx)
++{
++    unsigned j;
++    double delta = 0, size = 0;
++    if (stop->x_weights) {
++        for (j = 0; j < stop->n; ++j)
++            delta += stop->x_weights[j] * fabs(dx[j]);
++        for (j = 0; j < stop->n; ++j)
++            size += stop->x_weights[j] * fabs(x[j]);
++    } else {
++        for (j = 0; j < stop->n; ++j)
++            delta += fabs(dx[j]);
++        for (j = 0; j < stop->n; ++j)
++            size += fabs(x[j]);
++    }
++    if (delta < stop->xtol_rel * size) return 1;
++    if (!stop->xtol_abs) return 0;
++    for (j = 0; j < stop->n; ++j)
++        if (fabs(dx[j]) >= stop->xtol_abs[j]) return 0;
++    return 1;
++}
++
+ #define MAX2(a,b) ((a) > (b) ? (a) : (b))
+ #define MIN2(a,b) ((a) < (b) ? (a) : (b))
+ 
+@@ -300,7 +322,7 @@ static void pnet_(int *nf, int *nb, double *x, int *
+     *f = objgrad(*nf, &x[1], &gf[1], objgrad_data);
+     ++(*stop->nevals_p);
+     ++stat_1->nfg;
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11080; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11080; }
+     ld = kd;
+ L11020:
+     luksan_pytrcg__(nf, nf, &ix[1], &gf[1], &umax, gmax, &kbf, &iold);
+@@ -312,7 +334,7 @@ L11020:
+     if (*iterm != 0) {
+ 	goto L11080;
+     }
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11080; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11080; }
+     if (kbf > 0) {
+ 	luksan_pyrmc0__(nf, &n, &ix[1], &gn[1], &eps8, &umax, gmax, &rmax, &
+ 		iold, &irest);
+@@ -504,7 +526,7 @@ L12560:
+     if (*iterm != 0) {
+ 	goto L11080;
+     }
+-    if (nlopt_stop_time(stop)) { *iterm = 100; goto L11080; }
++    if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { *iterm = 100; goto L11080; }
+     if (irest != 0) {
+ 	goto L11040;
+     }
+@@ -542,7 +564,16 @@ L11064:
+     }
+     luksan_pytrcd__(nf, &x[1], &ix[1], &xo[1], &gf[1], &go[1], &r__, f, &fo, &
+ 	    p, &po, &dmax__, &kbf, &kd, &ld, &iters);
+-    xstop = nlopt_stop_dx(stop, &x[1], &xo[1]);
++    if (kbf > 0) {
++        int coordinate;
++        for (coordinate = 1; coordinate <= *nf; ++coordinate) {
++            if (ix[coordinate] < 0) {
++                xo[coordinate] = 0.;
++                go[coordinate] = 0.;
++            }
++        }
++    }
++    xstop = pnet_dx_converged(stop, &x[1], &xo[1]);
+     if (*mos2 > 1) {
+ /* Computing MIN */
+ 	i__1 = mx + 1;
+diff --git a/src/algs/luksan/pssubs.c b/src/algs/luksan/pssubs.c
+index 9f96260..d8756af 100644
+--- a/src/algs/luksan/pssubs.c
++++ b/src/algs/luksan/pssubs.c
+@@ -911,7 +911,7 @@ void luksan_pyfut1__(int *n, double *f, double *fo, double *umax,
+ 	d__1 = sqrt((fabs(*f))), d__2 = fabs(*f) / 10.;
+ 	*fo = *f + MIN2(d__1,d__2);
+     }
+-    if (nlopt_stop_forced(stop)) {
++    if (((stop)->force_stop && *(stop)->force_stop)) {
+ 	*iterm = -999;
+ 	return;
+     }
+@@ -938,7 +938,7 @@ void luksan_pyfut1__(int *n, double *f, double *fo, double *umax,
+     } else {
+ 	*ntesx = 0;
+     }
+-    if (nlopt_stop_ftol(stop, *f, *fo)) {
++    if ((!nlopt_isinf((*fo)) && (fabs((*f) - (*fo)) < (stop)->ftol_abs || fabs((*f) - (*fo)) < (stop)->ftol_rel * (fabs((*f)) + fabs((*fo))) * 0.5 || ((stop)->ftol_rel > 0 && (*f) == (*fo))))) {
+ 	*iterm = 2;
+ 	++(*ntesf);
+ 	if (*ntesf >= *mtesf) {
+@@ -952,7 +952,7 @@ L1:
+ 	*iterm = 11;
+ 	return;
+     }
+-    if (nlopt_stop_evals(stop)) /* (*nfv >= *mfv) */ {
++    if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) /* (*nfv >= *mfv) */ {
+ 	*iterm = 12;
+ 	return;
+     }
+@@ -1100,8 +1100,6 @@ void luksan_pytrcd__(int *nf, double *x, int *ix,
+     for (i__ = 1; i__ <= i__1; ++i__) {
+ 	if (*kbf > 0) {
+ 	    if (ix[i__] < 0) {
+-		xo[i__] = 0.;
+-		go[i__] = 0.;
+ 		goto L1;
+ 	    }
+ 	}
+diff --git a/src/algs/mma/ccsa_quadratic.c b/src/algs/mma/ccsa_quadratic.c
+index c4940e0..44fb0a2 100644
+--- a/src/algs/mma/ccsa_quadratic.c
++++ b/src/algs/mma/ccsa_quadratic.c
+@@ -45,6 +45,7 @@
+ #include "mma.h"
+ #include "nlopt-util.h"
+ 
++
+ unsigned ccsa_verbose = 0; /* > 0 for verbose output */
+ 
+ #define MIN(a,b) ((a) < (b) ? (a) : (b))
+@@ -342,14 +343,14 @@ nlopt_result ccsa_quadratic_minimize(
+      dd.fval = fcur = *minf = f(n, x, dfdx, f_data);
+      ++ *(stop->nevals_p);
+      memcpy(xcur, x, sizeof(double) * n);
+-     if (nlopt_stop_forced(stop)) { ret = NLOPT_FORCED_STOP; goto done; }
++     if (((stop)->force_stop && *(stop)->force_stop)) { ret = NLOPT_FORCED_STOP; goto done; }
+ 
+      feasible = 1; infeasibility = 0;
+      for (i = ifc = 0; ifc < mfc; ++ifc) {
+ 	  nlopt_eval_constraint(fcval + i, dfcdx + i*n,
+ 				fc + ifc, n, x);
+ 	  i += fc[ifc].m;
+-	  if (nlopt_stop_forced(stop)) { ret = NLOPT_FORCED_STOP; goto done; }
++	  if (((stop)->force_stop && *(stop)->force_stop)) { ret = NLOPT_FORCED_STOP; goto done; }
+      }
+      for (i = 0; i < m; ++i) {
+ 	  feasible = feasible && fcval[i] <= 0;
+@@ -379,9 +380,9 @@ nlopt_result ccsa_quadratic_minimize(
+      while (1) { /* outer iterations */
+ 	  int inner_nevals = 0;
+ 	  double fprev = fcur;
+-	  if (nlopt_stop_forced(stop)) ret = NLOPT_FORCED_STOP;
+-	  else if (nlopt_stop_evals(stop)) ret = NLOPT_MAXEVAL_REACHED;
+-	  else if (nlopt_stop_time(stop)) ret = NLOPT_MAXTIME_REACHED;
++	  if (((stop)->force_stop && *(stop)->force_stop)) ret = NLOPT_FORCED_STOP;
++	  else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) ret = NLOPT_MAXEVAL_REACHED;
++	  else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) ret = NLOPT_MAXTIME_REACHED;
+ 	  else if (feasible && *minf < stop->minf_max)
+ 	       ret = NLOPT_MINF_MAX_REACHED;
+ 	  if (ret != NLOPT_SUCCESS) goto done;
+@@ -451,7 +452,7 @@ nlopt_result ccsa_quadratic_minimize(
+ 	       fcur = f(n, xcur, inner_gradients ? dfdx_cur : NULL, f_data);
+ 	       ++ *(stop->nevals_p);
+ 		   ++inner_nevals;
+-	       if (nlopt_stop_forced(stop)) {
++	       if (((stop)->force_stop && *(stop)->force_stop)) {
+ 		    ret = NLOPT_FORCED_STOP; goto done; }
+ 	       feasible_cur = 1; infeasibility_cur = 0;
+ 	       inner_done = dd.gval >= fcur;
+@@ -460,7 +461,7 @@ nlopt_result ccsa_quadratic_minimize(
+ 					  inner_gradients ? dfcdx_cur + i*n : NULL,
+ 					  fc + ifc, n, xcur);
+ 		    i += fc[ifc].m;
+-		    if (nlopt_stop_forced(stop)) {
++		    if (((stop)->force_stop && *(stop)->force_stop)) {
+ 			 ret = NLOPT_FORCED_STOP; goto done; }
+ 	       }
+ 	       for (i = ifc = 0; ifc < mfc; ++ifc) {
+@@ -491,7 +492,7 @@ nlopt_result ccsa_quadratic_minimize(
+ 				fcur = f(n, xcur, dfdx_cur, f_data);
+ 				/* don't update *(stop->nevals_p) -- hope user caches xcur
+ 			       so that they don't actually recompute f */
+-				if (nlopt_stop_forced(stop)) {
++				if (((stop)->force_stop && *(stop)->force_stop)) {
+ 					ret = NLOPT_FORCED_STOP; goto done; }
+ 				feasible_cur = 1; infeasibility_cur = 0;
+ 				for (i = ifc = 0; ifc < mfc; ++ifc) {
+@@ -499,7 +500,7 @@ nlopt_result ccsa_quadratic_minimize(
+ 							dfcdx_cur + i*n,
+ 							fc + ifc, n, xcur);
+ 					i += fc[ifc].m;
+-					if (nlopt_stop_forced(stop)) {
++					if (((stop)->force_stop && *(stop)->force_stop)) {
+ 						ret = NLOPT_FORCED_STOP; goto done; }
+ 				}
+ 				/* recompute feasible_cur etc in case the caller
+@@ -537,9 +538,9 @@ nlopt_result ccsa_quadratic_minimize(
+ 		    }
+ 
+ 	       }
+-	       if (nlopt_stop_forced(stop)) ret = NLOPT_FORCED_STOP;
+-	       else if (nlopt_stop_evals(stop)) ret = NLOPT_MAXEVAL_REACHED;
+-	       else if (nlopt_stop_time(stop)) ret = NLOPT_MAXTIME_REACHED;
++	       if (((stop)->force_stop && *(stop)->force_stop)) ret = NLOPT_FORCED_STOP;
++	       else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) ret = NLOPT_MAXEVAL_REACHED;
++	       else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) ret = NLOPT_MAXTIME_REACHED;
+ 	       else if (feasible && *minf < stop->minf_max)
+ 		    ret = NLOPT_MINF_MAX_REACHED;
+ 	       if (ret != NLOPT_SUCCESS) goto done;
+@@ -569,37 +570,55 @@ nlopt_result ccsa_quadratic_minimize(
+ 		    printf("                CCSA rhoc[%u] -> %g\n", i,rhoc[i]);
+ 	  }
+ 
+-	  if (nlopt_stop_ftol(stop, fcur, fprev))
+-	       ret = NLOPT_FTOL_REACHED;
+-	  if (nlopt_stop_x(stop, xcur, xprev))
+-	       ret = NLOPT_XTOL_REACHED;
+-	  if (ret != NLOPT_SUCCESS) goto done;
+ 
+-	  /* update rho and sigma for iteration k+1 */
+-	  rho = MAX(0.1 * rho, CCSA_RHOMIN);
+-	  if (verbose)
+-	       printf("CCSA outer iteration: rho -> %g\n", rho);
+-	  for (i = 0; i < m; ++i)
+-	       rhoc[i] = MAX(0.1 * rhoc[i], CCSA_RHOMIN);
+-	  for (i = 0; i < MIN(verbose, m); ++i)
+-	       printf("                 CCSA rhoc[%u] -> %g\n", i, rhoc[i]);
+-	  if (k > 1) {
+-	       for (j = 0; j < n; ++j) {
+-		    double dx2 = (xcur[j]-xprev[j]) * (xprev[j]-xprevprev[j]);
+-		    double gam = dx2 < 0 ? 0.7 : (dx2 > 0 ? 1.2 : 1);
+-		    sigma[j] *= gam;
+-		    if (!nlopt_isinf(ub[j]) && !nlopt_isinf(lb[j])) {
+-			 sigma[j] = MIN(sigma[j], 10*(ub[j]-lb[j]));
+-			 /* use a smaller lower bound than Svanberg's
+-			    0.01*(ub-lb), which seems unnecessarily large */
+-			 sigma[j] = MAX(sigma[j], 1e-8*(ub[j]-lb[j]));
+-		    }
+-			sigma[j] = MAX(sigma[j], sigma_min);
+-	       }
+-	       for (j = 0; j < MIN(verbose, n); ++j)
+-		    printf("                 CCSA sigma[%u] -> %g\n",
+-			   j, sigma[j]);
+-	  }
++          {
++               double movement = 0, magnitude = 0;
++               double change = fabs(fcur - fprev);
++               int absolute_step = stop->xtol_abs != NULL;
++               int objective_small = !nlopt_isinf(fprev) &&
++                    (change < stop->ftol_rel * (fabs(fcur) + fabs(fprev)) * 0.5 ||
++                     (stop->ftol_rel > 0 && fcur == fprev));
++               for (j = 0; j < n; ++j) {
++                    double dx = xcur[j] - xprev[j];
++                    if (stop->x_weights) {
++                         movement += stop->x_weights[j] * fabs(dx);
++                         magnitude += stop->x_weights[j] * fabs(xcur[j]);
++                    } else {
++                         movement += fabs(dx);
++                         magnitude += fabs(xcur[j]);
++                    }
++                    if (k > 1) {
++                         double dx2 = dx * (xprev[j] - xprevprev[j]);
++                         double gam = dx2 < 0 ? 0.7 : (dx2 > 0 ? 1.2 : 1);
++                         sigma[j] *= gam;
++                         if (!nlopt_isinf(ub[j]) && !nlopt_isinf(lb[j])) {
++                              sigma[j] = MIN(sigma[j], 10*(ub[j]-lb[j]));
++                              sigma[j] = MAX(sigma[j], 1e-8*(ub[j]-lb[j]));
++                         }
++                         sigma[j] = MAX(sigma[j], sigma_min);
++                    }
++                    if (absolute_step && fabs(dx) >= stop->xtol_abs[j])
++                         absolute_step = 0;
++               }
++               if (!nlopt_isinf(fprev) && change < stop->ftol_abs)
++                    objective_small = 1;
++               if (objective_small) ret = NLOPT_FTOL_REACHED;
++               if (movement < stop->xtol_rel * magnitude || absolute_step)
++                    ret = NLOPT_XTOL_REACHED;
++               if (ret != NLOPT_SUCCESS) goto done;
++          }
++
++          rho = MAX(0.1 * rho, CCSA_RHOMIN);
++          if (verbose)
++               printf("CCSA outer iteration: rho -> %g\n", rho);
++          for (i = 0; i < m; ++i)
++               rhoc[i] = MAX(0.1 * rhoc[i], CCSA_RHOMIN);
++          for (i = 0; i < MIN(verbose, m); ++i)
++               printf("                 CCSA rhoc[%u] -> %g\n", i, rhoc[i]);
++          if (k > 1)
++               for (j = 0; j < MIN(verbose, n); ++j)
++                    printf("                 CCSA sigma[%u] -> %g\n", j, sigma[j]);
++
+      }
+ 
+  done:
+diff --git a/src/algs/mma/mma.c b/src/algs/mma/mma.c
+index 91cc4dd..f415fff 100644
+--- a/src/algs/mma/mma.c
++++ b/src/algs/mma/mma.c
+@@ -28,6 +28,7 @@
+ #include "mma.h"
+ #include "nlopt-util.h"
+ 
++
+ unsigned mma_verbose = 0; /* > 0 for verbose output */
+ 
+ #define MIN(a,b) ((a) < (b) ? (a) : (b))
+@@ -218,14 +219,14 @@ nlopt_result mma_minimize(unsigned n, nlopt_func f, void *f_data,
+      dd.fval = fcur = *minf = f(n, x, dfdx, f_data);
+      ++ *(stop->nevals_p);
+      memcpy(xcur, x, sizeof(double) * n);
+-     if (nlopt_stop_forced(stop)) { ret = NLOPT_FORCED_STOP; goto done; }
++     if (((stop)->force_stop && *(stop)->force_stop)) { ret = NLOPT_FORCED_STOP; goto done; }
+ 
+      feasible = 1; infeasibility = 0;
+      for (i = ifc = 0; ifc < mfc; ++ifc) {
+ 	  nlopt_eval_constraint(fcval + i, dfcdx + i*n,
+ 				fc + ifc, n, x);
+ 	  i += fc[ifc].m;
+-	  if (nlopt_stop_forced(stop)) { ret = NLOPT_FORCED_STOP; goto done; }
++	  if (((stop)->force_stop && *(stop)->force_stop)) { ret = NLOPT_FORCED_STOP; goto done; }
+      }
+      for (i = 0; i < m; ++i) {
+ 	  feasible = feasible && (fcval[i] <= 0 || nlopt_isnan(fcval[i]));
+@@ -255,9 +256,9 @@ nlopt_result mma_minimize(unsigned n, nlopt_func f, void *f_data,
+      while (1) { /* outer iterations */
+ 	  int inner_nevals = 0;
+ 	  double fprev = fcur;
+-	  if (nlopt_stop_forced(stop)) ret = NLOPT_FORCED_STOP;
+-	  else if (nlopt_stop_evals(stop)) ret = NLOPT_MAXEVAL_REACHED;
+-	  else if (nlopt_stop_time(stop)) ret = NLOPT_MAXTIME_REACHED;
++	  if (((stop)->force_stop && *(stop)->force_stop)) ret = NLOPT_FORCED_STOP;
++	  else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) ret = NLOPT_MAXEVAL_REACHED;
++	  else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) ret = NLOPT_MAXTIME_REACHED;
+ 	  else if (feasible && *minf < stop->minf_max)
+ 	       ret = NLOPT_MINF_MAX_REACHED;
+ 	  if (ret != NLOPT_SUCCESS) goto done;
+@@ -297,7 +298,7 @@ nlopt_result mma_minimize(unsigned n, nlopt_func f, void *f_data,
+ 	       fcur = f(n, xcur, inner_gradients ? dfdx_cur : NULL, f_data);
+ 	       ++ *(stop->nevals_p);
+ 		   ++inner_nevals;
+-	       if (nlopt_stop_forced(stop)) {
++	       if (((stop)->force_stop && *(stop)->force_stop)) {
+ 		    ret = NLOPT_FORCED_STOP; goto done; }
+ 	       feasible_cur = 1; infeasibility_cur = 0;
+ 	       new_infeasible_constraint = 0;
+@@ -306,7 +307,7 @@ nlopt_result mma_minimize(unsigned n, nlopt_func f, void *f_data,
+ 		    nlopt_eval_constraint(fcval_cur + i, inner_gradients ? dfcdx_cur + i*n : NULL,
+ 					  fc + ifc, n, xcur);
+ 		    i += fc[ifc].m;
+-		    if (nlopt_stop_forced(stop)) {
++		    if (((stop)->force_stop && *(stop)->force_stop)) {
+ 			 ret = NLOPT_FORCED_STOP; goto done; }
+ 	       }
+ 	       for (i = ifc = 0; ifc < mfc; ++ifc) {
+@@ -340,7 +341,7 @@ nlopt_result mma_minimize(unsigned n, nlopt_func f, void *f_data,
+ 				fcur = f(n, xcur, dfdx_cur, f_data);
+ 				/* don't update *(stop->nevals_p) -- hope user caches xcur
+ 			       so that they don't actually recompute f */
+-				if (nlopt_stop_forced(stop)) {
++				if (((stop)->force_stop && *(stop)->force_stop)) {
+ 					ret = NLOPT_FORCED_STOP; goto done; }
+ 				feasible_cur = 1; infeasibility_cur = 0;
+ 				new_infeasible_constraint = 0;
+@@ -349,7 +350,7 @@ nlopt_result mma_minimize(unsigned n, nlopt_func f, void *f_data,
+ 					nlopt_eval_constraint(fcval_cur + i, dfcdx_cur + i*n,
+ 							fc + ifc, n, xcur);
+ 					i += fc[ifc].m;
+-					if (nlopt_stop_forced(stop)) {
++					if (((stop)->force_stop && *(stop)->force_stop)) {
+ 					ret = NLOPT_FORCED_STOP; goto done; }
+ 				}
+ 				/* recompute feasible_cur etc in case the caller
+@@ -391,9 +392,9 @@ nlopt_result mma_minimize(unsigned n, nlopt_func f, void *f_data,
+ 		    else if (new_infeasible_constraint) feasible = 0;
+ 
+ 	       }
+-	       if (nlopt_stop_forced(stop)) ret = NLOPT_FORCED_STOP;
+-	       else if (nlopt_stop_evals(stop)) ret = NLOPT_MAXEVAL_REACHED;
+-	       else if (nlopt_stop_time(stop)) ret = NLOPT_MAXTIME_REACHED;
++	       if (((stop)->force_stop && *(stop)->force_stop)) ret = NLOPT_FORCED_STOP;
++	       else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) ret = NLOPT_MAXEVAL_REACHED;
++	       else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) ret = NLOPT_MAXTIME_REACHED;
+ 	       else if (feasible && *minf < stop->minf_max)
+ 		    ret = NLOPT_MINF_MAX_REACHED;
+ 	       if (ret != NLOPT_SUCCESS) goto done;
+@@ -423,35 +424,55 @@ nlopt_result mma_minimize(unsigned n, nlopt_func f, void *f_data,
+ 		    printf("                 MMA rhoc[%u] -> %g\n", i,rhoc[i]);
+ 	  }
+ 
+-	  if (nlopt_stop_ftol(stop, fcur, fprev))
+-	       ret = NLOPT_FTOL_REACHED;
+-	  if (nlopt_stop_x(stop, xcur, xprev))
+-	       ret = NLOPT_XTOL_REACHED;
+-	  if (ret != NLOPT_SUCCESS) goto done;
+ 
+-	  /* update rho and sigma for iteration k+1 */
+-	  rho = MAX(0.1 * rho, MMA_RHOMIN);
+-	  if (verbose)
+-	       printf("MMA outer iteration: rho -> %g\n", rho);
+-	  for (i = 0; i < m; ++i)
+-	       rhoc[i] = MAX(0.1 * rhoc[i], MMA_RHOMIN);
+-	  for (i = 0; i < MIN(verbose, m); ++i)
+-	       printf("                 MMA rhoc[%u] -> %g\n", i, rhoc[i]);
+-	  if (k > 1) {
+-	       for (j = 0; j < n; ++j) {
+-		    double dx2 = (xcur[j]-xprev[j]) * (xprev[j]-xprevprev[j]);
+-		    double gam = dx2 < 0 ? 0.7 : (dx2 > 0 ? 1.2 : 1);
+-		    sigma[j] *= gam;
+-		    if (!nlopt_isinf(ub[j]) && !nlopt_isinf(lb[j])) {
+-			 sigma[j] = MIN(sigma[j], 10*(ub[j]-lb[j]));
+-			 sigma[j] = MAX(sigma[j], 0.01*(ub[j]-lb[j]));
+-		    }
+-			sigma[j] = MAX(sigma[j], sigma_min);
+-	       }
+-	       for (j = 0; j < MIN(verbose, n); ++j)
+-		    printf("                 MMA sigma[%u] -> %g\n",
+-			   j, sigma[j]);
+-	  }
++          {
++               double movement = 0, magnitude = 0;
++               double change = fabs(fcur - fprev);
++               int absolute_step = stop->xtol_abs != NULL;
++               int objective_small = !nlopt_isinf(fprev) &&
++                    (change < stop->ftol_rel * (fabs(fcur) + fabs(fprev)) * 0.5 ||
++                     (stop->ftol_rel > 0 && fcur == fprev));
++               for (j = 0; j < n; ++j) {
++                    double dx = xcur[j] - xprev[j];
++                    if (stop->x_weights) {
++                         movement += stop->x_weights[j] * fabs(dx);
++                         magnitude += stop->x_weights[j] * fabs(xcur[j]);
++                    } else {
++                         movement += fabs(dx);
++                         magnitude += fabs(xcur[j]);
++                    }
++                    if (k > 1) {
++                         double dx2 = dx * (xprev[j] - xprevprev[j]);
++                         double gam = dx2 < 0 ? 0.7 : (dx2 > 0 ? 1.2 : 1);
++                         sigma[j] *= gam;
++                         if (!nlopt_isinf(ub[j]) && !nlopt_isinf(lb[j])) {
++                              sigma[j] = MIN(sigma[j], 10*(ub[j]-lb[j]));
++                              sigma[j] = MAX(sigma[j], 0.01*(ub[j]-lb[j]));
++                         }
++                         sigma[j] = MAX(sigma[j], sigma_min);
++                    }
++                    if (absolute_step && fabs(dx) >= stop->xtol_abs[j])
++                         absolute_step = 0;
++               }
++               if (!nlopt_isinf(fprev) && change < stop->ftol_abs)
++                    objective_small = 1;
++               if (objective_small) ret = NLOPT_FTOL_REACHED;
++               if (movement < stop->xtol_rel * magnitude || absolute_step)
++                    ret = NLOPT_XTOL_REACHED;
++               if (ret != NLOPT_SUCCESS) goto done;
++          }
++
++          rho = MAX(0.1 * rho, MMA_RHOMIN);
++          if (verbose)
++               printf("MMA outer iteration: rho -> %g\n", rho);
++          for (i = 0; i < m; ++i)
++               rhoc[i] = MAX(0.1 * rhoc[i], MMA_RHOMIN);
++          for (i = 0; i < MIN(verbose, m); ++i)
++               printf("                 MMA rhoc[%u] -> %g\n", i, rhoc[i]);
++          if (k > 1)
++               for (j = 0; j < MIN(verbose, n); ++j)
++                    printf("                 MMA sigma[%u] -> %g\n", j, sigma[j]);
++
+      }
+ 
+  done:
+diff --git a/src/algs/neldermead/nldrmd.c b/src/algs/neldermead/nldrmd.c
+index c449643..0723436 100644
+--- a/src/algs/neldermead/nldrmd.c
++++ b/src/algs/neldermead/nldrmd.c
+@@ -27,6 +27,7 @@
+ #include "neldermead.h"
+ #include "redblack.h"
+ 
++
+ /* Nelder-Mead simplex algorithm, used as a subroutine for the Rowan's
+    subplex algorithm.  Modified to handle bound constraints ala
+    Richardson and Kuester (1973), as mentioned below. */
+@@ -78,13 +79,13 @@ static int reflectpt(int n, double *xnew,
+ 
+ #define CHECK_EVAL(xc,fc) 						  \
+  ++ *(stop->nevals_p);							  \
+- if (nlopt_stop_forced(stop)) { ret=NLOPT_FORCED_STOP; goto done; }        \
++ if (((stop)->force_stop && *(stop)->force_stop)) { ret=NLOPT_FORCED_STOP; goto done; }        \
+  if ((fc) <= *minf) {							  \
+    *minf = (fc); memcpy(x, (xc), n * sizeof(double));			  \
+    if (*minf < stop->minf_max) { ret=NLOPT_MINF_MAX_REACHED; goto done; } \
+  }									  \
+- if (nlopt_stop_evals(stop)) { ret=NLOPT_MAXEVAL_REACHED; goto done; }	  \
+- if (nlopt_stop_time(stop)) { ret=NLOPT_MAXTIME_REACHED; goto done; }
++ if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) { ret=NLOPT_MAXEVAL_REACHED; goto done; }	  \
++ if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) { ret=NLOPT_MAXTIME_REACHED; goto done; }
+ 
+ /* Internal version of nldrmd_minimize, intended to be used as
+    a subroutine for the subplex method.  Three differences compared
+@@ -176,13 +177,15 @@ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
+ 	  double fl = low->k[0], *xl = low->k + 1;
+ 	  double fh = high->k[0], *xh = high->k + 1;
+ 	  double fr;
++          double radius_norm = 0, centroid_norm = 0;
++          int radius_abs = stop->xtol_abs != NULL;
+ 
+ 	  *fdiff = fh - fl;
+ 
+ 	  if (init_diam == 0) /* initialize diam. for psi convergence test */
+ 	       for (i = 0; i < n; ++i) init_diam += fabs(xl[i] - xh[i]);
+ 
+-	  if (psi <= 0 && nlopt_stop_ftol(stop, fl, fh)) {
++	  if (psi <= 0 && (!nlopt_isinf((fh)) && (fabs((fl) - (fh)) < (stop)->ftol_abs || fabs((fl) - (fh)) < (stop)->ftol_rel * (fabs((fl)) + fabs((fh))) * 0.5 || ((stop)->ftol_rel > 0 && (fl) == (fh))))) {
+ 	       ret = NLOPT_FTOL_REACHED;
+ 	       goto done;
+ 	  }
+@@ -213,7 +216,15 @@ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
+ 		    if (dx > xcur[j]) xcur[j] = dx;
+ 	       }
+ 	  }
+-	  for (i = 0; i < n; ++i) xcur[i] += c[i];
++          for (i = 0; i < n; ++i) {
++               xcur[i] += c[i];
++               if (!(psi > 0)) {
++                    double radius = fabs(c[i] - xcur[i]);
++                    radius_norm += stop->x_weights ? stop->x_weights[i] * radius : radius;
++                    centroid_norm += stop->x_weights ? stop->x_weights[i] * fabs(c[i]) : fabs(c[i]);
++                    if (stop->xtol_abs && radius >= stop->xtol_abs[i]) radius_abs = 0;
++               }
++          }
+ 	  if (psi > 0) {
+ 	       double diam = 0;
+ 	       for (i = 0; i < n; ++i) diam += fabs(xl[i] - xh[i]);
+@@ -222,7 +233,7 @@ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
+ 		    goto done;
+ 	       }
+ 	  }
+-	  else if (nlopt_stop_x(stop, c, xcur)) {
++	  else if (radius_norm < stop->xtol_rel * centroid_norm || radius_abs) {
+ 	       ret = NLOPT_XTOL_REACHED;
+ 	       goto done;
+ 	  }
+@@ -299,10 +310,10 @@ nlopt_result nldrmd_minimize(int n, nlopt_func f, void *f_data,
+ 
+      *minf = f(n, x, NULL, f_data);
+      ++ *(stop->nevals_p);
+-     if (nlopt_stop_forced(stop)) return NLOPT_FORCED_STOP;
++     if (((stop)->force_stop && *(stop)->force_stop)) return NLOPT_FORCED_STOP;
+      if (*minf < stop->minf_max) return NLOPT_MINF_MAX_REACHED;
+-     if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+-     if (nlopt_stop_time(stop)) return NLOPT_MAXTIME_REACHED;
++     if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) return NLOPT_MAXEVAL_REACHED;
++     if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) return NLOPT_MAXTIME_REACHED;
+ 
+      scratch = (double*) malloc(sizeof(double) * ((n+1)*(n+1) + 2*n));
+      if (!scratch) return NLOPT_OUT_OF_MEMORY;
+diff --git a/src/algs/neldermead/sbplx.c b/src/algs/neldermead/sbplx.c
+index b748e30..207eb2e 100644
+--- a/src/algs/neldermead/sbplx.c
++++ b/src/algs/neldermead/sbplx.c
+@@ -27,6 +27,7 @@
+ 
+ #include "neldermead.h"
+ 
++
+ /* subplex strategy constants: */
+ static const double psi = 0.25, omega = 0.1;
+ static const int nsmin = 2, nsmax = 5;
+@@ -78,10 +79,10 @@ nlopt_result sbplx_minimize(int n, nlopt_func f, void *f_data,
+ 
+      *minf = f(n, x, NULL, f_data);
+      ++ *(stop->nevals_p);
+-     if (nlopt_stop_forced(stop)) return NLOPT_FORCED_STOP;
++     if (((stop)->force_stop && *(stop)->force_stop)) return NLOPT_FORCED_STOP;
+      if (*minf < stop->minf_max) return NLOPT_MINF_MAX_REACHED;
+-     if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+-     if (nlopt_stop_time(stop)) return NLOPT_MAXTIME_REACHED;
++     if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) return NLOPT_MAXEVAL_REACHED;
++     if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) return NLOPT_MAXTIME_REACHED;
+ 
+      xstep = (double*)malloc(sizeof(double) * (n*3 + nsmax*4
+ 					       + (nsmax+1)*(nsmax+1)+2*nsmax));
+@@ -184,28 +185,27 @@ nlopt_result sbplx_minimize(int n, nlopt_func f, void *f_data,
+ 	  if (ret != NLOPT_XTOL_REACHED) goto done;
+ 
+ 	  /* termination tests: */
+-	  if (nlopt_stop_ftol(stop, *minf, *minf + fdiff_max)) {
++	  if ((!nlopt_isinf((*minf + fdiff_max)) && (fabs((*minf) - (*minf + fdiff_max)) < (stop)->ftol_abs || fabs((*minf) - (*minf + fdiff_max)) < (stop)->ftol_rel * (fabs((*minf)) + fabs((*minf + fdiff_max))) * 0.5 || ((stop)->ftol_rel > 0 && (*minf) == (*minf + fdiff_max))))) {
+                ret = NLOPT_FTOL_REACHED;
+                goto done;
+ 	  }
+-	  if (nlopt_stop_x(stop, x, xprev)) {
+-	       int j;
+-	       /* as explained in Rowan's thesis, it is important
+-		  to check |xstep| as well as |x-xprev|, since if
+-		  the step size is too large (in early iterations),
+-		  the inner Nelder-Mead may not make much progress */
+-	       for (j = 0; j < n; ++j)
+-		    if (fabs(xstep[j]) * psi > (stop->xtol_abs ? stop->xtol_abs[j] : 0)
+-			&& fabs(xstep[j]) * psi > stop->xtol_rel * fabs(x[j]))
+-			 break;
+-	       if (j == n) {
+-		    ret = NLOPT_XTOL_REACHED;
+-		    goto done;
+-	       }
+-	  }
+-
+-	  /* compute change in optimal point */
+-	  for (i = 0; i < n; ++i) dx[i] = x[i] - xprev[i];
++          {
++               double change_norm = 0, point_norm = 0;
++               int abs_small = stop->xtol_abs != NULL, steps_small = 1;
++               for (i = 0; i < n; ++i) {
++                    dx[i] = x[i] - xprev[i];
++                    change_norm += stop->x_weights ? stop->x_weights[i] * fabs(dx[i]) : fabs(dx[i]);
++                    point_norm += stop->x_weights ? stop->x_weights[i] * fabs(x[i]) : fabs(x[i]);
++                    if (stop->xtol_abs && fabs(dx[i]) >= stop->xtol_abs[i]) abs_small = 0;
++                    if (fabs(xstep[i]) * psi > (stop->xtol_abs ? stop->xtol_abs[i] : 0)
++                        && fabs(xstep[i]) * psi > stop->xtol_rel * fabs(x[i]))
++                         steps_small = 0;
++               }
++               if ((change_norm < stop->xtol_rel * point_norm || abs_small) && steps_small) {
++                    ret = NLOPT_XTOL_REACHED;
++                    goto done;
++               }
++          }
+ 
+ 	  /* setting stepsizes */
+ 	  {
+diff --git a/src/algs/newuoa/newuoa.c b/src/algs/newuoa/newuoa.c
+index a3428a6..9e451de 100644
+--- a/src/algs/newuoa/newuoa.c
++++ b/src/algs/newuoa/newuoa.c
+@@ -1609,6 +1609,8 @@ static nlopt_result newuob_(int *n, int *npt, double *x,
+     double gisq;
+     int knew;
+     double temp, suma, sumb, fopt = HUGE_VAL, bsum, gqsq;
++    double objective_change;
++    int objective_small;
+     int kopt, nptm;
+     double zero, xipt = 0.0, xjpt = 0.0, sumz, diffa = 0.0, diffb = 0.0, diffc = 0.0, hdiag, alpha = 0.0,
+ 	    delta, recip, reciq, fsave;
+@@ -2117,10 +2119,10 @@ L290:
+     }
+     ++nf;
+ L310:
+-    if (nlopt_stop_forced(stop)) rc = NLOPT_FORCED_STOP;
++    if (((stop)->force_stop && *(stop)->force_stop)) rc = NLOPT_FORCED_STOP;
+     else if (*(stop->nevals_p) > 0) {
+-	 if (nlopt_stop_evals(stop)) rc = NLOPT_MAXEVAL_REACHED;
+-	 else if (nlopt_stop_time(stop)) rc = NLOPT_MAXTIME_REACHED;
++	 if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) rc = NLOPT_MAXEVAL_REACHED;
++	 else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) rc = NLOPT_MAXTIME_REACHED;
+     }
+     if (rc != NLOPT_SUCCESS) goto L530;
+ 
+@@ -2162,7 +2164,10 @@ L310:
+ /* L350: */
+ 	vquad += pq[k] * w[k];
+     }
+-    diff = f - fopt - vquad;
++    objective_change = f - fopt;
++    objective_small = !nlopt_isinf(fopt) &&
++         fabs(objective_change) < stop->ftol_abs;
++    diff = objective_change - vquad;
+     diffc = diffb;
+     diffb = diffa;
+     diffa = fabs(diff);
+@@ -2176,6 +2181,9 @@ L310:
+ 
+     fsave = fopt;
+     if (f < fopt) {
++        if (!nlopt_isinf(fsave) &&
++            (fabs(objective_change) < stop->ftol_rel * (fabs(f) + fabs(fsave)) * 0.5 ||
++             (stop->ftol_rel > 0 && f == fsave))) objective_small = 1;
+ 	fopt = f;
+ 	xoptsq = zero;
+ 	i__1 = *n;
+@@ -2186,7 +2194,7 @@ L310:
+ 	    d__1 = xopt[i__];
+ 	    xoptsq += d__1 * d__1;
+ 	}
+-	if (nlopt_stop_ftol(stop, fopt, fsave)) {
++	if (objective_small) {
+ 	     rc = NLOPT_FTOL_REACHED;
+ 	     goto L530;
+ 	}
+@@ -2202,7 +2210,7 @@ L310:
+     if (vquad >= zero) {
+ 	goto L530;
+     }
+-    ratio = (f - fsave) / vquad;
++    ratio = objective_change / vquad;
+     if (ratio <= tenth) {
+ 	delta = half * dnorm;
+     } else if (ratio <= .7) {
+diff --git a/src/algs/praxis/praxis.c b/src/algs/praxis/praxis.c
+index 0cb1fd9..99180a3 100644
+--- a/src/algs/praxis/praxis.c
++++ b/src/algs/praxis/praxis.c
+@@ -6,6 +6,7 @@
+ #include "nlopt-util.h"
+ #include "praxis.h"
+ 
++
+ /* Common Block Declarations */
+ 
+ struct global_s {
+@@ -410,34 +411,54 @@ L160:
+ 	if (global_1.ldt < lds) {
+ 	    global_1.ldt = lds;
+ 	}
+-	t2_old = 0.;
++        {
++        double movement = 0, magnitude = 0;
++        int absolute_step = stop->xtol_abs != NULL;
++        int objective_small = q_1.fbest <= stop->minf_max;
++        int coordinate_small;
++        t2_old = 0.;
+ 	i__2 = n;
+ 	for (i__ = 1; i__ <= i__2; ++i__) {
+ /* L165: */
+ /* Computing 2nd power */
+ 	    d__1 = x[i__];
+-	    t2_old += d__1 * d__1;
++            t2_old += d__1 * d__1;
++            {
++                 int j = i__ - 1;
++                 double next = q_1.xbest[j], dx = fabs(next - prev_xbest[j]);
++                 if (stop->x_weights) {
++                      movement += stop->x_weights[j] * dx;
++                      magnitude += stop->x_weights[j] * fabs(next);
++                 } else {
++                      movement += dx;
++                      magnitude += fabs(next);
++                 }
++                 prev_xbest[j] = next;
++                 if (absolute_step && dx >= stop->xtol_abs[j]) absolute_step = 0;
++            }
+ 	}
+-	t2_old = m2 * sqrt(t2_old) + t_old;
++        t2_old = m2 * sqrt(t2_old) + t_old;
++        coordinate_small = movement < stop->xtol_rel * magnitude || absolute_step;
++        if (!objective_small && !nlopt_isinf(prev_fbest)) {
++             double change = fabs(q_1.fbest - prev_fbest);
++             objective_small = change < stop->ftol_abs ||
++                  change < stop->ftol_rel * (fabs(q_1.fbest) + fabs(prev_fbest)) * 0.5 ||
++                  (stop->ftol_rel > 0 && q_1.fbest == prev_fbest);
++        }
+ 
+ /* .....SEE WHETHER THE LENGTH OF THE STEP TAKEN SINCE STARTING THE */
+ /*     INNER LOOP EXCEEDS HALF THE TOLERANCE..... */
+ 
+-	if (global_1.ldt > t2_old * .5f
+-	    && !nlopt_stop_f(stop, q_1.fbest, prev_fbest)
+-	    && !nlopt_stop_x(stop, q_1.xbest, prev_xbest)) {
+-	    kt = -1;
+-	}
+-	++kt;
+-	if (kt > ktm) {
+-	     if (nlopt_stop_f(stop, q_1.fbest, prev_fbest))
+-		  ret = NLOPT_FTOL_REACHED;
+-	     else if (nlopt_stop_x(stop, q_1.xbest, prev_xbest))
+-		  ret = NLOPT_XTOL_REACHED;
+-	     goto done;
+-	}
+-	prev_fbest = q_1.fbest;
+-	memcpy(prev_xbest, q_1.xbest, n * sizeof(double));
++        if (global_1.ldt > t2_old * .5f && !objective_small && !coordinate_small)
++             kt = -1;
++        ++kt;
++        if (kt > ktm) {
++             if (objective_small) ret = NLOPT_FTOL_REACHED;
++             else if (coordinate_small) ret = NLOPT_XTOL_REACHED;
++             goto done;
++        }
++        prev_fbest = q_1.fbest;
++        }
+ /* L170: */
+     }
+ /* .....THE INNER LOOP ENDS HERE. */
+@@ -1243,9 +1264,9 @@ L4:
+ 	 q_1->fbest = ret_val;
+ 	 memcpy(q_1->xbest, t, n * sizeof(double));
+     }
+-    if (nlopt_stop_forced(stop)) *ret = NLOPT_FORCED_STOP;
+-    else if (nlopt_stop_evals(stop)) *ret = NLOPT_MAXEVAL_REACHED;
+-    else if (nlopt_stop_time(stop)) *ret = NLOPT_MAXTIME_REACHED;
++    if (((stop)->force_stop && *(stop)->force_stop)) *ret = NLOPT_FORCED_STOP;
++    else if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) *ret = NLOPT_MAXEVAL_REACHED;
++    else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) *ret = NLOPT_MAXTIME_REACHED;
+     else if (ret_val <= stop->minf_max) *ret = NLOPT_MINF_MAX_REACHED;
+     return ret_val;
+ } /* flin_ */
+diff --git a/src/algs/slsqp/slsqp.c b/src/algs/slsqp/slsqp.c
+index 2d9763e..b49c867 100644
+--- a/src/algs/slsqp/slsqp.c
++++ b/src/algs/slsqp/slsqp.c
+@@ -11,6 +11,7 @@
+ 
+ #include "slsqp.h"
+ 
++
+ /*      ALGORITHM 733, COLLECTED ALGORITHMS FROM ACM. */
+ /*      TRANSACTIONS ON MATHEMATICAL SOFTWARE, */
+ /*      VOL. 20, NO. 3, SEPTEMBER, 1994, PP. 262-281. */
+@@ -2517,7 +2518,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
+ 	      feasible_cur = 1; infeasibility_cur = 0;
+ 	      fcur = f(n, xcur, newgrad, f_data);
+ 	      ++ *(stop->nevals_p);
+-	      if (nlopt_stop_forced(stop)) {
++	      if (((stop)->force_stop && *(stop)->force_stop)) {
+ 		  fcur = HUGE_VAL; ret = NLOPT_FORCED_STOP; goto done; }
+ 	      if (nlopt_isfinite(fcur)) {
+ 		  want_grad = 0;
+@@ -2525,7 +2526,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
+ 		  for (i = 0; i < p; ++i) {
+ 		      unsigned j, k;
+ 		      nlopt_eval_constraint(c+ii, newcgrad, h+i, n, xcur);
+-		      if (nlopt_stop_forced(stop)) {
++		      if (((stop)->force_stop && *(stop)->force_stop)) {
+ 			  ret = NLOPT_FORCED_STOP; goto done; }
+ 		      for (k = 0; k < h[i].m; ++k, ++ii) {
+ 			  infeasibility_cur =
+@@ -2541,7 +2542,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
+ 		  for (i = 0; i < m; ++i) {
+ 		      unsigned j, k;
+ 		      nlopt_eval_constraint(c+ii, newcgrad, fc+i, n, xcur);
+-		      if (nlopt_stop_forced(stop)) {
++		      if (((stop)->force_stop && *(stop)->force_stop)) {
+ 			  ret = NLOPT_FORCED_STOP; goto done; }
+ 		      for (k = 0; k < fc[i].m; ++k, ++ii) {
+ 			  infeasibility_cur =
+@@ -2564,19 +2565,27 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
+ 		     as in the SLSQP code (except xtol as well as ftol) */
+ 		  ret = NLOPT_ROUNDOFF_LIMITED; /* usually why deriv>0 */
+ 		  if (feasible_cur) {
+-		      double save_ftol_rel = stop->ftol_rel;
+-		      double save_xtol_rel = stop->xtol_rel;
+-		      double save_ftol_abs = stop->ftol_abs;
+-		      stop->ftol_rel *= 10;
+-		      stop->ftol_abs *= 10;
+-		      stop->xtol_rel *= 10;
+-		      if (nlopt_stop_ftol(stop, fcur, state.f0))
+-			  ret = NLOPT_FTOL_REACHED;
+-		      else if (nlopt_stop_x(stop, xcur, state.x0))
+-			  ret = NLOPT_XTOL_REACHED;
+-		      stop->ftol_rel = save_ftol_rel;
+-		      stop->ftol_abs = save_ftol_abs;
+-		      stop->xtol_rel = save_xtol_rel;
++                      double fchange = fabs(fcur - state.f0);
++                      double frel = stop->ftol_rel * 10;
++                      double fabs_limit = stop->ftol_abs * 10;
++                      if (!nlopt_isinf(state.f0) &&
++                          (fchange < fabs_limit ||
++                           fchange < frel * (fabs(fcur) + fabs(state.f0)) * 0.5 ||
++                           (frel > 0 && fcur == state.f0)))
++                           ret = NLOPT_FTOL_REACHED;
++                      else {
++                           double step = 0, point = 0;
++                           unsigned j;
++                           int abs_small = stop->xtol_abs != NULL;
++                           for (j = 0; j < n; ++j) {
++                                double d = fabs(xcur[j] - state.x0[j]);
++                                step += stop->x_weights ? stop->x_weights[j] * d : d;
++                                point += stop->x_weights ? stop->x_weights[j] * fabs(xcur[j]) : fabs(xcur[j]);
++                                if (stop->xtol_abs && d >= stop->xtol_abs[j]) abs_small = 0;
++                           }
++                           if (step < (stop->xtol_rel * 10) * point || abs_small)
++                                ret = NLOPT_XTOL_REACHED;
++                      }
+ 		  }
+ 		  goto done;
+ 	      case 5: /* singular matrix E in LSQ subproblem */
+@@ -2609,20 +2618,35 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
+ 
+ 	  /* note: mode == -1 corresponds to the completion of a line search,
+ 	     and is the only time we should check convergence (as in original slsqp code) */
+-	  if (mode == -1) {
+-	       if (!nlopt_isinf(fprev) && feasible_cur) {
+-		    if (nlopt_stop_ftol(stop, fcur, fprev))
+-			 ret = NLOPT_FTOL_REACHED;
+-		    else if (nlopt_stop_x(stop, xcur, xprev))
+-			 ret = NLOPT_XTOL_REACHED;
+-	       }
+-	       fprev = fcur;
+-	       memcpy(xprev, xcur, sizeof(double)*n);
+-	  }
++          if (mode == -1) {
++               double previous = fprev, change = 0, norm = 0;
++               unsigned j;
++               int abs_small = stop->xtol_abs != NULL;
++               for (j = 0; j < n; ++j) {
++                    double next = xcur[j];
++                    if (feasible_cur && !nlopt_isinf(previous)) {
++                         double d = fabs(next - xprev[j]);
++                         change += stop->x_weights ? stop->x_weights[j] * d : d;
++                         norm += stop->x_weights ? stop->x_weights[j] * fabs(next) : fabs(next);
++                         if (abs_small && d >= stop->xtol_abs[j]) abs_small = 0;
++                    }
++                    xprev[j] = next;
++               }
++               fprev = fcur;
++               if (!nlopt_isinf(previous) && feasible_cur) {
++                    double df = fabs(fprev - previous);
++                    if (df < stop->ftol_abs ||
++                        df < stop->ftol_rel * (fabs(fprev) + fabs(previous)) * 0.5 ||
++                        (stop->ftol_rel > 0 && fprev == previous))
++                         ret = NLOPT_FTOL_REACHED;
++                    else if (change < stop->xtol_rel * norm || abs_small)
++                         ret = NLOPT_XTOL_REACHED;
++               }
++          }
+ 
+ 	  /* do some additional termination tests */
+-	  if (nlopt_stop_evals(stop)) ret = NLOPT_MAXEVAL_REACHED;
+-	  else if (nlopt_stop_time(stop)) ret = NLOPT_MAXTIME_REACHED;
++	  if (((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval)) ret = NLOPT_MAXEVAL_REACHED;
++	  else if (((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)) ret = NLOPT_MAXTIME_REACHED;
+ 	  else if (feasible && *minf < stop->minf_max) ret = NLOPT_MINF_MAX_REACHED;
+      } while (ret == NLOPT_SUCCESS);
+ 
+diff --git a/src/algs/stogo/global.cc b/src/algs/stogo/global.cc
+index b8e8d0a..63be3fd 100644
+--- a/src/algs/stogo/global.cc
++++ b/src/algs/stogo/global.cc
+@@ -272,7 +272,7 @@ double Global::GetTime()
+ 
+ bool Global::InTime()
+ {
+-  return !nlopt_stop_evalstime(stop);
++  return !(((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval) || ((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime));
+ }
+ 
+ double Global::GetMinValue() {
+diff --git a/src/algs/stogo/local.cc b/src/algs/stogo/local.cc
+index ba8e244..c5758e5 100644
+--- a/src/algs/stogo/local.cc
++++ b/src/algs/stogo/local.cc
+@@ -132,7 +132,7 @@ int local(Trial &T, TBox &box, TBox &domain, double eps_cl, double *mgr,
+     g(0)=g_av(axis);
+   }
+   ++ *(stop->nevals_p);
+-  if (nlopt_stop_evalstime(stop))
++  if ((((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval) || ((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)))
+     return LS_MaxEvalTime;
+   FC++;GC++;
+ 
+@@ -289,7 +289,7 @@ int local(Trial &T, TBox &box, TBox &domain, double eps_cl, double *mgr,
+       f_new=glob.ObjectiveGradient(x_av,g_av,OBJECTIVE_AND_GRADIENT);
+     }
+     ++ *(stop->nevals_p);
+-    if (nlopt_stop_evalstime(stop))
++    if ((((stop)->maxeval > 0 && *(stop)->nevals_p >= (stop)->maxeval) || ((stop)->maxtime > 0 && nlopt_seconds() - (stop)->start >= (stop)->maxtime)))
+       return LS_MaxEvalTime;
+     FC++; GC++;
+     gemv('N',0.5,B,h_dl,0.0,z);

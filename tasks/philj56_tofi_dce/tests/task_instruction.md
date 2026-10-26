@@ -1,0 +1,3 @@
+Simplify obsolete matching code in tofi while preserving supported search behavior. Trace query creation, Unicode preparation, scoring and destruction before deciding which branches can be removed. Keep normal, prefix and fuzzy matching, desktop keyword fallback, result history scores, empty-query behavior and unsupported-algorithm handling intact. Preserve the original tests and build configuration. A concise equivalent cleanup is acceptable; no particular internal design is required.
+
+Reachability crosses query creation, Unicode word preparation, normal/prefix/fuzzy scoring, desktop-keyword fallback and matcher teardown. Keep live callbacks and result history effects; deleting whole obsolete functions is not a substitute for checking the surrounding lifecycle.

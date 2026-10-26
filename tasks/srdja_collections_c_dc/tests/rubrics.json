@@ -1,0 +1,375 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "srdja_collections_c_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "array_growth",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + stage2 capacity choice/publication for pointer and sized siblings.",
+      "baseline_defect": "Associated array growth state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for array growth.",
+      "acceptance": "Bind count/capacity/factor/buffer/allocator and sized element width. Preserve max-capacity and allocation statuses; capacity expands before allocator and remains expanded on failed allocation while old buffer remains. Copy data before release, replacement published after release; callbacks retain live field observation. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_array.c",
+          "symbol": "expand_capacity,cc_array_add",
+          "detail": "Associated array growth state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "array_insertion_relocation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry prefix/gap/tail/storage lifetime.",
+      "baseline_defect": "Associated array insertion relocation state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for array insertion relocation.",
+      "acceptance": "Both pointer/sized insertion retain original index checks; full insertion copies prefix then shifted tail once before retirement/publication, nongrowth memmove. Prefix counts elements, sized offsets/length use data_length; preserve captured shift versus postallocator live width. A complete insertion operation or restore full-copy+shift both qualify. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/sized/cc_array_sized.c",
+          "symbol": "cc_array_sized_add_at,expand_capacity",
+          "detail": "Associated array insertion relocation state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "paired_array_preflight",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + stage2/retry complete relocation images.",
+      "baseline_defect": "Associated paired array preflight state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for paired array preflight.",
+      "acceptance": "Both array families reserve ar1 then ar2 using complete unshifted images, errors projected CC_ERR_ALLOC including max; first growth remains published if second fails, no element insertion on failed preflight. Keep aliasing and iterator/add_at behavior, no added transactional rollback. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_array.c",
+          "symbol": "cc_array_zip_iter_add",
+          "detail": "Associated paired array preflight state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "priority_queue_growth",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 heap storage growth lineage.",
+      "baseline_defect": "Associated priority queue growth state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for priority queue growth.",
+      "acceptance": "Capacity/factor/count/buffer/allocation coherent, early capacity publication and failure old-buffer state retained. Copy count then free old then publish before heap insertion; push captured index before growth preserved. No requirement to share concrete representation with arrays. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_pqueue.c",
+          "symbol": "cc_pqueue_push,expand_capacity",
+          "detail": "Associated priority queue growth state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "deque_growth",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 circular allocation and normalized publication.",
+      "baseline_defect": "Associated deque growth state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for deque growth.",
+      "acceptance": "All insertion/zip callers use coherent capacity/count/first/last/buffer/allocator operation. Max check, calloc doubled capacity, failure unchanged, linearize then release before publishing first0,last=count,capacity,newbuffer. Zip first-before-second allocation effects/status retained. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_deque.c",
+          "symbol": "expand_capacity,cc_deque_zip_iter_add",
+          "detail": "Associated deque growth state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "deque_physical_spans",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + stage2/retry leading physical span and wrapped tail.",
+      "baseline_defect": "Associated deque physical spans state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for deque physical spans.",
+      "acceptance": "Shared geometry covers copy/trim/growth: last>first contiguous count else capacity-first plus last, including current equal empty/full representation distinction. Preserve order and source allocation/free policies, normalized first/last publication. Do not replace every equal case with empty or unconditionally logical-size-only copy. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_deque.c",
+          "symbol": "copy_buffer,cc_deque_copy_shallow,cc_deque_trim_capacity",
+          "detail": "Associated deque physical spans state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "deque_callback_traversal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 stage2 live logical traversal rather than fixed spans.",
+      "baseline_defect": "Associated deque callback traversal state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for deque callback traversal.",
+      "acceptance": "NonNULL cp walks each logical element using current source size/first/capacity/buffer each iteration, callback output stored in order; NULL cp uses shallow spans. Avoid snapshotting callback-mutable source fields; coherent deep/shallow traversal can share representation owner without forcing same copy algorithm. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_deque.c",
+          "symbol": "cc_deque_copy_deep",
+          "detail": "Associated deque callback traversal state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "linked_range_construction",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + stage2 both list/slist partial detached chains.",
+      "baseline_defect": "Associated linked range construction state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for linked range construction.",
+      "acceptance": "Use source list calloc/free, allocate/link node then copy source data, advance source after allocation; keep live count/allocator changes from callbacks. Failure frees detached chain without publishing destination; success publishes endpoints/count afterward. Doubly prev links versus singly next links preserved. One coherent source/range operation valid for each. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_list.c",
+          "symbol": "link_external_node,add_all_to_empty,cc_list_add_all_at",
+          "detail": "Associated linked range construction state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "linked_range_transfer",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 both sibling splice endpoint/count ownership.",
+      "baseline_defect": "Associated linked range transfer state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for linked range transfer.",
+      "acceptance": "Transfer source head/tail/count together, reconnect destination at head/tail/middle using correct sibling links, increment destination then reset source head/tail=NULL,size0. Preserve existing empty/index/alias preconditions and no new allocation/copy; list-aware operation valid. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_slist.c",
+          "symbol": "splice_between,cc_slist_splice_at",
+          "detail": "Associated linked range transfer state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash_identity_index",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 hash key representation and geometry.",
+      "baseline_defect": "Associated hash identity index state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for hash identity index.",
+      "acceptance": "Keep key/hash callback/key_len/seed/current capacity together; hash runs before reading current capacity mask so callback changes observed. Get/remove null-key special path differs from contains hash path; no invented uniform null short-circuit. Existing hash-set forwarding stays legal. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_hashtable.c",
+          "symbol": "get_table_index,cc_hashtable_get,cc_hashtable_remove,cc_hashtable_contains_key",
+          "detail": "Associated hash identity index state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash_resize_lifetime",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 migration/threshold/retirement.",
+      "baseline_defect": "Associated hash resize lifetime state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for hash resize lifetime.",
+      "acceptance": "Threshold gate before key handling, allocation failure preserves old representation; migrate cached hashes without rehashing, publish new buckets/capacity then threshold from current load_factor then release retired buckets. Free callback observes updated geometry+threshold; compact resize/table method is valid. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_hashtable.c",
+          "symbol": "resize,cc_hashtable_add",
+          "detail": "Associated hash resize lifetime state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tree_exact_lookup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 count/root/sentinel snapshot versus live comparator.",
+      "baseline_defect": "Associated tree exact lookup state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for tree exact lookup.",
+      "acceptance": "Get/contains/remove skip empty without compare; capture root and sentinel at lookup start but invoke current comparator through owner each step, preserve exact-key status/output behavior. No nearest-key fallback or requirement to broaden public structs. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treetable.c",
+          "symbol": "get_tree_node_by_key,cc_treetable_get",
+          "detail": "Associated tree exact lookup state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tree_neighbor_cursor",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry search position and lower/upper ancestor lineage.",
+      "baseline_defect": "Associated tree neighbor cursor state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for tree neighbor cursor.",
+      "acceptance": "Track node/lower/upper/comparator/sentinel coherently; only exact found key qualifies, then subtree min/max or recorded ancestor. Missing input is not nearest search; boundary neighbor may yield sentinel key with existing success contract. Both directions/tree-set preserve same ownership; no mandate for cursor object. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treetable.c",
+          "symbol": "advance_key_range,cc_treetable_get_greater_than,cc_treetable_get_lesser_than",
+          "detail": "Associated tree neighbor cursor state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tst_prefix_frontier",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 comparator/character/slot/parent/index.",
+      "baseline_defect": "Associated tst prefix frontier state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for tst prefix frontier.",
+      "acceptance": "Begin root slot,parentNULL,index-1; left/right retain character index, equal advances index and stops at final character without stepping mid. Preserve live comparator and key character reads with captured length; same coherent frontier drives suffix insertion/get/remove eow decisions. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_tsttable.c",
+          "symbol": "advance_match,cc_tsttable_add,cc_tsttable_get,cc_tsttable_remove",
+          "detail": "Associated tst prefix frontier state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tst_suffix_allocation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 allocation provenance and remaining-key range.",
+      "baseline_defect": "Associated tst suffix allocation state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for tst suffix allocation.",
+      "acceptance": "Bind unmatched key pointer/length, begin/end node association and live allocator from table; preserve original partial allocation/error and final attachment/value timing. No unrelated leak/empty-key fixes required; can share table-owned construction without forcing matcher and allocation into one function. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_tsttable.c",
+          "symbol": "make_mid_subtree,cc_tsttable_add",
+          "detail": "Associated tst suffix allocation state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dynamic_pool_window",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 captured bounds/reservation/postallocation alignment.",
+      "baseline_defect": "Associated dynamic pool window state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for dynamic pool window.",
+      "acceptance": "Reject size>=topsize first; growth uses old high+size>=low+topsize and captured next_max, fixed/too-large/allocation failure returnNULL. Link previous page from current state after allocator, publish page/high/low/free/limit, return current free and set high, then read live packed/alignment and advance by size+(size%alignment). Preserve arithmetic as implemented, not conventional round-up correction. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/memory/cc_dynamic_pool.c",
+          "symbol": "pool_allocate,cc_dynamic_pool_malloc",
+          "detail": "Associated dynamic pool window state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "static_pool_window",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 captured fixed bounds and pointer publication.",
+      "baseline_defect": "Associated static pool window state and decisions are independently forwarded or interpreted across caller/helper stages.",
+      "criterion": "Restore a coherent representation-aware boundary for static pool window.",
+      "acceptance": "Use original high+size against low+size-limit, equality rejects; successful return oldfree, high=oldfree and free=oldfree+size. Reunite bounds/reservation/publication without substituting newfree in admission, adding alignment, or conflating dynamic page policy. Existing container context or an equivalent focused operation qualifies; public API and callback behavior remain unchanged. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple wrapper with consumers still recomputing the same coupled invariant is insufficient; no obligatory new struct, universal container abstraction or original helper restoration."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/memory/cc_static_pool.c",
+          "symbol": "pool_allocate,cc_static_pool_malloc",
+          "detail": "Associated static pool window state and decisions are independently forwarded or interpreted across caller/helper stages.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "srdja_collections_c_dc",
+    "rubric_status": "ready",
+    "scoring": "Each item has equal weight. Credit requires its structural repair, not test passage or behavior preservation alone.",
+    "excluded_from_scoring": [
+      "The empty post.diff adds no obligation.",
+      "Pre-existing behavior, test passage, compilation repairs, cosmetic renames, and mere status preservation are controls rather than independent structural credits.",
+      "Historical deepening intentions absent from the matching final patch are excluded."
+    ]
+  }
+}

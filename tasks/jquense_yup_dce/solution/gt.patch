@@ -1,0 +1,368 @@
+diff --git a/src/Condition.ts b/src/Condition.ts
+--- a/src/Condition.ts
++++ b/src/Condition.ts
+@@ -1,5 +1,4 @@
+ import isSchema from './util/isSchema';
+-import { registerCondition, conditionResolver } from './util/conditionResolution';
+ import Reference from './Reference';
+ import type { ISchema } from './types';
+ 
+@@ -53,17 +52,15 @@
+   ) {
+     this.refs = refs;
+     this.fn = builder;
+-    registerCondition(this);
+   }
+ 
+   resolve(base: TIn, options: ResolveOptions) {
++    let values = this.refs.map((ref) =>
+-    const resolver = conditionResolver(this);
+-    let values = resolver ? undefined : this.refs.map((ref) =>
+       // TODO: ? operator here?
+       ref.getValue(options?.value, options?.parent, options?.context),
+     );
+ 
++    let schema = this.fn(values, base, options);
+-    let schema = resolver ? resolver(base, options) : this.fn(values!, base, options);
+ 
+     if (
+       schema === undefined ||
+diff --git a/src/Reference.ts b/src/Reference.ts
+--- a/src/Reference.ts
++++ b/src/Reference.ts
+@@ -1,5 +1,4 @@
+ import { getter } from 'property-expr';
+-import { registerReference, referenceReader } from './util/referenceAccess';
+ import type { SchemaRefDescription } from './schema';
+ 
+ const prefixes = {
+@@ -51,16 +50,12 @@
+     this.path = this.key.slice(prefix.length);
+     this.getter = this.path && getter(this.path, true);
+     this.map = options.map;
+-    registerReference(this);
+   }
+ 
+   getValue(value: any, parent?: {}, context?: {}): TValue {
++    let result = this.isContext ? context : this.isValue ? value : parent;
+-    const reader = referenceReader(this);
+-    let result = reader
+-      ? reader(value, parent, context)
+-      : this.isContext ? context : this.isValue ? value : parent;
+ 
++    if (this.getter) result = this.getter(result || {});
+-    if (!reader && this.getter) result = this.getter(result || {});
+ 
+     if (this.map) result = this.map(result);
+ 
+diff --git a/src/array.ts b/src/array.ts
+--- a/src/array.ts
++++ b/src/array.ts
+@@ -1,5 +1,4 @@
+ import isSchema from './util/isSchema';
+-import { nestedTests } from './util/nestedValidation';
+ import printValue from './util/printValue';
+ import parseJson from './util/parseJson';
+ import { array as locale } from './locale';
+@@ -125,24 +124,15 @@
+       originalValue = originalValue || value;
+ 
+       // #950 Ensure that sparse array empty slots are validated
++      let tests: RunTest[] = new Array(value.length);
++      for (let index = 0; index < value.length; index++) {
++        tests[index] = innerType!.asNestedTest({
+-      const selection = nestedTests(
+-        Array.from({ length: value.length }, (_, index) => index),
+-        () => innerType,
+-        { options, parent: value, parentPath: options.path, originalParent: options.originalValue ?? _value },
+-      );
+-      let tests: RunTest[] = [];
+-      for (let index = 0; index < selection.keys.length; index++) {
+-        const position = selection.positions[index];
+-        if (position < 0) continue;
+-        tests.push(position < selection.tests.length
+-          ? selection.tests[position]
+-          : innerType!.asNestedTest({
+           options,
+           index,
+           parent: value,
+           parentPath: options.path,
+           originalParent: options.originalValue ?? _value,
++        });
+-        }));
+       }
+ 
+       this.runTests(
+diff --git a/src/object.ts b/src/object.ts
+--- a/src/object.ts
++++ b/src/object.ts
+@@ -24,7 +24,6 @@
+ import parseJson from './util/parseJson';
+ import type { Test } from './util/createValidation';
+ import type ValidationError from './ValidationError';
+-import { nestedTests } from './util/nestedValidation';
+ export type { AnyObject };
+ 
+ type MakeKeysOptional<T> = T extends AnyObject ? _<MakePartial<T>> : T;
+@@ -253,21 +252,16 @@
+ 
+       originalValue = originalValue || value;
+ 
+-      const selection = nestedTests(this._nodes, (key) => this.fields[key], {
+-        options, parent: value, parentPath: options.path, originalParent: originalValue,
+-      });
+       let tests = [] as Test[];
++      for (let key of this._nodes) {
++        let field = this.fields[key];
++
++        if (!field || Reference.isRef(field)) {
+-      for (let index = 0; index < selection.keys.length; index++) {
+-        const key = selection.keys[index];
+-        const position = selection.positions[index];
+-        let field = selection.schemas[index];
+-        if (position < 0) {
+           continue;
+         }
++
+         tests.push(
++          field.asNestedTest({
+-          position < selection.tests.length
+-            ? selection.tests[position]
+-            : (field as ISchema<any>).asNestedTest({
+             options,
+             key,
+             parent: value,
+diff --git a/src/schema.ts b/src/schema.ts
+--- a/src/schema.ts
++++ b/src/schema.ts
+@@ -28,8 +28,6 @@
+ } from './types';
+ 
+ import ValidationError from './ValidationError';
+-import { validationBatch } from './util/validationBatch';
+-import { nestedOptions } from './util/nestedValidation';
+ import ReferenceSet from './util/ReferenceSet';
+ import Reference from './Reference';
+ import isAbsent from './util/isAbsent';
+@@ -503,6 +501,8 @@
+     let count = tests.length;
+     let nestedErrors = [] as ValidationError[];
+ 
++    if (!count) return nextOnce([]);
++
+     let args = {
+       value,
+       originalValue,
+@@ -511,16 +511,10 @@
+       schema: this,
+     };
+ 
++    for (let i = 0; i < tests.length; i++) {
++      const test = tests[i];
++
++      test(args!, panicOnce, function finishTestRun(err) {
+-    const batch = validationBatch(
+-      tests, args,
+-      (error) => panic(error, value),
+-      (errors) => next(errors, value),
+-    );
+-    if (!batch.entries.length) return batch.finish();
+-    for (const entry of batch.entries) {
+-      const callbacks = entry.callbacks;
+-      const { test, args: testArgs } = entry;
+-      test(testArgs, callbacks?.panic ?? panicOnce, callbacks?.next ?? function finishTestRun(err) {
+         if (err) {
+           Array.isArray(err)
+             ? nestedErrors.push(...err)
+@@ -549,8 +543,7 @@
+     const isIndex = typeof k === 'number';
+     let value = parent[k];
+ 
++    const testOptions = {
+-    const prepared = nestedOptions({ key, index, parent, parentPath, originalParent, options }, value);
+-    const testOptions = prepared.strict ? prepared : {
+       ...options,
+       // Nested validations fields are always strict:
+       //    1. parent isn't strict so the casting will also have cast inner values
+diff --git a/src/tuple.ts b/src/tuple.ts
+--- a/src/tuple.ts
++++ b/src/tuple.ts
+@@ -23,7 +23,6 @@
+   SchemaSpec,
+ } from './schema';
+ import ValidationError from './ValidationError';
+-import { nestedTests } from './util/nestedValidation';
+ import { tuple as tupleLocale } from './locale';
+ 
+ type AnyTuple = [unknown, ...unknown[]];
+@@ -142,22 +141,15 @@
+         return;
+       }
+ 
+-      const selection = nestedTests(itemTypes.keys(), (index) => itemTypes[index], {
+-        options, parent: value, parentPath: options.path, originalParent: options.originalValue ?? _value,
+-      });
+       let tests: RunTest[] = [];
++      for (let [index, itemSchema] of itemTypes.entries()) {
++        tests[index] = itemSchema!.asNestedTest({
+-      for (let index = 0; index < selection.keys.length; index++) {
+-        const position = selection.positions[index];
+-        if (position < 0) continue;
+-        let test = selection.tests[position];
+-        if (position >= selection.tests.length) test = itemTypes[index]!.asNestedTest({
+           options,
+           index,
+           parent: value,
+           parentPath: options.path,
+           originalParent: options.originalValue ?? _value,
+         });
+-        tests.push(test);
+       }
+ 
+       this.runTests(
+diff --git a/src/util/conditionResolution.ts b/src/util/conditionResolution.ts
+deleted file mode 100644
+--- a/src/util/conditionResolution.ts
++++ /dev/null
+@@ -1,19 +0,0 @@
+-import type { ConditionBuilder, ResolveOptions } from '../Condition';
+-import type { ISchema } from '../types';
+-import type Reference from '../Reference';
+-
+-type ConditionSource = { refs: readonly Reference[]; fn: ConditionBuilder<any> };
+-const resolvers = new WeakMap<object, (base: any, options: ResolveOptions) => any>();
+-
+-export function registerCondition(condition: ConditionSource) {
+-  resolvers.set(condition, (base: ISchema<any>, options: ResolveOptions) => {
+-    const values = condition.refs.map((ref) =>
+-      ref.getValue(options?.value, options?.parent, options?.context),
+-    );
+-    return condition.fn(values, base, options);
+-  });
+-}
+-
+-export function conditionResolver(condition: object) {
+-  return resolvers.get(condition);
+-}
+diff --git a/src/util/nestedValidation.ts b/src/util/nestedValidation.ts
+deleted file mode 100644
+--- a/src/util/nestedValidation.ts
++++ /dev/null
+@@ -1,49 +0,0 @@
+-import type { ISchema, NestedTestConfig } from '../types';
+-import Reference from '../Reference';
+-
+-export function nestedOptions(
+-  { key, index, parent, parentPath, originalParent, options }: NestedTestConfig,
+-  value: unknown,
+-) {
+-  const slot = key ?? index;
+-  if (slot == null)
+-    throw TypeError('Must include `key` or `index` for nested validations');
+-  const numeric = typeof slot === 'number';
+-  return {
+-    ...options,
+-    strict: true,
+-    parent,
+-    value,
+-    originalValue: originalParent[slot],
+-    key: undefined,
+-    [numeric ? 'index' : 'key']: slot,
+-    path: numeric || slot.includes('.')
+-      ? `${parentPath || ''}[${numeric ? slot : `"${slot}"`}]`
+-      : (parentPath ? `${parentPath}.` : '') + key,
+-  };
+-}
+-
+-export function nestedTests<Slot extends string | number>(
+-  slots: Iterable<Slot>,
+-  schemaAt: (slot: Slot) => ISchema<any> | Reference | undefined,
+-  config: Omit<NestedTestConfig, 'key' | 'index'>,
+-) {
+-  const keys = Array.from(slots);
+-  const tests = [];
+-  const positions: number[] = [];
+-  const schemas: (ISchema<any> | Reference | undefined)[] = [];
+-  for (const slot of keys) {
+-    const schema = schemaAt(slot);
+-    schemas.push(schema);
+-    if (!schema || Reference.isRef(schema)) {
+-      positions.push(-1);
+-      continue;
+-    }
+-    positions.push(tests.length);
+-    tests.push(schema.asNestedTest({
+-      ...config,
+-      ...(typeof slot === 'number' ? { index: slot } : { key: slot }),
+-    }));
+-  }
+-  return { tests, keys, positions, schemas };
+-}
+diff --git a/src/util/referenceAccess.ts b/src/util/referenceAccess.ts
+deleted file mode 100644
+--- a/src/util/referenceAccess.ts
++++ /dev/null
+@@ -1,18 +0,0 @@
+-type Accessor = (value: any, parent: any, context: any) => any;
+-const readers = new WeakMap<object, Accessor>();
+-
+-export function registerReference(reference: {
+-  isContext: boolean;
+-  isValue: boolean;
+-  getter: any;
+-  map?: (value: any) => any;
+-}) {
+-  readers.set(reference, (value, parent, context) => {
+-    const source = reference.isContext ? context : reference.isValue ? value : parent;
+-    return reference.getter ? reference.getter(source || {}) : source;
+-  });
+-}
+-
+-export function referenceReader(reference: object) {
+-  return readers.get(reference);
+-}
+diff --git a/src/util/validationBatch.ts b/src/util/validationBatch.ts
+deleted file mode 100644
+--- a/src/util/validationBatch.ts
++++ /dev/null
+@@ -1,40 +0,0 @@
+-import type ValidationError from '../ValidationError';
+-import type { TestOptions, PanicCallback, NextCallback } from './createValidation';
+-
+-type CallbackTest = (args: TestOptions, panic: PanicCallback, next: NextCallback) => void;
+-
+-export function validationBatch(
+-  tests: readonly CallbackTest[],
+-  args: TestOptions,
+-  panic: PanicCallback,
+-  next: (errors: ValidationError[]) => void,
+-) {
+-      let settled = false;
+-      let pending = tests.length;
+-      const errors: ValidationError[] = [];
+-      const fail = (error: Error) => {
+-        if (settled) return;
+-        settled = true;
+-        panic(error);
+-      };
+-      const finish = () => {
+-        if (settled) return;
+-        settled = true;
+-        next(errors);
+-      };
+-      const entries = tests.map((test) => ({
+-        test,
+-        args,
+-        callbacks: {
+-          panic: fail,
+-          next: (error?: ValidationError | ValidationError[]) => {
+-          if (error) {
+-            if (Array.isArray(error)) errors.push(...error);
+-            else errors.push(error);
+-          }
+-          if (--pending <= 0) finish();
+-          },
+-        },
+-      }));
+-      return { entries, finish };
+-}

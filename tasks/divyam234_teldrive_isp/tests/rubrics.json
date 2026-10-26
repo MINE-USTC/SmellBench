@@ -1,0 +1,459 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "divyam234_teldrive_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "copy_capability",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion broad storage; deepening copy journal.",
+      "baseline_defect": "CopyBackend embeds inventory, bots, metadata and download despite copy/delete-only lifecycle.",
+      "criterion": "Let file-copy storage coordination depend on copy and compensation capabilities without unrelated backend operations.",
+      "acceptance": "Journal successful copies before size validation; failed copy results are not journaled. Compensation groups valid channel/message IDs and uses background context. A focused transaction abstraction is allowed and its state need not be exposed. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/fileops/service.go",
+          "symbol": "Copy",
+          "detail": "CopyBackend embeds inventory, bots, metadata and download despite copy/delete-only lifecycle.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cleanup_capability",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion cleanup union; deepening record mutation through storage override.",
+      "baseline_defect": "Per-channel cleanup exposes a whole Backend and hides SQL record deletion in a generic DeleteMessages override.",
+      "criterion": "Expose a focused cleanup responsibility with explicit remote-deletion and record-deletion semantics.",
+      "acceptance": "A combined cleanup operation is valid, including a renamed redesigned operation; remote success precedes exact-record SQL deletion and count validation. Do not require separate classes or force worker ownership. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/jobs/cleanup_backend.go",
+          "symbol": "DeleteMessages",
+          "detail": "Per-channel cleanup exposes a whole Backend and hides SQL record deletion in a generic DeleteMessages override.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "orphan_capability",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion inventory adapter; deepening callback-selected deletion.",
+      "baseline_defect": "Orphan iteration needs listing and removal but receives broad Backend and generic traversal conceals deletion.",
+      "criterion": "Give orphan traversal/classification/removal an explicit focused cleanup boundary, independently usable from unrelated storage capabilities.",
+      "acceptance": "Preserve independently injected lister, classification before removal, removal before exhausted/progress checks, accumulated counts and errors. Focused destructive traversal is legal when its contract is explicit; no blanket callback ban. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/telegramstore/backend.go",
+          "symbol": "walkDocuments",
+          "detail": "Orphan iteration needs listing and removal but receives broad Backend and generic traversal conceals deletion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "inventory_registration",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion optional worker registration.",
+      "baseline_defect": "Registration obtains orphan listing through universal Backend.",
+      "criterion": "Keep orphan listing availability independent of unrelated backend capabilities.",
+      "acceptance": "nil storage and absent listing disable registration; preserve minimum age selection. Optional assertions or direct capability injection qualify; no new external implementer obligations. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/jobs/runtime.go",
+          "symbol": "newRuntimeWithSchema DocumentInventory",
+          "detail": "Registration obtains orphan listing through universal Backend.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "bot_registration",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion optional worker registration.",
+      "baseline_defect": "Registration obtains bot provisioning through universal Backend.",
+      "criterion": "Keep bot provisioning availability independent of unrelated backend capabilities.",
+      "acceptance": "absent inviter, bot service or encryptor disables provisioning. Optional assertions or direct capability injection qualify; no new external implementer obligations. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/jobs/runtime.go",
+          "symbol": "newRuntimeWithSchema BotAdministration",
+          "detail": "Registration obtains bot provisioning through universal Backend.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "runtime_execution",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion joins execution, sessions and bot membership.",
+      "baseline_defect": "Ordinary/pool execution accesses a runtime also requiring bot and session operations.",
+      "criterion": "Keep authenticated execution available without requiring session management or bot provisioning.",
+      "acceptance": "Retain operation/user/context and pooled execution only when supported and connections>1; ordinary fallback otherwise. One execution capability for Run and RunPooled is allowed. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/telegramstore/runtime.go",
+          "symbol": "Run,RunPooled",
+          "detail": "Ordinary/pool execution accesses a runtime also requiring bot and session operations.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "runtime_session",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Deepening splits startup from ready/done selection.",
+      "baseline_defect": "Session caller inspects mutable concrete session startup state returned by broad runtime.",
+      "criterion": "Give download-session startup, readiness, failure and ownership a coherent boundary independent of bot/execution-unrelated operations.",
+      "acceptance": "Preserve cached opener preference, authenticated API/client identity before readiness, done error or ErrClientUnavailable, cancellation and owned lifetime. A locally cohesive restored implementation is sufficient; no mandatory asynchronous state abstraction. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/telegramstore/gotd.go",
+          "symbol": "OpenDownloadSession",
+          "detail": "Session caller inspects mutable concrete session startup state returned by broad runtime.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "runtime_bots",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Deepening divides lookup rollback and promotion rollback.",
+      "baseline_defect": "Channel membership handling is routed through a session/execution union, with rollback responsibility split across default and caller.",
+      "criterion": "Make channel provisioning membership and its rollback coherent using focused bot capability.",
+      "acceptance": "nil provider succeeds empty; lookup and promotion failures delete the new channel, preserving errors and same API/context. A coherent caller may coordinate both failure branches. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/telegramstore/runtime.go",
+          "symbol": "ChannelBotsFor",
+          "detail": "Channel membership handling is routed through a session/execution union, with rollback responsibility split across default and caller.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "upload_phase_contract",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion merges upload catalog, key, channel and full storage.",
+      "baseline_defect": "Each pipeline phase accesses an aggregate containing unrelated download/inventory/bot operations.",
+      "criterion": "Use focused upload dependencies for catalog, channel resolution, key lookup and storage at the actual phase boundaries.",
+      "acceptance": "The top-level upload orchestrator may retain all dependencies it uses; no one-interface-per-method mandate. Preserve lookup, conflict, claim, key and upload sequencing. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/backend.go",
+          "symbol": "uploadBackend",
+          "detail": "Each pipeline phase accesses an aggregate containing unrelated download/inventory/bot operations.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "upload_failure",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion moves lease failure into broad default.",
+      "baseline_defect": "Failure recording requires uploadBinding with unrelated channel/key/Telegram capabilities.",
+      "criterion": "Keep lease failure recording callable through its focused persistence dependency.",
+      "acceptance": "Use detached bounded cleanup context, lease token and error code; caller preserves original cause and ignores ErrLeaseLost as before. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/upload_backend.go",
+          "symbol": "AbortPart",
+          "detail": "Failure recording requires uploadBinding with unrelated channel/key/Telegram capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "upload_renewal",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Deepening callback moves error publication/cancel to caller.",
+      "baseline_defect": "Renewal timer and detached persistence live in broad binding while failure delivery/cancel are split into pipeline callback.",
+      "criterion": "Make part-lease renewal and its stop/failure protocol coherent without unrelated backend requirements.",
+      "acceptance": "Preserve interval, context termination, one failure, buffered error publication before cancellation, detached renewal persistence and cleanup. A well-defined callback is valid; no forced channel or callback prohibition. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/upload_backend.go",
+          "symbol": "KeepLease,RenewPart",
+          "detail": "Renewal timer and detached persistence live in broad binding while failure delivery/cancel are split into pipeline callback.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "upload_commit_compensation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion commit/cleanup default retained in deepening.",
+      "baseline_defect": "Successful upload commit and remote compensation require the whole upload union and distinguish two contexts across adapter calls.",
+      "criterion": "Give commit-or-compensate coordination focused persistence/removal dependencies and explicit lifecycle semantics.",
+      "acceptance": "Store uses detached storeCtx; failed persistence triggers removal with cleanupCtx, preserving valid-ID guards and errors.Join. Combined operation or local orchestration both qualify; contexts must not be accidentally conflated. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/upload_backend.go",
+          "symbol": "StoreUploaded,RemoveUploaded",
+          "detail": "Successful upload commit and remote compensation require the whole upload union and distinguish two contexts across adapter calls.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "download_catalog_key",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion combines read catalog, keys and whole backend.",
+      "baseline_defect": "File/part/key acquisition uses union exposing upload, copy, bots and inventory.",
+      "criterion": "Let download catalog and key acquisition use relevant capabilities without the universal backend requirement.",
+      "acceptance": "Preserve file validation before opening session, optional key validation and existing errors. Orchestrator may hold all actual dependencies. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/backend.go",
+          "symbol": "downloadBackend",
+          "detail": "File/part/key acquisition uses union exposing upload, copy, bots and inventory.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "download_session_fallback",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion broad fallback adaptations.",
+      "baseline_defect": "Borrowed download/session acquisition inherits catalog/key/full Backend despite only range and optional metadata needs.",
+      "criterion": "Give dedicated-session or borrowed-range acquisition a focused contract with optional metadata.",
+      "acceptance": "Use dedicated opener when available; missing metadata fails lazily when requested, range access still works, borrowed Close is no-op. Multiple adapters are not automatically a defect if independently focused; no demand to delete every unused fallback. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/download_backend.go",
+          "symbol": "Download,borrowedDownload",
+          "detail": "Borrowed download/session acquisition inherits catalog/key/full Backend despite only range and optional metadata needs.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "download_reader",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion widens reader from DownloadSession to downloadScope.",
+      "baseline_defect": "Streaming reader retains catalog/key/storage/backfill methods unrelated to reading and owned session closure.",
+      "criterion": "Keep streaming reader dependency limited to its session reading/lifetime needs.",
+      "acceptance": "Preserve ownership and close behavior; capability projection or direct original DownloadSession qualifies. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/download.go",
+          "symbol": "downloadReader.session",
+          "detail": "Streaming reader retains catalog/key/storage/backfill methods unrelated to reading and owned session closure.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "download_backfill",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Deepening caller selects single vs batch while default mutates/accumulates.",
+      "baseline_defect": "Backfill is split between broad scope and resolver with selection, mutation and final flush state crossing the boundary.",
+      "criterion": "Make missing-size resolution and persistence coordination coherent using only metadata and applicable persistence capabilities.",
+      "acceptance": "Preserve skip-complete/nil parts, crypto errors before mutation, batch preference, single immediate updates, nonempty batch commit after resolution and session closure on failure. Restoring local choice/accumulation is valid; no forced hidden one-vs-many dispatch. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/download_backend.go",
+          "symbol": "downloadScope,SizePersistence,StoreResolvedSize,CommitSizes",
+          "detail": "Backfill is split between broad scope and resolver with selection, mutation and final flush state crossing the boundary.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "source_resume",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round4 resume/catalog expansion",
+      "baseline_defect": "Resume lookup through sourceBackend/sourceBinding inherits HTTP, folder, transfer and full worker state.",
+      "criterion": "Give resumable-upload selection focused query/part-compatibility dependencies.",
+      "acceptance": "Retain source attributes, session order, first compatible session and empty map on no match. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/jobs/upload_backend.go",
+          "symbol": "findResumableUpload",
+          "detail": "Resume lookup through sourceBackend/sourceBinding inherits HTTP, folder, transfer and full worker state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "source_destination",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round4 destination/catalog expansion",
+      "baseline_defect": "Folder traversal and destination lookup use a worker-wide source backend.",
+      "criterion": "Keep destination resolution/creation independent of source I/O and transfer capabilities.",
+      "acceptance": "Preserve skipped empty/dot components, conflict relookup, valid UUID checks and final file/name-conflict checks. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/jobs/upload_backend.go",
+          "symbol": "ensureFolders,ResolveActiveChild",
+          "detail": "Folder traversal and destination lookup use a worker-wide source backend.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "source_mime",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round4 MIME expansion; deepening declared shortcut",
+      "baseline_defect": "Declared MIME remains worker policy while probe/default logic lives on full worker adapter.",
+      "criterion": "Give MIME resolution a cohesive source policy with focused I/O dependencies.",
+      "acceptance": "Declared non-octet MIME avoids I/O; probe accepts any2xx, closes body, reads512 with EOF allowed, then detected type/extension/octet fallback. Keeping focused helper on worker is valid. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/jobs/upload_backend.go",
+          "symbol": "detectSourceMIME",
+          "detail": "Declared MIME remains worker policy while probe/default logic lives on full worker adapter.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "source_range",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Deepening raw response handoff",
+      "baseline_defect": "Source acquisition returns response for worker validation while full sourceBackend grants catalog/lifecycle access.",
+      "criterion": "Keep part acquisition/range acceptance/closure coherent without unrelated catalog/lifecycle dependencies.",
+      "acceptance": "Retain local section bounds, Range/If-Range,206 or whole-file200, Content-Range validation and close rejected bodies; no required response-free DTO if boundary remains cohesive. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/jobs/upload_backend.go",
+          "symbol": "openSource,openPart",
+          "detail": "Source acquisition returns response for worker validation while full sourceBackend grants catalog/lifecycle access.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "source_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round4 creation/finalization; deepening key default",
+      "baseline_defect": "Upload lifecycle calls require source/catalog/MIME union and default creation reads full worker key state.",
+      "criterion": "Expose creation/finalization/part submission through focused upload lifecycle capabilities.",
+      "acceptance": "Retain positive active key version for encrypted creation, zero-part completion and post-part completion sequencing and progress errors. One coherent lifecycle capability is allowed; no per-method interface requirement. Direct focused calls or restoration of the original local orchestration qualify. Internal shared implementation may retain broader capabilities when the consumer boundary is focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed facade retaining the same unrelated consumer dependencies or scattered lifecycle knowledge is insufficient; a short complete repair is sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/jobs/upload_backend.go",
+          "symbol": "CreateUpload,CompleteUpload,SendPart",
+          "detail": "Upload lifecycle calls require source/catalog/MIME union and default creation reads full worker key state.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "divyam234_teldrive_isp",
+    "scoring": "Equal weight: one point for each independently satisfied item; no credit for behavior preservation alone.",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "Existing copy, upload, cleanup, and download behavior alone",
+      "Compilation, tests, and cosmetic renames",
+      "Historical intentions unsupported by the matching final patch"
+    ]
+  }
+}

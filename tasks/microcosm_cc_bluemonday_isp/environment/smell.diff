@@ -1,0 +1,864 @@
+diff --git a/sanitize.go b/sanitize.go
+index 47c31f7..9103150 100644
+--- a/sanitize.go
++++ b/sanitize.go
+@@ -191,14 +191,6 @@ func (p *Policy) sanitizeWithBuff(r io.Reader) *bytes.Buffer {
+ 	return &buff
+ }
+ 
+-type asStringWriter struct {
+-	io.Writer
+-}
+-
+-func (a *asStringWriter) WriteString(s string) (int, error) {
+-	return a.Write([]byte(s))
+-}
+-
+ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 	// It is possible that the developer has created the policy via:
+ 	//   p := bluemonday.Policy{}
+@@ -208,11 +200,11 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 	// would initialize the maps, then we need to do that.
+ 	p.init()
+ 
+-	buff, ok := w.(stringWriterWriter)
+-	if !ok {
+-		buff = &asStringWriter{w}
+-	}
++	stream := newSanitizerStream(p, r, w)
++	return sanitizeStream(stream)
++}
+ 
++func sanitizeStream(stream sanitizerStream) error {
+ 	var (
+ 		skipElementContent       bool
+ 		skippingElementsCount    int64
+@@ -221,10 +213,9 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 		mostRecentlyStartedToken string
+ 	)
+ 
+-	tokenizer := html.NewTokenizer(r)
+ 	for {
+-		if tokenizer.Next() == html.ErrorToken {
+-			err := tokenizer.Err()
++		if stream.Next() == html.ErrorToken {
++			err := stream.Err()
+ 			if err == io.EOF {
+ 				// End of input means end of processing
+ 				return nil
+@@ -234,7 +225,7 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 			return err
+ 		}
+ 
+-		token := tokenizer.Token()
++		token := stream.Token()
+ 		switch token.Type {
+ 		case html.DoctypeToken:
+ 
+@@ -249,9 +240,9 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 		case html.CommentToken:
+ 
+ 			// Comments are ignored by default
+-			if p.allowComments {
++			if stream.commentsAllowed() {
+ 				// But if allowed then write the comment out as-is
+-				buff.WriteString(token.String())
++				stream.WriteString(token.String())
+ 			}
+ 
+ 		case html.StartTagToken:
+@@ -260,25 +251,25 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 
+ 			switch normaliseElementName(token.Data) {
+ 			case `script`:
+-				if !p.allowUnsafe {
++				if !stream.unsafeAllowed() {
+ 					continue
+ 				}
+ 			case `style`:
+-				if !p.allowUnsafe {
++				if !stream.unsafeAllowed() {
+ 					continue
+ 				}
+ 			}
+ 
+-			aps, ok := p.elsAndAttrs[token.Data]
++			aps, ok := stream.elementRules(token.Data)
+ 			if !ok {
+-				aa, matched := p.matchRegex(token.Data)
++				aa, matched := matchElementRegex(stream, token.Data)
+ 				if !matched {
+-					if _, ok := p.setOfElementsToSkipContent[token.Data]; ok {
++					if stream.contentSkipped(token.Data) {
+ 						skipElementContent = true
+ 						skippingElementsCount++
+ 					}
+-					if p.addSpaces {
+-						if _, err := buff.WriteString(" "); err != nil {
++					if stream.spacesAdded() {
++						if _, err := stream.WriteString(" "); err != nil {
+ 							return err
+ 						}
+ 					}
+@@ -287,15 +278,15 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 				aps = aa
+ 			}
+ 			if len(token.Attr) != 0 {
+-				token.Attr = p.sanitizeAttrs(token.Data, token.Attr, aps)
++				token.Attr = sanitizeAttrs(stream, token.Data, token.Attr, aps)
+ 			}
+ 
+ 			if len(token.Attr) == 0 {
+-				if !p.allowNoAttrs(token.Data) {
++				if !allowNoAttrs(stream, token.Data) {
+ 					skipClosingTag = true
+ 					closingTagToSkipStack = append(closingTagToSkipStack, token.Data)
+-					if p.addSpaces {
+-						if _, err := buff.WriteString(" "); err != nil {
++					if stream.spacesAdded() {
++						if _, err := stream.WriteString(" "); err != nil {
+ 							return err
+ 						}
+ 					}
+@@ -304,7 +295,7 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 			}
+ 
+ 			if !skipElementContent {
+-				if _, err := buff.WriteString(token.String()); err != nil {
++				if _, err := stream.WriteString(token.String()); err != nil {
+ 					return err
+ 				}
+ 			}
+@@ -317,11 +308,11 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 
+ 			switch normaliseElementName(token.Data) {
+ 			case `script`:
+-				if !p.allowUnsafe {
++				if !stream.unsafeAllowed() {
+ 					continue
+ 				}
+ 			case `style`:
+-				if !p.allowUnsafe {
++				if !stream.unsafeAllowed() {
+ 					continue
+ 				}
+ 			}
+@@ -331,31 +322,31 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 				if len(closingTagToSkipStack) == 0 {
+ 					skipClosingTag = false
+ 				}
+-				if p.addSpaces {
+-					if _, err := buff.WriteString(" "); err != nil {
++				if stream.spacesAdded() {
++					if _, err := stream.WriteString(" "); err != nil {
+ 						return err
+ 					}
+ 				}
+ 				break
+ 			}
+-			if _, ok := p.elsAndAttrs[token.Data]; !ok {
++			if _, ok := stream.elementRules(token.Data); !ok {
+ 				match := false
+-				for regex := range p.elsMatchingAndAttrs {
++				for regex := range stream.elementPatterns() {
+ 					if regex.MatchString(token.Data) {
+ 						skipElementContent = false
+ 						match = true
+ 						break
+ 					}
+ 				}
+-				if _, ok := p.setOfElementsToSkipContent[token.Data]; ok && !match {
++				if stream.contentSkipped(token.Data) && !match {
+ 					skippingElementsCount--
+ 					if skippingElementsCount == 0 {
+ 						skipElementContent = false
+ 					}
+ 				}
+ 				if !match {
+-					if p.addSpaces {
+-						if _, err := buff.WriteString(" "); err != nil {
++					if stream.spacesAdded() {
++						if _, err := stream.WriteString(" "); err != nil {
+ 							return err
+ 						}
+ 					}
+@@ -364,7 +355,7 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 			}
+ 
+ 			if !skipElementContent {
+-				if _, err := buff.WriteString(token.String()); err != nil {
++				if _, err := stream.WriteString(token.String()); err != nil {
+ 					return err
+ 				}
+ 			}
+@@ -373,21 +364,21 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 
+ 			switch normaliseElementName(token.Data) {
+ 			case `script`:
+-				if !p.allowUnsafe {
++				if !stream.unsafeAllowed() {
+ 					continue
+ 				}
+ 			case `style`:
+-				if !p.allowUnsafe {
++				if !stream.unsafeAllowed() {
+ 					continue
+ 				}
+ 			}
+ 
+-			aps, ok := p.elsAndAttrs[token.Data]
++			aps, ok := stream.elementRules(token.Data)
+ 			if !ok {
+-				aa, matched := p.matchRegex(token.Data)
++				aa, matched := matchElementRegex(stream, token.Data)
+ 				if !matched {
+-					if p.addSpaces && !matched {
+-						if _, err := buff.WriteString(" "); err != nil {
++					if stream.spacesAdded() && !matched {
++						if _, err := stream.WriteString(" "); err != nil {
+ 							return err
+ 						}
+ 					}
+@@ -397,19 +388,19 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 			}
+ 
+ 			if len(token.Attr) != 0 {
+-				token.Attr = p.sanitizeAttrs(token.Data, token.Attr, aps)
++				token.Attr = sanitizeAttrs(stream, token.Data, token.Attr, aps)
+ 			}
+ 
+-			if len(token.Attr) == 0 && !p.allowNoAttrs(token.Data) {
+-				if p.addSpaces {
+-					if _, err := buff.WriteString(" "); err != nil {
++			if len(token.Attr) == 0 && !allowNoAttrs(stream, token.Data) {
++				if stream.spacesAdded() {
++					if _, err := stream.WriteString(" "); err != nil {
+ 						return err
+ 					}
+ 				}
+ 				break
+ 			}
+ 			if !skipElementContent {
+-				if _, err := buff.WriteString(token.String()); err != nil {
++				if _, err := stream.WriteString(token.String()); err != nil {
+ 					return err
+ 				}
+ 			}
+@@ -423,8 +414,8 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 					// should not HTML escape it as that would break the output
+ 					//
+ 					// requires p.AllowUnsafe()
+-					if p.allowUnsafe {
+-						if _, err := buff.WriteString(token.Data); err != nil {
++					if stream.unsafeAllowed() {
++						if _, err := stream.WriteString(token.Data); err != nil {
+ 							return err
+ 						}
+ 					}
+@@ -433,14 +424,14 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ 					// should not HTML escape it as that would break the output
+ 					//
+ 					// requires p.AllowUnsafe()
+-					if p.allowUnsafe {
+-						if _, err := buff.WriteString(token.Data); err != nil {
++					if stream.unsafeAllowed() {
++						if _, err := stream.WriteString(token.Data); err != nil {
+ 							return err
+ 						}
+ 					}
+ 				default:
+ 					// HTML escape the text
+-					if _, err := buff.WriteString(token.String()); err != nil {
++					if _, err := stream.WriteString(token.String()); err != nil {
+ 						return err
+ 					}
+ 				}
+@@ -456,7 +447,8 @@ func (p *Policy) sanitize(r io.Reader, w io.Writer) error {
+ // sanitizeAttrs takes a set of element attribute policies and the global
+ // attribute policies and applies them to the []html.Attribute returning a set
+ // of html.Attributes that match the policies
+-func (p *Policy) sanitizeAttrs(
++func sanitizeAttrs(
++	stream sanitizerStream,
+ 	elementName string,
+ 	attrs []html.Attribute,
+ 	aps map[string][]attrPolicy,
+@@ -466,29 +458,13 @@ func (p *Policy) sanitizeAttrs(
+ 		return attrs
+ 	}
+ 
+-	hasStylePolicies := false
+-	sps, elementHasStylePolicies := p.elsAndStyles[elementName]
+-	if len(p.globalStyles) > 0 || (elementHasStylePolicies && len(sps) > 0) {
+-		hasStylePolicies = true
+-	}
+-	// no specific element policy found, look for a pattern match
+-	if !hasStylePolicies {
+-		for k, v := range p.elsMatchingAndStyles {
+-			if k.MatchString(elementName) {
+-				if len(v) > 0 {
+-					hasStylePolicies = true
+-					break
+-				}
+-			}
+-		}
+-	}
++	hasStylePolicies := stream.stylePoliciesExist(elementName)
+ 
+ 	// Builds a new attribute slice based on the whether the attribute has been
+ 	// allowed explicitly or globally.
+ 	cleanAttrs := []html.Attribute{}
+-attrsLoop:
+ 	for _, htmlAttr := range attrs {
+-		if p.allowDataAttributes {
++		if stream.dataAttributesAllowed() {
+ 			// If we see a data attribute, let it through.
+ 			if isDataAttribute(htmlAttr.Key) {
+ 				cleanAttrs = append(cleanAttrs, htmlAttr)
+@@ -497,7 +473,7 @@ attrsLoop:
+ 		}
+ 		// Is this a "style" attribute, and if so, do we need to sanitize it?
+ 		if htmlAttr.Key == "style" && hasStylePolicies {
+-			htmlAttr = p.sanitizeStyles(htmlAttr, elementName)
++			htmlAttr = sanitizeStyles(stream, htmlAttr, elementName)
+ 			if htmlAttr.Val == "" {
+ 				// We've sanitized away any and all styles; don't bother to
+ 				// output the style attribute (even if it's allowed)
+@@ -508,35 +484,10 @@ attrsLoop:
+ 			}
+ 		}
+ 
+-		// Is there an element specific attribute policy that applies?
+-		if apl, ok := aps[htmlAttr.Key]; ok {
+-			for _, ap := range apl {
+-				if ap.regexp != nil {
+-					if ap.regexp.MatchString(htmlAttr.Val) {
+-						cleanAttrs = append(cleanAttrs, htmlAttr)
+-						continue attrsLoop
+-					}
+-				} else {
+-					cleanAttrs = append(cleanAttrs, htmlAttr)
+-					continue attrsLoop
+-				}
+-			}
++		if stream.acceptAttribute(htmlAttr, aps[htmlAttr.Key]) {
++			cleanAttrs = append(cleanAttrs, htmlAttr)
+ 		}
+ 
+-		// Is there a global attribute policy that applies?
+-		if apl, ok := p.globalAttrs[htmlAttr.Key]; ok {
+-			for _, ap := range apl {
+-				if ap.regexp != nil {
+-					if ap.regexp.MatchString(htmlAttr.Val) {
+-						cleanAttrs = append(cleanAttrs, htmlAttr)
+-						continue attrsLoop
+-					}
+-				} else {
+-					cleanAttrs = append(cleanAttrs, htmlAttr)
+-					continue attrsLoop
+-				}
+-			}
+-		}
+ 	}
+ 
+ 	if len(cleanAttrs) == 0 {
+@@ -546,7 +497,7 @@ attrsLoop:
+ 	// cleanAttrs now contains the attributes that are permitted
+ 
+ 	if linkable(elementName) {
+-		if p.requireParseableURLs {
++		if stream.parseableURLsRequired() {
+ 			// Ensure URLs are parseable:
+ 			// - a.href
+ 			// - area.href
+@@ -560,7 +511,7 @@ attrsLoop:
+ 				switch elementName {
+ 				case "a", "area", "base", "link":
+ 					if htmlAttr.Key == "href" {
+-						if u, ok := p.validURL(htmlAttr.Val); ok {
++						if u, ok := validURL(stream, htmlAttr.Val); ok {
+ 							htmlAttr.Val = u
+ 							tmpAttrs = append(tmpAttrs, htmlAttr)
+ 						}
+@@ -569,7 +520,7 @@ attrsLoop:
+ 					tmpAttrs = append(tmpAttrs, htmlAttr)
+ 				case "blockquote", "del", "ins", "q":
+ 					if htmlAttr.Key == "cite" {
+-						if u, ok := p.validURL(htmlAttr.Val); ok {
++						if u, ok := validURL(stream, htmlAttr.Val); ok {
+ 							htmlAttr.Val = u
+ 							tmpAttrs = append(tmpAttrs, htmlAttr)
+ 						}
+@@ -578,13 +529,13 @@ attrsLoop:
+ 					tmpAttrs = append(tmpAttrs, htmlAttr)
+ 				case "audio", "embed", "iframe", "img", "script", "source", "track", "video":
+ 					if htmlAttr.Key == "src" {
+-						if u, ok := p.validURL(htmlAttr.Val); ok {
+-							if p.srcRewriter != nil {
++						if u, ok := validURL(stream, htmlAttr.Val); ok {
++							if stream.sourceRewriter() != nil {
+ 								parsedURL, err := url.Parse(u)
+ 								if err != nil {
+ 									fmt.Println(err)
+ 								}
+-								p.srcRewriter(parsedURL)
++								stream.sourceRewriter()(parsedURL)
+ 								u = parsedURL.String()
+ 							}
+ 							htmlAttr.Val = u
+@@ -600,11 +551,11 @@ attrsLoop:
+ 			cleanAttrs = tmpAttrs
+ 		}
+ 
+-		if (p.requireNoFollow ||
+-			p.requireNoFollowFullyQualifiedLinks ||
+-			p.requireNoReferrer ||
+-			p.requireNoReferrerFullyQualifiedLinks ||
+-			p.addTargetBlankToFullyQualifiedLinks) &&
++		if (stream.linkOptions().requireNoFollow ||
++			stream.linkOptions().requireNoFollowFullyQualifiedLinks ||
++			stream.linkOptions().requireNoReferrer ||
++			stream.linkOptions().requireNoReferrerFullyQualifiedLinks ||
++			stream.linkOptions().addTargetBlankToFullyQualifiedLinks) &&
+ 			len(cleanAttrs) > 0 {
+ 
+ 			// Add rel="nofollow" if a "href" exists
+@@ -635,14 +586,14 @@ attrsLoop:
+ 						targetBlankFound bool
+ 					)
+ 
+-					addNoFollow := (p.requireNoFollow ||
+-						externalLink && p.requireNoFollowFullyQualifiedLinks)
++					addNoFollow := (stream.linkOptions().requireNoFollow ||
++						externalLink && stream.linkOptions().requireNoFollowFullyQualifiedLinks)
+ 
+-					addNoReferrer := (p.requireNoReferrer ||
+-						externalLink && p.requireNoReferrerFullyQualifiedLinks)
++					addNoReferrer := (stream.linkOptions().requireNoReferrer ||
++						externalLink && stream.linkOptions().requireNoReferrerFullyQualifiedLinks)
+ 
+ 					addTargetBlank := (externalLink &&
+-						p.addTargetBlankToFullyQualifiedLinks)
++						stream.linkOptions().addTargetBlankToFullyQualifiedLinks)
+ 
+ 					tmpAttrs := []html.Attribute{}
+ 					for _, htmlAttr := range cleanAttrs {
+@@ -760,7 +711,7 @@ attrsLoop:
+ 		}
+ 	}
+ 
+-	if p.requireCrossOriginAnonymous && len(cleanAttrs) > 0 {
++	if stream.linkOptions().requireCrossOriginAnonymous && len(cleanAttrs) > 0 {
+ 		switch elementName {
+ 		case "audio", "img", "link", "script", "video":
+ 			var crossOriginFound bool
+@@ -780,7 +731,7 @@ attrsLoop:
+ 		}
+ 	}
+ 
+-	if p.requireSandboxOnIFrame != nil && elementName == "iframe" {
++	if stream.sandboxValues() != nil && elementName == "iframe" {
+ 		var sandboxFound bool
+ 		for i, htmlAttr := range cleanAttrs {
+ 			if htmlAttr.Key == "sandbox" {
+@@ -788,7 +739,7 @@ attrsLoop:
+ 				var cleanVals []string
+ 				cleanValsSet := make(map[string]bool)
+ 				for _, val := range strings.Fields(htmlAttr.Val) {
+-					if p.requireSandboxOnIFrame[val] {
++					if stream.sandboxValues()[val] {
+ 						if !cleanValsSet[val] {
+ 							cleanVals = append(cleanVals, val)
+ 							cleanValsSet[val] = true
+@@ -810,21 +761,8 @@ attrsLoop:
+ 	return cleanAttrs
+ }
+ 
+-func (p *Policy) sanitizeStyles(attr html.Attribute, elementName string) html.Attribute {
+-	sps := p.elsAndStyles[elementName]
+-	if len(sps) == 0 {
+-		sps = map[string][]stylePolicy{}
+-		// check for any matching elements, if we don't already have a policy found
+-		// if multiple matches are found they will be overwritten, it's best
+-		// to not have overlapping matchers
+-		for regex, policies := range p.elsMatchingAndStyles {
+-			if regex.MatchString(elementName) {
+-				for k, v := range policies {
+-					sps[k] = append(sps[k], v...)
+-				}
+-			}
+-		}
+-	}
++func sanitizeStyles(stream sanitizerStream, attr html.Attribute, elementName string) html.Attribute {
++	sps := stream.styleRules(elementName)
+ 
+ 	//Add semi-colon to end to fix parsing issue
+ 	attr.Val = strings.TrimRight(attr.Val, " ")
+@@ -839,52 +777,14 @@ func (p *Policy) sanitizeStyles(attr html.Attribute, elementName string) html.At
+ 	clean := []string{}
+ 	prefixes := []string{"-webkit-", "-moz-", "-ms-", "-o-", "mso-", "-xv-", "-atsc-", "-wap-", "-khtml-", "prince-", "-ah-", "-hp-", "-ro-", "-rim-", "-tc-"}
+ 
+-decLoop:
+ 	for _, dec := range decs {
+ 		tempProperty := strings.ToLower(dec.Property)
+ 		tempValue := removeUnicode(strings.ToLower(dec.Value))
+ 		for _, i := range prefixes {
+ 			tempProperty = strings.TrimPrefix(tempProperty, i)
+ 		}
+-		if spl, ok := sps[tempProperty]; ok {
+-			for _, sp := range spl {
+-				if sp.handler != nil {
+-					if sp.handler(tempValue) {
+-						clean = append(clean, dec.Property+": "+dec.Value)
+-						continue decLoop
+-					}
+-				} else if len(sp.enum) > 0 {
+-					if stringInSlice(tempValue, sp.enum) {
+-						clean = append(clean, dec.Property+": "+dec.Value)
+-						continue decLoop
+-					}
+-				} else if sp.regexp != nil {
+-					if sp.regexp.MatchString(tempValue) {
+-						clean = append(clean, dec.Property+": "+dec.Value)
+-						continue decLoop
+-					}
+-				}
+-			}
+-		}
+-		if spl, ok := p.globalStyles[tempProperty]; ok {
+-			for _, sp := range spl {
+-				if sp.handler != nil {
+-					if sp.handler(tempValue) {
+-						clean = append(clean, dec.Property+": "+dec.Value)
+-						continue decLoop
+-					}
+-				} else if len(sp.enum) > 0 {
+-					if stringInSlice(tempValue, sp.enum) {
+-						clean = append(clean, dec.Property+": "+dec.Value)
+-						continue decLoop
+-					}
+-				} else if sp.regexp != nil {
+-					if sp.regexp.MatchString(tempValue) {
+-						clean = append(clean, dec.Property+": "+dec.Value)
+-						continue decLoop
+-					}
+-				}
+-			}
++		if stream.acceptStyle(tempProperty, tempValue, sps[tempProperty]) {
++			clean = append(clean, dec.Property+": "+dec.Value)
+ 		}
+ 	}
+ 	if len(clean) > 0 {
+@@ -895,10 +795,10 @@ decLoop:
+ 	return attr
+ }
+ 
+-func (p *Policy) allowNoAttrs(elementName string) bool {
+-	_, ok := p.setOfElementsAllowedWithoutAttrs[elementName]
++func allowNoAttrs(stream sanitizerStream, elementName string) bool {
++	_, ok := stream.noAttributeElements()[elementName]
+ 	if !ok {
+-		for _, r := range p.setOfElementsMatchingAllowedWithoutAttrs {
++		for _, r := range stream.noAttributePatterns() {
+ 			if r.MatchString(elementName) {
+ 				ok = true
+ 				break
+@@ -908,51 +808,15 @@ func (p *Policy) allowNoAttrs(elementName string) bool {
+ 	return ok
+ }
+ 
+-func (p *Policy) validURL(rawurl string) (string, bool) {
+-	if p.requireParseableURLs {
+-		// URLs are valid if when space is trimmed the URL is valid
+-		rawurl = strings.TrimSpace(rawurl)
+-
+-		// URLs cannot contain whitespace, unless it is a data-uri
+-		if strings.Contains(rawurl, " ") ||
+-			strings.Contains(rawurl, "\t") ||
+-			strings.Contains(rawurl, "\n") {
+-			if !strings.HasPrefix(rawurl, `data:`) {
+-				return "", false
+-			}
+-
+-			// Remove \r and \n from base64 encoded data to pass url.Parse.
+-			matched := dataURIbase64Prefix.FindString(rawurl)
+-			if matched != "" {
+-				rawurl = matched + strings.Replace(
+-					strings.Replace(
+-						rawurl[len(matched):],
+-						"\r",
+-						"",
+-						-1,
+-					),
+-					"\n",
+-					"",
+-					-1,
+-				)
+-			}
+-		}
+-
+-		// URLs are valid if they parse
+-		u, err := url.Parse(rawurl)
+-		if err != nil {
+-			return "", false
+-		}
+-
++func validURL(stream sanitizerStream, rawurl string) (string, bool) {
++	rawurl, u, valid := stream.prepareURL(rawurl)
++	if !valid {
++		return "", false
++	}
++	if u != nil {
+ 		if u.Scheme != "" {
+-			urlPolicies, ok := p.allowURLSchemes[u.Scheme]
++			urlPolicies, ok := stream.resolveScheme(u)
+ 			if !ok {
+-				for _, r := range p.allowURLSchemeRegexps {
+-					if r.MatchString(u.Scheme) {
+-						return u.String(), true
+-					}
+-				}
+-
+ 				return "", false
+ 			}
+ 
+@@ -969,7 +833,7 @@ func (p *Policy) validURL(rawurl string) (string, bool) {
+ 			return "", false
+ 		}
+ 
+-		if p.allowRelativeURLs {
++		if stream.relativeURLsAllowed() {
+ 			if u.String() != "" {
+ 				return u.String(), true
+ 			}
+@@ -1057,10 +921,10 @@ func removeUnicode(value string) string {
+ 	return substitutedValue
+ }
+ 
+-func (p *Policy) matchRegex(elementName string) (map[string][]attrPolicy, bool) {
++func matchElementRegex(stream sanitizerStream, elementName string) (map[string][]attrPolicy, bool) {
+ 	aps := make(map[string][]attrPolicy, 0)
+ 	matched := false
+-	for regex, attrs := range p.elsMatchingAndAttrs {
++	for regex, attrs := range stream.elementPatterns() {
+ 		if regex.MatchString(elementName) {
+ 			matched = true
+ 			for k, v := range attrs {
+diff --git a/stream.go b/stream.go
+new file mode 100644
+index 0000000..3f369cc
+--- /dev/null
++++ b/stream.go
+@@ -0,0 +1,212 @@
++package bluemonday
++
++import (
++	"golang.org/x/net/html"
++	"io"
++	"net/url"
++	"regexp"
++	"strings"
++)
++
++type sanitizerStream interface {
++	Read([]byte) (int, error)
++	Next() html.TokenType
++	Token() html.Token
++	Err() error
++	dataAttributesAllowed() bool
++	attributeRules(string) []attrPolicy
++	stylePoliciesExist(string) bool
++	styleRules(string) map[string][]stylePolicy
++	globalStyleRules(string) []stylePolicy
++	acceptAttribute(html.Attribute, []attrPolicy) bool
++	acceptStyle(string, string, []stylePolicy) bool
++	resolveScheme(*url.URL) ([]urlPolicy, bool)
++	prepareURL(string) (string, *url.URL, bool)
++	parseableURLsRequired() bool
++	relativeURLsAllowed() bool
++	URLRules(string) ([]urlPolicy, bool)
++	URLMatchers() []*regexp.Regexp
++	elementRules(string) (map[string][]attrPolicy, bool)
++	elementPatterns() map[*regexp.Regexp]map[string][]attrPolicy
++	contentSkipped(string) bool
++	noAttributeElements() map[string]struct{}
++	noAttributePatterns() []*regexp.Regexp
++	unsafeAllowed() bool
++	commentsAllowed() bool
++	spacesAdded() bool
++	linkOptions() linkOptions
++	sandboxValues() map[string]bool
++	sourceRewriter() urlRewriter
++	Write([]byte) (int, error)
++	WriteString(string) (int, error)
++}
++
++type streamBinding struct {
++	policy *Policy
++	*html.Tokenizer
++	reader io.Reader
++	writer io.Writer
++}
++
++func newSanitizerStream(p *Policy, r io.Reader, w io.Writer) sanitizerStream {
++	s := &streamBinding{policy: p, reader: r, writer: w}
++	s.Tokenizer = tokenizerFor(s)
++	return s
++}
++
++func (s *streamBinding) dataAttributesAllowed() bool             { return s.policy.allowDataAttributes }
++func (s *streamBinding) attributeRules(name string) []attrPolicy { return s.policy.globalAttrs[name] }
++func (s *streamBinding) stylePoliciesExist(element string) bool {
++	p := s.policy
++	sps, found := p.elsAndStyles[element]
++	if len(p.globalStyles) > 0 || (found && len(sps) > 0) {
++		return true
++	}
++	for matcher, rules := range p.elsMatchingAndStyles {
++		if matcher.MatchString(element) && len(rules) > 0 {
++			return true
++		}
++	}
++	return false
++}
++
++func (s *streamBinding) styleRules(element string) map[string][]stylePolicy {
++	p := s.policy
++	rules := p.elsAndStyles[element]
++	if len(rules) == 0 {
++		rules = map[string][]stylePolicy{}
++		for matcher, policies := range p.elsMatchingAndStyles {
++			if matcher.MatchString(element) {
++				for name, values := range policies {
++					rules[name] = append(rules[name], values...)
++				}
++			}
++		}
++	}
++	return rules
++}
++func (s *streamBinding) globalStyleRules(name string) []stylePolicy {
++	return s.policy.globalStyles[name]
++}
++
++func (s *streamBinding) acceptAttribute(attr html.Attribute, local []attrPolicy) bool {
++	for pass := 0; pass < 2; pass++ {
++		if pass == 1 {
++			local = s.attributeRules(attr.Key)
++		}
++		for _, rule := range local {
++			if rule.regexp == nil || rule.regexp.MatchString(attr.Val) {
++				return true
++			}
++		}
++	}
++	return false
++}
++
++func (s *streamBinding) acceptStyle(name, value string, local []stylePolicy) bool {
++	for pass := 0; pass < 2; pass++ {
++		if pass == 1 {
++			local = s.globalStyleRules(name)
++		}
++		for _, rule := range local {
++			switch {
++			case rule.handler != nil:
++				if rule.handler(value) {
++					return true
++				}
++			case len(rule.enum) > 0:
++				if stringInSlice(value, rule.enum) {
++					return true
++				}
++			case rule.regexp != nil:
++				if rule.regexp.MatchString(value) {
++					return true
++				}
++			}
++		}
++	}
++	return false
++}
++
++func (s *streamBinding) resolveScheme(u *url.URL) ([]urlPolicy, bool) {
++	if rules, found := s.URLRules(u.Scheme); found {
++		return rules, true
++	}
++	for _, matcher := range s.URLMatchers() {
++		if matcher.MatchString(u.Scheme) {
++			return nil, true
++		}
++	}
++	return nil, false
++}
++func (s *streamBinding) parseableURLsRequired() bool { return s.policy.requireParseableURLs }
++func (s *streamBinding) relativeURLsAllowed() bool   { return s.policy.allowRelativeURLs }
++func (s *streamBinding) URLRules(scheme string) ([]urlPolicy, bool) {
++	rules, found := s.policy.allowURLSchemes[scheme]
++	return rules, found
++}
++func (s *streamBinding) URLMatchers() []*regexp.Regexp { return s.policy.allowURLSchemeRegexps }
++
++type linkOptions struct {
++	requireNoFollow                      bool
++	requireNoFollowFullyQualifiedLinks   bool
++	requireNoReferrer                    bool
++	requireNoReferrerFullyQualifiedLinks bool
++	addTargetBlankToFullyQualifiedLinks  bool
++	requireCrossOriginAnonymous          bool
++}
++
++func (s *streamBinding) elementRules(name string) (map[string][]attrPolicy, bool) {
++	rules, found := s.policy.elsAndAttrs[name]
++	return rules, found
++}
++func (s *streamBinding) elementPatterns() map[*regexp.Regexp]map[string][]attrPolicy {
++	return s.policy.elsMatchingAndAttrs
++}
++func (s *streamBinding) contentSkipped(name string) bool {
++	_, found := s.policy.setOfElementsToSkipContent[name]
++	return found
++}
++func (s *streamBinding) noAttributeElements() map[string]struct{} {
++	return s.policy.setOfElementsAllowedWithoutAttrs
++}
++func (s *streamBinding) noAttributePatterns() []*regexp.Regexp {
++	return s.policy.setOfElementsMatchingAllowedWithoutAttrs
++}
++func (s *streamBinding) unsafeAllowed() bool            { return s.policy.allowUnsafe }
++func (s *streamBinding) commentsAllowed() bool          { return s.policy.allowComments }
++func (s *streamBinding) spacesAdded() bool              { return s.policy.addSpaces }
++func (s *streamBinding) sandboxValues() map[string]bool { return s.policy.requireSandboxOnIFrame }
++func (s *streamBinding) sourceRewriter() urlRewriter    { return s.policy.srcRewriter }
++func (s *streamBinding) linkOptions() linkOptions {
++	p := s.policy
++	return linkOptions{p.requireNoFollow, p.requireNoFollowFullyQualifiedLinks, p.requireNoReferrer,
++		p.requireNoReferrerFullyQualifiedLinks, p.addTargetBlankToFullyQualifiedLinks, p.requireCrossOriginAnonymous}
++}
++
++func tokenizerFor(stream sanitizerStream) *html.Tokenizer { return html.NewTokenizer(stream) }
++func (s *streamBinding) Read(p []byte) (int, error)       { return s.reader.Read(p) }
++func (s *streamBinding) Write(p []byte) (int, error)      { return s.writer.Write(p) }
++func (s *streamBinding) WriteString(value string) (int, error) {
++	if writer, ok := s.writer.(stringWriterWriter); ok {
++		return writer.WriteString(value)
++	}
++	return s.Write([]byte(value))
++}
++func (s *streamBinding) prepareURL(raw string) (string, *url.URL, bool) {
++	if !s.parseableURLsRequired() {
++		return raw, nil, true
++	}
++	raw = strings.TrimSpace(raw)
++	if strings.Contains(raw, " ") || strings.Contains(raw, "\t") || strings.Contains(raw, "\n") {
++		if !strings.HasPrefix(raw, "data:") {
++			return "", nil, false
++		}
++		matched := dataURIbase64Prefix.FindString(raw)
++		if matched != "" {
++			raw = matched + strings.Replace(strings.Replace(raw[len(matched):], "\r", "", -1), "\n", "", -1)
++		}
++	}
++	parsed, err := url.Parse(raw)
++	return raw, parsed, err == nil
++}

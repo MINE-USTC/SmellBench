@@ -1,0 +1,541 @@
+diff --git a/custom_components/xiaomi_gateway3/core/converters/base.py b/custom_components/xiaomi_gateway3/core/converters/base.py
+index e676d81..cf54801 100644
+--- a/custom_components/xiaomi_gateway3/core/converters/base.py
++++ b/custom_components/xiaomi_gateway3/core/converters/base.py
+@@ -2,6 +2,7 @@ from dataclasses import dataclass
+ from typing import TYPE_CHECKING
+ 
+ from ..const import BLE, GATEWAY, MATTER, ZIGBEE
++from .route import encode_action, read_route, write_route
+ 
+ if TYPE_CHECKING:
+     from ..device import XDevice
+@@ -43,11 +44,20 @@ class BaseConv:
+         payload[self.attr] = value
+ 
+     def encode(self, device: "XDevice", payload: dict, value):
++        route = write_route(self.mi, device.type)
++        if route is None:
++            return
++        if route == "action":
++            encode_action(self.mi, device.did, payload)
++            return
++        self._encode_value(device, payload, value, route)
++
++    def _encode_value(self, device: "XDevice", payload: dict, value, route: str):
+         if not self.mi or device.type == BLE or ".e." in self.mi:
+             return
+-        if ".p." in self.mi:
++        if route in ("zigbee_property", "miot_property"):
+             s, p = self.mi.split(".p.")
+-            if device.type == ZIGBEE:
++            if route == "zigbee_property":
+                 payload["cmd"] = "write"
+                 payload["did"] = device.did
+                 params = {"siid": int(s), "piid": int(p), "value": value}
+@@ -66,7 +76,7 @@ class BaseConv:
+             payload["method"] = "action"
+             params = {"did": device.did, "siid": int(s), "aiid": int(a), "in": []}
+             payload["params"] = params
+-        elif device.type == MATTER:
++        elif route == "matter":
+             payload["method"] = "set_properties_v3"
+             params = {"did": device.did, "iid": self.mi, "value": value}
+             payload.setdefault("params", []).append(params)
+@@ -77,11 +87,16 @@ class BaseConv:
+             payload.setdefault("params", []).append(params)
+ 
+     def encode_read(self, device: "XDevice", payload: dict):
++        route = read_route(self.mi, device.type)
++        if route is not None:
++            self._encode_read_value(device, payload, route)
++
++    def _encode_read_value(self, device: "XDevice", payload: dict, route: str):
+         if not self.mi or device.type == BLE or ".e." in self.mi or ".a." in self.mi:
+             return
+-        if ".p." in self.mi:
++        if route in ("zigbee_property", "miot_property"):
+             s, p = self.mi.split(".p.")
+-            if device.type == ZIGBEE:
++            if route == "zigbee_property":
+                 payload["cmd"] = "read"
+                 payload["did"] = device.did
+                 params = {"siid": int(s), "piid": int(p)}
+@@ -90,7 +105,7 @@ class BaseConv:
+                 payload["method"] = "get_properties"
+                 params = {"did": device.did, "siid": int(s), "piid": int(p)}
+                 payload.setdefault("params", []).append(params)
+-        elif device.type == MATTER:
++        elif route == "matter":
+             payload["method"] = "get_properties_v3"
+             params = {"did": device.did, "iid": self.mi}
+             payload.setdefault("params", []).append(params)
+diff --git a/custom_components/xiaomi_gateway3/core/converters/route.py b/custom_components/xiaomi_gateway3/core/converters/route.py
+new file mode 100644
+index 0000000..82d4f3c
+--- /dev/null
++++ b/custom_components/xiaomi_gateway3/core/converters/route.py
+@@ -0,0 +1,27 @@
++from ..const import BLE, MATTER, ZIGBEE
++
++
++def write_route(mi, device_type: str):
++    if not mi or device_type == BLE or ".e." in mi:
++        return None
++    if ".p." in mi:
++        return "zigbee_property" if device_type == ZIGBEE else "miot_property"
++    if ".a." in mi:
++        return "action"
++    return "matter" if device_type == MATTER else "lumi"
++
++
++def read_route(mi, device_type: str):
++    if not mi or device_type == BLE or ".e." in mi or ".a." in mi:
++        return None
++    if ".p." in mi:
++        return "zigbee_property" if device_type == ZIGBEE else "miot_property"
++    return "matter" if device_type == MATTER else "lumi"
++
++
++def encode_action(mi: str, did: str, payload: dict):
++    service, action = mi.split(".a.")
++    payload["method"] = "action"
++    payload["params"] = {
++        "did": did, "siid": int(service), "aiid": int(action), "in": [],
++    }
+diff --git a/custom_components/xiaomi_gateway3/core/device.py b/custom_components/xiaomi_gateway3/core/device.py
+index 7502ccc..6d49676 100644
+--- a/custom_components/xiaomi_gateway3/core/device.py
++++ b/custom_components/xiaomi_gateway3/core/device.py
+@@ -12,6 +12,7 @@ from .converters.base import BaseConv, decode_time, encode_time
+ from .converters.lumi import LUMI_GLOBALS
+ from .converters.zigbee import ZConverter
+ from .devices import DEVICES
++from .reports import miot_values
+ 
+ if TYPE_CHECKING:
+     from .gate.base import XGateway
+@@ -373,13 +374,17 @@ class XDevice:
+                 conv.decode(self, payload, v)
+ 
+     def decode_miot(self, payload: dict, value: dict):
++        for item in miot_values(value):
++            self._decode_miot_value(payload, item.resource, item.data)
++
++    def _decode_miot_value(self, payload: dict, resource: str, value: dict):
+         if value.get("code", 0) != 0:
+             return
+ 
+         # {"cmd":"report","did":"lumi","params":[{"aiid":1,"in":[],"siid":8}]}
+         if "piid" in value:
+             # process property
+-            mi = f"{value['siid']}.p.{value['piid']}"
++            mi = resource
+             for conv in self.converters:
+                 if conv.mi == mi:
+                     conv.decode(self, payload, value["value"])
+diff --git a/custom_components/xiaomi_gateway3/core/gate/ble.py b/custom_components/xiaomi_gateway3/core/gate/ble.py
+index a2d5046..45ff05e 100644
+--- a/custom_components/xiaomi_gateway3/core/gate/ble.py
++++ b/custom_components/xiaomi_gateway3/core/gate/ble.py
+@@ -3,6 +3,7 @@ import time
+ from .base import XGateway
+ from ..device import BLE
+ from ..mini_mqtt import MQTTMessage
++from ..reports import accept_frame
+ from ..shell.shell_mgw import ShellMGW
+ 
+ 
+@@ -52,6 +53,9 @@ class BLEGateway(XGateway):
+ 
+         ts = device.on_keep_alive(self)
+ 
++        if not accept_frame(device, data):
++            return
++
+         if data["frmCnt"] == device.extra.get("seq"):
+             return
+         device.extra["seq"] = data["frmCnt"]
+diff --git a/custom_components/xiaomi_gateway3/core/gate/lumi.py b/custom_components/xiaomi_gateway3/core/gate/lumi.py
+index 379045f..bdf9201 100644
+--- a/custom_components/xiaomi_gateway3/core/gate/lumi.py
++++ b/custom_components/xiaomi_gateway3/core/gate/lumi.py
+@@ -5,6 +5,7 @@ from .base import XGateway
+ from ..const import ZIGBEE
+ from ..device import XDevice, XDeviceExtra, hex_to_ieee
+ from ..mini_mqtt import MQTTMessage
++from ..reports import lumi_report
+ from ..shell.shell_mgw import ShellMGW
+ from ..shell.shell_mgw2 import ShellMGW2
+ 
+@@ -39,7 +40,10 @@ class LumiGateway(XGateway):
+             self.lumi_process_lumi(msg.json)
+ 
+     def lumi_process_lumi(self, data: dict):
+-        cmd: str = data["cmd"]
++        if report := lumi_report(data):
++            self._lumi_process_report(report.command, report.data)
++
++    def _lumi_process_report(self, cmd: str, data: dict):
+         if cmd == "heartbeat":
+             # {"cmd":"heartbeat","params":[{"did":"lumi","res_list":[{"res_name":"8.0.2006","value":46}]}
+             data = data["params"][0]
+diff --git a/custom_components/xiaomi_gateway3/core/gate/miot.py b/custom_components/xiaomi_gateway3/core/gate/miot.py
+index bb47769..03c4ae9 100644
+--- a/custom_components/xiaomi_gateway3/core/gate/miot.py
++++ b/custom_components/xiaomi_gateway3/core/gate/miot.py
+@@ -5,6 +5,7 @@ from .base import XGateway
+ from ..const import BLE, MESH
+ from ..device import XDevice
+ from ..mini_mqtt import MQTTMessage
++from ..reports import accept_event, accept_miot_property
+ 
+ 
+ # noinspection PyMethodMayBeStatic,PyUnusedLocal
+@@ -37,14 +38,15 @@ class MIoTGateway(XGateway):
+             if not (device := self.devices.get(item["did"])):
+                 continue
+ 
++            if not accept_miot_property(device, self, item, from_cache, ts):
++                continue
++
+             if from_cache:
+                 # won't update last_seen for messages from_cache
+                 # AND skip this messages if device not in last_seen
+                 # but only for devices with available_timeout
+                 if self.device not in device.last_seen and device.type in (BLE, MESH):
+                     continue
+-            else:
+-                device.on_keep_alive(self, ts)
+ 
+             if (seq := item.get("tid")) is not None:
+                 if seq == device.extra.get("seq"):
+@@ -67,6 +69,9 @@ class MIoTGateway(XGateway):
+ 
+         ts = device.on_keep_alive(self)
+ 
++        if not accept_event(device, item, "tid"):
++            return
++
+         if (seq := item.get("tid")) is not None:
+             if seq == device.extra.get("seq"):
+                 return
+diff --git a/custom_components/xiaomi_gateway3/core/gateway.py b/custom_components/xiaomi_gateway3/core/gateway.py
+index eec6447..49641af 100644
+--- a/custom_components/xiaomi_gateway3/core/gateway.py
++++ b/custom_components/xiaomi_gateway3/core/gateway.py
+@@ -12,6 +12,7 @@ from .gate.miot import MIoTGateway
+ from .gate.openmiio import OpenMiioGateway
+ from .gate.silabs import SilabsGateway
+ from .shell.session import Session
++from .transport import SendPacket, send_packets
+ 
+ 
+ class MultiGateway(
+@@ -124,45 +125,35 @@ class MultiGateway(
+             return False
+ 
+     async def send(self, device: XDevice, data: dict):
+-        if device.type == GATEWAY:
+-            # support multispec in lumi and miot formats
+-            if "cmd" in data and "method" in data:
+-                lumi_data = {
+-                    "cmd": data["cmd"],
+-                    "did": "lumi.0",
+-                    "params": [i for i in data["params"] if "res_name" in i],
+-                }
+-                miot_data = {
+-                    "method": data["method"],
+-                    "params": [i for i in data["params"] if "siid" in i],
+-                }
+-                await self.lumi_send(device, lumi_data)
+-                await self.miot_send(device, miot_data)
+-            elif "cmd" in data:
+-                await self.lumi_send(device, data)
+-            elif "method" in data:
+-                await self.miot_send(device, data)
+-
+-        elif device.type == ZIGBEE:
+-            # support multispec in lumi and silabs format
+-            if "cmd" in data and "commands" in data:
+-                lumi_data = {"cmd": data["cmd"], "did": data["did"]}
+-                if "params" in data:
+-                    lumi_data["params"] = data["params"]
+-                if "mi_spec" in data:
+-                    lumi_data["mi_spec"] = data["mi_spec"]
+-                silabs_data = {"commands": data["commands"]}
+-                await self.lumi_send(device, lumi_data)
+-                await self.silabs_send(device, silabs_data)
+-            elif "cmd" in data:
+-                await self.lumi_send(device, data)
+-            elif "commands" in data:
+-                await self.silabs_send(device, data)
+-
+-        elif device.type in (MESH, GROUP):
+-            await self.miot_send(device, data)
+-        elif device.type == MATTER:
+-            await self.matter_send(device, data)
++        device_type = device.type
++        for packet in send_packets(device_type, data):
++            await self._send_packet(device, packet, device_type)
++
++    async def _send_packet(self, device: XDevice, packet: SendPacket, device_type: str):
++        data = packet.payload
++        if device_type == GATEWAY and "cmd" in data and "method" in data:
++            lumi_data = {
++                "cmd": data["cmd"],
++                "did": "lumi.0",
++                "params": [i for i in data["params"] if "res_name" in i],
++            }
++            miot_data = {
++                "method": data["method"],
++                "params": [i for i in data["params"] if "siid" in i],
++            }
++            await self.lumi_send(device, lumi_data)
++            await self.miot_send(device, miot_data)
++        elif device_type == ZIGBEE and "cmd" in data and "commands" in data:
++            lumi_data = {"cmd": data["cmd"], "did": data["did"]}
++            if "params" in data:
++                lumi_data["params"] = data["params"]
++            if "mi_spec" in data:
++                lumi_data["mi_spec"] = data["mi_spec"]
++            silabs_data = {"commands": data["commands"]}
++            await self.lumi_send(device, lumi_data)
++            await self.silabs_send(device, silabs_data)
++        else:
++            await getattr(self, packet.send_method)(device, data)
+ 
+     async def telnet_command(self, cmd: str) -> bool | None:
+         self.debug("telnet_command", data=cmd)
+diff --git a/custom_components/xiaomi_gateway3/core/mini_mqtt.py b/custom_components/xiaomi_gateway3/core/mini_mqtt.py
+index 8f6d1df..810aeef 100644
+--- a/custom_components/xiaomi_gateway3/core/mini_mqtt.py
++++ b/custom_components/xiaomi_gateway3/core/mini_mqtt.py
+@@ -8,6 +8,8 @@ import random
+ from asyncio import StreamReader, StreamWriter
+ from typing import Optional
+ 
++from .mqtt_payload import encode_payload
++
+ _LOGGER = logging.getLogger(__package__ + ".mqtt")
+ 
+ CONNECT = 1
+@@ -204,6 +206,10 @@ class MiniMQTT:
+         if self.writer is None:
+             self.pub_buffer.append([topic, payload, retain])
+             return
++        payload = encode_payload(payload)
++        await self._publish_encoded(topic, payload, retain)
++
++    async def _publish_encoded(self, topic: str, payload: bytes, retain=False):
+         if isinstance(payload, str):
+             payload = payload.encode()
+         elif isinstance(payload, dict):
+diff --git a/custom_components/xiaomi_gateway3/core/mqtt_payload.py b/custom_components/xiaomi_gateway3/core/mqtt_payload.py
+new file mode 100644
+index 0000000..0e7d9a0
+--- /dev/null
++++ b/custom_components/xiaomi_gateway3/core/mqtt_payload.py
+@@ -0,0 +1,9 @@
++import json
++
++
++def encode_payload(payload: bytes | dict | str) -> bytes:
++    if isinstance(payload, str):
++        return payload.encode()
++    if isinstance(payload, dict):
++        return json.dumps(payload, separators=(",", ":")).encode()
++    return payload
+diff --git a/custom_components/xiaomi_gateway3/core/reports.py b/custom_components/xiaomi_gateway3/core/reports.py
+new file mode 100644
+index 0000000..7123f39
+--- /dev/null
++++ b/custom_components/xiaomi_gateway3/core/reports.py
+@@ -0,0 +1,66 @@
++from dataclasses import dataclass
++
++from .const import BLE, MESH
++
++
++@dataclass(frozen=True)
++class LumiReport:
++    command: str
++    data: dict
++
++
++@dataclass(frozen=True)
++class MIoTValue:
++    resource: str
++    data: dict
++
++
++def miot_values(value: dict):
++    if value.get("code", 0) != 0:
++        return
++    if "piid" in value:
++        yield MIoTValue(f"{value['siid']}.p.{value['piid']}", value)
++    elif "eiid" in value:
++        resource = f"{value['siid']}.e.{value['eiid']}"
++        yield MIoTValue(resource, {
++            "siid": value["siid"], "piid": value["eiid"], "value": None,
++        })
++        for item in value["arguments"]:
++            item.setdefault("siid", resource)
++            yield from miot_values(item)
++
++
++def lumi_report(data: dict) -> LumiReport | None:
++    command = data["cmd"]
++    if command == "heartbeat":
++        inner = data["params"][0]
++        items = inner.get("res_list")
++        if not items:
++            return None
++        return LumiReport("report", {
++            "did": inner["did"], "params": items,
++        })
++    if command in ("report", "read_rsp"):
++        return LumiReport(command, data)
++    if command == "write_rsp" and data["did"] == "lumi.0":
++        return LumiReport(command, data)
++    return None
++
++
++def accept_miot_property(device, gateway, item: dict, from_cache: bool, ts: int):
++    if from_cache:
++        if gateway.device not in device.last_seen and device.type in (BLE, MESH):
++            return False
++    else:
++        device.on_keep_alive(gateway, ts)
++    seq = item.get("tid")
++    return seq is None or seq != device.extra.get("seq")
++
++
++def accept_event(device, item: dict, field: str):
++    seq = item.get(field)
++    return seq is None or seq != device.extra.get("seq")
++
++
++def accept_frame(device, item: dict):
++    return item["frmCnt"] != device.extra.get("seq")
+diff --git a/custom_components/xiaomi_gateway3/core/transport.py b/custom_components/xiaomi_gateway3/core/transport.py
+new file mode 100644
+index 0000000..fe50a48
+--- /dev/null
++++ b/custom_components/xiaomi_gateway3/core/transport.py
+@@ -0,0 +1,57 @@
++from dataclasses import dataclass
++
++from .const import GATEWAY, GROUP, MATTER, MESH, ZIGBEE
++
++SEND_METHODS = {
++    "lumi": "lumi_send",
++    "miot": "miot_send",
++    "silabs": "silabs_send",
++    "matter": "matter_send",
++}
++
++
++@dataclass(frozen=True)
++class SendPacket:
++    protocol: str
++    payload: dict
++
++    @property
++    def send_method(self):
++        return SEND_METHODS[self.protocol]
++
++
++def send_packets(device_type: str, data: dict):
++    return tuple(_send_packets(device_type, data))
++
++
++def _send_packets(device_type: str, data: dict):
++    if device_type == GATEWAY:
++        if "cmd" in data and "method" in data:
++            yield SendPacket("lumi", {
++                "cmd": data["cmd"], "did": "lumi.0",
++                "params": [i for i in data["params"] if "res_name" in i],
++            })
++            yield SendPacket("miot", {
++                "method": data["method"],
++                "params": [i for i in data["params"] if "siid" in i],
++            })
++        elif "cmd" in data:
++            yield SendPacket("lumi", data)
++        elif "method" in data:
++            yield SendPacket("miot", data)
++    elif device_type == ZIGBEE:
++        if "cmd" in data and "commands" in data:
++            lumi = {"cmd": data["cmd"], "did": data["did"]}
++            for key in ("params", "mi_spec"):
++                if key in data:
++                    lumi[key] = data[key]
++            yield SendPacket("lumi", lumi)
++            yield SendPacket("silabs", {"commands": data["commands"]})
++        elif "cmd" in data:
++            yield SendPacket("lumi", data)
++        elif "commands" in data:
++            yield SendPacket("silabs", data)
++    elif device_type in (MESH, GROUP):
++        yield SendPacket("miot", data)
++    elif device_type == MATTER:
++        yield SendPacket("matter", data)
+diff --git a/custom_components/xiaomi_gateway3/hass/add_entitites.py b/custom_components/xiaomi_gateway3/hass/add_entitites.py
+index c0d8c38..921afbc 100644
+--- a/custom_components/xiaomi_gateway3/hass/add_entitites.py
++++ b/custom_components/xiaomi_gateway3/hass/add_entitites.py
+@@ -5,6 +5,7 @@ from homeassistant.core import HomeAssistant
+ from homeassistant.helpers import device_registry as dr, entity_registry as er
+ 
+ from .entity import XEntity
++from .registry import single_device_entry
+ from .. import MultiGateway, XDevice
+ from ..core.const import BLE, DOMAIN, GATEWAY, MATTER, MESH, ZIGBEE
+ from ..core.converters.base import BaseConv
+@@ -168,7 +169,19 @@ def fix_device_registry(hass: HomeAssistant, config_entry_id: str, device: XDevi
+         device_entries = device_registry.async_get_devices(
+             identifiers={(DOMAIN, device.uid)}
+         )
++        device_entries = single_device_entry(
++            device_registry, device_entries, config_entry_id, device
++        )
++        if device_entries is None:
++            return
+ 
++        _fix_device_entries(hass, config_entry_id, device, device_registry, device_entries)
++    except AttributeError:
++        pass
++
++
++def _fix_device_entries(hass, config_entry_id, device, device_registry, device_entries):
++    try:
+         # first time start - just skip
+         if len(device_entries) == 0:
+             return
+diff --git a/custom_components/xiaomi_gateway3/hass/registry.py b/custom_components/xiaomi_gateway3/hass/registry.py
+new file mode 100644
+index 0000000..eb888a9
+--- /dev/null
++++ b/custom_components/xiaomi_gateway3/hass/registry.py
+@@ -0,0 +1,20 @@
++from ..core.const import GATEWAY
++from .entity import XEntity
++
++
++def single_device_entry(registry, entries, config_entry_id: str, device):
++    if not entries:
++        return None
++    if len(entries) > 1:
++        for entry in entries:
++            if entry.config_entry_id != config_entry_id:
++                registry.async_remove_device(entry.id)
++            elif device.type == GATEWAY:
++                XEntity.VIA[device.uid] = entry.id
++        return None
++    entry = entries[0]
++    if entry.config_entry_id == config_entry_id:
++        if device.type == GATEWAY:
++            XEntity.VIA[device.uid] = entry.id
++        return None
++    return entries

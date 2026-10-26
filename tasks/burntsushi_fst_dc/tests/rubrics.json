@@ -1,0 +1,355 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "burntsushi_fst_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "fst_dc_01",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Unfinished node finality, final output, and completed transitions form one construction state across push, pop, and freeze.",
+      "baseline_defect": "BuilderNodeUnfinished duplicates BuilderNode fields and repeatedly reconstructs a BuilderNode on pop_root, pop_freeze, and pop_empty.",
+      "criterion": "Give the unfinished node a coherent owner for its finality, terminal output, and completed transitions throughout creation and freezing.",
+      "acceptance": "The same state boundary serves push_empty, push_suffix, set_root_output, and each pop/freeze path without repeated parallel reconstruction. Encapsulation may retain scalar fields or parallel storage when callers no longer independently maintain the coupled invariant; eager normalization and alternative traversal representations are valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding helper that leaves all pop/freeze callers independently selecting and assembling the same node components."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "BuilderNodeUnfinished",
+          "detail": null,
+          "raw": "expanded.diff:src/raw/build.rs:BuilderNodeUnfinished"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "pop_root/pop_freeze/pop_empty",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/build.rs:pop_root/pop_freeze/pop_empty"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_02",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Pending transition input/output and prefix adjustments have one edge lifecycle.",
+      "baseline_defect": "last_inp and last_out travel separately through suffix creation, common-prefix factoring, last_compiled, and output propagation.",
+      "criterion": "Keep pending-edge input and output coupled so edge mutation and completion operate on one consistent transition state.",
+      "acceptance": "Common-prefix updates and last_compiled consume the same pending edge state, including zero-output suffix edges. Encapsulation may retain scalar fields or parallel storage when callers no longer independently maintain the coupled invariant; eager normalization and alternative traversal representations are valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming the two fields or passing both to a wrapper while every caller can still update one independently."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "push_suffix/common_prefix/last_compiled",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/build.rs:push_suffix/common_prefix/last_compiled"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deferred output base, completed edges, pending edge, and final output require different publication rules.",
+      "baseline_defect": "add_output_prefix, common_prefix, and last_compiled each carry a fragment of the accumulated transition-prefix invariant; materialization happens conditionally when a new edge output is smaller.",
+      "criterion": "Give prefix propagation and relative-edge materialization a coherent lifecycle, or remove the deferred representation by normalizing outputs at a consistent boundary.",
+      "acceptance": "Terminal and pending outputs remain absolute while completed edges have coherent effective values; smaller-edge rebasing and ordinary prefix accumulation no longer require callers to coordinate fragments of this rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the existing conditional block intact to a utility while callers still make separate prefix and terminal decisions."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "trans_prefix/last_compiled",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/raw/build.rs:trans_prefix/last_compiled"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "common_prefix/add_output_prefix",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/build.rs:common_prefix/add_output_prefix"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_04",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Frozen transition outputs flow from builder into registry hashing/cache storage and node serialization.",
+      "baseline_defect": "Builder passes a relative transition vector plus prefix; registry hashes and stores effective outputs itself while node encoding separately recomputes them.",
+      "criterion": "Establish one coherent effective-output handoff from frozen builder state to both canonicalization and serialization.",
+      "acceptance": "Registry identity and encoded bytes consume the same logical transition values across build.rs, registry.rs, and node.rs, including nonzero deferred prefixes. Encapsulation may retain scalar fields or parallel storage when callers no longer independently maintain the coupled invariant; eager normalization and alternative traversal representations are valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A carrier that leaves both consumers independently interpreting the output base; a carrier providing effective values or normalization is a valid repair."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::compile",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/build.rs:Builder::compile"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/registry.rs",
+          "symbol": "hash/RegistryCache::entry",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/registry.rs:hash/RegistryCache::entry"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "StateAnyTrans::compile",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/node.rs:StateAnyTrans::compile"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_05",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Registry lookup, hash, equality, and MRU replacement describe one node identity.",
+      "baseline_defect": "is_final, final_output, and trans are threaded through entry_parts, entry_with_prefix, hash, and all three cache-size branches, with repeated cache-field assignment.",
+      "criterion": "Make registry identity and replacement operate on a coherent node value rather than parallel primitive arguments and branch-specific field copies.",
+      "acceptance": "One logical identity governs hashing, equality, and insertion for one-cell, two-cell, and general MRU caches. Encapsulation may retain scalar fields or parallel storage when callers no longer independently maintain the coupled invariant; eager normalization and alternative traversal representations are valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing only one cache-size branch while the other branches still manually reproduce the node identity or replacement invariant."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/raw/registry.rs",
+          "symbol": "Registry::entry_parts/hash",
+          "detail": null,
+          "raw": "expanded.diff:src/raw/registry.rs:Registry::entry_parts/hash"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/registry.rs",
+          "symbol": "RegistryCache::entry",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/registry.rs:RegistryCache::entry"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_06",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The current encoder selects empty, one-next, one-transition, and any-transition layouts from node state.",
+      "baseline_defect": "Node::compile and StateAnyTrans::compile receive finality, terminal output, transitions, and prefix as separate parameters, while layout selection and byte-width planning reconstruct the same logical node differently.",
+      "criterion": "Make node encoding consume coherent node state so supported empty, one-next, one-transition and any-transition layouts do not require separately reconstructed input components.",
+      "acceptance": "The encoding boundary owns how node state selects the supported layout; structured input, accessors or normalization qualify when they eliminate the repeated component assembly. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed argument list that still requires callers to assemble finality, output and transition state independently."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "Node::compile/StateAnyTrans::compile",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/node.rs:Node::compile/StateAnyTrans::compile"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::compile",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/build.rs:Builder::compile"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_07",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Reader metadata is parsed once and supplies checksum, length, type, root address, and node version.",
+      "baseline_defect": "FstRef copies Meta components into parallel fields and reconstructs the conceptual metadata access through separate consumers.",
+      "criterion": "Give immutable FST metadata one cohesive reader representation for construction and all metadata accessors.",
+      "acceptance": "Construction and checksum, length, type, root and version consumers share a coherent metadata representation or projection; borrowing Meta is not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding accessor that leaves duplicate scalar metadata stored in FstRef."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "FstRef",
+          "detail": null,
+          "raw": "expanded.diff:src/raw/mod.rs:FstRef"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Fst::as_ref/FstRef::node",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/mod.rs:Fst::as_ref/FstRef::node"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_08",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Traversal node, cursor, and automaton state describe one suspended DFS frame.",
+      "baseline_defect": "StreamWithState replaces StreamState frames with stack, stack_trans, and stack_aut columns independently pushed and popped in seek and DFS paths.",
+      "criterion": "Couple each suspended node, transition cursor, and automaton state for seeking, descent, pruning, and exhaustion.",
+      "acceptance": "All stack lifecycle paths manipulate one consistent frame state, including root and exact/missing minimum seeks. Encapsulation may retain scalar fields or parallel storage when callers no longer independently maintain the coupled invariant; eager normalization and alternative traversal representations are valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Adding length assertions without removing independently coordinated pushes, pops and resets from seek and DFS callers. Parallel storage encapsulated behind coherent frame operations is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "StreamWithState::seek_min/next_with",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/mod.rs:StreamWithState::seek_min/next_with"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_09",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Current traversal output differs in lifetime from suspended ancestor outputs.",
+      "baseline_defect": "A scalar output and stack_out are manually synchronized at seek return, exact-bound rewind, descent, and DFS pop; the two output roles are not represented by a single lifecycle owner.",
+      "criterion": "Represent active output and suspended ancestor outputs with an explicit coherent lifecycle across seek and DFS operations.",
+      "acceptance": "Inclusive exact seek restores the parent prefix, excluded exact seek retains the child prefix, and pruning restores the appropriate ancestor via the same state boundary. Encapsulation may retain scalar fields or parallel storage when callers no longer independently maintain the coupled invariant; eager normalization and alternative traversal representations are valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing only a pop or seek assignment while preserving unrelated manual synchronization at the other paths."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "StreamWithState::seek_min/next_with",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/raw/mod.rs:StreamWithState::seek_min/next_with"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "stack_out/output",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/mod.rs:stack_out/output"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_10",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Current range traversal supports included, excluded, and unbounded maximum bounds.",
+      "baseline_defect": "Bound is decomposed into end_key and end_inclusive, and empty-key and ordinary DFS termination each reinterpret that pair separately.",
+      "criterion": "Keep maximum-bound semantics at a focused boundary used by both empty-key and DFS termination paths.",
+      "acceptance": "Changing the existing included/excluded/unbounded bound variation requires one bounds decision boundary rather than synchronized changes to both consumers. Encapsulation may retain scalar fields or parallel storage when callers no longer independently maintain the coupled invariant; eager normalization and alternative traversal representations are valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A helper for only the DFS comparison while the empty-key path still interprets the pair separately."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Bound/StreamWithState::new",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/raw/mod.rs:Bound/StreamWithState::new"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "StreamWithState::next_with",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/mod.rs:StreamWithState::next_with"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_11",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Packed transition and output widths jointly determine offsets and decoded values.",
+      "baseline_defect": "Node splits PackSizes into transition_size and output_size; these values are passed separately through one/any transition address, output, final-output, and end-offset decoding.",
+      "criterion": "Keep transition and output packing widths coherent through one-transition and any-transition decoding and offset calculations.",
+      "acceptance": "Width-dependent consumers receive a coherent packing interpretation instead of callers repeatedly decomposing and synchronizing widths. This item concerns the general width pair; terminal-presence ownership is scored separately. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming width arguments while callers still repeatedly unpack and synchronize the same packing state."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "Node::new/StateAnyTrans::end_addr/final_output/output",
+          "detail": null,
+          "raw": "environment/smell.diff:src/raw/node.rs:Node::new/StateAnyTrans::end_addr/final_output/output"
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_12_encode",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Terminal size and presence are exported before any-transition encoding.",
+      "baseline_defect": "Node::compile computes final_size and has_final_output from final_output and passes all three separately to StateAnyTrans::compile.",
+      "criterion": "Remove independent caller maintenance of terminal output, its width and presence in the encoder.",
+      "acceptance": "Derive these dependent values at a coherent encoding boundary or eliminate redundant state; terminal output stays distinct from the completed-edge base. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only grouping arguments while callers still calculate and supply all three dependent values."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "Node::compile/StateAnyTrans::compile",
+          "detail": "Node::compile computes final_size and has_final_output from final_output and passes all three separately to StateAnyTrans::compile.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fst_dc_13_decode",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Final-width absence handling is split from terminal decoding and end offset calculation.",
+      "baseline_defect": "Node::new derives final_width, decides whether to call final_output and passes final_osize separately to end_addr; those consumers depend on the caller supplying compatible finality and width.",
+      "criterion": "Give terminal-output presence, zero-width interpretation and end-offset contribution a coherent decoding boundary.",
+      "acceptance": "Absent terminal output and existing final/nonfinal layouts are interpreted consistently without constructor callers coordinating the guard and offset argument. No shared encoder/decoder class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing one offset or retaining independent constructor guard and width coordination under new names."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "Node::new/StateAnyTrans::final_output/StateAnyTrans::end_addr",
+          "detail": "Node::new derives final_width, decides whether to call final_output and passes final_osize separately to end_addr; those consumers depend on the caller supplying compatible finality and width.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "burntsushi_fst_dc",
+    "rubric_status": "ready",
+    "scoring": "Equal weight per item; score only the stated structural repair, not behavior or test passage alone.",
+    "excluded_from_scoring": [
+      "Passing tests and behavior preservation alone",
+      "Compilation-only fixes",
+      "Empty post.diff",
+      "Historical intentions absent from the final patch"
+    ]
+  }
+}

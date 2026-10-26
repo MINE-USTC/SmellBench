@@ -1,0 +1,382 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "tmbo_questionary_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "sync_execution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2/R6 question execution.",
+      "baseline_defect": "Prompt consumers independently interpret foreign sync execution state.",
+      "criterion": "Give sync execution a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Keep skip/default before run, stdout scope around run, supported custom bound/instance methods. Form inserts all defaults including None while configured callback retains own None/filter semantics. Keep sequential field order and exceptions. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/form.py",
+          "symbol": "unsafe_ask",
+          "detail": "Prompt consumers independently interpret foreign sync execution state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompt.py",
+          "symbol": "unsafe_prompt",
+          "detail": "Prompt consumers independently interpret foreign sync execution state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "async_execution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2/R6 async lifecycle.",
+      "baseline_defect": "Prompt consumers independently interpret foreign async execution state.",
+      "criterion": "Give async execution a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Skip before activation; activate only when needed; patch surrounds creation of run_async pending, ends before await; toolkit3 await versus legacy to_asyncio_future. Supported overrides await normally; results delivered to respective field/callback sinks once. Do not force identical sync/async implementation. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/form.py",
+          "symbol": "unsafe_ask_async",
+          "detail": "Prompt consumers independently interpret foreign async execution state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompt.py",
+          "symbol": "unsafe_prompt_async",
+          "detail": "Prompt consumers independently interpret foreign async execution state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "choice_conversion",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R5 Choice conversion.",
+      "baseline_defect": "Prompt consumers independently interpret foreign choice conversion state.",
+      "criterion": "Give choice conversion a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Existing Choice retains identity; strings and mappings keep fields/defaults; resolve current Choice.build per input and preserve custom behavior. Conversion cannot silently clone shared choices. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "_control_initialize_choices",
+          "detail": "Prompt consumers independently interpret foreign choice conversion state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "initial_selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R5 default comparison.",
+      "baseline_defect": "Prompt consumers independently interpret foreign initial selection state.",
+      "criterion": "Give initial selection a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Compute default Choice equality versus scalar value equality before checked selection, preserving callbacks/overrides and None distinction; append selected values before enabled initial pointer selection then append choice. Explicit pointed_at retained, first enabled otherwise. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "_control_initialize_choices",
+          "detail": "Prompt consumers independently interpret foreign initial selection state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "shortcut_allocation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 reservation and R7 consumer allocation.",
+      "baseline_defect": "Prompt consumers independently interpret foreign shortcut allocation state.",
+      "criterion": "Give shortcut allocation a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Reserve explicit keys in order, reject duplicate/invalid even before auto allocation; skip disabled auto choices; preserve exhaustion and reentry. Shared control allocator may use Choice transition without forcing new object. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/rawselect.py",
+          "symbol": "_control_assign_shortcuts",
+          "detail": "Prompt consumers independently interpret foreign shortcut allocation state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "shortcut_assignment",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R7 key and auto flag.",
+      "baseline_defect": "Prompt consumers independently interpret foreign shortcut assignment state.",
+      "criterion": "Give shortcut assignment a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Assignment updates key and clears automatic flag together, honors custom setters/subclasses/__setattr__ behavior. Allocator need not know name-mangled storage or descriptor identity; equivalent owner transition qualifies. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/rawselect.py",
+          "symbol": "_control_assign_shortcuts",
+          "detail": "Prompt consumers independently interpret foreign shortcut assignment state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "filtering",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 matching/found state.",
+      "baseline_defect": "Prompt consumers independently interpret foreign filtering state.",
+      "criterion": "Give filtering a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Falsy filter returns original choices without new found flag update; nonempty filter uses current matcher or case-insensitive string/fragment text, updates found and falls back to original choices on no matches. Keep dynamic property/matcher reads, not cached snapshots. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "_control_filtered_choices",
+          "detail": "Prompt consumers independently interpret foreign filtering state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "row_presentation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 shared list display.",
+      "baseline_defect": "Prompt consumers independently interpret foreign row presentation state.",
+      "criterion": "Give row presentation a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Preserve pointer width/cursor token, separator/disabled styles including nonbool reasons, selected vs highlighted fragments and indicator flags; preserve full filtered order and final newline removal. Views near data are valid; not every renderer must be a model method. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "_control_choice_tokens",
+          "detail": "Prompt consumers independently interpret foreign row presentation state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "shortcut_presentation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R5 shortcut title in rows/footer.",
+      "baseline_defect": "Prompt consumers independently interpret foreign shortcut presentation state.",
+      "criterion": "Give shortcut presentation a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Both row and footer use one extensible Choice title policy, preserving absent key -) and custom overrides only when shortcuts enabled. No mandatory new interface. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "_control_choice_tokens",
+          "detail": "Prompt consumers independently interpret foreign shortcut presentation state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "footer_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 current-choice footer independently interprets description/title.",
+      "baseline_defect": "Prompt consumers independently interpret foreign footer projection state.",
+      "criterion": "Give footer projection a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Current selection looked up after rows; footer uses scalar title or first fragment (not joined full answer title), optional description, correct newline retention. Shared result projection can serve row/footer/answer while keeping their display rules distinct. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "_control_choice_tokens",
+          "detail": "Prompt consumers independently interpret foreign footer projection state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "navigation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 step and skip invalid.",
+      "baseline_defect": "Prompt consumers independently interpret foreign navigation state.",
+      "criterion": "Give navigation a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Current count/overrides respected each step; select cycles, checkbox noncycle reverses initial wrapping step before invalid-choice loop. Filtered movement and unfiltered validity checks retain existing distinction; no eager caching. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "move_cursor_down,move_cursor_up",
+          "detail": "Prompt consumers independently interpret foreign navigation state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "move_cursor_down,move_cursor_up",
+          "detail": "Prompt consumers independently interpret foreign navigation state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "search_editing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R4 search updates.",
+      "baseline_defect": "Prompt consumers independently interpret foreign search editing state.",
+      "criterion": "Give search editing a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Append string char or Backspace delegates current removal then cursor resets0. Removing last/empty makes None; prompt-specific whitespace binding policies remain local. No duplicate direct filter mutation outside chosen boundary. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "search_filter,_control_add_search_character,_control_remove_search_character",
+          "detail": "Prompt consumers independently interpret foreign search editing state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "search_filter",
+          "detail": "Prompt consumers independently interpret foreign search editing state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "layout",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 shared prompt sessions/visibility.",
+      "baseline_defect": "Prompt consumers independently interpret foreign layout state.",
+      "criterion": "Give layout a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Shared construction works for all inquirer consumers, preserves blank-line fix, menu reserve0, done gating, two-line search window and lazy error toolbar. Dedicated shared view is valid; file location alone not a defect. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "_control_layout",
+          "detail": "Prompt consumers independently interpret foreign layout state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/common.py",
+          "symbol": "create_inquirer_layout",
+          "detail": "Prompt consumers independently interpret foreign layout state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "search_render_capture",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R8 captured renderer versus visibility.",
+      "baseline_defect": "Prompt consumers independently interpret foreign search render capture state.",
+      "criterion": "Give search render capture a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Search tokens distinguish None from empty, success flag read live. Visibility calls current getter each time; window keeps captured custom bound getter from construction. Do not replace both with uniformly fresh or cached lookup; token policy can be shared without losing binding lifetime. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "search_content,render_search",
+          "detail": "Prompt consumers independently interpret foreign search render capture state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "_control_get_search_string_tokens",
+          "detail": "Prompt consumers independently interpret foreign search render capture state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "answer_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 pointed/selected interpretation.",
+      "baseline_defect": "Prompt consumers independently interpret foreign answer projection state.",
+      "criterion": "Give answer projection a coherent policy boundary so consumer workflows need not interpret foreign representation.",
+      "acceptance": "Pointed choice uses current filtered list/index; selected choices preserve original order, exclude Separator but not selected disabled values. Supported override call counts and repeated title reads retained; checkbox count summary/validation and select answer render/exit retain own output. Existing owner APIs, appropriate shared views or composed operations are acceptable; no required physical module/class placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the same foreign-state branches without recovering responsibility is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "_pointed_choice,set_answer",
+          "detail": "Prompt consumers independently interpret foreign answer projection state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "_selected_choices,get_selected_values",
+          "detail": "Prompt consumers independently interpret foreign answer projection state.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "tmbo_questionary_fe",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "weighting": "equal per item"
+  }
+}

@@ -1,0 +1,1816 @@
+diff --git a/fec.go b/fec.go
+index 320a998..80a4962 100644
+--- a/fec.go
++++ b/fec.go
+@@ -161,31 +161,9 @@ func newFECDecoder(dataShards, parityShards int) *fecDecoder {
+ func (dec *fecDecoder) decode(in fecPacket) (recovered [][]byte) {
+ 	// Sample the packet type for auto-tuning
+ 	if in.flag() == typeData {
++		dec.autoTune.Sample(true, in.seqid())
+-		func(bit bool, seq uint32) {
+-			// Write to current tail position
+-			dec.autoTune.pulses[dec.autoTune.tail] = pulse{bit: bit, seq: seq}
+-			dec.autoTune.tail = (dec.autoTune.tail + 1) % maxAutoTuneSamples
+-
+-			if dec.autoTune.count < maxAutoTuneSamples {
+-				dec.autoTune.count++
+-			} else {
+-				// Buffer is full, advance head (discard oldest)
+-				dec.autoTune.head = (dec.autoTune.head + 1) % maxAutoTuneSamples
+-			}
+-		}(true, in.seqid())
+ 	} else {
++		dec.autoTune.Sample(false, in.seqid())
+-		func(bit bool, seq uint32) {
+-			// Write to current tail position
+-			dec.autoTune.pulses[dec.autoTune.tail] = pulse{bit: bit, seq: seq}
+-			dec.autoTune.tail = (dec.autoTune.tail + 1) % maxAutoTuneSamples
+-
+-			if dec.autoTune.count < maxAutoTuneSamples {
+-				dec.autoTune.count++
+-			} else {
+-				// Buffer is full, advance head (discard oldest)
+-				dec.autoTune.head = (dec.autoTune.head + 1) % maxAutoTuneSamples
+-			}
+-		}(false, in.seqid())
+ 	}
+ 
+ 	// check seqid < paws to avoid invalid packets
+@@ -345,20 +323,7 @@ func (dec *fecDecoder) decode(in fecPacket) (recovered [][]byte) {
+ 	}
+ 
+ 	// try to discard shard sets that are too old
++	dec.discardShards()
+-	func() {
+-		for shardId, shard := range dec.shardSet {
+-			// discard shards that are too old
+-			if _itimediff(dec.newestShardId*uint32(dec.shardSize), shardId*uint32(dec.shardSize)) > maxShardSets*int32(dec.shardSize) {
+-				//println("flushing shard", shardId, "minShardId", dec.minShardId, _itimediff(dec.minShardId, shardId))
+-				for _, pkt := range shard.elements {
+-					defaultBufferPool.Put(pkt)
+-				}
+-				delete(dec.shardSet, shardId)
+-			}
+-		}
+-
+-		atomic.StoreUint64(&DefaultSnmp.FECShardSet, uint64(len(dec.shardSet)))
+-	}()
+ 
+ 	return
+ }
+@@ -368,6 +333,22 @@ func (dec *fecDecoder) getShardId(seqid uint32) uint32 {
+ 	return seqid / uint32(dec.shardSize)
+ }
+ 
++// discardShards removes shards that are too old from the shardSet
++func (dec *fecDecoder) discardShards() {
++	for shardId, shard := range dec.shardSet {
++		// discard shards that are too old
++		if _itimediff(dec.newestShardId*uint32(dec.shardSize), shardId*uint32(dec.shardSize)) > maxShardSets*int32(dec.shardSize) {
++			//println("flushing shard", shardId, "minShardId", dec.minShardId, _itimediff(dec.minShardId, shardId))
++			for _, pkt := range shard.elements {
++				defaultBufferPool.Put(pkt)
++			}
++			delete(dec.shardSet, shardId)
++		}
++	}
++
++	atomic.StoreUint64(&DefaultSnmp.FECShardSet, uint64(len(dec.shardSet)))
++}
++
+ type (
+ 	// fecEncoder for encoding outgoing packets
+ 	fecEncoder struct {
+@@ -426,11 +407,7 @@ func (enc *fecEncoder) encode(b []byte, rto uint32) (ps [][]byte) {
+ 	// The header format:
+ 	// | FEC SEQID(4B) | FEC TYPE(2B) | SIZE (2B) | PAYLOAD(SIZE-2) |
+ 	// |<-headerOffset                |<-payloadOffset
++	enc.sealData(b[enc.headerOffset:])
+-	func(data []byte) {
+-		binary.LittleEndian.PutUint32(data, enc.next)
+-		binary.LittleEndian.PutUint16(data[4:], typeData)
+-		enc.next = (enc.next + 1) % enc.paws
+-	}(b[enc.headerOffset:])
+ 	binary.LittleEndian.PutUint16(b[enc.payloadOffset:], uint16(len(b[enc.payloadOffset:])))
+ 
+ 	// copy data from payloadOffset to fec shard cache
+@@ -479,22 +456,18 @@ func (enc *fecEncoder) encode(b []byte, rto uint32) (ps [][]byte) {
+ 			if err := enc.codec.Encode(cache); err == nil {
+ 				ps = enc.shardCache[enc.dataShards:]
+ 				for k := range ps {
++					enc.sealParity(ps[k][enc.headerOffset:]) // NOTE(x): seal parity will increase the seqid by 1
+-					func(data []byte) {
+-						binary.LittleEndian.PutUint32(data, enc.next)
+-						binary.LittleEndian.PutUint16(data[4:], typeParity)
+-						enc.next = (enc.next + 1) % enc.paws
+-					}(ps[k][enc.headerOffset:]) // NOTE(x): seal parity will increase the seqid by 1
+ 					ps[k] = ps[k][:enc.maxSize]
+ 				}
+ 			} else {
+ 				// encoding failed, record the error but keep the seqid monotonic increasing
+ 				atomic.AddUint64(&DefaultSnmp.FECErrs, 1)
++				enc.skipParity()
+-				enc.next = (enc.next + uint32(enc.parityShards)) % enc.paws
+ 			}
+ 		} else {
+ 			// Non-continuous data detected, skip this parity generation.
+ 			// Through we do not send non-continuous parity shard, we still need to increase seqid.
++			enc.skipParity()
+-			enc.next = (enc.next + uint32(enc.parityShards)) % enc.paws
+ 		}
+ 
+ 		// reset shard count and max size
+@@ -508,11 +481,32 @@ func (enc *fecEncoder) encode(b []byte, rto uint32) (ps [][]byte) {
+ 	return
+ }
+ 
++// sealData and sealParity write the sequence number and type into the FEC header
++func (enc *fecEncoder) sealData(data []byte) {
++	binary.LittleEndian.PutUint32(data, enc.next)
++	binary.LittleEndian.PutUint16(data[4:], typeData)
++	enc.next = (enc.next + 1) % enc.paws
++}
++
++func (enc *fecEncoder) sealParity(data []byte) {
++	binary.LittleEndian.PutUint32(data, enc.next)
++	binary.LittleEndian.PutUint16(data[4:], typeParity)
++	enc.next = (enc.next + 1) % enc.paws
++}
++
+ // encodeOOB encodes an out-of-band packet
+ func (enc *fecEncoder) encodeOOB(b []byte) {
++	enc.sealOOB(b[enc.headerOffset:])
+-	func(data []byte) {
+-		binary.LittleEndian.PutUint32(data, uint32(0xffffffff)) // use max uint32 as OOB seqid
+-		binary.LittleEndian.PutUint16(data[4:], typeOOB)
+-	}(b[enc.headerOffset:])
+ 	binary.LittleEndian.PutUint16(b[enc.payloadOffset:], uint16(len(b[enc.payloadOffset:])))
+ }
++
++// sealOOB seals an out-of-band packet
++func (enc *fecEncoder) sealOOB(data []byte) {
++	binary.LittleEndian.PutUint32(data, uint32(0xffffffff)) // use max uint32 as OOB seqid
++	binary.LittleEndian.PutUint16(data[4:], typeOOB)
++}
++
++// skipParity skips the whole parity block by advancing the seqid
++func (enc *fecEncoder) skipParity() {
++	enc.next = (enc.next + uint32(enc.parityShards)) % enc.paws
++}
+diff --git a/kcp.go b/kcp.go
+index 8940a56..b2d506a 100644
+--- a/kcp.go
++++ b/kcp.go
+@@ -280,6 +280,20 @@ func NewKCP(conv uint32, output output_callback) *KCP {
+ 	return kcp
+ }
+ 
++// newSegment creates a KCP segment
++func (kcp *KCP) newSegment(size int) (seg segment) {
++	seg.data = defaultBufferPool.Get()[:size]
++	return
++}
++
++// recycleSegment recycles a KCP segment
++func (kcp *KCP) recycleSegment(seg *segment) {
++	if seg.data != nil {
++		defaultBufferPool.Put(seg.data)
++		seg.data = nil
++	}
++}
++
+ // PeekSize checks the size of next message in the recv queue
+ func (kcp *KCP) PeekSize() (length int) {
+ 	seg, ok := kcp.rcv_queue.Peek()
+@@ -312,28 +326,7 @@ func (kcp *KCP) PeekSize() (length int) {
+ //
+ // Return -2 if len(buffer) is smaller than kcp.PeekSize().
+ func (kcp *KCP) Recv(buffer []byte) (n int) {
++	peeksize := kcp.PeekSize()
+-	peeksize := func() (length int) {
+-		seg, ok := kcp.rcv_queue.Peek()
+-		if !ok {
+-			return -1
+-		}
+-
+-		if seg.frg == 0 {
+-			return len(seg.data)
+-		}
+-
+-		if kcp.rcv_queue.Len() < int(seg.frg+1) {
+-			return -1
+-		}
+-
+-		for seg := range kcp.rcv_queue.ForEach {
+-			length += len(seg.data)
+-			if seg.frg == 0 {
+-				break
+-			}
+-		}
+-		return
+-	}()
+ 	if peeksize < 0 {
+ 		return -1
+ 	}
+@@ -357,13 +350,7 @@ func (kcp *KCP) Recv(buffer []byte) (n int) {
+ 		copy(buffer, seg.data)
+ 		buffer = buffer[len(seg.data):]
+ 		n += len(seg.data)
++		kcp.recycleSegment(&seg)
+-		{
+-			target := &seg
+-			if target.data != nil {
+-				defaultBufferPool.Put(target.data)
+-				target.data = nil
+-			}
+-		}
+ 		if seg.frg == 0 {
+ 			kcp.debugLog(IKCP_LOG_RECV, "stream", kcp.stream, "conv", kcp.conv, "sn", seg.sn, "ts", seg.ts, "datalen", n)
+ 			break
+@@ -442,7 +429,7 @@ func (kcp *KCP) Send(buffer []byte) int {
+ 	for i := 0; i < count; i++ {
+ 		var size int
+ 		size = min(len(buffer), int(kcp.mss))
++		seg := kcp.newSegment(size)
+-		seg := segment{data: defaultBufferPool.Get()[:size]}
+ 		copy(seg.data, buffer[:size])
+ 		if kcp.stream == 0 { // message mode
+ 			seg.frg = uint8(count - i - 1)
+@@ -456,11 +443,147 @@ func (kcp *KCP) Send(buffer []byte) int {
+ 	return 0
+ }
+ 
++// update_ack updates the smoothed RTT and RTO based on a new RTT sample.
++// Algorithm follows RFC 6298: Computing TCP's Retransmission Timer.
++func (kcp *KCP) update_ack(rtt int32) {
++	var rto uint32
++	if kcp.rx_srtt == 0 {
++		kcp.rx_srtt = rtt
++		kcp.rx_rttvar = rtt >> 1
++	} else {
++		delta := rtt - kcp.rx_srtt
++		kcp.rx_srtt += delta >> 3
++		if delta < 0 {
++			delta = -delta
++		}
++		if rtt < kcp.rx_srtt-kcp.rx_rttvar {
++			// if the new RTT sample is below the bottom of the range of
++			// what an RTT measurement is expected to be.
++			// give an 8x reduced weight versus its normal weighting
++			kcp.rx_rttvar += (delta - kcp.rx_rttvar) >> 5
++		} else {
++			kcp.rx_rttvar += (delta - kcp.rx_rttvar) >> 2
++		}
++	}
++	rto = uint32(kcp.rx_srtt) + max(kcp.interval, uint32(kcp.rx_rttvar)<<2)
++	kcp.rx_rto = min(max(kcp.rx_minrto, rto), IKCP_RTO_MAX)
++}
++
++// shrink_buf advances snd_una to the oldest unacknowledged segment in snd_buf.
++func (kcp *KCP) shrink_buf() {
++	if seg, ok := kcp.snd_buf.Peek(); ok {
++		kcp.snd_una = seg.sn
++	} else {
++		kcp.snd_una = kcp.snd_nxt
++	}
++}
++
++// parse_ack marks a segment as acknowledged in snd_buf by sequence number.
++// The segment is not removed immediately; it stays until snd_una advances past it,
++// avoiding expensive shifts in the ring buffer.
++func (kcp *KCP) parse_ack(sn uint32) {
++	if _itimediff(sn, kcp.snd_una) < 0 || _itimediff(sn, kcp.snd_nxt) >= 0 {
++		return
++	}
++
++	for seg := range kcp.snd_buf.ForEach {
++		if sn == seg.sn {
++			// mark and free space, but leave the segment here,
++			// and wait until `una` to delete this, then we don't
++			// have to shift the segments behind forward,
++			// which is an expensive operation for large window
++			seg.acked = 1
++			kcp.recycleSegment(seg)
++			break
++		}
++		if _itimediff(sn, seg.sn) < 0 {
++			break
++		}
++	}
++}
++
++// parse_fastack increments the fast-ack counter for segments with sn < the given sn.
++// Returns 1 if any segment's fastack counter has reached the fast retransmit threshold.
++func (kcp *KCP) parse_fastack(sn, ts uint32) int {
++	shouldFastAck := 0
++	if _itimediff(sn, kcp.snd_una) < 0 || _itimediff(sn, kcp.snd_nxt) >= 0 {
++		return 0
++	}
++
++	for seg := range kcp.snd_buf.ForEach {
++		if _itimediff(sn, seg.sn) < 0 {
++			break
++		} else if sn != seg.sn && _itimediff(seg.ts, ts) <= 0 {
++			if seg.fastack != 0xFFFFFFFF {
++				seg.fastack++
++				if seg.fastack >= uint32(kcp.fastresend) {
++					shouldFastAck = 1
++				}
++			}
++		}
++	}
++
++	return shouldFastAck
++}
++
++// parse_una removes all segments from snd_buf that have been cumulatively acknowledged
++// (i.e., segments with sn < una). Returns the number of segments removed.
++func (kcp *KCP) parse_una(una uint32) int {
++	count := 0
++	for seg := range kcp.snd_buf.ForEach {
++		if _itimediff(una, seg.sn) > 0 {
++			kcp.recycleSegment(seg)
++			count++
++		} else {
++			break
++		}
++	}
++	kcp.snd_buf.Discard(count)
++	return count
++}
++
+ // ack append
+ func (kcp *KCP) ack_push(sn, ts uint32) {
+ 	kcp.acklist = append(kcp.acklist, ackItem{sn, ts})
+ }
+ 
++// returns true if data has repeated
++func (kcp *KCP) parse_data(newseg segment) bool {
++	sn := newseg.sn
++	if _itimediff(sn, kcp.rcv_nxt+kcp.rcv_wnd) >= 0 ||
++		_itimediff(sn, kcp.rcv_nxt) < 0 {
++		return true
++	}
++
++	repeat := false
++	if !kcp.rcv_buf.Has(sn) {
++		// replicate the content if it's new
++		dataCopy := defaultBufferPool.Get()[:len(newseg.data)]
++		copy(dataCopy, newseg.data)
++		newseg.data = dataCopy
++
++		// insert the new segment into rcv_buf
++		heap.Push(kcp.rcv_buf, newseg)
++	} else {
++		repeat = true
++	}
++
++	// move available data from rcv_buf -> rcv_queue
++	for kcp.rcv_buf.Len() > 0 {
++		seg := heap.Pop(kcp.rcv_buf).(segment)
++		if seg.sn == kcp.rcv_nxt && kcp.rcv_queue.Len() < int(kcp.rcv_wnd) {
++			kcp.rcv_queue.Push(seg)
++			kcp.rcv_nxt++
++		} else {
++			// push back segment
++			heap.Push(kcp.rcv_buf, seg)
++			break
++		}
++	}
++
++	return repeat
++}
++
+ // Input a packet into kcp state machine.
+ //
+ // 'regular' indicates it's a real data packet from remote, and it means it's not generated from ReedSolomon
+@@ -513,57 +636,16 @@ func (kcp *KCP) Input(data []byte, pktType PacketType, ackNoDelay bool) int {
+ 		if pktType == IKCP_PACKET_REGULAR {
+ 			kcp.rmt_wnd = uint32(wnd)
+ 		}
++		if kcp.parse_una(una) > 0 {
+-		removed := 0
+-		for seg := range kcp.snd_buf.ForEach {
+-			if _itimediff(una, seg.sn) <= 0 {
+-				break
+-			}
+-			if seg.data != nil {
+-				defaultBufferPool.Put(seg.data)
+-				seg.data = nil
+-			}
+-			removed++
+-		}
+-		kcp.snd_buf.Discard(removed)
+-		if removed > 0 {
+ 			flushSegments |= 1
+ 		}
++		kcp.shrink_buf()
+-		if seg, ok := kcp.snd_buf.Peek(); ok {
+-			kcp.snd_una = seg.sn
+-		} else {
+-			kcp.snd_una = kcp.snd_nxt
+-		}
+ 
+ 		switch cmd {
+ 		case IKCP_CMD_ACK:
+ 			kcp.debugLog(IKCP_LOG_IN_ACK, "conv", conv, "sn", sn, "una", una, "ts", ts, "rto", kcp.rx_rto)
++			kcp.parse_ack(sn)
++			flushSegments |= kcp.parse_fastack(sn, ts)
+-			if _itimediff(sn, kcp.snd_una) >= 0 && _itimediff(sn, kcp.snd_nxt) < 0 {
+-				for seg := range kcp.snd_buf.ForEach {
+-					if sn == seg.sn {
+-						seg.acked = 1
+-						if seg.data != nil {
+-							defaultBufferPool.Put(seg.data)
+-							seg.data = nil
+-						}
+-						break
+-					}
+-					if _itimediff(sn, seg.sn) < 0 {
+-						break
+-					}
+-				}
+-				for seg := range kcp.snd_buf.ForEach {
+-					if _itimediff(sn, seg.sn) < 0 {
+-						break
+-					}
+-					if sn != seg.sn && _itimediff(seg.ts, ts) <= 0 && seg.fastack != 0xFFFFFFFF {
+-						seg.fastack++
+-						if seg.fastack >= uint32(kcp.fastresend) {
+-							flushSegments |= 1
+-						}
+-					}
+-				}
+-			}
+-
+ 			updateRTT |= 1
+ 			latest = ts
+ 		case IKCP_CMD_PUSH:
+@@ -571,22 +653,11 @@ func (kcp *KCP) Input(data []byte, pktType PacketType, ackNoDelay bool) int {
+ 			if _itimediff(sn, kcp.rcv_nxt+kcp.rcv_wnd) < 0 {
+ 				kcp.ack_push(sn, ts)
+ 				if _itimediff(sn, kcp.rcv_nxt) >= 0 {
++					repeat = kcp.parse_data(segment{
++						conv: conv, cmd: cmd, frg: frg, wnd: wnd,
++						ts: ts, sn: sn, una: una,
++						data: data[:length], // delayed data copying
++					})
+-					repeat = kcp.rcv_buf.Has(sn)
+-					if !repeat {
+-						payload := defaultBufferPool.Get()[:length]
+-						copy(payload, data[:length])
+-						heap.Push(kcp.rcv_buf, segment{conv: conv, cmd: cmd, frg: frg, wnd: wnd, ts: ts, sn: sn, una: una, data: payload})
+-					}
+-					for kcp.rcv_buf.Len() > 0 {
+-						seg := heap.Pop(kcp.rcv_buf).(segment)
+-						if seg.sn == kcp.rcv_nxt && kcp.rcv_queue.Len() < int(kcp.rcv_wnd) {
+-							kcp.rcv_queue.Push(seg)
+-							kcp.rcv_nxt++
+-						} else {
+-							heap.Push(kcp.rcv_buf, seg)
+-							break
+-						}
+-					}
+ 				}
+ 			}
+ 			if pktType == IKCP_PACKET_REGULAR && repeat {
+@@ -614,31 +685,7 @@ func (kcp *KCP) Input(data []byte, pktType PacketType, ackNoDelay bool) int {
+ 	if updateRTT != 0 && pktType == IKCP_PACKET_REGULAR {
+ 		current := currentMs()
+ 		if _itimediff(current, latest) >= 0 {
++			kcp.update_ack(_itimediff(current, latest))
+-			{
+-				rtt := _itimediff(current, latest)
+-
+-				var rto uint32
+-				if kcp.rx_srtt == 0 {
+-					kcp.rx_srtt = rtt
+-					kcp.rx_rttvar = rtt >> 1
+-				} else {
+-					delta := rtt - kcp.rx_srtt
+-					kcp.rx_srtt += delta >> 3
+-					if delta < 0 {
+-						delta = -delta
+-					}
+-					if rtt < kcp.rx_srtt-kcp.rx_rttvar {
+-						// if the new RTT sample is below the bottom of the range of
+-						// what an RTT measurement is expected to be.
+-						// give an 8x reduced weight versus its normal weighting
+-						kcp.rx_rttvar += (delta - kcp.rx_rttvar) >> 5
+-					} else {
+-						kcp.rx_rttvar += (delta - kcp.rx_rttvar) >> 2
+-					}
+-				}
+-				rto = uint32(kcp.rx_srtt) + max(kcp.interval, uint32(kcp.rx_rttvar)<<2)
+-				kcp.rx_rto = min(max(kcp.rx_minrto, rto), IKCP_RTO_MAX)
+-			}
+ 		}
+ 	}
+ 
+@@ -713,15 +760,20 @@ func (kcp *KCP) flush(flushType FlushType) (nextUpdate uint32) {
+ 	var seg segment
+ 	seg.conv = kcp.conv
+ 	seg.cmd = IKCP_CMD_ACK
++	seg.wnd = kcp.wnd_unused()
+-	if kcp.rcv_queue.Len() < int(kcp.rcv_wnd) {
+-		seg.wnd = uint16(int(kcp.rcv_wnd) - kcp.rcv_queue.Len())
+-	}
+ 	seg.una = kcp.rcv_nxt
+ 
+ 	buffer := kcp.buffer
+ 	ptr := buffer
+ 
+ 	// makeSpace makes room for writing
++	makeSpace := func(space int) {
++		size := len(buffer) - len(ptr)
++		if size+space > int(kcp.mtu) {
++			kcp.output(buffer, size)
++			ptr = buffer
++		}
++	}
+ 
+ 	// flush bytes in buffer if there is any
+ 	flushBuffer := func() {
+@@ -741,29 +793,11 @@ func (kcp *KCP) flush(flushType FlushType) (nextUpdate uint32) {
+ 	// --- Phase 1: Flush pending ACKs ---
+ 	if flushType == IKCP_FLUSH_ACKONLY || flushType == IKCP_FLUSH_FULL {
+ 		for i, ack := range kcp.acklist {
++			makeSpace(IKCP_OVERHEAD)
+-			{
+-				size := len(buffer) - len(ptr)
+-				if size+IKCP_OVERHEAD > int(kcp.mtu) {
+-					kcp.output(buffer, size)
+-					ptr = buffer
+-				}
+-			}
+ 			// filter jitters caused by bufferbloat
+ 			if _itimediff(ack.sn, kcp.rcv_nxt) >= 0 || len(kcp.acklist)-1 == i {
+ 				seg.sn, seg.ts = ack.sn, ack.ts
++				ptr = seg.encode(ptr)
+-				{
+-					_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-					binary.LittleEndian.PutUint32(ptr, seg.conv)
+-					ptr[4] = seg.cmd
+-					ptr[5] = seg.frg
+-					binary.LittleEndian.PutUint16(ptr[6:], seg.wnd)
+-					binary.LittleEndian.PutUint32(ptr[8:], seg.ts)
+-					binary.LittleEndian.PutUint32(ptr[12:], seg.sn)
+-					binary.LittleEndian.PutUint32(ptr[16:], seg.una)
+-					binary.LittleEndian.PutUint32(ptr[20:], uint32(len(seg.data)))
+-					atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-					ptr = ptr[IKCP_OVERHEAD:]
+-				}
+ 				kcp.debugLog(IKCP_LOG_OUT_ACK, "conv", seg.conv, "sn", seg.sn, "una", seg.una, "ts", seg.ts)
+ 			}
+ 		}
+@@ -797,52 +831,16 @@ func (kcp *KCP) flush(flushType FlushType) (nextUpdate uint32) {
+ 	// --- Phase 3: Flush window probing commands ---
+ 	if (kcp.probe & IKCP_ASK_SEND) != 0 {
+ 		seg.cmd = IKCP_CMD_WASK
++		makeSpace(IKCP_OVERHEAD)
++		ptr = seg.encode(ptr)
+-		{
+-			size := len(buffer) - len(ptr)
+-			if size+IKCP_OVERHEAD > int(kcp.mtu) {
+-				kcp.output(buffer, size)
+-				ptr = buffer
+-			}
+-		}
+-		{
+-			_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-			binary.LittleEndian.PutUint32(ptr, seg.conv)
+-			ptr[4] = seg.cmd
+-			ptr[5] = seg.frg
+-			binary.LittleEndian.PutUint16(ptr[6:], seg.wnd)
+-			binary.LittleEndian.PutUint32(ptr[8:], seg.ts)
+-			binary.LittleEndian.PutUint32(ptr[12:], seg.sn)
+-			binary.LittleEndian.PutUint32(ptr[16:], seg.una)
+-			binary.LittleEndian.PutUint32(ptr[20:], uint32(len(seg.data)))
+-			atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-			ptr = ptr[IKCP_OVERHEAD:]
+-		}
+ 		kcp.debugLog(IKCP_LOG_OUT_WASK, "conv", seg.conv, "wnd", seg.wnd, "ts", seg.ts)
+ 	}
+ 
+ 	// flush window probing commands
+ 	if (kcp.probe & IKCP_ASK_TELL) != 0 {
+ 		seg.cmd = IKCP_CMD_WINS
++		makeSpace(IKCP_OVERHEAD)
++		ptr = seg.encode(ptr)
+-		{
+-			size := len(buffer) - len(ptr)
+-			if size+IKCP_OVERHEAD > int(kcp.mtu) {
+-				kcp.output(buffer, size)
+-				ptr = buffer
+-			}
+-		}
+-		{
+-			_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-			binary.LittleEndian.PutUint32(ptr, seg.conv)
+-			ptr[4] = seg.cmd
+-			ptr[5] = seg.frg
+-			binary.LittleEndian.PutUint16(ptr[6:], seg.wnd)
+-			binary.LittleEndian.PutUint32(ptr[8:], seg.ts)
+-			binary.LittleEndian.PutUint32(ptr[12:], seg.sn)
+-			binary.LittleEndian.PutUint32(ptr[16:], seg.una)
+-			binary.LittleEndian.PutUint32(ptr[20:], uint32(len(seg.data)))
+-			atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-			ptr = ptr[IKCP_OVERHEAD:]
+-		}
+ 		kcp.debugLog(IKCP_LOG_OUT_WINS, "conv", seg.conv, "wnd", seg.wnd, "ts", seg.ts)
+ 	}
+ 
+@@ -934,26 +932,8 @@ func (kcp *KCP) flush(flushType FlushType) (nextUpdate uint32) {
+ 				segment.una = seg.una
+ 
+ 				need := IKCP_OVERHEAD + len(segment.data)
++				makeSpace(need)
++				ptr = segment.encode(ptr)
+-				{
+-					size := len(buffer) - len(ptr)
+-					if size+need > int(kcp.mtu) {
+-						kcp.output(buffer, size)
+-						ptr = buffer
+-					}
+-				}
+-				{
+-					_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-					binary.LittleEndian.PutUint32(ptr, segment.conv)
+-					ptr[4] = segment.cmd
+-					ptr[5] = segment.frg
+-					binary.LittleEndian.PutUint16(ptr[6:], segment.wnd)
+-					binary.LittleEndian.PutUint32(ptr[8:], segment.ts)
+-					binary.LittleEndian.PutUint32(ptr[12:], segment.sn)
+-					binary.LittleEndian.PutUint32(ptr[16:], segment.una)
+-					binary.LittleEndian.PutUint32(ptr[20:], uint32(len(segment.data)))
+-					atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-					ptr = ptr[IKCP_OVERHEAD:]
+-				}
+ 				copy(ptr, segment.data)
+ 				ptr = ptr[len(segment.data):]
+ 
+@@ -1041,311 +1021,7 @@ func (kcp *KCP) Update() {
+ 		if _itimediff(current, kcp.ts_flush) >= 0 {
+ 			kcp.ts_flush = current + kcp.interval
+ 		}
++		kcp.flush(IKCP_FLUSH_FULL)
+-		func() (nextUpdate uint32) {
+-			var seg segment
+-			seg.conv = kcp.conv
+-			seg.cmd = IKCP_CMD_ACK
+-			if kcp.rcv_queue.Len() < int(kcp.rcv_wnd) {
+-				seg.wnd = uint16(int(kcp.rcv_wnd) - kcp.rcv_queue.Len())
+-			}
+-			seg.una = kcp.rcv_nxt
+-
+-			buffer := kcp.buffer
+-			ptr := buffer
+-
+-			// makeSpace makes room for writing
+-
+-			// flush bytes in buffer if there is any
+-			flushBuffer := func() {
+-				size := len(buffer) - len(ptr)
+-				if size > 0 {
+-					kcp.output(buffer, size)
+-				}
+-			}
+-
+-			defer func() {
+-				flushBuffer()
+-				atomic.StoreUint64(&DefaultSnmp.RingBufferSndQueue, uint64(kcp.snd_queue.Len()))
+-				atomic.StoreUint64(&DefaultSnmp.RingBufferRcvQueue, uint64(kcp.rcv_queue.Len()))
+-				atomic.StoreUint64(&DefaultSnmp.RingBufferSndBuffer, uint64(kcp.snd_buf.Len()))
+-			}()
+-
+-			// --- Phase 1: Flush pending ACKs ---
+-			{
+-				for i, ack := range kcp.acklist {
+-					{
+-						size := len(buffer) - len(ptr)
+-						if size+IKCP_OVERHEAD > int(kcp.mtu) {
+-							kcp.output(buffer, size)
+-							ptr = buffer
+-						}
+-					}
+-					// filter jitters caused by bufferbloat
+-					if _itimediff(ack.sn, kcp.rcv_nxt) >= 0 || len(kcp.acklist)-1 == i {
+-						seg.sn, seg.ts = ack.sn, ack.ts
+-						{
+-							_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-							binary.LittleEndian.PutUint32(ptr, seg.conv)
+-							ptr[4] = seg.cmd
+-							ptr[5] = seg.frg
+-							binary.LittleEndian.PutUint16(ptr[6:], seg.wnd)
+-							binary.LittleEndian.PutUint32(ptr[8:], seg.ts)
+-							binary.LittleEndian.PutUint32(ptr[12:], seg.sn)
+-							binary.LittleEndian.PutUint32(ptr[16:], seg.una)
+-							binary.LittleEndian.PutUint32(ptr[20:], uint32(len(seg.data)))
+-							atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-							ptr = ptr[IKCP_OVERHEAD:]
+-						}
+-						kcp.debugLog(IKCP_LOG_OUT_ACK, "conv", seg.conv, "sn", seg.sn, "una", seg.una, "ts", seg.ts)
+-					}
+-				}
+-				kcp.acklist = kcp.acklist[0:0]
+-			}
+-
+-			// --- Phase 2: Window probing (when remote window is zero) ---
+-			if kcp.rmt_wnd == 0 {
+-				current := currentMs()
+-				if kcp.probe_wait == 0 {
+-					kcp.probe_wait = IKCP_PROBE_INIT
+-					kcp.ts_probe = current + kcp.probe_wait
+-				} else {
+-					if _itimediff(current, kcp.ts_probe) >= 0 {
+-						if kcp.probe_wait < IKCP_PROBE_INIT {
+-							kcp.probe_wait = IKCP_PROBE_INIT
+-						}
+-						kcp.probe_wait += kcp.probe_wait / 2
+-						if kcp.probe_wait > IKCP_PROBE_LIMIT {
+-							kcp.probe_wait = IKCP_PROBE_LIMIT
+-						}
+-						kcp.ts_probe = current + kcp.probe_wait
+-						kcp.probe |= IKCP_ASK_SEND
+-					}
+-				}
+-			} else {
+-				kcp.ts_probe = 0
+-				kcp.probe_wait = 0
+-			}
+-
+-			// --- Phase 3: Flush window probing commands ---
+-			if (kcp.probe & IKCP_ASK_SEND) != 0 {
+-				seg.cmd = IKCP_CMD_WASK
+-				{
+-					size := len(buffer) - len(ptr)
+-					if size+IKCP_OVERHEAD > int(kcp.mtu) {
+-						kcp.output(buffer, size)
+-						ptr = buffer
+-					}
+-				}
+-				{
+-					_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-					binary.LittleEndian.PutUint32(ptr, seg.conv)
+-					ptr[4] = seg.cmd
+-					ptr[5] = seg.frg
+-					binary.LittleEndian.PutUint16(ptr[6:], seg.wnd)
+-					binary.LittleEndian.PutUint32(ptr[8:], seg.ts)
+-					binary.LittleEndian.PutUint32(ptr[12:], seg.sn)
+-					binary.LittleEndian.PutUint32(ptr[16:], seg.una)
+-					binary.LittleEndian.PutUint32(ptr[20:], uint32(len(seg.data)))
+-					atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-					ptr = ptr[IKCP_OVERHEAD:]
+-				}
+-				kcp.debugLog(IKCP_LOG_OUT_WASK, "conv", seg.conv, "wnd", seg.wnd, "ts", seg.ts)
+-			}
+-
+-			// flush window probing commands
+-			if (kcp.probe & IKCP_ASK_TELL) != 0 {
+-				seg.cmd = IKCP_CMD_WINS
+-				{
+-					size := len(buffer) - len(ptr)
+-					if size+IKCP_OVERHEAD > int(kcp.mtu) {
+-						kcp.output(buffer, size)
+-						ptr = buffer
+-					}
+-				}
+-				{
+-					_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-					binary.LittleEndian.PutUint32(ptr, seg.conv)
+-					ptr[4] = seg.cmd
+-					ptr[5] = seg.frg
+-					binary.LittleEndian.PutUint16(ptr[6:], seg.wnd)
+-					binary.LittleEndian.PutUint32(ptr[8:], seg.ts)
+-					binary.LittleEndian.PutUint32(ptr[12:], seg.sn)
+-					binary.LittleEndian.PutUint32(ptr[16:], seg.una)
+-					binary.LittleEndian.PutUint32(ptr[20:], uint32(len(seg.data)))
+-					atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-					ptr = ptr[IKCP_OVERHEAD:]
+-				}
+-				kcp.debugLog(IKCP_LOG_OUT_WINS, "conv", seg.conv, "wnd", seg.wnd, "ts", seg.ts)
+-			}
+-
+-			kcp.probe = 0
+-
+-			// --- Phase 4: Move segments from snd_queue to snd_buf (sliding window) ---
+-			// Effective window = min(snd_wnd, rmt_wnd, cwnd)
+-			cwnd := min(kcp.snd_wnd, kcp.rmt_wnd)
+-			if kcp.nocwnd == 0 {
+-				cwnd = min(kcp.cwnd, cwnd)
+-			}
+-
+-			newSegsCount := 0
+-			for {
+-				if _itimediff(kcp.snd_nxt, kcp.snd_una+cwnd) >= 0 {
+-					break
+-				}
+-
+-				newseg, ok := kcp.snd_queue.Pop()
+-				if !ok {
+-					break
+-				}
+-
+-				newseg.conv = kcp.conv
+-				newseg.cmd = IKCP_CMD_PUSH
+-				newseg.sn = kcp.snd_nxt
+-				kcp.snd_buf.Push(newseg)
+-				kcp.snd_nxt++
+-				newSegsCount++
+-			}
+-
+-			// calculate resent
+-			resent := uint32(kcp.fastresend)
+-			if kcp.fastresend <= 0 {
+-				resent = 0xffffffff
+-			}
+-
+-			// --- Phase 5: Retransmit segments from snd_buf ---
+-			// Determines which segments need (re)transmission:
+-			// - Initial transmit (xmit == 0)
+-			// - Fast retransmit (fastack >= fastresend threshold)
+-			// - Early retransmit (fastack > 0, no new segments queued)
+-			// - RTO-based retransmit (current >= resendts)
+-			current := currentMs()
+-			var change, lostSegs, fastRetransSegs, earlyRetransSegs uint64
+-			nextUpdate = kcp.interval
+-
+-			{
+-				for segment := range kcp.snd_buf.ForEach {
+-					needsend := false
+-					if segment.acked == 1 {
+-						continue
+-					}
+-					if segment.xmit == 0 { // initial transmit
+-						needsend = true
+-						segment.rto = kcp.rx_rto
+-						segment.resendts = current + segment.rto
+-					} else if segment.fastack >= resent && segment.fastack != 0xFFFFFFFF { // fast retransmit
+-						needsend = true
+-						segment.fastack = 0xFFFFFFFF // must wait until RTO to reset
+-						segment.rto = kcp.rx_rto
+-						segment.resendts = current + segment.rto
+-						change++
+-						fastRetransSegs++
+-					} else if segment.fastack > 0 && segment.fastack != 0xFFFFFFFF && newSegsCount == 0 { // early retransmit
+-						needsend = true
+-						segment.fastack = 0xFFFFFFFF
+-						segment.rto = kcp.rx_rto
+-						segment.resendts = current + segment.rto
+-						change++
+-						earlyRetransSegs++
+-					} else if _itimediff(current, segment.resendts) >= 0 { // RTO
+-						needsend = true
+-						if kcp.nodelay == 0 {
+-							segment.rto += kcp.rx_rto
+-						} else {
+-							segment.rto += kcp.rx_rto / 2
+-						}
+-						segment.fastack = 0
+-						segment.resendts = current + segment.rto
+-						lostSegs++
+-					}
+-
+-					if needsend {
+-						current = currentMs()
+-						segment.xmit++
+-						segment.ts = current
+-						segment.wnd = seg.wnd
+-						segment.una = seg.una
+-
+-						need := IKCP_OVERHEAD + len(segment.data)
+-						{
+-							size := len(buffer) - len(ptr)
+-							if size+need > int(kcp.mtu) {
+-								kcp.output(buffer, size)
+-								ptr = buffer
+-							}
+-						}
+-						{
+-							_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-							binary.LittleEndian.PutUint32(ptr, segment.conv)
+-							ptr[4] = segment.cmd
+-							ptr[5] = segment.frg
+-							binary.LittleEndian.PutUint16(ptr[6:], segment.wnd)
+-							binary.LittleEndian.PutUint32(ptr[8:], segment.ts)
+-							binary.LittleEndian.PutUint32(ptr[12:], segment.sn)
+-							binary.LittleEndian.PutUint32(ptr[16:], segment.una)
+-							binary.LittleEndian.PutUint32(ptr[20:], uint32(len(segment.data)))
+-							atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-							ptr = ptr[IKCP_OVERHEAD:]
+-						}
+-						copy(ptr, segment.data)
+-						ptr = ptr[len(segment.data):]
+-
+-						kcp.debugLog(IKCP_LOG_OUT_PUSH, "conv", segment.conv, "sn", segment.sn, "frg", segment.frg, "una", segment.una, "ts", segment.ts, "xmit", segment.xmit, "datalen", len(segment.data))
+-
+-						if segment.xmit >= kcp.dead_link {
+-							kcp.state = 0xFFFFFFFF // mark connection as dead
+-						}
+-					}
+-
+-					// get the nearest rto
+-					if rto := _itimediff(segment.resendts, current); rto > 0 && uint32(rto) < nextUpdate {
+-						nextUpdate = uint32(rto)
+-					}
+-				}
+-			}
+-
+-			// --- Phase 6: Update SNMP counters and congestion window ---
+-			sum := lostSegs
+-			if lostSegs > 0 {
+-				atomic.AddUint64(&DefaultSnmp.LostSegs, lostSegs)
+-			}
+-			if fastRetransSegs > 0 {
+-				atomic.AddUint64(&DefaultSnmp.FastRetransSegs, fastRetransSegs)
+-				sum += fastRetransSegs
+-			}
+-			if earlyRetransSegs > 0 {
+-				atomic.AddUint64(&DefaultSnmp.EarlyRetransSegs, earlyRetransSegs)
+-				sum += earlyRetransSegs
+-			}
+-			if sum > 0 {
+-				atomic.AddUint64(&DefaultSnmp.RetransSegs, sum)
+-			}
+-
+-			// cwnd update
+-			if kcp.nocwnd == 0 {
+-				// Update ssthresh after fast retransmit.
+-				// Rate halving per RFC 6937: ssthresh = inflight / 2
+-				if change > 0 {
+-					inflight := kcp.snd_nxt - kcp.snd_una
+-					kcp.ssthresh = max(inflight/2, IKCP_THRESH_MIN)
+-					kcp.cwnd = kcp.ssthresh + resent
+-					kcp.incr = kcp.cwnd * kcp.mss
+-				}
+-
+-				// Congestion control after RTO: reset cwnd per RFC 5681
+-				if lostSegs > 0 {
+-					kcp.ssthresh = max(cwnd/2, IKCP_THRESH_MIN)
+-					kcp.cwnd = 1
+-					kcp.incr = kcp.mss
+-				}
+-
+-				if kcp.cwnd < 1 {
+-					kcp.cwnd = 1
+-					kcp.incr = kcp.mss
+-				}
+-			}
+-
+-			return nextUpdate
+-		}()
+ 	}
+ }
+ 
+diff --git a/sess.go b/sess.go
+index 2fab759..4b7d611 100644
+--- a/sess.go
++++ b/sess.go
+@@ -46,15 +46,12 @@
+ package kcp
+ 
+ import (
+-	"container/heap"
+ 	"context"
+ 	"crypto/rand"
+ 	"encoding/binary"
+-	"github.com/klauspost/reedsolomon"
+ 	"hash/crc32"
+ 	"io"
+ 	"net"
+-	"sort"
+ 	"sync"
+ 	"sync/atomic"
+ 	"time"
+@@ -218,36 +215,13 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn
+ 		sess.headerSize = cryptHeaderSize
+ 	}
+ 
++	// FEC codec initialization
++	sess.fecDecoder = newFECDecoder(dataShards, parityShards)
++	sess.fecEncoder = newFECEncoder(dataShards, parityShards, sess.headerSize)
++
++	// calculate additional header size introduced by FEC
++	if sess.fecEncoder != nil {
++		sess.headerSize += fecHeaderSizePlus2
+-	if dataShards > 0 && parityShards > 0 {
+-		if dataShards+parityShards <= 256 {
+-			dec := new(fecDecoder)
+-			dec.dataShards, dec.parityShards = dataShards, parityShards
+-			dec.shardSize = dataShards + parityShards
+-			dec.shardSet = make(map[uint32]*shardHeap)
+-			dec.paws = 0xffffffff / uint32(dec.shardSize) * uint32(dec.shardSize)
+-			if codec, err := reedsolomon.New(dataShards, parityShards); err == nil {
+-				dec.codec = codec
+-				dec.decodeCache = make([][]byte, dec.shardSize)
+-				dec.flagCache = make([]bool, dec.shardSize)
+-				sess.fecDecoder = dec
+-			}
+-		}
+-		enc := new(fecEncoder)
+-		enc.dataShards, enc.parityShards = dataShards, parityShards
+-		enc.shardSize = dataShards + parityShards
+-		enc.paws = 0xffffffff / uint32(enc.shardSize) * uint32(enc.shardSize)
+-		enc.headerOffset = sess.headerSize
+-		enc.payloadOffset = enc.headerOffset + fecHeaderSize
+-		if codec, err := reedsolomon.New(dataShards, parityShards); err == nil {
+-			enc.codec = codec
+-			enc.encodeCache = make([][]byte, enc.shardSize)
+-			enc.shardCache = make([][]byte, enc.shardSize)
+-			for k := range enc.shardCache {
+-				enc.shardCache[k] = make([]byte, mtuLimit)
+-			}
+-			sess.fecEncoder = enc
+-			sess.headerSize += fecHeaderSizePlus2
+-		}
+ 	}
+ 
+ 	sess.kcp = NewKCP(conv, func(buf []byte, size int) {
+@@ -271,16 +245,9 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn
+ 	})
+ 
+ 	// Set Default MTU
++	if !sess.SetMtu(IKCP_MTU_DEF) {
+-	mtu := min(mtuLimit, IKCP_MTU_DEF) - sess.headerSize
+-	if aead, ok := sess.block.(*aeadCrypt); ok {
+-		mtu -= aead.Overhead()
+-	}
+-	if mtu <= IKCP_OVERHEAD {
+ 		panic("Overhead too large")
+ 	}
+-	sess.kcp.mtu = uint32(mtu)
+-	sess.kcp.mss = sess.kcp.mtu - IKCP_OVERHEAD
+-	sess.kcp.buffer = make([]byte, (mtu+IKCP_OVERHEAD)*3)
+ 
+ 	// create post-processing goroutine
+ 	go sess.postProcess()
+@@ -339,81 +306,29 @@ RESET_TIMER:
+ 			return n, nil
+ 		}
+ 
++		if size := s.kcp.PeekSize(); size > 0 { // peek data size from kcp
++			// if 'b' is large enough to accommodate the data, read directly
++			// from kcp.recv() to 'b', like 'DMA'.
++			if len(b) >= size {
++				s.kcp.Recv(b)
++				s.mu.Unlock()
++				atomic.AddUint64(&DefaultSnmp.BytesReceived, uint64(size))
++				return size, nil
+-		size := 0
+-		direct := true
+-		if first, ok := s.kcp.rcv_queue.Peek(); ok && (first.frg == 0 || s.kcp.rcv_queue.Len() >= int(first.frg+1)) {
+-			for seg := range s.kcp.rcv_queue.ForEach {
+-				size += len(seg.data)
+-				if size > len(b) {
+-					direct = false
+-				}
+-				if seg.frg == 0 {
+-					break
+-				}
+ 			}
+-		}
+-		if size > 0 {
+-			target := b
+-			if !direct {
+-				if cap(s.recvbuf) < size {
+-					s.recvbuf = make([]byte, size)
+-				}
+-				s.recvbuf = s.recvbuf[:size]
+-				target = s.recvbuf
+-			}
+-			received := 0
+-
+-			var fast_recover bool
+-			if s.kcp.rcv_queue.Len() >= int(s.kcp.rcv_wnd) {
+-				fast_recover = true
+-			}
+-
+-			// merge fragment
+-			for {
+-				seg, ok := s.kcp.rcv_queue.Pop()
+-				if !ok {
+-					break
+-				}
+ 
++			// otherwise, read to recvbuf first, then copy to 'b'.
++			// dynamically adjust the buffer size to the maximum of 'packet size' when necessary.
++			if cap(s.recvbuf) < size {
++				// usually recvbuf has a size of maximum packet size
++				s.recvbuf = make([]byte, size)
+-				copy(target, seg.data)
+-				target = target[len(seg.data):]
+-				received += len(seg.data)
+-				if seg.data != nil {
+-					defaultBufferPool.Put(seg.data)
+-					seg.data = nil
+-				}
+-				if seg.frg == 0 {
+-					s.kcp.debugLog(IKCP_LOG_RECV, "stream", s.kcp.stream, "conv", s.kcp.conv, "sn", seg.sn, "ts", seg.ts, "datalen", received)
+-					break
+-				}
+ 			}
+ 
++			// resize the length of recvbuf to match the data size
++			s.recvbuf = s.recvbuf[:size]
++			s.kcp.Recv(s.recvbuf)    // read data to recvbuf first
++			n = copy(b, s.recvbuf)   // then copy bytes to 'b' as many as possible
++			s.bufptr = s.recvbuf[n:] // pointer update
+-			// move available data from rcv_buf -> rcv_queue
+-			for s.kcp.rcv_buf.Len() > 0 {
+-				seg := heap.Pop(s.kcp.rcv_buf).(segment)
+-				if seg.sn == s.kcp.rcv_nxt && s.kcp.rcv_queue.Len() < int(s.kcp.rcv_wnd) {
+-					s.kcp.rcv_queue.Push(seg)
+-					s.kcp.rcv_nxt++
+-				} else {
+-					// push back segment
+-					heap.Push(s.kcp.rcv_buf, seg)
+-					break
+-				}
+-			}
+ 
+-			// fast recover
+-			if s.kcp.rcv_queue.Len() < int(s.kcp.rcv_wnd) && fast_recover {
+-				// ready to send back IKCP_CMD_WINS in ikcp_flush
+-				// tell remote my window size
+-				s.kcp.probe |= IKCP_ASK_TELL
+-			}
+-			if direct {
+-				s.mu.Unlock()
+-				atomic.AddUint64(&DefaultSnmp.BytesReceived, uint64(size))
+-				return size, nil
+-			}
+-			n = copy(b, s.recvbuf)
+-			s.bufptr = s.recvbuf[n:]
+ 			s.mu.Unlock()
+ 			atomic.AddUint64(&DefaultSnmp.BytesReceived, uint64(n))
+ 			return n, nil
+@@ -483,34 +398,18 @@ RESET_TIMER:
+ 		// make sure write do not overflow the max sliding window on both side
+ 		waitsnd := s.kcp.WaitSnd()
+ 		if waitsnd < int(s.kcp.snd_wnd) {
++			// transmit all data sequentially, make sure every packet size is within 'mss'
+ 			for _, b := range v {
+ 				n += len(b)
++				// handle each slice for packet splitting
+ 				for {
+-					end := min(len(b), int(s.kcp.mss))
+-					consumed := 0
+-					if end > 0 {
+-						s.kcp.debugLog(IKCP_LOG_SEND, "stream", s.kcp.stream, "conv", s.kcp.conv, "datalen", end)
+-						if s.kcp.stream != 0 && s.kcp.snd_queue.Len() > 0 {
+-							for seg := range s.kcp.snd_queue.ForEachReverse {
+-								if len(seg.data) < int(s.kcp.mss) {
+-									consumed = min(end, int(s.kcp.mss)-len(seg.data))
+-									oldlen := len(seg.data)
+-									seg.data = seg.data[:oldlen+consumed]
+-									copy(seg.data[oldlen:], b[:end])
+-								}
+-								break
+-							}
+-						}
+-						if consumed < end {
+-							seg := segment{data: defaultBufferPool.Get()[:end-consumed]}
+-							copy(seg.data, b[consumed:end])
+-							s.kcp.snd_queue.Push(seg)
+-						}
+-					}
+ 					if len(b) <= int(s.kcp.mss) {
++						s.kcp.Send(b)
+ 						break
++					} else {
++						s.kcp.Send(b[:s.kcp.mss])
++						b = b[s.kcp.mss:]
+ 					}
+-					b = b[s.kcp.mss:]
+ 				}
+ 			}
+ 
+@@ -793,89 +692,15 @@ func (s *UDPSession) postProcess() {
+ 
+ 			var ecc [][]byte
+ 
++			// --- Stage 1: FEC encoding ---
++			if s.fecEncoder != nil {
++				if !oob {
++					ecc = s.fecEncoder.encode(buf, maxFECEncodeLatency)
+-			if enc := s.fecEncoder; enc != nil {
+-				if oob {
+-					binary.LittleEndian.PutUint32(buf[enc.headerOffset:], uint32(0xffffffff))
+-					binary.LittleEndian.PutUint16(buf[enc.headerOffset+4:], typeOOB)
+-					binary.LittleEndian.PutUint16(buf[enc.payloadOffset:], uint16(len(buf[enc.payloadOffset:])))
+ 				} else {
++					s.fecEncoder.encodeOOB(buf)
+-
+-					// The header format:
+-					// | FEC SEQID(4B) | FEC TYPE(2B) | SIZE (2B) | PAYLOAD(SIZE-2) |
+-					// |<-headerOffset                |<-payloadOffset
+-					binary.LittleEndian.PutUint32(buf[enc.headerOffset:], enc.next)
+-					binary.LittleEndian.PutUint16(buf[enc.headerOffset+4:], typeData)
+-					enc.next = (enc.next + 1) % enc.paws
+-					binary.LittleEndian.PutUint16(buf[enc.payloadOffset:], uint16(len(buf[enc.payloadOffset:])))
+-
+-					// copy data from payloadOffset to fec shard cache
+-					sz := len(buf)
+-					enc.shardCache[enc.shardCount] = enc.shardCache[enc.shardCount][:sz]
+-					copy(enc.shardCache[enc.shardCount][enc.payloadOffset:], buf[enc.payloadOffset:])
+-					enc.shardCount++
+-
+-					// track max datashard length
+-					if sz > enc.maxSize {
+-						enc.maxSize = sz
+-					}
+-
+-					// Generation of Reed-Solomon Erasure Code when we have enough datashards
+-					now := time.Now().UnixMilli()
+-					if enc.shardCount == enc.dataShards {
+-						// Generate the parity shards if we collect enough datashards,
+-						// the continuity is determined by the time interval between
+-						// the latest 2 data packets.
+-						//
+-						// If the interval is larger than maxFECEncodeLatency, we consider the data is non-continuous,
+-						// thus we skip this parity generation to avoid useless parity packets.
+-						//
+-						// Note that, even we skip this parity generation, we still need to
+-						// increase the seqid to keep the monotonic increasing property.
+-						// This is important for the receiver to detect lost packets.
+-						// see fecEncoder.skipParity()
+-						// also note that the maxFECEncodeLatency is in milliseconds.
+-						// see kcp.UDPSession.maxFECEncodeLatency()
+-						//
+-						if now-enc.tsLatestPacket < int64(maxFECEncodeLatency) {
+-							cache := enc.encodeCache
+-							for k := range cache {
+-								shard := enc.shardCache[k]
+-								if k < enc.dataShards {
+-									clear(shard[len(shard):enc.maxSize])
+-								}
+-								cache[k] = shard[enc.payloadOffset:enc.maxSize]
+-							}
+-
+-							// Reed-Solomon Erasure Code Encoding
+-							if err := enc.codec.Encode(cache); err == nil {
+-								ecc = enc.shardCache[enc.dataShards:]
+-								for k := range ecc {
+-									binary.LittleEndian.PutUint32(ecc[k][enc.headerOffset:], enc.next)
+-									binary.LittleEndian.PutUint16(ecc[k][enc.headerOffset+4:], typeParity)
+-									enc.next = (enc.next + 1) % enc.paws // NOTE(x): seal parity will increase the seqid by 1
+-									ecc[k] = ecc[k][:enc.maxSize]
+-								}
+-							} else {
+-								// encoding failed, record the error but keep the seqid monotonic increasing
+-								atomic.AddUint64(&DefaultSnmp.FECErrs, 1)
+-								enc.next = (enc.next + uint32(enc.parityShards)) % enc.paws
+-							}
+-						} else {
+-							// Non-continuous data detected, skip this parity generation.
+-							// Through we do not send non-continuous parity shard, we still need to increase seqid.
+-							enc.next = (enc.next + uint32(enc.parityShards)) % enc.paws
+-						}
+-
+-						// reset shard count and max size
+-						enc.shardCount = 0
+-						enc.maxSize = 0
+-					}
+-
+-					// record the time of the latest data packet
+-					enc.tsLatestPacket = now
+-
+ 				}
+ 			}
++
+ 			// --- Stage 2: Encryption ---
+ 			// Two modes supported:
+ 			//   - AEAD (e.g. AES-GCM): nonce + authenticated ciphertext, no separate CRC
+@@ -979,311 +804,7 @@ func (s *UDPSession) update() {
+ 	case <-s.die:
+ 	default:
+ 		s.mu.Lock()
++		interval := s.kcp.flush(IKCP_FLUSH_FULL)
+-		interval := func() (nextUpdate uint32) {
+-			var seg segment
+-			seg.conv = s.kcp.conv
+-			seg.cmd = IKCP_CMD_ACK
+-			if s.kcp.rcv_queue.Len() < int(s.kcp.rcv_wnd) {
+-				seg.wnd = uint16(int(s.kcp.rcv_wnd) - s.kcp.rcv_queue.Len())
+-			}
+-			seg.una = s.kcp.rcv_nxt
+-
+-			buffer := s.kcp.buffer
+-			ptr := buffer
+-
+-			// makeSpace makes room for writing
+-
+-			// flush bytes in buffer if there is any
+-			flushBuffer := func() {
+-				size := len(buffer) - len(ptr)
+-				if size > 0 {
+-					s.kcp.output(buffer, size)
+-				}
+-			}
+-
+-			defer func() {
+-				flushBuffer()
+-				atomic.StoreUint64(&DefaultSnmp.RingBufferSndQueue, uint64(s.kcp.snd_queue.Len()))
+-				atomic.StoreUint64(&DefaultSnmp.RingBufferRcvQueue, uint64(s.kcp.rcv_queue.Len()))
+-				atomic.StoreUint64(&DefaultSnmp.RingBufferSndBuffer, uint64(s.kcp.snd_buf.Len()))
+-			}()
+-
+-			// --- Phase 1: Flush pending ACKs ---
+-			{
+-				for i, ack := range s.kcp.acklist {
+-					{
+-						size := len(buffer) - len(ptr)
+-						if size+IKCP_OVERHEAD > int(s.kcp.mtu) {
+-							s.kcp.output(buffer, size)
+-							ptr = buffer
+-						}
+-					}
+-					// filter jitters caused by bufferbloat
+-					if _itimediff(ack.sn, s.kcp.rcv_nxt) >= 0 || len(s.kcp.acklist)-1 == i {
+-						seg.sn, seg.ts = ack.sn, ack.ts
+-						{
+-							_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-							binary.LittleEndian.PutUint32(ptr, seg.conv)
+-							ptr[4] = seg.cmd
+-							ptr[5] = seg.frg
+-							binary.LittleEndian.PutUint16(ptr[6:], seg.wnd)
+-							binary.LittleEndian.PutUint32(ptr[8:], seg.ts)
+-							binary.LittleEndian.PutUint32(ptr[12:], seg.sn)
+-							binary.LittleEndian.PutUint32(ptr[16:], seg.una)
+-							binary.LittleEndian.PutUint32(ptr[20:], uint32(len(seg.data)))
+-							atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-							ptr = ptr[IKCP_OVERHEAD:]
+-						}
+-						s.kcp.debugLog(IKCP_LOG_OUT_ACK, "conv", seg.conv, "sn", seg.sn, "una", seg.una, "ts", seg.ts)
+-					}
+-				}
+-				s.kcp.acklist = s.kcp.acklist[0:0]
+-			}
+-
+-			// --- Phase 2: Window probing (when remote window is zero) ---
+-			if s.kcp.rmt_wnd == 0 {
+-				current := currentMs()
+-				if s.kcp.probe_wait == 0 {
+-					s.kcp.probe_wait = IKCP_PROBE_INIT
+-					s.kcp.ts_probe = current + s.kcp.probe_wait
+-				} else {
+-					if _itimediff(current, s.kcp.ts_probe) >= 0 {
+-						if s.kcp.probe_wait < IKCP_PROBE_INIT {
+-							s.kcp.probe_wait = IKCP_PROBE_INIT
+-						}
+-						s.kcp.probe_wait += s.kcp.probe_wait / 2
+-						if s.kcp.probe_wait > IKCP_PROBE_LIMIT {
+-							s.kcp.probe_wait = IKCP_PROBE_LIMIT
+-						}
+-						s.kcp.ts_probe = current + s.kcp.probe_wait
+-						s.kcp.probe |= IKCP_ASK_SEND
+-					}
+-				}
+-			} else {
+-				s.kcp.ts_probe = 0
+-				s.kcp.probe_wait = 0
+-			}
+-
+-			// --- Phase 3: Flush window probing commands ---
+-			if (s.kcp.probe & IKCP_ASK_SEND) != 0 {
+-				seg.cmd = IKCP_CMD_WASK
+-				{
+-					size := len(buffer) - len(ptr)
+-					if size+IKCP_OVERHEAD > int(s.kcp.mtu) {
+-						s.kcp.output(buffer, size)
+-						ptr = buffer
+-					}
+-				}
+-				{
+-					_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-					binary.LittleEndian.PutUint32(ptr, seg.conv)
+-					ptr[4] = seg.cmd
+-					ptr[5] = seg.frg
+-					binary.LittleEndian.PutUint16(ptr[6:], seg.wnd)
+-					binary.LittleEndian.PutUint32(ptr[8:], seg.ts)
+-					binary.LittleEndian.PutUint32(ptr[12:], seg.sn)
+-					binary.LittleEndian.PutUint32(ptr[16:], seg.una)
+-					binary.LittleEndian.PutUint32(ptr[20:], uint32(len(seg.data)))
+-					atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-					ptr = ptr[IKCP_OVERHEAD:]
+-				}
+-				s.kcp.debugLog(IKCP_LOG_OUT_WASK, "conv", seg.conv, "wnd", seg.wnd, "ts", seg.ts)
+-			}
+-
+-			// flush window probing commands
+-			if (s.kcp.probe & IKCP_ASK_TELL) != 0 {
+-				seg.cmd = IKCP_CMD_WINS
+-				{
+-					size := len(buffer) - len(ptr)
+-					if size+IKCP_OVERHEAD > int(s.kcp.mtu) {
+-						s.kcp.output(buffer, size)
+-						ptr = buffer
+-					}
+-				}
+-				{
+-					_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-					binary.LittleEndian.PutUint32(ptr, seg.conv)
+-					ptr[4] = seg.cmd
+-					ptr[5] = seg.frg
+-					binary.LittleEndian.PutUint16(ptr[6:], seg.wnd)
+-					binary.LittleEndian.PutUint32(ptr[8:], seg.ts)
+-					binary.LittleEndian.PutUint32(ptr[12:], seg.sn)
+-					binary.LittleEndian.PutUint32(ptr[16:], seg.una)
+-					binary.LittleEndian.PutUint32(ptr[20:], uint32(len(seg.data)))
+-					atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-					ptr = ptr[IKCP_OVERHEAD:]
+-				}
+-				s.kcp.debugLog(IKCP_LOG_OUT_WINS, "conv", seg.conv, "wnd", seg.wnd, "ts", seg.ts)
+-			}
+-
+-			s.kcp.probe = 0
+-
+-			// --- Phase 4: Move segments from snd_queue to snd_buf (sliding window) ---
+-			// Effective window = min(snd_wnd, rmt_wnd, cwnd)
+-			cwnd := min(s.kcp.snd_wnd, s.kcp.rmt_wnd)
+-			if s.kcp.nocwnd == 0 {
+-				cwnd = min(s.kcp.cwnd, cwnd)
+-			}
+-
+-			newSegsCount := 0
+-			for {
+-				if _itimediff(s.kcp.snd_nxt, s.kcp.snd_una+cwnd) >= 0 {
+-					break
+-				}
+-
+-				newseg, ok := s.kcp.snd_queue.Pop()
+-				if !ok {
+-					break
+-				}
+-
+-				newseg.conv = s.kcp.conv
+-				newseg.cmd = IKCP_CMD_PUSH
+-				newseg.sn = s.kcp.snd_nxt
+-				s.kcp.snd_buf.Push(newseg)
+-				s.kcp.snd_nxt++
+-				newSegsCount++
+-			}
+-
+-			// calculate resent
+-			resent := uint32(s.kcp.fastresend)
+-			if s.kcp.fastresend <= 0 {
+-				resent = 0xffffffff
+-			}
+-
+-			// --- Phase 5: Retransmit segments from snd_buf ---
+-			// Determines which segments need (re)transmission:
+-			// - Initial transmit (xmit == 0)
+-			// - Fast retransmit (fastack >= fastresend threshold)
+-			// - Early retransmit (fastack > 0, no new segments queued)
+-			// - RTO-based retransmit (current >= resendts)
+-			current := currentMs()
+-			var change, lostSegs, fastRetransSegs, earlyRetransSegs uint64
+-			nextUpdate = s.kcp.interval
+-
+-			{
+-				for segment := range s.kcp.snd_buf.ForEach {
+-					needsend := false
+-					if segment.acked == 1 {
+-						continue
+-					}
+-					if segment.xmit == 0 {
+-						needsend = true
+-						segment.rto = s.kcp.rx_rto
+-					} else {
+-						if segment.fastack != 0xFFFFFFFF {
+-							if segment.fastack >= resent {
+-								fastRetransSegs++
+-								needsend = true
+-							} else if segment.fastack > 0 && newSegsCount == 0 {
+-								earlyRetransSegs++
+-								needsend = true
+-							}
+-						}
+-						if needsend {
+-							segment.fastack = 0xFFFFFFFF
+-							segment.rto = s.kcp.rx_rto
+-							change++
+-						} else if _itimediff(current, segment.resendts) >= 0 {
+-							needsend = true
+-							if s.kcp.nodelay == 0 {
+-								segment.rto += s.kcp.rx_rto
+-							} else {
+-								segment.rto += s.kcp.rx_rto / 2
+-							}
+-							segment.fastack = 0
+-							lostSegs++
+-						}
+-					}
+-
+-					if needsend {
+-						segment.resendts = current + segment.rto
+-						current = currentMs()
+-						segment.xmit++
+-						segment.ts = current
+-						segment.wnd = seg.wnd
+-						segment.una = seg.una
+-
+-						need := IKCP_OVERHEAD + len(segment.data)
+-						{
+-							size := len(buffer) - len(ptr)
+-							if size+need > int(s.kcp.mtu) {
+-								s.kcp.output(buffer, size)
+-								ptr = buffer
+-							}
+-						}
+-						{
+-							_ = ptr[IKCP_OVERHEAD-1] // BCE hint
+-							binary.LittleEndian.PutUint32(ptr, segment.conv)
+-							ptr[4] = segment.cmd
+-							ptr[5] = segment.frg
+-							binary.LittleEndian.PutUint16(ptr[6:], segment.wnd)
+-							binary.LittleEndian.PutUint32(ptr[8:], segment.ts)
+-							binary.LittleEndian.PutUint32(ptr[12:], segment.sn)
+-							binary.LittleEndian.PutUint32(ptr[16:], segment.una)
+-							binary.LittleEndian.PutUint32(ptr[20:], uint32(len(segment.data)))
+-							atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+-							ptr = ptr[IKCP_OVERHEAD:]
+-						}
+-						copy(ptr, segment.data)
+-						ptr = ptr[len(segment.data):]
+-
+-						s.kcp.debugLog(IKCP_LOG_OUT_PUSH, "conv", segment.conv, "sn", segment.sn, "frg", segment.frg, "una", segment.una, "ts", segment.ts, "xmit", segment.xmit, "datalen", len(segment.data))
+-
+-						if segment.xmit >= s.kcp.dead_link {
+-							s.kcp.state = 0xFFFFFFFF // mark connection as dead
+-						}
+-					}
+-
+-					// get the nearest rto
+-					if rto := _itimediff(segment.resendts, current); rto > 0 && uint32(rto) < nextUpdate {
+-						nextUpdate = uint32(rto)
+-					}
+-				}
+-			}
+-
+-			// --- Phase 6: Update SNMP counters and congestion window ---
+-			sum := lostSegs
+-			if lostSegs > 0 {
+-				atomic.AddUint64(&DefaultSnmp.LostSegs, lostSegs)
+-			}
+-			if fastRetransSegs > 0 {
+-				atomic.AddUint64(&DefaultSnmp.FastRetransSegs, fastRetransSegs)
+-				sum += fastRetransSegs
+-			}
+-			if earlyRetransSegs > 0 {
+-				atomic.AddUint64(&DefaultSnmp.EarlyRetransSegs, earlyRetransSegs)
+-				sum += earlyRetransSegs
+-			}
+-			if sum > 0 {
+-				atomic.AddUint64(&DefaultSnmp.RetransSegs, sum)
+-			}
+-
+-			// cwnd update
+-			if s.kcp.nocwnd == 0 {
+-				// Update ssthresh after fast retransmit.
+-				// Rate halving per RFC 6937: ssthresh = inflight / 2
+-				if change > 0 {
+-					inflight := s.kcp.snd_nxt - s.kcp.snd_una
+-					s.kcp.ssthresh = max(inflight/2, IKCP_THRESH_MIN)
+-					s.kcp.cwnd = s.kcp.ssthresh + resent
+-					s.kcp.incr = s.kcp.cwnd * s.kcp.mss
+-				}
+-
+-				// Congestion control after RTO: reset cwnd per RFC 5681
+-				if lostSegs > 0 {
+-					s.kcp.ssthresh = max(cwnd/2, IKCP_THRESH_MIN)
+-					s.kcp.cwnd = 1
+-					s.kcp.incr = s.kcp.mss
+-				}
+-
+-				if s.kcp.cwnd < 1 {
+-					s.kcp.cwnd = 1
+-					s.kcp.incr = s.kcp.mss
+-				}
+-			}
+-
+-			return nextUpdate
+-		}()
+ 		waitsnd := s.kcp.WaitSnd()
+ 		if waitsnd < int(s.kcp.snd_wnd) {
+ 			s.notifyWriteEvent()
+@@ -1541,218 +1062,7 @@ func (s *UDPSession) kcpInput(data []byte) {
+ 
+ 		// FEC decoding
+ 		// If there're some packets recovered from FEC, feed them into kcp
++		recovers := s.fecDecoder.decode(f)
+-		var recovers [][]byte
+-		{
+-
+-			tune := &s.fecDecoder.autoTune
+-			tune.pulses[tune.tail] = pulse{bit: f.flag() == typeData, seq: f.seqid()}
+-			tune.tail = (tune.tail + 1) % maxAutoTuneSamples
+-			if tune.count < maxAutoTuneSamples {
+-				tune.count++
+-			} else {
+-				tune.head = (tune.head + 1) % maxAutoTuneSamples
+-			}
+-			// check seqid < paws to avoid invalid packets
+-			if f.seqid() >= s.fecDecoder.paws {
+-				goto decoded
+-			}
+-
+-			// check if the packet type matches the current FEC parameters
+-			if f.seqid()%uint32(s.fecDecoder.shardSize) < uint32(s.fecDecoder.dataShards) {
+-				if f.flag() != typeData { // expect typeData
+-					s.fecDecoder.shouldTune = true
+-				}
+-			} else {
+-				if f.flag() != typeParity {
+-					s.fecDecoder.shouldTune = true
+-				}
+-			}
+-
+-			// perform auto-tuning if the decoder detects packet type mismatches.
+-			// This means the peer has changed FEC parameters and we must adapt.
+-			if s.fecDecoder.shouldTune {
+-				autoDS, autoPS := -1, -1
+-				if tune.count >= 3 {
+-					for i := 0; i < tune.count; i++ {
+-						tune.sortCache[i] = tune.pulses[(tune.head+i)%maxAutoTuneSamples]
+-					}
+-					sorted := tune.sortCache[:tune.count]
+-					sort.Slice(sorted, func(i, j int) bool { return _itimediff(sorted[i].seq, sorted[j].seq) < 0 })
+-					for _, bit := range []bool{true, false} {
+-						left, width := -1, -1
+-						previous := sorted[0]
+-						for i := 1; i < len(sorted); i++ {
+-							if previous.seq+1 != sorted[i].seq {
+-								break
+-							}
+-							if left < 0 {
+-								if previous.bit != bit && sorted[i].bit == bit {
+-									left = i
+-								}
+-							} else if previous.bit == bit && sorted[i].bit != bit {
+-								width = i - left
+-								break
+-							}
+-							previous = sorted[i]
+-						}
+-						if bit {
+-							autoDS = width
+-						} else {
+-							autoPS = width
+-						}
+-					}
+-				}
+-				// validate the auto-tuned parameters
+-				if autoDS > 0 && autoPS > 0 && autoDS+autoPS < 256 {
+-					if autoDS != s.fecDecoder.dataShards || autoPS != s.fecDecoder.parityShards {
+-						// apply the new FEC parameters
+-						s.fecDecoder.dataShards = autoDS
+-						s.fecDecoder.parityShards = autoPS
+-						s.fecDecoder.shardSize = autoDS + autoPS
+-						// recycle old shards before creating new shardSet
+-						for _, shard := range s.fecDecoder.shardSet {
+-							for _, pkt := range shard.elements {
+-								defaultBufferPool.Put(pkt)
+-							}
+-						}
+-						s.fecDecoder.shardSet = make(map[uint32]*shardHeap) // empty the shard set
+-						codec, err := reedsolomon.New(autoDS, autoPS)
+-						if err != nil {
+-							goto decoded
+-						}
+-						s.fecDecoder.codec = codec
+-						s.fecDecoder.decodeCache = make([][]byte, s.fecDecoder.shardSize)
+-						s.fecDecoder.flagCache = make([]bool, s.fecDecoder.shardSize)
+-						s.fecDecoder.paws = 0xffffffff / uint32(s.fecDecoder.shardSize) * uint32(s.fecDecoder.shardSize)
+-						//log.Println("autotune to :", s.fecDecoder.dataShards, s.fecDecoder.parityShards)
+-					}
+-					// reset shouldTune flag regardless of whether parameters changed
+-					// to avoid permanent blocking when detected parameters match current ones
+-					s.fecDecoder.shouldTune = false
+-				}
+-				goto decoded
+-			}
+-
+-			// get the shard heap for this shard id
+-			shardId := s.fecDecoder.getShardId(f.seqid())
+-			shard, ok := s.fecDecoder.shardSet[shardId]
+-			if !ok {
+-				shard = newShardHeap()
+-				s.fecDecoder.shardSet[shardId] = shard
+-				atomic.AddUint64(&DefaultSnmp.FECShardSet, 1)
+-			}
+-
+-			// ignore duplicate packets
+-			if shard.Has(f.seqid()) {
+-				goto decoded
+-			}
+-
+-			// update statistics for parity shards
+-			if f.flag() == typeParity {
+-				atomic.AddUint64(&DefaultSnmp.FECParityShards, 1)
+-			}
+-
+-			// push the packet into the shard heap
+-			pkt := fecPacket(defaultBufferPool.Get()[:len(f)])
+-			copy(pkt, f)
+-			shard.Push(pkt)
+-
+-			// try to recover data if we have enough shards
+-			if shard.Len() >= s.fecDecoder.dataShards {
+-				var numDataShard, maxlen int
+-
+-				// prepare the decode cache
+-				shards := s.fecDecoder.decodeCache
+-				shardsflag := s.fecDecoder.flagCache
+-				for k := range s.fecDecoder.decodeCache {
+-					shards[k] = nil
+-					shardsflag[k] = false
+-				}
+-
+-				// pop all shards from the heap and fill into the decode cache
+-				var pkts []fecPacket
+-				for shard.Len() > 0 {
+-					pkt := shard.Pop().(fecPacket)
+-					pkts = append(pkts, pkt)
+-					seqid := pkt.seqid()
+-					shards[seqid%uint32(s.fecDecoder.shardSize)] = pkt.data()
+-					shardsflag[seqid%uint32(s.fecDecoder.shardSize)] = true
+-					if pkt.flag() == typeData {
+-						numDataShard++
+-					}
+-					if len(pkt.data()) > maxlen {
+-						maxlen = len(pkt.data())
+-					}
+-				}
+-
+-				// case 1: all data shards are present
+-				if numDataShard == s.fecDecoder.dataShards {
+-					atomic.AddUint64(&DefaultSnmp.FECFullShardSet, 1)
+-				} else { // case 2: some data shards are missing, try to recover
+-					// fill '0' into the tail of each shard to make them equal-sized
+-					var newBuffers [][]byte
+-					for k := range shards {
+-						if shards[k] != nil {
+-							dlen := len(shards[k])
+-							shards[k] = shards[k][:maxlen]
+-							clear(shards[k][dlen:])
+-						} else if k < s.fecDecoder.dataShards {
+-							// prepare memory for the data recovery
+-							shards[k] = defaultBufferPool.Get()[:0]
+-							newBuffers = append(newBuffers, shards[k])
+-						}
+-					}
+-
+-					// Reed-Solomon Erasure Code Decoding
+-					if err := s.fecDecoder.codec.ReconstructData(shards); err == nil {
+-						for k := range shards[:s.fecDecoder.dataShards] {
+-							if !shardsflag[k] {
+-								recovers = append(recovers, shards[k])
+-							}
+-						}
+-					} else {
+-						// recovery failed, record the error
+-						atomic.AddUint64(&DefaultSnmp.FECErrs, 1)
+-						// recycle new buffers if failed
+-						// NOTE: if success, these buffers are returned f 'recovers' and will be recycled by the caller
+-						for _, buf := range newBuffers {
+-							defaultBufferPool.Put(buf)
+-						}
+-					}
+-
+-					// record the number of recovers packets
+-					atomic.AddUint64(&DefaultSnmp.FECRecovered, uint64(len(recovers)))
+-				}
+-
+-				// recycle the packets
+-				for _, pkt := range pkts {
+-					defaultBufferPool.Put(pkt)
+-				}
+-			}
+-
+-			// update the newest shard id
+-			if _itimediff(shardId*uint32(s.fecDecoder.shardSize), s.fecDecoder.newestShardId*uint32(s.fecDecoder.shardSize)) > 0 {
+-				s.fecDecoder.newestShardId = shardId
+-				atomic.StoreUint64(&DefaultSnmp.FECShardMin, uint64(s.fecDecoder.newestShardId))
+-			}
+-
+-			// try to discard shard sets that are too old
+-			{
+-				for shardId, shard := range s.fecDecoder.shardSet {
+-					// discard shards that are too old
+-					if _itimediff(s.fecDecoder.newestShardId*uint32(s.fecDecoder.shardSize), shardId*uint32(s.fecDecoder.shardSize)) > maxShardSets*int32(s.fecDecoder.shardSize) {
+-						//println("flushing shard", shardId, "minShardId", s.fecDecoder.minShardId, _itimediff(s.fecDecoder.minShardId, shardId))
+-						for _, pkt := range shard.elements {
+-							defaultBufferPool.Put(pkt)
+-						}
+-						delete(s.fecDecoder.shardSet, shardId)
+-					}
+-				}
+-
+-				atomic.StoreUint64(&DefaultSnmp.FECShardSet, uint64(len(s.fecDecoder.shardSet)))
+-			}
+-		}
+-	decoded:
+ 		for _, r := range recovers {
+ 			if len(r) >= 2 { // must be larger than 2bytes
+ 				sz := binary.LittleEndian.Uint16(r)

@@ -1,0 +1,430 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "carllerche_bytes_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "DCE01",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The expansion moved Buf byte copying into transfer; interaction added progress reporting.",
+      "baseline_defect": "Buf::try_copy_to_slice retains a residual inline copy after read_slice has already initialized the selected bytes and recorded progress.",
+      "criterion": "The Buf chunk-copy path has one effective implementation of each transferred prefix and no unreachable residual copy branch.",
+      "acceptance": "For each loop iteration, copying, progress, destination slicing, and Buf::advance form one coherent transfer without the retained copied < selected fallback. Directly removing the dead arm is sufficient; alternatively replace the migrated implementation with an equivalent single live implementation and remove its redundant closure. Progress, transfer and UninitSlice helpers are not mandatory architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming the fallback or wrapping its intact copy block in a helper."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_impl.rs",
+          "symbol": "Buf::try_copy_to_slice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_impl.rs:Buf::try_copy_to_slice"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/buf/buf_impl.rs",
+          "symbol": "Buf::try_copy_to_slice",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/buf/buf_impl.rs:Buf::try_copy_to_slice"
+        }
+      ]
+    },
+    {
+      "id": "DCE02",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The expansion and interaction migrated default BufMut copying to the transfer path.",
+      "baseline_defect": "BufMut::put_slice still contains an inline copy guarded by copied < selected although write_slice and UninitSlice::write_prefix fill the selected prefix.",
+      "criterion": "Default BufMut slice writes have one effective prefix-copy path, with no retained unreachable second copy.",
+      "acceptance": "The selected bytes are initialized once and advance_mut is based on that same completed transfer. Directly removing the dead arm is sufficient; alternatively replace the migrated implementation with an equivalent single live implementation and remove its redundant closure. Progress, transfer and UninitSlice helpers are not mandatory architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only changing the condition around the old copy while retaining a provably dead duplicate block."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "BufMut::put_slice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_mut.rs:BufMut::put_slice"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/uninit_slice.rs",
+          "symbol": "UninitSlice::write_prefix",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/uninit_slice.rs:UninitSlice::write_prefix"
+        }
+      ]
+    },
+    {
+      "id": "DCE03",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The expansion and interaction migrated default BufMut filling to transfer progress.",
+      "baseline_defect": "BufMut::put_bytes retains a write_bytes fallback guarded by filled < selected after fill_prefix has filled and recorded the selected bytes.",
+      "criterion": "Default BufMut byte filling has one effective chunk-fill operation and no unreachable residual write_bytes branch.",
+      "acceptance": "Each chunk is initialized and advanced using a single consistent filled count. Directly removing the dead arm is sufficient; alternatively replace the migrated implementation with an equivalent single live implementation and remove its redundant closure. Progress, transfer and UninitSlice helpers are not mandatory architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the fallback write_bytes into another function without removing the duplicate work path."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "BufMut::put_bytes",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_mut.rs:BufMut::put_bytes"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/uninit_slice.rs",
+          "symbol": "UninitSlice::fill_prefix",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/uninit_slice.rs:UninitSlice::fill_prefix"
+        }
+      ]
+    },
+    {
+      "id": "DCE04",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The expansion added migrated concrete slice writes; interaction switched them to progress accounting.",
+      "baseline_defect": "The &mut [u8] put_slice override keeps an old whole-slice copy after write_slice has consumed the requested length.",
+      "criterion": "The initialized-byte slice override has no unreachable whole-slice copy after its effective write path.",
+      "acceptance": "A successful override writes and advances exactly once without the remaining != 0 fallback after a full write. Directly removing the dead arm is sufficient; alternatively replace the migrated implementation with an equivalent single live implementation and remove its redundant closure. Progress, transfer and UninitSlice helpers are not mandatory architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Removing only the condition but keeping two ways to write the same bytes."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "impl BufMut for &mut [u8]::put_slice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_mut.rs:impl BufMut for &mut [u8]::put_slice"
+        }
+      ]
+    },
+    {
+      "id": "DCE05",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The concrete initialized-slice fill migration survived into the final patch.",
+      "baseline_defect": "The &mut [u8] put_bytes override retains a whole-range ptr::write_bytes fallback after fill has recorded the requested count.",
+      "criterion": "The initialized-byte slice fill override has no unreachable second whole-range fill.",
+      "acceptance": "The override uses one completed fill and advances by its initialized byte count. Directly removing the dead arm is sufficient; alternatively replace the migrated implementation with an equivalent single live implementation and remove its redundant closure. Progress, transfer and UninitSlice helpers are not mandatory architecture. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Keeping the old pointer write behind an equivalent false condition."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "impl BufMut for &mut [u8]::put_bytes",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_mut.rs:impl BufMut for &mut [u8]::put_bytes"
+        }
+      ]
+    },
+    {
+      "id": "DCE06",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The concrete MaybeUninit slice write now delegates initialization through UninitSlice.",
+      "baseline_defect": "The &mut [MaybeUninit<u8>] put_slice override still owns a residual raw pointer copy even though UninitSlice::write_prefix owns initialization and records completion.",
+      "criterion": "Eliminate the unreachable raw-copy alternative in the MaybeUninit slice override.",
+      "acceptance": "One effective initialization and the required cursor commit remain, with no impossible fallback. Either existing implementation may be retained if the redundant path and associated dead closure are eliminated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extracting the raw copy into another helper while preserving both initialization routes."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "impl BufMut for &mut [MaybeUninit<u8>]::put_slice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_mut.rs:impl BufMut for &mut [MaybeUninit<u8>]::put_slice"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/uninit_slice.rs",
+          "symbol": "UninitSlice::write_prefix",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/uninit_slice.rs:UninitSlice::write_prefix"
+        }
+      ]
+    },
+    {
+      "id": "DCE07",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The concrete MaybeUninit fill now delegates through UninitSlice.",
+      "baseline_defect": "The &mut [MaybeUninit<u8>] put_bytes override retains a residual raw pointer fill after UninitSlice::fill_prefix owns and records the full fill.",
+      "criterion": "Eliminate the unreachable raw-fill alternative in the MaybeUninit slice override.",
+      "acceptance": "One effective initialization and the required cursor commit remain, with no impossible fallback. Either existing implementation may be retained if the redundant path and associated dead closure are eliminated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed pointer-fill fallback that remains structurally unreachable."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "impl BufMut for &mut [MaybeUninit<u8>]::put_bytes",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_mut.rs:impl BufMut for &mut [MaybeUninit<u8>]::put_bytes"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/uninit_slice.rs",
+          "symbol": "UninitSlice::fill_prefix",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/uninit_slice.rs:UninitSlice::fill_prefix"
+        }
+      ]
+    },
+    {
+      "id": "DCE08",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Reader was migrated to a transfer handoff in expansion and progress accounting in interaction.",
+      "baseline_defect": "Reader::read calls transfer::read_once, which invokes Buf::copy_to_slice and records len, then retains a fallback call to the same Buf method for a remaining count that is always zero on normal return.",
+      "criterion": "The Reader-to-transfer-to-Buf read path contains no unreachable second read while retaining a single reported byte count.",
+      "acceptance": "Reader and transfer cooperate on one bounded read and one count; the obsolete Reader fallback is removed. Directly removing the dead arm is sufficient; alternatively replace the migrated implementation with an equivalent single live implementation and remove its redundant closure. Progress, transfer and UninitSlice helpers are not mandatory architecture. Preserve exactly one dispatch to the same public custom override, including zero-length input; replacing it by chunk operations or a different fallible override is not equivalent. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing Ok(len) to Ok(progress.initialized()) while keeping the dead fallback."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/reader.rs",
+          "symbol": "Reader::read",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/reader.rs:Reader::read"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/transfer.rs",
+          "symbol": "read_once",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/transfer.rs:read_once"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_impl.rs",
+          "symbol": "Buf::copy_to_slice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_impl.rs:Buf::copy_to_slice"
+        }
+      ]
+    },
+    {
+      "id": "DCE09",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Writer was migrated to a transfer handoff in expansion and progress accounting in interaction.",
+      "baseline_defect": "Writer::write calls transfer::write_once, which invokes BufMut::put_slice and records n, then retains a fallback put_slice for an always-zero remaining count.",
+      "criterion": "The Writer-to-transfer-to-BufMut write path contains no unreachable second write while retaining a single reported byte count.",
+      "acceptance": "Writer and transfer cooperate on one bounded write and one count; the obsolete Writer fallback is removed. Directly removing the dead arm is sufficient; alternatively replace the migrated implementation with an equivalent single live implementation and remove its redundant closure. Progress, transfer and UninitSlice helpers are not mandatory architecture. Preserve exactly one dispatch to the same public custom override, including zero-length input; replacing it by chunk operations or a different fallible override is not equivalent. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the fallback put_slice into transfer::write_once without eliminating its deadness."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/writer.rs",
+          "symbol": "Writer::write",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/writer.rs:Writer::write"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/transfer.rs",
+          "symbol": "write_once",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/transfer.rs:write_once"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "BufMut::put_slice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_mut.rs:BufMut::put_slice"
+        }
+      ]
+    },
+    {
+      "id": "DCE10_VEC_ALLOC",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Original allocation migration changed in retry: only allocate=false reaches the private child. The child receives allocate=false, so its KIND_VEC failed-reuse arm returns before rebuild_vec, Vec::reserve and publication.",
+      "baseline_defect": "The child receives allocate=false, so its KIND_VEC failed-reuse arm returns before rebuild_vec, Vec::reserve and publication.",
+      "criterion": "Eliminate the unreachable vector allocation suffix in the child reserve path.",
+      "acceptance": "Retain live child vector reuse and live parent vector allocation; no merging of modules is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving dead code or retaining it under an equivalent impossible predicate does not qualify; deleting adjacent live allocation/reclaim effects is not a valid repair."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut/allocation.rs",
+          "symbol": "reserve",
+          "detail": "The child receives allocate=false, so its KIND_VEC failed-reuse arm returns before rebuild_vec, Vec::reserve and publication.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "BytesMut::reserve_inner",
+          "detail": "The child receives allocate=false, so its KIND_VEC failed-reuse arm returns before rebuild_vec, Vec::reserve and publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE11_SHARED_ALLOC",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Original allocation migration changed in retry: only allocate=false reaches the private child. In the child unique-shared insufficient-capacity arm, !allocate always returns before growth, set_len, reserve and publication.",
+      "baseline_defect": "In the child unique-shared insufficient-capacity arm, !allocate always returns before growth, set_len, reserve and publication.",
+      "criterion": "Eliminate the unreachable shared-vector growth suffix in the child reserve path.",
+      "acceptance": "Keep successful child shared reclamation and live parent growth; sharing an equivalent operation is permitted. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving dead code or retaining it under an equivalent impossible predicate does not qualify; deleting adjacent live allocation/reclaim effects is not a valid repair."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut/allocation.rs",
+          "symbol": "reserve",
+          "detail": "In the child unique-shared insufficient-capacity arm, !allocate always returns before growth, set_len, reserve and publication.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "BytesMut::reserve_inner",
+          "detail": "In the child unique-shared insufficient-capacity arm, !allocate always returns before growth, set_len, reserve and publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE12_DETACH",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Original allocation migration changed in retry: only allocate=false reaches the private child. Child reserve reaches an unconditional-in-context !allocate return before allocating a new vector, copying, releasing Shared and publishing KIND_VEC.",
+      "baseline_defect": "Child reserve reaches an unconditional-in-context !allocate return before allocating a new vector, copying, releasing Shared and publishing KIND_VEC.",
+      "criterion": "Eliminate the unreachable child shared-detachment allocation suffix.",
+      "acceptance": "The parent detachment implementation remains available for supported allocating calls; only the unreachable alternative or equivalent redundant implementation is removed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving dead code or retaining it under an equivalent impossible predicate does not qualify; deleting adjacent live allocation/reclaim effects is not a valid repair."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut/allocation.rs",
+          "symbol": "reserve",
+          "detail": "Child reserve reaches an unconditional-in-context !allocate return before allocating a new vector, copying, releasing Shared and publishing KIND_VEC.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE13_OVERFLOW",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Original allocation migration changed in retry: only allocate=false reaches the private child. The child checked_add(offset) match has None if !allocate followed by a panic arm; allocate is always false so the panic arm is impossible.",
+      "baseline_defect": "The child checked_add(offset) match has None if !allocate followed by a panic arm; allocate is always false so the panic arm is impossible.",
+      "criterion": "Eliminate the unreachable panic alternative in the child offset-overflow handling.",
+      "acceptance": "Child overflow still returns false; parent allocating overflow handling remains supported. required_capacity is shared by live true and false callers and cannot have its allocating panic deleted globally. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving dead code or retaining it under an equivalent impossible predicate does not qualify; deleting adjacent live allocation/reclaim effects is not a valid repair."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut/allocation.rs",
+          "symbol": "reserve",
+          "detail": "The child checked_add(offset) match has None if !allocate followed by a panic arm; allocate is always false so the panic arm is impossible.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "required_capacity",
+          "detail": "The child checked_add(offset) match has None if !allocate followed by a panic arm; allocate is always false so the panic arm is impossible.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE14_REUSE",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Original allocation migration changed in retry: only allocate=false reaches the private child. Parent reserve_inner enters only when child no-allocation reclaim left insufficient capacity. For KIND_VEC, the same stable offset/length/capacity reuse predicate was already false and no concurrent owner can change it.",
+      "baseline_defect": "Parent reserve_inner enters only when child no-allocation reclaim left insufficient capacity. For KIND_VEC, the same stable offset/length/capacity reuse predicate was already false and no concurrent owner can change it.",
+      "criterion": "Eliminate the second impossible vector-reuse branch in the parent allocation path.",
+      "acceptance": "Keep parent vector growth. Do not apply this proof to KIND_ARC: another owner may release its reference before the parent uniqueness check. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving dead code or retaining it under an equivalent impossible predicate does not qualify; deleting adjacent live allocation/reclaim effects is not a valid repair."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "BytesMut::reserve_inner",
+          "detail": "Parent reserve_inner enters only when child no-allocation reclaim left insufficient capacity. For KIND_VEC, the same stable offset/length/capacity reuse predicate was already false and no concurrent owner can change it.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut/allocation.rs",
+          "symbol": "reserve",
+          "detail": "Parent reserve_inner enters only when child no-allocation reclaim left insufficient capacity. For KIND_VEC, the same stable offset/length/capacity reuse predicate was already false and no concurrent owner can change it.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE15_PARENT_MODE",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Original allocation migration changed in retry: only allocate=false reaches the private child. The retained parent body is dominated by allocate=true but retains !allocate returns in vector/shared/no-unique branches, a guarded no-allocation overflow return and an impossible None from required_capacity.",
+      "baseline_defect": "The retained parent body is dominated by allocate=true but retains !allocate returns in vector/shared/no-unique branches, a guarded no-allocation overflow return and an impossible None from required_capacity.",
+      "criterion": "Remove unsupported no-allocation alternatives from the allocating-only parent body.",
+      "acceptance": "All parent mode-dependent false-return alternatives are eliminated or made unnecessary by an equivalent allocation/reclaim flow; shared uniqueness/reuse and actual allocating overflow remain live. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving dead code or retaining it under an equivalent impossible predicate does not qualify; deleting adjacent live allocation/reclaim effects is not a valid repair."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "BytesMut::reserve_inner/required_capacity",
+          "detail": "The retained parent body is dominated by allocate=true but retains !allocate returns in vector/shared/no-unique branches, a guarded no-allocation overflow return and an impossible None from required_capacity.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "carllerche_bytes_dce",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "weighting": "Each item has equal weight; award only when its specific injected structural defect is removed.",
+    "excluded_from_scoring": [
+      "The empty post.diff changes nothing.",
+      "Existing test passage, panic behavior, and byte correctness are constraints, not standalone smell-removal credits.",
+      "The source design notes' broader quality aspirations do not create obligations beyond defects in the final patch."
+    ],
+    "rubric_status": "ready"
+  }
+}

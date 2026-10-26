@@ -1,0 +1,2121 @@
+diff --git a/src/compgen.c b/src/compgen.c
+index 88662cc..27368e8 100644
+--- a/src/compgen.c
++++ b/src/compgen.c
+@@ -16,6 +16,93 @@
+ static const char *default_cache_dir = ".cache";
+ static const char *cache_basename = "tofi-compgen";
+ 
++[[nodiscard("memory leaked")]]
++static char *get_cache_path() {
++	char *cache_name = NULL;
++	const char *state_path = getenv("XDG_CACHE_HOME");
++	if (state_path == NULL) {
++		const char *home = getenv("HOME");
++		if (home == NULL) {
++			log_error("Couldn't retrieve HOME from environment.\n");
++			return NULL;
++		}
++		size_t len = strlen(home) + 1
++			+ strlen(default_cache_dir) + 1
++			+ strlen(cache_basename) + 1;
++		cache_name = xmalloc(len);
++		snprintf(
++			cache_name,
++			len,
++			"%s/%s/%s",
++			home,
++			default_cache_dir,
++			cache_basename);
++	} else {
++		size_t len = strlen(state_path) + 1
++			+ strlen(cache_basename) + 1;
++		cache_name = xmalloc(len);
++		snprintf(
++			cache_name,
++			len,
++			"%s/%s",
++			state_path,
++			cache_basename);
++	}
++	return cache_name;
++}
++
++static void write_cache(const char *buffer, const char *filename)
++{
++	errno = 0;
++	FILE *fp = fopen(filename, "wb");
++	if (!fp) {
++		log_error("Failed to open cache file \"%s\": %s\n", filename, strerror(errno));
++		return;
++	}
++	size_t len = strlen(buffer);
++	errno = 0;
++	if (fwrite(buffer, 1, len, fp) != len) {
++		log_error("Error writing cache file \"%s\": %s\n", filename, strerror(errno));
++	}
++	fclose(fp);
++}
++
++static char *read_cache(const char *filename)
++{
++	errno = 0;
++	FILE *fp = fopen(filename, "rb");
++	if (!fp) {
++		log_error("Failed to open cache file \"%s\": %s\n", filename, strerror(errno));
++		return NULL;
++	}
++	if (fseek(fp, 0, SEEK_END)) {
++		log_error("Failed to seek in cache file: %s\n", strerror(errno));
++		fclose(fp);
++		return NULL;
++	}
++	size_t size;
++	{
++		long ssize = ftell(fp);
++		if (ssize < 0) {
++			log_error("Failed to determine cache file size: %s\n", strerror(errno));
++			fclose(fp);
++			return NULL;
++		}
++		size = (size_t)ssize;
++	}
++	char *cache = xmalloc(size + 1);
++	rewind(fp);
++	if (fread(cache, 1, size, fp) != size) {
++		log_error("Failed to read cache file: %s\n", strerror(errno));
++		free(cache);
++		fclose(fp);
++		return NULL;
++	}
++	fclose(fp);
++	cache[size] = '\0';
++
++	return cache;
++}
+ 
+ char *compgen_cached()
+ {
+@@ -25,102 +112,58 @@ char *compgen_cached()
+ 		log_error("Couldn't retrieve PATH from environment.\n");
+ 		exit(EXIT_FAILURE);
+ 	}
++
+ 	log_debug("Retrieving cache location.\n");
++	char *cache_path = get_cache_path();
++
++	struct stat sb;
++	if (cache_path == NULL) {
+-	const char *state_path = getenv("XDG_CACHE_HOME");
+-	const char *home = state_path == NULL ? getenv("HOME") : NULL;
+-	if (state_path == NULL && home == NULL) {
+-		log_error("Couldn't retrieve HOME from environment.\n");
+ 		return compgen();
+ 	}
++
++	/* If the cache doesn't exist, create it and return */
+-	size_t path_len = state_path == NULL
+-		? strlen(home) + 1 + strlen(default_cache_dir) + 1 + strlen(cache_basename) + 1
+-		: strlen(state_path) + 1 + strlen(cache_basename) + 1;
+-	char *cache_path = xmalloc(path_len);
+-	if (state_path == NULL) {
+-		snprintf(cache_path, path_len, "%s/%s/%s", home, default_cache_dir, cache_basename);
+-	} else {
+-		snprintf(cache_path, path_len, "%s/%s", state_path, cache_basename);
+-	}
+-	struct stat sb;
+ 	errno = 0;
+-	bool missing = false;
+ 	if (stat(cache_path, &sb) == -1) {
++		if (errno == ENOENT) {
++			char *commands = compgen();
++			if (mkdirp(cache_path)) {
++				write_cache(commands, cache_path);
++			}
+-		if (errno != ENOENT) {
+ 			free(cache_path);
++			return commands;
+-			return compgen();
+ 		}
++		free(cache_path);
++		return compgen();
+-		missing = true;
+ 	}
++
++	/* The cache exists, so check if it's still in date */
++	char *path = xstrdup(env_path);
++	char *saveptr = NULL;
++	char *path_entry = strtok_r(path, ":", &saveptr);
+ 	bool out_of_date = false;
++	while (path_entry != NULL) {
++		struct stat path_sb;
++		if (stat(path_entry, &path_sb) == 0) {
++			if (path_sb.st_mtim.tv_sec > sb.st_mtim.tv_sec) {
+-	if (!missing) {
+-		char *path = xstrdup(env_path);
+-		char *saveptr = NULL;
+-		char *path_entry = strtok_r(path, ":", &saveptr);
+-		while (path_entry != NULL) {
+-			struct stat path_sb;
+-			if (stat(path_entry, &path_sb) == 0 && path_sb.st_mtim.tv_sec > sb.st_mtim.tv_sec) {
+ 				out_of_date = true;
+ 				break;
+ 			}
+-			path_entry = strtok_r(NULL, ":", &saveptr);
+ 		}
++		path_entry = strtok_r(NULL, ":", &saveptr);
+-		free(path);
+ 	}
++	free(path);
++
++	char *commands;
++	if (out_of_date) {
++		log_debug("Cache out of date, updating.\n");
++		log_indent();
+-	char *commands = NULL;
+-	if (missing || out_of_date) {
+-		if (!missing) {
+-			log_debug("Cache out of date, updating.\n");
+-			log_indent();
+-		}
+ 		commands = compgen();
++		log_unindent();
++		write_cache(commands, cache_path);
+-		if (!missing) {
+-			log_unindent();
+-		}
+-		if (!missing || mkdirp(cache_path)) {
+-			errno = 0;
+-			FILE *fp = fopen(cache_path, "wb");
+-			if (fp == NULL) {
+-				log_error("Failed to open cache file \"%s\": %s\n", cache_path, strerror(errno));
+-			} else {
+-				size_t len = strlen(commands);
+-				errno = 0;
+-				if (fwrite(commands, 1, len, fp) != len) {
+-					log_error("Error writing cache file \"%s\": %s\n", cache_path, strerror(errno));
+-				}
+-				fclose(fp);
+-			}
+-		}
+ 	} else {
+ 		log_debug("Cache up to date, loading.\n");
++		commands = read_cache(cache_path);
+-		errno = 0;
+-		FILE *fp = fopen(cache_path, "rb");
+-		if (fp == NULL) {
+-			log_error("Failed to open cache file \"%s\": %s\n", cache_path, strerror(errno));
+-			goto release_path;
+-		}
+-		if (fseek(fp, 0, SEEK_END)) {
+-			log_error("Failed to seek in cache file: %s\n", strerror(errno));
+-			fclose(fp);
+-			goto release_path;
+-		}
+-		long size = ftell(fp);
+-		if (size < 0) {
+-			log_error("Failed to determine cache file size: %s\n", strerror(errno));
+-			fclose(fp);
+-			goto release_path;
+-		}
+-		commands = xmalloc((size_t)size + 1);
+-		rewind(fp);
+-		if (fread(commands, 1, (size_t)size, fp) != (size_t)size) {
+-			log_error("Failed to read cache file: %s\n", strerror(errno));
+-			free(commands);
+-			commands = NULL;
+-		} else {
+-			commands[size] = '\0';
+-		}
+-		fclose(fp);
+ 	}
+-release_path:
+ 	free(cache_path);
+ 	return commands;
+ }
+diff --git a/src/desktop_vec.c b/src/desktop_vec.c
+index f4e1b4c..1fd0b41 100644
+--- a/src/desktop_vec.c
++++ b/src/desktop_vec.c
+@@ -106,25 +106,7 @@ void desktop_vec_add_file(struct desktop_vec *vec, const char *id, const char *p
+ 		}
+ 	}
+ 
++	desktop_vec_add(vec, id, name, path, keywords);
+-	{
+-	if (vec->count == vec->size) {
+-		vec->size *= 2;
+-		vec->buf = xrealloc(vec->buf, vec->size * sizeof(vec->buf[0]));
+-	}
+-	vec->buf[vec->count].id = xstrdup(id);
+-	vec->buf[vec->count].name = utf8_normalize(name);
+-	if (vec->buf[vec->count].name == NULL) {
+-		vec->buf[vec->count].name = name;
+-		name = NULL;
+-	}
+-	vec->buf[vec->count].path = xstrdup(path);
+-	vec->buf[vec->count].keywords = keywords;
+-	keywords = NULL;
+-	vec->buf[vec->count].search_score = 0;
+-	vec->buf[vec->count].history_score = 0;
+-	vec->count++;
+-
+-	}
+ 
+ cleanup_all:
+ 	free(keywords);
+@@ -222,24 +204,7 @@ struct desktop_vec desktop_vec_load(FILE *file)
+ 		char *path = &name[sublen + 1];
+ 		sublen = strlen(path);
+ 		char *keywords = &path[sublen + 1];
++		desktop_vec_add(&vec, id, name, path, keywords);
+-		{
+-		struct desktop_vec *restrict target = &vec;
+-	if (target->count == target->size) {
+-		target->size *= 2;
+-		target->buf = xrealloc(target->buf, target->size * sizeof(target->buf[0]));
+-	}
+-	target->buf[target->count].id = xstrdup(id);
+-	target->buf[target->count].name = utf8_normalize(name);
+-	if (target->buf[target->count].name == NULL) {
+-		target->buf[target->count].name = xstrdup(name);
+-	}
+-	target->buf[target->count].path = xstrdup(path);
+-	target->buf[target->count].keywords = xstrdup(keywords);
+-	target->buf[target->count].search_score = 0;
+-	target->buf[target->count].history_score = 0;
+-	target->count++;
+-
+-		}
+ 	}
+ 	free(line);
+ 
+diff --git a/src/drun.c b/src/drun.c
+index 4b04e28..851fdd1 100644
+--- a/src/drun.c
++++ b/src/drun.c
+@@ -14,34 +14,49 @@
+ #include "log.h"
+ #include "mkdirp.h"
+ #include "string_vec.h"
+-#include "unicode.h"
+ #include "xmalloc.h"
+ 
+ static const char *default_data_dir = ".local/share/";
+ static const char *default_cache_dir = ".cache/";
+ static const char *cache_basename = "tofi-drun";
+ 
++[[nodiscard("memory leaked")]]
++static char *get_cache_path() {
++	char *cache_name = NULL;
++	const char *state_path = getenv("XDG_CACHE_HOME");
++	if (state_path == NULL) {
++		const char *home = getenv("HOME");
++		if (home == NULL) {
++			log_error("Couldn't retrieve HOME from environment.\n");
++			return NULL;
++		}
++		size_t len = strlen(home) + 1
++			+ strlen(default_cache_dir) + 1
++			+ strlen(cache_basename) + 1;
++		cache_name = xmalloc(len);
++		snprintf(
++			cache_name,
++			len,
++			"%s/%s/%s",
++			home,
++			default_cache_dir,
++			cache_basename);
++	} else {
++		size_t len = strlen(state_path) + 1
++			+ strlen(cache_basename) + 1;
++		cache_name = xmalloc(len);
++		snprintf(
++			cache_name,
++			len,
++			"%s/%s",
++			state_path,
++			cache_basename);
++	}
++	return cache_name;
+-
+-static void parse_desktop_file(gpointer key, gpointer value, void *data)
+-{
+-	const char *id = key;
+-	const char *path = value;
+-	struct desktop_vec *apps = data;
+-
+-	desktop_vec_add_file(apps, id, path);
+ }
+ 
++[[nodiscard("memory leaked")]]
++static struct string_vec get_application_paths() {
+-struct desktop_vec drun_generate(void)
+-{
+-	/*
+-	 * Note for the future: this custom logic could be replaced with
+-	 * g_app_info_get_all(), but that's slower. Worth remembering
+-	 * though if this runs into issues.
+-	 */
+-	log_debug("Retrieving application dirs.\n");
+-	struct string_vec paths;
+-	{
+-
+ 	char *base_paths = NULL;
+ 	const char *xdg_data_dirs = getenv("XDG_DATA_DIRS");
+ 	if (xdg_data_dirs == NULL) {
+@@ -79,7 +94,7 @@ static struct string_vec get_application_paths() {
+ 
+ 
+ 	/* Append /applications/ to each entry. */
++	struct string_vec paths = string_vec_create();
+-	struct string_vec app_paths = string_vec_create();
+ 	char *saveptr = NULL;
+ 	char *path_entry = strtok_r(base_paths, ":", &saveptr);
+ 	while (path_entry != NULL) {
+@@ -87,16 +102,33 @@ static struct string_vec get_application_paths() {
+ 		size_t len = strlen(path_entry) + 1 + strlen(subdir) + 1;
+ 		char *apps = xmalloc(len);
+ 		snprintf(apps, len, "%s/%s", path_entry, subdir);
++		string_vec_add(&paths, apps);
+-		string_vec_add(&app_paths, apps);
+ 		free(apps);
+ 		path_entry = strtok_r(NULL, ":", &saveptr);
+ 	}
+ 	free(base_paths);
+ 
++	return paths;
++}
+-	paths = (app_paths); goto paths_ready;
+ 
++static void parse_desktop_file(gpointer key, gpointer value, void *data)
++{
++	const char *id = key;
++	const char *path = value;
++	struct desktop_vec *apps = data;
++
++	desktop_vec_add_file(apps, id, path);
+-paths_ready:;
+ }
++
++struct desktop_vec drun_generate(void)
++{
++	/*
++	 * Note for the future: this custom logic could be replaced with
++	 * g_app_info_get_all(), but that's slower. Worth remembering
++	 * though if this runs into issues.
++	 */
++	log_debug("Retrieving application dirs.\n");
++	struct string_vec paths = get_application_paths();
+  	struct string_vec desktop_files = string_vec_create();
+  	log_debug("Scanning for .desktop files.\n");
+  	for (size_t i = 0; i < paths.count; i++) {
+@@ -185,43 +217,7 @@ struct desktop_vec drun_generate(void)
+ struct desktop_vec drun_generate_cached()
+ {
+ 	log_debug("Retrieving cache location.\n");
++	char *cache_path = get_cache_path();
+-	char *cache_path;
+-	{
+-
+-	char *cache_name = NULL;
+-	const char *state_path = getenv("XDG_CACHE_HOME");
+-	if (state_path == NULL) {
+-		const char *home = getenv("HOME");
+-		if (home == NULL) {
+-			log_error("Couldn't retrieve HOME from environment.\n");
+-			cache_path = (NULL); goto cache_path_ready;
+-		}
+-		size_t len = strlen(home) + 1
+-			+ strlen(default_cache_dir) + 1
+-			+ strlen(cache_basename) + 1;
+-		cache_name = xmalloc(len);
+-		snprintf(
+-			cache_name,
+-			len,
+-			"%s/%s/%s",
+-			home,
+-			default_cache_dir,
+-			cache_basename);
+-	} else {
+-		size_t len = strlen(state_path) + 1
+-			+ strlen(cache_basename) + 1;
+-		cache_name = xmalloc(len);
+-		snprintf(
+-			cache_name,
+-			len,
+-			"%s/%s",
+-			state_path,
+-			cache_basename);
+-	}
+-	cache_path = (cache_name); goto cache_path_ready;
+-
+-cache_path_ready:;
+-}
+ 
+ 	struct stat sb;
+ 	if (cache_path == NULL) {
+@@ -254,69 +250,20 @@ struct desktop_vec drun_generate_cached()
+ 	}
+ 
+ 	log_debug("Retrieving application dirs.\n");
++	struct string_vec application_path = get_application_paths();;
++
++	/* The cache exists, so check if it's still in date */
+ 	bool out_of_date = false;
++	for (size_t i = 0; i < application_path.count; i++) {
++		struct stat path_sb;
++		if (stat(application_path.buf[i].string, &path_sb) == 0) {
++			if (path_sb.st_mtim.tv_sec > sb.st_mtim.tv_sec) {
++				out_of_date = true;
++				break;
+-	{
+-	char *base_paths = NULL;
+-	const char *xdg_data_dirs = getenv("XDG_DATA_DIRS");
+-	if (xdg_data_dirs == NULL) {
+-		xdg_data_dirs = "/usr/local/share/:/usr/share/";
+-	}
+-	const char *xdg_data_home = getenv("XDG_DATA_HOME");
+-	if (xdg_data_home == NULL) {
+-		const char *home = getenv("HOME");
+-		if (home == NULL) {
+-			log_error("Couldn't retrieve HOME from environment.\n");
+-			exit(EXIT_FAILURE);
+-		}
+-		size_t len = strlen(home) + 1
+-			+ strlen(default_data_dir) + 1
+-			+ strlen(xdg_data_dirs) + 1;
+-		base_paths = xmalloc(len);
+-		snprintf(
+-			base_paths,
+-			len,
+-			"%s/%s:%s",
+-			home,
+-			default_data_dir,
+-			xdg_data_dirs);
+-	} else {
+-		size_t len = strlen(xdg_data_home) + 1
+-			+ strlen(xdg_data_dirs) + 1;
+-		base_paths = xmalloc(len);
+-		snprintf(
+-			base_paths,
+-			len,
+-			"%s:%s",
+-			xdg_data_home,
+-			xdg_data_dirs);
+-	}
+-
+-
+-	char *saveptr = NULL;
+-	char *path_entry = strtok_r(base_paths, ":", &saveptr);
+-	while (path_entry != NULL) {
+-		const char *subdir = "applications/";
+-		size_t len = strlen(path_entry) + 1 + strlen(subdir) + 1;
+-		char *apps = xmalloc(len);
+-		snprintf(apps, len, "%s/%s", path_entry, subdir);
+-		if (utf8_validate(apps)) {
+-			char *normalized = utf8_normalize(apps);
+-			if (normalized == NULL) {
+-				normalized = xstrdup(apps);
+-			}
+-			if (!out_of_date) {
+-				struct stat path_sb;
+-				if (stat(normalized, &path_sb) == 0 && path_sb.st_mtim.tv_sec > sb.st_mtim.tv_sec) {
+-					out_of_date = true;
+-				}
+ 			}
+-			free(normalized);
+ 		}
+-		free(apps);
+-		path_entry = strtok_r(NULL, ":", &saveptr);
+-	}
+-	free(base_paths);
+ 	}
++	string_vec_destroy(&application_path);
+ 
+ 	struct desktop_vec apps;
+ 	if (out_of_date) {
+diff --git a/src/entry.c b/src/entry.c
+index 5fc2456..23e8575 100644
+--- a/src/entry.c
++++ b/src/entry.c
+@@ -9,6 +9,40 @@
+ #undef MAX
+ #define MAX(a, b) ((a) > (b) ? (a) : (b))
+ 
++static void rounded_rectangle(cairo_t *cr, uint32_t width, uint32_t height, uint32_t r)
++{
++	cairo_new_path(cr);
++
++	/* Top-left */
++	cairo_arc(cr, r, r, r, -M_PI, -M_PI_2);
++
++	/* Top-right */
++	cairo_arc(cr, width - r, r, r, -M_PI_2, 0);
++
++	/* Bottom-right */
++	cairo_arc(cr, width - r, height - r, r, 0, M_PI_2);
++
++	/* Bottom-left */
++	cairo_arc(cr, r, height - r, r, M_PI_2, M_PI);
++
++	cairo_close_path(cr);
++}
++
++static void apply_text_theme_fallback(struct text_theme *theme, const struct text_theme *fallback)
++{
++	if (!theme->foreground_specified) {
++		theme->foreground_color = fallback->foreground_color;
++	}
++	if (!theme->background_specified) {
++		theme->background_color = fallback->background_color;
++	}
++	if (!theme->padding_specified) {
++		theme->padding = fallback->padding;
++	}
++	if (!theme->radius_specified) {
++		theme->background_corner_radius = fallback->background_corner_radius;
++	}
++}
+ 
+ void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, uint32_t height, uint32_t fractional_scale_numerator)
+ {
+@@ -62,25 +96,7 @@ void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, u
+ 
+ 	/* Draw the border with outlines */
+ 	cairo_set_line_width(cr, 4 * entry->outline_width + 2 * entry->border_width);
++	rounded_rectangle(cr, width, height, entry->corner_radius);
+-	{
+-	cairo_new_path((cr));
+-
+-	/* Top-left */
+-	cairo_arc((cr), ((uint32_t)(entry->corner_radius)), ((uint32_t)(entry->corner_radius)), ((uint32_t)(entry->corner_radius)), -M_PI, -M_PI_2);
+-
+-	/* Top-right */
+-	cairo_arc((cr), ((uint32_t)(width)) - ((uint32_t)(entry->corner_radius)), ((uint32_t)(entry->corner_radius)), ((uint32_t)(entry->corner_radius)), -M_PI_2, 0);
+-
+-	/* Bottom-right */
+-	cairo_arc((cr), ((uint32_t)(width)) - ((uint32_t)(entry->corner_radius)), ((uint32_t)(height)) - ((uint32_t)(entry->corner_radius)), ((uint32_t)(entry->corner_radius)), 0, M_PI_2);
+-
+-	/* Bottom-left */
+-	cairo_arc((cr), ((uint32_t)(entry->corner_radius)), ((uint32_t)(height)) - ((uint32_t)(entry->corner_radius)), ((uint32_t)(entry->corner_radius)), M_PI_2, M_PI);
+-
+-	cairo_close_path((cr));
+-
+-outline_ready:;
+-}
+ 
+ 	color = entry->outline_color;
+ 	cairo_set_source_rgba(cr, color.r, color.g, color.b, color.a);
+@@ -179,27 +195,12 @@ void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, u
+ 		.background_corner_radius = 0
+ 	};
+ 
++	apply_text_theme_fallback(&entry->prompt_theme, &default_theme);
++	apply_text_theme_fallback(&entry->input_theme, &default_theme);
++	apply_text_theme_fallback(&entry->placeholder_theme, &default_theme);
++	apply_text_theme_fallback(&entry->default_result_theme, &default_theme);
++	apply_text_theme_fallback(&entry->alternate_result_theme, &entry->default_result_theme);
++	apply_text_theme_fallback(&entry->selection_theme, &default_theme);
+-	struct text_theme *themes[] = {
+-		&entry->prompt_theme, &entry->input_theme, &entry->placeholder_theme,
+-		&entry->default_result_theme, &entry->alternate_result_theme,
+-		&entry->selection_theme,
+-	};
+-	for (size_t i = 0; i < N_ELEM(themes); i++) {
+-		struct text_theme *theme = themes[i];
+-		const struct text_theme *base = i == 4 ? &entry->default_result_theme : &default_theme;
+-		if (!theme->foreground_specified) {
+-			theme->foreground_color = base->foreground_color;
+-		}
+-		if (!theme->background_specified) {
+-			theme->background_color = base->background_color;
+-		}
+-		if (!theme->padding_specified) {
+-			theme->padding = base->padding;
+-		}
+-		if (!theme->radius_specified) {
+-			theme->background_corner_radius = base->background_corner_radius;
+-		}
+-	}
+ 
+ 	/* The cursor is a special case, as it just needs the input colours. */
+ 	if (!entry->cursor_theme.color_specified) {
+diff --git a/src/entry_backend/pango.c b/src/entry_backend/pango.c
+index 0e2651a..d0edcce 100644
+--- a/src/entry_backend/pango.c
++++ b/src/entry_backend/pango.c
+@@ -32,6 +32,74 @@ static void rounded_rectangle(cairo_t *cr, uint32_t width, uint32_t height, uint
+ 	cairo_close_path(cr);
+ }
+ 
++static void render_text_themed(
++		cairo_t *cr,
++		struct entry *entry,
++		const char *text,
++		const struct text_theme *theme,
++		PangoRectangle *ink_rect,
++		PangoRectangle *logical_rect)
++{
++	PangoLayout *layout = entry->pango.layout;
++	struct color color = theme->foreground_color;
++	cairo_set_source_rgba(cr, color.r, color.g, color.b, color.a);
++
++	pango_layout_set_text(layout, text, -1);
++	pango_cairo_update_layout(cr, layout);
++	pango_cairo_show_layout(cr, layout);
++
++	pango_layout_get_pixel_extents(layout, ink_rect, logical_rect);
++
++	if (theme->background_color.a == 0) {
++		/* No background to draw, we're done. */
++		return;
++	}
++
++	struct directional padding = theme->padding;
++
++	cairo_matrix_t mat;
++	cairo_get_matrix(cr, &mat);
++	int32_t base_x = mat.x0 - entry->clip_x + ink_rect->x;
++	int32_t base_y = mat.y0 - entry->clip_y;
++
++	double padding_left = padding.left;
++	double padding_right = padding.right;
++	double padding_top = padding.top;
++	double padding_bottom = padding.bottom;
++
++	if (padding_left < 0) {
++		padding_left = base_x;
++	}
++	if (padding_right < 0) {
++		padding_right = entry->clip_width - ink_rect->width - base_x;
++	}
++	if (padding_top < 0) {
++		padding_top = base_y;
++	}
++	if (padding_bottom < 0) {
++		padding_bottom = entry->clip_height - logical_rect->height - base_y;
++	}
++
++	cairo_save(cr);
++	color = theme->background_color;
++	cairo_set_source_rgba(cr, color.r, color.g, color.b, color.a);
++	cairo_translate(
++			cr,
++			-padding_left + ink_rect->x,
++			-padding_top);
++	rounded_rectangle(
++			cr,
++			ceil(ink_rect->width + padding_left + padding_right),
++			ceil(logical_rect->height + padding_top + padding_bottom),
++			theme->background_corner_radius
++			);
++	cairo_fill(cr);
++	cairo_restore(cr);
++
++	color = theme->foreground_color;
++	cairo_set_source_rgba(cr, color.r, color.g, color.b, color.a);
++	pango_cairo_show_layout(cr, layout);
++}
+ 
+ static void render_input(
+ 		cairo_t *cr,
+@@ -80,25 +148,12 @@ static void render_input(
+ 				cr,
+ 				floor(-padding.left + ink_rect->x),
+ 				-padding.top);
++		rounded_rectangle(
++				cr,
++				ceil(ink_rect->width + extra_cursor_advance + padding.left + padding.right),
++				ceil(logical_rect->height + padding.top + padding.bottom),
++				theme->background_corner_radius
++				);
+-		{
+-	cairo_new_path((cr));
+-
+-	/* Top-left */
+-	cairo_arc((cr), ((uint32_t)(theme->background_corner_radius)), ((uint32_t)(theme->background_corner_radius)), ((uint32_t)(theme->background_corner_radius)), -M_PI, -M_PI_2);
+-
+-	/* Top-right */
+-	cairo_arc((cr), ((uint32_t)(ceil(ink_rect->width + extra_cursor_advance + padding.left + padding.right))) - ((uint32_t)(theme->background_corner_radius)), ((uint32_t)(theme->background_corner_radius)), ((uint32_t)(theme->background_corner_radius)), -M_PI_2, 0);
+-
+-	/* Bottom-right */
+-	cairo_arc((cr), ((uint32_t)(ceil(ink_rect->width + extra_cursor_advance + padding.left + padding.right))) - ((uint32_t)(theme->background_corner_radius)), ((uint32_t)(ceil(logical_rect->height + padding.top + padding.bottom))) - ((uint32_t)(theme->background_corner_radius)), ((uint32_t)(theme->background_corner_radius)), 0, M_PI_2);
+-
+-	/* Bottom-left */
+-	cairo_arc((cr), ((uint32_t)(theme->background_corner_radius)), ((uint32_t)(ceil(logical_rect->height + padding.top + padding.bottom))) - ((uint32_t)(theme->background_corner_radius)), ((uint32_t)(theme->background_corner_radius)), M_PI_2, M_PI);
+-
+-	cairo_close_path((cr));
+-
+-background_ready:;
+-}
+ 		cairo_fill(cr);
+ 		cairo_restore(cr);
+ 
+@@ -144,47 +199,11 @@ static void render_input(
+ 	cairo_translate(cr, cursor_x, 0);
+ 	switch (cursor_theme->style) {
+ 		case CURSOR_STYLE_BAR:
++			rounded_rectangle(cr, cursor_theme->thickness, logical_rect->height, cursor_theme->corner_radius);
+-			{
+-	cairo_new_path((cr));
+-
+-	/* Top-left */
+-	cairo_arc((cr), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), -M_PI, -M_PI_2);
+-
+-	/* Top-right */
+-	cairo_arc((cr), ((uint32_t)(cursor_theme->thickness)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), -M_PI_2, 0);
+-
+-	/* Bottom-right */
+-	cairo_arc((cr), ((uint32_t)(cursor_theme->thickness)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(logical_rect->height)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), 0, M_PI_2);
+-
+-	/* Bottom-left */
+-	cairo_arc((cr), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(logical_rect->height)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), M_PI_2, M_PI);
+-
+-	cairo_close_path((cr));
+-
+-bar_ready:;
+-}
+ 			cairo_fill(cr);
+ 			break;
+ 		case CURSOR_STYLE_BLOCK:
++			rounded_rectangle(cr, cursor_width, logical_rect->height, cursor_theme->corner_radius);
+-			{
+-	cairo_new_path((cr));
+-
+-	/* Top-left */
+-	cairo_arc((cr), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), -M_PI, -M_PI_2);
+-
+-	/* Top-right */
+-	cairo_arc((cr), ((uint32_t)(cursor_width)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), -M_PI_2, 0);
+-
+-	/* Bottom-right */
+-	cairo_arc((cr), ((uint32_t)(cursor_width)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(logical_rect->height)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), 0, M_PI_2);
+-
+-	/* Bottom-left */
+-	cairo_arc((cr), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(logical_rect->height)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), M_PI_2, M_PI);
+-
+-	cairo_close_path((cr));
+-
+-block_ready:;
+-}
+ 			cairo_fill_preserve(cr);
+ 			cairo_clip(cr);
+ 			cairo_translate(cr, -cursor_x, 0);
+@@ -194,25 +213,7 @@ static void render_input(
+ 			break;
+ 		case CURSOR_STYLE_UNDERSCORE:
+ 			cairo_translate(cr, 0, cursor_theme->underline_depth);
++			rounded_rectangle(cr, cursor_width, cursor_theme->thickness, cursor_theme->corner_radius);
+-			{
+-	cairo_new_path((cr));
+-
+-	/* Top-left */
+-	cairo_arc((cr), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), -M_PI, -M_PI_2);
+-
+-	/* Top-right */
+-	cairo_arc((cr), ((uint32_t)(cursor_width)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), -M_PI_2, 0);
+-
+-	/* Bottom-right */
+-	cairo_arc((cr), ((uint32_t)(cursor_width)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->thickness)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), 0, M_PI_2);
+-
+-	/* Bottom-left */
+-	cairo_arc((cr), ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->thickness)) - ((uint32_t)(cursor_theme->corner_radius)), ((uint32_t)(cursor_theme->corner_radius)), M_PI_2, M_PI);
+-
+-	cairo_close_path((cr));
+-
+-underline_ready:;
+-}
+ 			cairo_fill(cr);
+ 			break;
+ 	}
+@@ -322,45 +323,7 @@ void entry_backend_pango_update(struct entry *entry)
+ 	/* Render the prompt */
+ 	PangoRectangle ink_rect;
+ 	PangoRectangle logical_rect;
++	render_text_themed(cr, entry, entry->prompt_text, &entry->prompt_theme, &ink_rect, &logical_rect);
+-	{
+-	const char *text = entry->prompt_text;
+-	const struct text_theme *paint = &entry->prompt_theme;
+-	struct color foreground = paint->foreground_color;
+-	cairo_set_source_rgba(cr, foreground.r, foreground.g, foreground.b, foreground.a);
+-	pango_layout_set_text(layout, text, -1);
+-	pango_cairo_update_layout(cr, layout);
+-	pango_cairo_show_layout(cr, layout);
+-	pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
+-	if (paint->background_color.a != 0) {
+-		cairo_matrix_t matrix;
+-		cairo_get_matrix(cr, &matrix);
+-		int32_t base_x = matrix.x0 - entry->clip_x + ink_rect.x;
+-		int32_t base_y = matrix.y0 - entry->clip_y;
+-		double left = paint->padding.left < 0 ? base_x : paint->padding.left;
+-		double right = paint->padding.right < 0
+-			? entry->clip_width - ink_rect.width - base_x : paint->padding.right;
+-		double top = paint->padding.top < 0 ? base_y : paint->padding.top;
+-		double bottom = paint->padding.bottom < 0
+-			? entry->clip_height - logical_rect.height - base_y : paint->padding.bottom;
+-		uint32_t width = ceil(ink_rect.width + left + right);
+-		uint32_t height = ceil(logical_rect.height + top + bottom);
+-		uint32_t radius = paint->background_corner_radius;
+-		cairo_save(cr);
+-		struct color background = paint->background_color;
+-		cairo_set_source_rgba(cr, background.r, background.g, background.b, background.a);
+-		cairo_translate(cr, -left + ink_rect.x, -top);
+-		cairo_new_path(cr);
+-		cairo_arc(cr, radius, radius, radius, -M_PI, -M_PI_2);
+-		cairo_arc(cr, width - radius, radius, radius, -M_PI_2, 0);
+-		cairo_arc(cr, width - radius, height - radius, radius, 0, M_PI_2);
+-		cairo_arc(cr, radius, height - radius, radius, M_PI_2, M_PI);
+-		cairo_close_path(cr);
+-		cairo_fill(cr);
+-		cairo_restore(cr);
+-		cairo_set_source_rgba(cr, foreground.r, foreground.g, foreground.b, foreground.a);
+-		pango_cairo_show_layout(cr, layout);
+-	}
+-}
+ 
+ 	cairo_translate(cr, logical_rect.width + logical_rect.x, 0);
+ 	cairo_translate(cr, entry->prompt_padding, 0);
+@@ -462,66 +425,31 @@ void entry_backend_pango_update(struct entry *entry)
+ 				theme = &entry->default_result_theme;;
+ 			}
+ 
++			if (entry->num_results > 0) {
++				render_text_themed(cr, entry, str, theme, &ink_rect, &logical_rect);
++			} else if (!entry->horizontal) {
++				if (size_overflows(entry, 0, logical_rect.height)) {
++					entry->num_results_drawn = i;
++					break;
++				} else {
++					render_text_themed(cr, entry, str, theme, &ink_rect, &logical_rect);
++				}
++			} else {
+-			bool buffered = entry->num_results == 0 && entry->horizontal;
+-			if (entry->num_results == 0 && !entry->horizontal
+-					&& size_overflows(entry, 0, logical_rect.height)) {
+-				entry->num_results_drawn = i;
+-				break;
+-			}
+-			if (buffered) {
+ 				cairo_push_group(cr);
++				render_text_themed(cr, entry, str, theme, &ink_rect, &logical_rect);
++
+-			}
+-{
+-	const char *text = str;
+-	const struct text_theme *paint = theme;
+-	struct color foreground = paint->foreground_color;
+-	cairo_set_source_rgba(cr, foreground.r, foreground.g, foreground.b, foreground.a);
+-	pango_layout_set_text(layout, text, -1);
+-	pango_cairo_update_layout(cr, layout);
+-	pango_cairo_show_layout(cr, layout);
+-	pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
+-	if (paint->background_color.a != 0) {
+-		cairo_matrix_t matrix;
+-		cairo_get_matrix(cr, &matrix);
+-		int32_t base_x = matrix.x0 - entry->clip_x + ink_rect.x;
+-		int32_t base_y = matrix.y0 - entry->clip_y;
+-		double left = paint->padding.left < 0 ? base_x : paint->padding.left;
+-		double right = paint->padding.right < 0
+-			? entry->clip_width - ink_rect.width - base_x : paint->padding.right;
+-		double top = paint->padding.top < 0 ? base_y : paint->padding.top;
+-		double bottom = paint->padding.bottom < 0
+-			? entry->clip_height - logical_rect.height - base_y : paint->padding.bottom;
+-		uint32_t width = ceil(ink_rect.width + left + right);
+-		uint32_t height = ceil(logical_rect.height + top + bottom);
+-		uint32_t radius = paint->background_corner_radius;
+-		cairo_save(cr);
+-		struct color background = paint->background_color;
+-		cairo_set_source_rgba(cr, background.r, background.g, background.b, background.a);
+-		cairo_translate(cr, -left + ink_rect.x, -top);
+-		cairo_new_path(cr);
+-		cairo_arc(cr, radius, radius, radius, -M_PI, -M_PI_2);
+-		cairo_arc(cr, width - radius, radius, radius, -M_PI_2, 0);
+-		cairo_arc(cr, width - radius, height - radius, radius, 0, M_PI_2);
+-		cairo_arc(cr, radius, height - radius, radius, M_PI_2, M_PI);
+-		cairo_close_path(cr);
+-		cairo_fill(cr);
+-		cairo_restore(cr);
+-		cairo_set_source_rgba(cr, foreground.r, foreground.g, foreground.b, foreground.a);
+-		pango_cairo_show_layout(cr, layout);
+-	}
+-}
+-			if (buffered) {
+ 				cairo_pattern_t *group = cairo_pop_group(cr);
+ 				if (size_overflows(entry, logical_rect.width, 0)) {
+ 					entry->num_results_drawn = i;
+ 					cairo_pattern_destroy(group);
+ 					break;
++				} else {
++					cairo_save(cr);
++					cairo_set_source(cr, group);
++					cairo_paint(cr);
++					cairo_restore(cr);
++					cairo_pattern_destroy(group);
+ 				}
+-				cairo_save(cr);
+-				cairo_set_source(cr, group);
+-				cairo_paint(cr);
+-				cairo_restore(cr);
+-				cairo_pattern_destroy(group);
+ 			}
+ 		} else {
+ 			ssize_t prematch_len = -1;
+diff --git a/src/history.c b/src/history.c
+index 99f396e..3bd76fa 100644
+--- a/src/history.c
++++ b/src/history.c
+@@ -20,152 +20,27 @@ static const char *drun_histfile_basename = "tofi-drun-history";
+ [[nodiscard("memory leaked")]]
+ static struct history history_create(void);
+ 
++static char *get_histfile_path(bool drun) {
+-
+-struct history history_load(const char *path)
+-{
+-	struct history vec;
+-	{
+-
+-	struct history initial = {
+-		.count = 0,
+-		.size = 16,
+-		.buf = xcalloc(16, sizeof(struct program))
+-	};
+-	vec = (initial); goto buffer_ready;
+-
+-buffer_ready:;
+-}
+-
+-	FILE *histfile = fopen(path, "rb");
+-
+-	if (histfile == NULL) {
+-		return vec;
+-	}
+-
+-	errno = 0;
+-	if (fseek(histfile, 0, SEEK_END) != 0) {
+-		log_error("Error seeking in history file: %s.\n", strerror(errno));
+-		fclose(histfile);
+-		return vec;
+-	}
+-
+-	errno = 0;
+-	size_t len = ftell(histfile);
+-	if (len > MAX_HISTFILE_SIZE) {
+-		log_error("History file too big (> %d MiB)! Are you sure it's a file?\n", MAX_HISTFILE_SIZE / 1024 / 1024);
+-		fclose(histfile);
+-		return vec;
+-	}
+-
+-	errno = 0;
+-	if (fseek(histfile, 0, SEEK_SET) != 0) {
+-		log_error("Error seeking in history file: %s.\n", strerror(errno));
+-		fclose(histfile);
+-		return vec;
+-	}
+-
+-	errno = 0;
+-	char *buf = xmalloc(len + 1);
+-	if (fread(buf, 1, len, histfile) != len) {
+-		log_error("Error reading history file: %s.\n", strerror(errno));
+-		fclose(histfile);
+-		return vec;
+-	}
+-	fclose(histfile);
+-	buf[len] = '\0';
+-
+-	char *saveptr = NULL;
+-	char *tok = strtok_r(buf, " ", &saveptr);
+-	while (tok != NULL) {
+-		size_t run_count = strtoull(tok, NULL, 10);
+-		tok = strtok_r(NULL, "\n", &saveptr);
+-		if (tok == NULL) {
+-			break;
+-		}
+-		{
+-			size_t found = vec.count;
+-			for (size_t i = 0; i < vec.count; i++) {
+-				if (!strcmp(vec.buf[i].name, tok)) {
+-					found = i;
+-					break;
+-				}
+-			}
+-			if (found == vec.count) {
+-				if (vec.count == vec.size) {
+-					vec.size *= 2;
+-					vec.buf = xrealloc(vec.buf, vec.size * sizeof(*vec.buf));
+-				}
+-				vec.buf[vec.count].name = xstrdup(tok);
+-				vec.buf[vec.count].run_count = 1;
+-				vec.count++;
+-			} else {
+-				size_t count = ++vec.buf[found].run_count;
+-				if (found == 0 || count > vec.buf[found - 1].run_count) {
+-					size_t destination = found;
+-					while (destination > 0 && count > vec.buf[destination - 1].run_count) {
+-						destination--;
+-					}
+-					struct program previous = vec.buf[found];
+-					memmove(&vec.buf[destination + 1], &vec.buf[destination],
+-							(found - destination) * sizeof(*vec.buf));
+-					vec.buf[destination] = previous;
+-				}
+-			}
+-		}
+-		vec.buf[vec.count - 1].run_count = run_count;
+-		tok = strtok_r(NULL, " ", &saveptr);
+-	}
+-
+-	free(buf);
+-	return vec;
+-}
+-
+-void history_save(const struct history *history, const char *path)
+-{
+-	/* Create the path if necessary. */
+-	if (!mkdirp(path)) {
+-		return;
+-	}
+-
+-	/* Use open rather than fopen to ensure the proper permissions. */
+-	int histfd = open(path, O_WRONLY | O_CREAT, 0600);
+-	FILE *histfile = fdopen(histfd, "wb");
+-	if (histfile == NULL) {
+-		return;
+-	}
+-
+-	for (size_t i = 0; i < history->count; i++) {
+-		fprintf(histfile, "%zu %s\n", history->buf[i].run_count, history->buf[i].name);
+-	}
+-
+-	fclose(histfile);
+-}
+-
+-struct history history_load_default_file(bool drun)
+-{
+-	char *histfile_name;
+-	{
+-
+ 	const char *basename;
+ 	if (drun) {
+ 		basename = drun_histfile_basename;
+ 	} else {
+ 		basename = histfile_basename;
+ 	}
++	char *histfile_name = NULL;
+-	char *resolved_name = NULL;
+ 	const char *state_path = getenv("XDG_STATE_HOME");
+ 	if (state_path == NULL) {
+ 		const char *home = getenv("HOME");
+ 		if (home == NULL) {
+ 			log_error("Couldn't retrieve HOME from environment.\n");
++			return NULL;
+-			histfile_name = (NULL); goto load_path_ready;
+ 		}
+ 		size_t len = strlen(home) + 1
+ 			+ strlen(default_state_dir) + 1
+ 			+ strlen(basename) + 1;
++		histfile_name = xmalloc(len);
+-		resolved_name = xmalloc(len);
+ 		snprintf(
++			histfile_name,
+-			resolved_name,
+ 			len,
+ 			"%s/%s/%s",
+ 			home,
+@@ -174,50 +49,32 @@ static char *get_histfile_path(bool drun) {
+ 	} else {
+ 		size_t len = strlen(state_path) + 1
+ 			+ strlen(basename) + 1;
++		histfile_name = xmalloc(len);
+-		resolved_name = xmalloc(len);
+ 		snprintf(
++			histfile_name,
+-			resolved_name,
+ 			len,
+ 			"%s/%s",
+ 			state_path,
+ 			basename);
+ 	}
++	return histfile_name;
+-	histfile_name = (resolved_name); goto load_path_ready;
+-
+-load_path_ready:;
+ }
+-	if (histfile_name == NULL) {
+-		return history_create();
+-	}
+ 
++struct history history_load(const char *path)
++{
++	struct history vec = history_create();
+-	struct history loaded;
+-	{
+-	const char *path = histfile_name;
+-
+-	struct history vec;
+-	{
+-
+-	struct history initial = {
+-		.count = 0,
+-		.size = 16,
+-		.buf = xcalloc(16, sizeof(struct program))
+-	};
+-	vec = (initial); goto storage_ready;
+-
+-storage_ready:;
+-}
+ 
+ 	FILE *histfile = fopen(path, "rb");
+ 
+ 	if (histfile == NULL) {
++		return vec;
+-		loaded = vec; goto read_done;
+ 	}
+ 
+ 	errno = 0;
+ 	if (fseek(histfile, 0, SEEK_END) != 0) {
+ 		log_error("Error seeking in history file: %s.\n", strerror(errno));
+ 		fclose(histfile);
++		return vec;
+-		loaded = vec; goto read_done;
+ 	}
+ 
+ 	errno = 0;
+@@ -225,14 +82,14 @@ struct history history_load(const char *path)
+ 	if (len > MAX_HISTFILE_SIZE) {
+ 		log_error("History file too big (> %d MiB)! Are you sure it's a file?\n", MAX_HISTFILE_SIZE / 1024 / 1024);
+ 		fclose(histfile);
++		return vec;
+-		loaded = vec; goto read_done;
+ 	}
+ 
+ 	errno = 0;
+ 	if (fseek(histfile, 0, SEEK_SET) != 0) {
+ 		log_error("Error seeking in history file: %s.\n", strerror(errno));
+ 		fclose(histfile);
++		return vec;
+-		loaded = vec; goto read_done;
+ 	}
+ 
+ 	errno = 0;
+@@ -240,7 +97,7 @@ struct history history_load(const char *path)
+ 	if (fread(buf, 1, len, histfile) != len) {
+ 		log_error("Error reading history file: %s.\n", strerror(errno));
+ 		fclose(histfile);
++		return vec;
+-		loaded = vec; goto read_done;
+ 	}
+ 	fclose(histfile);
+ 	buf[len] = '\0';
+@@ -253,111 +110,27 @@ struct history history_load(const char *path)
+ 		if (tok == NULL) {
+ 			break;
+ 		}
++		history_add(&vec, tok);
+-		{
+-			size_t found = vec.count;
+-			for (size_t i = 0; i < vec.count; i++) {
+-				if (!strcmp(vec.buf[i].name, tok)) {
+-					found = i;
+-					break;
+-				}
+-			}
+-			if (found == vec.count) {
+-				if (vec.count == vec.size) {
+-					vec.size *= 2;
+-					vec.buf = xrealloc(vec.buf, vec.size * sizeof(*vec.buf));
+-				}
+-				vec.buf[vec.count].name = xstrdup(tok);
+-				vec.buf[vec.count].run_count = 1;
+-				vec.count++;
+-			} else {
+-				size_t count = ++vec.buf[found].run_count;
+-				if (found == 0 || count > vec.buf[found - 1].run_count) {
+-					size_t destination = found;
+-					while (destination > 0 && count > vec.buf[destination - 1].run_count) {
+-						destination--;
+-					}
+-					struct program previous = vec.buf[found];
+-					memmove(&vec.buf[destination + 1], &vec.buf[destination],
+-							(found - destination) * sizeof(*vec.buf));
+-					vec.buf[destination] = previous;
+-				}
+-			}
+-		}
+ 		vec.buf[vec.count - 1].run_count = run_count;
+ 		tok = strtok_r(NULL, " ", &saveptr);
+ 	}
+ 
+ 	free(buf);
++	return vec;
+-	loaded = vec; goto read_done;
+-
+-read_done:;
+ }
+-	free(histfile_name);
+ 
++void history_save(const struct history *history, const char *path)
+-	return loaded;
+-}
+-
+-void history_save_default_file(const struct history *history, bool drun)
+ {
+-	char *histfile_name;
+-	{
+-
+-	const char *basename;
+-	if (drun) {
+-		basename = drun_histfile_basename;
+-	} else {
+-		basename = histfile_basename;
+-	}
+-	char *resolved_name = NULL;
+-	const char *state_path = getenv("XDG_STATE_HOME");
+-	if (state_path == NULL) {
+-		const char *home = getenv("HOME");
+-		if (home == NULL) {
+-			log_error("Couldn't retrieve HOME from environment.\n");
+-			histfile_name = (NULL); goto save_path_ready;
+-		}
+-		size_t len = strlen(home) + 1
+-			+ strlen(default_state_dir) + 1
+-			+ strlen(basename) + 1;
+-		resolved_name = xmalloc(len);
+-		snprintf(
+-			resolved_name,
+-			len,
+-			"%s/%s/%s",
+-			home,
+-			default_state_dir,
+-			basename);
+-	} else {
+-		size_t len = strlen(state_path) + 1
+-			+ strlen(basename) + 1;
+-		resolved_name = xmalloc(len);
+-		snprintf(
+-			resolved_name,
+-			len,
+-			"%s/%s",
+-			state_path,
+-			basename);
+-	}
+-	histfile_name = (resolved_name); goto save_path_ready;
+-
+-save_path_ready:;
+-}
+-	if (histfile_name == NULL) {
+-		return;
+-	}
+-	{
+-	const char *path = histfile_name;
+-
+ 	/* Create the path if necessary. */
+ 	if (!mkdirp(path)) {
++		return;
+-		goto write_done;
+ 	}
+ 
+ 	/* Use open rather than fopen to ensure the proper permissions. */
+ 	int histfd = open(path, O_WRONLY | O_CREAT, 0600);
+ 	FILE *histfile = fdopen(histfd, "wb");
+ 	if (histfile == NULL) {
++		return;
+-		goto write_done;
+ 	}
+ 
+ 	for (size_t i = 0; i < history->count; i++) {
+@@ -365,9 +138,28 @@ void history_save(const struct history *history, const char *path)
+ 	}
+ 
+ 	fclose(histfile);
++}
++
++struct history history_load_default_file(bool drun)
++{
++	char *histfile_name = get_histfile_path(drun);
++	if (histfile_name == NULL) {
++		return history_create();
++	}
++
++	struct history vec = history_load(histfile_name);
++	free(histfile_name);
+ 
++	return vec;
+-write_done:;
+ }
++
++void history_save_default_file(const struct history *history, bool drun)
++{
++	char *histfile_name = get_histfile_path(drun);
++	if (histfile_name == NULL) {
++		return;
++	}
++	history_save(history, histfile_name);
+ 	free(histfile_name);
+ }
+ 
+diff --git a/src/input.c b/src/input.c
+index d5216d0..8b8f0a7 100644
+--- a/src/input.c
++++ b/src/input.c
+@@ -10,6 +10,18 @@
+ 
+ 
+ static uint32_t keysym_to_key(xkb_keysym_t sym);
++static void add_character(struct tofi *tofi, xkb_keycode_t keycode);
++static void delete_character(struct tofi *tofi);
++static void delete_word(struct tofi *tofi);
++static void clear_input(struct tofi *tofi);
++static void paste(struct tofi *tofi);
++static void select_previous_result(struct tofi *tofi);
++static void select_next_result(struct tofi *tofi);
++static void select_previous_page(struct tofi *tofi);
++static void select_next_page(struct tofi *tofi);
++static void next_cursor_or_result(struct tofi *tofi);
++static void previous_cursor_or_result(struct tofi *tofi);
++static void reset_selection(struct tofi *tofi);
+ 
+ void input_handle_keypress(struct tofi *tofi, xkb_keycode_t keycode)
+ {
+@@ -46,174 +58,50 @@ void input_handle_keypress(struct tofi *tofi, xkb_keycode_t keycode)
+ 	 * Alt does not affect which character is selected, so we have to check
+ 	 * for it explicitly.
+ 	 */
+-
+-	struct entry *entry = &tofi->window.entry;
+-	bool refresh = false;
+-	bool append = false;
+-	bool advance_cursor = false;
+-	int navigation = 0;
+ 	if (utf32_isprint(ch) && !ctrl && !alt) {
++		add_character(tofi, keycode);
+-		if (entry->input_utf32_length < N_ELEM(entry->input_utf32) - 1) {
+-			char buf[5];
+-			int len = xkb_state_key_get_utf8(tofi->xkb_state, keycode, buf, sizeof(buf));
+-			append = entry->cursor_position == entry->input_utf32_length;
+-			if (append) {
+-				memcpy(&entry->input_utf8[entry->input_utf8_length], buf, N_ELEM(buf));
+-				entry->input_utf8_length += len;
+-			} else {
+-				for (size_t i = entry->input_utf32_length; i > entry->cursor_position; i--) {
+-					entry->input_utf32[i] = entry->input_utf32[i - 1];
+-				}
+-			}
+-			entry->input_utf32[entry->cursor_position] = utf8_to_utf32(buf);
+-			entry->input_utf32_length++;
+-			entry->input_utf32[entry->input_utf32_length] = U'\0';
+-			refresh = true;
+-			advance_cursor = true;
+-		}
+ 	} else if ((key == KEY_BACKSPACE || key == KEY_W) && ctrl) {
++		delete_word(tofi);
++	} else if (key == KEY_BACKSPACE
++			|| (key == KEY_H && ctrl)) {
++		delete_character(tofi);
+-		if (entry->cursor_position > 0) {
+-			uint32_t new_cursor_pos = entry->cursor_position;
+-			while (new_cursor_pos > 0 && utf32_isspace(entry->input_utf32[new_cursor_pos - 1])) {
+-				new_cursor_pos--;
+-			}
+-			while (new_cursor_pos > 0 && !utf32_isspace(entry->input_utf32[new_cursor_pos - 1])) {
+-				new_cursor_pos--;
+-			}
+-			uint32_t new_length = entry->input_utf32_length - (entry->cursor_position - new_cursor_pos);
+-			for (size_t i = 0; i < new_length; i++) {
+-				entry->input_utf32[new_cursor_pos + i] = entry->input_utf32[entry->cursor_position + i];
+-			}
+-			entry->cursor_position = new_cursor_pos;
+-			entry->input_utf32_length = new_length;
+-			entry->input_utf32[new_length] = U'\0';
+-			refresh = true;
+-		}
+-	} else if (key == KEY_BACKSPACE || (key == KEY_H && ctrl)) {
+-		if (entry->input_utf32_length > 0 && entry->cursor_position > 0) {
+-			for (size_t i = entry->cursor_position - 1; i < entry->input_utf32_length - 1; i++) {
+-				entry->input_utf32[i] = entry->input_utf32[i + 1];
+-			}
+-			entry->cursor_position--;
+-			entry->input_utf32_length--;
+-			entry->input_utf32[entry->input_utf32_length] = U'\0';
+-			refresh = true;
+-		}
+ 	} else if (key == KEY_U && ctrl) {
++		clear_input(tofi);
+-		entry->cursor_position = 0;
+-		entry->input_utf32_length = 0;
+-		entry->input_utf32[0] = U'\0';
+-		refresh = true;
+ 	} else if (key == KEY_V && ctrl) {
++		paste(tofi);
+-		if (tofi->clipboard.wl_data_offer != NULL && tofi->clipboard.mime_type != NULL) {
+-			errno = 0;
+-			int fildes[2];
+-			if (pipe2(fildes, O_CLOEXEC | O_NONBLOCK) == -1) {
+-				log_error("Failed to open pipe for clipboard: %s\n", strerror(errno));
+-			} else {
+-				wl_data_offer_receive(tofi->clipboard.wl_data_offer, tofi->clipboard.mime_type, fildes[1]);
+-				close(fildes[1]);
+-				tofi->clipboard.fd = fildes[0];
+-			}
+-		}
+ 	} else if (key == KEY_LEFT) {
++		previous_cursor_or_result(tofi);
+-		if (entry->cursor_theme.show && entry->selection == 0 && entry->cursor_position > 0) {
+-			entry->cursor_position--;
+-		} else {
+-			navigation = -1;
+-		}
+ 	} else if (key == KEY_RIGHT) {
++		next_cursor_or_result(tofi);
++	} else if (key == KEY_UP
++			|| key == KEY_LEFT
++			|| (key == KEY_TAB && shift)
+-		if (entry->cursor_theme.show && entry->cursor_position < entry->input_utf32_length) {
+-			entry->cursor_position++;
+-		} else {
+-			navigation = 1;
+-		}
+-	} else if (key == KEY_UP || key == KEY_LEFT || (key == KEY_TAB && shift)
+ 			|| (key == KEY_H && alt)
+ 			|| ((key == KEY_K || key == KEY_P || key == KEY_B) && (ctrl || alt))) {
++		select_previous_result(tofi);
++	} else if (key == KEY_DOWN
++			|| key == KEY_RIGHT
++			|| key == KEY_TAB
+-		navigation = -1;
+-	} else if (key == KEY_DOWN || key == KEY_RIGHT || key == KEY_TAB
+ 			|| (key == KEY_L && alt)
+ 			|| ((key == KEY_J || key == KEY_N || key == KEY_F) && (ctrl || alt))) {
++		select_next_result(tofi);
+-		navigation = 1;
+ 	} else if (key == KEY_HOME) {
++		reset_selection(tofi);
++	} else if (key == KEY_PAGEUP) {
++		select_previous_page(tofi);
++	} else if (key == KEY_PAGEDOWN) {
++		select_next_page(tofi);
++	} else if (key == KEY_ESC
++			|| ((key == KEY_C || key == KEY_LEFTBRACE || key == KEY_G) && ctrl)) {
+-		entry->selection = 0;
+-		entry->first_result = 0;
+-	} else if (key == KEY_PAGEUP || key == KEY_PAGEDOWN) {
+-		if (key == KEY_PAGEUP) {
+-			if (entry->first_result >= entry->last_num_results_drawn) {
+-				entry->first_result -= entry->last_num_results_drawn;
+-			} else {
+-				entry->first_result = 0;
+-			}
+-		} else {
+-			entry->first_result += entry->num_results_drawn;
+-			if (entry->first_result >= entry->results.count) {
+-				entry->first_result = 0;
+-			}
+-		}
+-		entry->selection = 0;
+-		entry->last_num_results_drawn = entry->num_results_drawn;
+-	} else if (key == KEY_ESC || ((key == KEY_C || key == KEY_LEFTBRACE || key == KEY_G) && ctrl)) {
+ 		tofi->closed = true;
+ 		return;
++	} else if (key == KEY_ENTER
++			|| key == KEY_KPENTER
++			|| (key == KEY_M && ctrl)) {
+-	} else if (key == KEY_ENTER || key == KEY_KPENTER || (key == KEY_M && ctrl)) {
+ 		tofi->submit = true;
+ 		return;
+ 	}
+ 
+-	if (refresh) {
+-		if (!append) {
+-			size_t bytes_written = 0;
+-			for (size_t i = 0; i < entry->input_utf32_length; i++) {
+-				bytes_written += utf32_to_utf8(entry->input_utf32[i], &entry->input_utf8[bytes_written]);
+-			}
+-			entry->input_utf8[bytes_written] = '\0';
+-			entry->input_utf8_length = bytes_written;
+-		}
+-		struct string_ref_vec prior = entry->results;
+-		if (!append) {
+-			free(prior.buf);
+-		}
+-		if (entry->mode == TOFI_MODE_DRUN) {
+-			entry->results = desktop_vec_filter(&entry->apps, entry->input_utf8, tofi->matching_algorithm);
+-		} else {
+-			const struct string_ref_vec *source = append ? &prior : &entry->commands;
+-			entry->results = string_ref_vec_filter(source, entry->input_utf8, tofi->matching_algorithm);
+-		}
+-		if (append) {
+-			free(prior.buf);
+-		}
+-		entry->selection = 0;
+-		entry->first_result = 0;
+-		if (advance_cursor) {
+-			entry->cursor_position++;
+-		}
+-	}
+-	if (navigation != 0) {
+-		uint32_t nsel = MAX(MIN(entry->num_results_drawn, entry->results.count), 1);
+-		if (navigation > 0) {
+-			entry->selection++;
+-			if (entry->selection >= nsel) {
+-				entry->selection -= nsel;
+-				if (entry->results.count > 0) {
+-					entry->first_result = (entry->first_result + nsel) % entry->results.count;
+-				} else {
+-					entry->first_result = 0;
+-				}
+-				entry->last_num_results_drawn = entry->num_results_drawn;
+-			}
+-		} else if (entry->selection > 0) {
+-			entry->selection--;
+-		} else if (entry->first_result > nsel) {
+-			entry->first_result -= entry->last_num_results_drawn;
+-			entry->selection = entry->last_num_results_drawn - 1;
+-		} else if (entry->first_result > 0) {
+-			entry->selection = entry->first_result - 1;
+-			entry->first_result = 0;
+-		}
+-	}
+-
+ 	if (tofi->auto_accept_single && tofi->window.entry.results.count == 1) {
+ 		tofi->submit = true;
+ 	}
+@@ -278,6 +166,61 @@ static uint32_t keysym_to_key(xkb_keysym_t sym)
+ 	return (uint32_t)-1;
+ }
+ 
++void reset_selection(struct tofi *tofi)
++{
++	struct entry *entry = &tofi->window.entry;
++	entry->selection = 0;
++	entry->first_result = 0;
++}
++
++void add_character(struct tofi *tofi, xkb_keycode_t keycode)
++{
++	struct entry *entry = &tofi->window.entry;
++
++	if (entry->input_utf32_length >= N_ELEM(entry->input_utf32) - 1) {
++		/* No more room for input */
++		return;
++	}
++
++	char buf[5]; /* 4 UTF-8 bytes plus null terminator. */
++	int len = xkb_state_key_get_utf8(
++			tofi->xkb_state,
++			keycode,
++			buf,
++			sizeof(buf));
++	if (entry->cursor_position == entry->input_utf32_length) {
++		entry->input_utf32[entry->input_utf32_length] = utf8_to_utf32(buf);
++		entry->input_utf32_length++;
++		entry->input_utf32[entry->input_utf32_length] = U'\0';
++		memcpy(&entry->input_utf8[entry->input_utf8_length],
++				buf,
++				N_ELEM(buf));
++		entry->input_utf8_length += len;
++
++		if (entry->mode == TOFI_MODE_DRUN) {
++			struct string_ref_vec results = desktop_vec_filter(&entry->apps, entry->input_utf8, tofi->matching_algorithm);
++			string_ref_vec_destroy(&entry->results);
++			entry->results = results;
++		} else {
++			struct string_ref_vec tmp = entry->results;
++			entry->results = string_ref_vec_filter(&entry->results, entry->input_utf8, tofi->matching_algorithm);
++			string_ref_vec_destroy(&tmp);
++		}
++
++		reset_selection(tofi);
++	} else {
++		for (size_t i = entry->input_utf32_length; i > entry->cursor_position; i--) {
++			entry->input_utf32[i] = entry->input_utf32[i - 1];
++		}
++		entry->input_utf32[entry->cursor_position] = utf8_to_utf32(buf);
++		entry->input_utf32_length++;
++		entry->input_utf32[entry->input_utf32_length] = U'\0';
++
++		input_refresh_results(tofi);
++	}
++
++	entry->cursor_position++;
++}
+ 
+ void input_refresh_results(struct tofi *tofi)
+ {
+@@ -298,12 +241,182 @@ void input_refresh_results(struct tofi *tofi)
+ 		entry->results = string_ref_vec_filter(&entry->commands, entry->input_utf8, tofi->matching_algorithm);
+ 	}
+ 
++	reset_selection(tofi);
++}
++
++void delete_character(struct tofi *tofi)
++{
++	struct entry *entry = &tofi->window.entry;
++
++	if (entry->input_utf32_length == 0) {
++		/* No input to delete. */
++		return;
++	}
++
++	if (entry->cursor_position == 0) {
++		return;
++	} else if (entry->cursor_position == entry->input_utf32_length) {
++		entry->cursor_position--;
++		entry->input_utf32_length--;
++		entry->input_utf32[entry->input_utf32_length] = U'\0';
++	} else {
++		for (size_t i = entry->cursor_position - 1; i < entry->input_utf32_length - 1; i++) {
++			entry->input_utf32[i] = entry->input_utf32[i + 1];
++		}
++		entry->cursor_position--;
++		entry->input_utf32_length--;
++		entry->input_utf32[entry->input_utf32_length] = U'\0';
++	}
++
++	input_refresh_results(tofi);
++}
++
++void delete_word(struct tofi *tofi)
++{
++	struct entry *entry = &tofi->window.entry;
++
++	if (entry->cursor_position == 0) {
++		/* No input to delete. */
++		return;
++	}
++
++	uint32_t new_cursor_pos = entry->cursor_position;
++	while (new_cursor_pos > 0 && utf32_isspace(entry->input_utf32[new_cursor_pos - 1])) {
++		new_cursor_pos--;
++	}
++	while (new_cursor_pos > 0 && !utf32_isspace(entry->input_utf32[new_cursor_pos - 1])) {
++		new_cursor_pos--;
++	}
++	uint32_t new_length = entry->input_utf32_length - (entry->cursor_position - new_cursor_pos);
++	for (size_t i = 0; i < new_length; i++) {
++		entry->input_utf32[new_cursor_pos + i] = entry->input_utf32[entry->cursor_position + i];
++	}
++	entry->input_utf32_length = new_length;
++	entry->input_utf32[entry->input_utf32_length] = U'\0';
++
++	entry->cursor_position = new_cursor_pos;
++	input_refresh_results(tofi);
++}
++
++void clear_input(struct tofi *tofi)
++{
++	struct entry *entry = &tofi->window.entry;
++
++	entry->cursor_position = 0;
++	entry->input_utf32_length = 0;
++	entry->input_utf32[0] = U'\0';
++
++	input_refresh_results(tofi);
++}
++
++void paste(struct tofi *tofi)
++{
++	if (tofi->clipboard.wl_data_offer == NULL || tofi->clipboard.mime_type == NULL) {
++		return;
++	}
++
++	/*
++	 * Create a pipe, and give the write end to the compositor to give to
++	 * the clipboard manager.
++	 */
++	errno = 0;
++	int fildes[2];
++	if (pipe2(fildes, O_CLOEXEC | O_NONBLOCK) == -1) {
++		log_error("Failed to open pipe for clipboard: %s\n", strerror(errno));
++		return;
++	}
++	wl_data_offer_receive(tofi->clipboard.wl_data_offer, tofi->clipboard.mime_type, fildes[1]);
++	close(fildes[1]);
++
++	/* Keep the read end for reading in the main loop. */
++	tofi->clipboard.fd = fildes[0];
++}
++
++void select_previous_result(struct tofi *tofi)
++{
++	struct entry *entry = &tofi->window.entry;
++
++	if (entry->selection > 0) {
++		entry->selection--;
++		return;
++	}
++
++	uint32_t nsel = MAX(MIN(entry->num_results_drawn, entry->results.count), 1);
++
++	if (entry->first_result > nsel) {
++		entry->first_result -= entry->last_num_results_drawn;
++		entry->selection = entry->last_num_results_drawn - 1;
++	} else if (entry->first_result > 0) {
++		entry->selection = entry->first_result - 1;
++		entry->first_result = 0;
++	}
++}
++
++void select_next_result(struct tofi *tofi)
++{
++	struct entry *entry = &tofi->window.entry;
+-	{
+ 
++	uint32_t nsel = MAX(MIN(entry->num_results_drawn, entry->results.count), 1);
++
++	entry->selection++;
++	if (entry->selection >= nsel) {
++		entry->selection -= nsel;
++		if (entry->results.count > 0) {
++			entry->first_result += nsel;
++			entry->first_result %= entry->results.count;
++		} else {
++			entry->first_result = 0;
++		}
++		entry->last_num_results_drawn = entry->num_results_drawn;
++	}
++}
++
++void previous_cursor_or_result(struct tofi *tofi)
++{
++	struct entry *entry = &tofi->window.entry;
++
++	if (entry->cursor_theme.show
++			&& entry->selection == 0
++			&& entry->cursor_position > 0) {
++		entry->cursor_position--;
++	} else {
++		select_previous_result(tofi);
++	}
++}
++
++void next_cursor_or_result(struct tofi *tofi)
++{
++	struct entry *entry = &tofi->window.entry;
++
++	if (entry->cursor_theme.show
++			&& entry->cursor_position < entry->input_utf32_length) {
++		entry->cursor_position++;
++	} else {
++		select_next_result(tofi);
++	}
++}
++
++void select_previous_page(struct tofi *tofi)
++{
+ 	struct entry *entry = &tofi->window.entry;
++
++	if (entry->first_result >= entry->last_num_results_drawn) {
++		entry->first_result -= entry->last_num_results_drawn;
++	} else {
++		entry->first_result = 0;
++	}
+ 	entry->selection = 0;
++	entry->last_num_results_drawn = entry->num_results_drawn;
++}
++
++void select_next_page(struct tofi *tofi)
++{
++	struct entry *entry = &tofi->window.entry;
+-	entry->first_result = 0;
+ 
++	entry->first_result += entry->num_results_drawn;
++	if (entry->first_result >= entry->results.count) {
++		entry->first_result = 0;
++	}
++	entry->selection = 0;
++	entry->last_num_results_drawn = entry->num_results_drawn;
+-selection_ready:;
+-}
+ }
+diff --git a/src/matching.c b/src/matching.c
+index 5dd362c..b0d184f 100644
+--- a/src/matching.c
++++ b/src/matching.c
+@@ -23,6 +23,9 @@ static int32_t fuzzy_match_words(
+ 		const char *restrict patterns,
+ 		const char *restrict str);
+ 
++static int32_t fuzzy_match(
++		const char *restrict pattern,
++		const char *restrict str);
+ 
+ static int32_t fuzzy_match_recurse(
+ 		const char *restrict pattern,
+@@ -31,6 +34,10 @@ static int32_t fuzzy_match_recurse(
+ 		bool first_match_only,
+ 		bool first_char);
+ 
++static int32_t compute_score(
++		int32_t jump,
++		bool first_char,
++		const char *restrict match);
+ 
+ /*
+  * Select the appropriate algorithm, and return its score.
+@@ -116,17 +123,7 @@ int32_t fuzzy_match_words(const char *restrict patterns, const char *restrict st
+ 	char *tmp = utf8_normalize(patterns);
+ 	char *pattern = strtok_r(tmp, " ", &saveptr);
+ 	while (pattern != NULL) {
++		int32_t word_score = fuzzy_match(pattern, str);
+-		const size_t slen = utf8_strlen(str);
+-		const size_t plen = utf8_strlen(pattern);
+-		int32_t word_score;
+-		if (*pattern == '\0') {
+-			word_score = 0;
+-		} else if (slen < plen) {
+-			word_score = INT32_MIN;
+-		} else {
+-			word_score = fuzzy_match_recurse(pattern, str,
+-					-(int32_t)(slen - plen), slen > 100, true);
+-		}
+ 		if (word_score == INT32_MIN) {
+ 			score = INT32_MIN;
+ 			break;
+@@ -139,6 +136,56 @@ int32_t fuzzy_match_words(const char *restrict patterns, const char *restrict st
+ 	return score;
+ }
+ 
++/*
++ * Returns score if each character in pattern is found sequentially within str.
++ * Returns INT32_MIN otherwise.
++ */
++int32_t fuzzy_match(const char *restrict pattern, const char *restrict str)
++{
++	const int unmatched_letter_penalty = -1;
++	const size_t slen = utf8_strlen(str);
++	const size_t plen = utf8_strlen(pattern);
++	int32_t score = 0;
++
++	if (*pattern == '\0') {
++		return score;
++	}
++	if (slen < plen) {
++		return INT32_MIN;
++	}
++
++	/* We can already penalise any unused letters. */
++	score += unmatched_letter_penalty * (int32_t)(slen - plen);
++
++        /*
++         * If the string is more than 100 characters, just find the first fuzzy
++         * match rather than the best.
++         *
++         * This is required as the number of possible matches (for patterns and
++         * strings all consisting of one letter) scales something like:
++         *
++         * slen! / (plen! (slen - plen)!)  ~  slen^plen for plen << slen
++         *
++         * This quickly grinds everything to a halt. 100 is chosen fairly
++         * arbitrarily from the following logic:
++         *
++         * - e is the most common character in English, at around 13% of
++         *   letters. Depending on the context, let's say this be up to 20%.
++         * - 100 * 0.20 = 20 repeats of the same character.
++         * - In the worst case here, 20! / (10! 10!) ~200,000 possible matches,
++         *   which is "slow but not frozen" for my machine.
++         *
++         * In reality, this worst case shouldn't be hit, and finding the "best"
++         * fuzzy match in lines of text > 100 characters isn't really in scope
++         * for a dmenu clone.
++         */
++        bool first_match_only = slen > 100;
++
++	/* Perform the match. */
++	score = fuzzy_match_recurse(pattern, str, score, first_match_only, true);
++
++	return score;
++}
+ 
+ /*
+  * Recursively match the whole of pattern against str.
+@@ -162,7 +209,7 @@ int32_t fuzzy_match_recurse(
+ 	}
+ 
+ 	const char *match = str;
++	uint32_t search = utf8_to_utf32(pattern);
+-	uint32_t search = utf32_tolower(utf8_to_utf32(pattern));
+ 
+ 	int32_t best_score = INT32_MIN;
+ 
+@@ -170,44 +217,19 @@ int32_t fuzzy_match_recurse(
+ 	 * Find all occurrences of the next pattern character in str, and
+ 	 * recurse on them.
+ 	 */
++	while ((match = utf8_strcasechr(match, search)) != NULL) {
++		int32_t jump = 0;
++		for (const char *tmp = str; tmp != match; tmp = utf8_next_char(tmp)) {
+-	int32_t jump = 0;
+-	while (*match != '\0') {
+-		while (*match != '\0' && utf32_tolower(utf8_to_utf32(match)) != search) {
+-			match = utf8_next_char(match);
+ 			jump++;
+ 		}
+-		if (*match == '\0') {
+-			break;
+-		}
+-		int32_t letter_score = 0;
+-		const uint32_t cur = utf8_to_utf32(match);
+-		if (!first_char && jump == 0) {
+-			letter_score += 15;
+-		}
+-		if (!first_char || jump > 0) {
+-			const uint32_t prev = utf8_to_utf32(utf8_prev_char(match));
+-			if (utf32_isupper(cur) && utf32_islower(prev)) {
+-				letter_score += 30;
+-			}
+-			if (utf32_isalnum(cur) && !utf32_isalnum(prev)) {
+-				letter_score += 30;
+-			}
+-		}
+-		if (first_char && jump == 0) {
+-			letter_score += 15;
+-		}
+-		if (first_char) {
+-			letter_score += MAX(-5 * jump, -15);
+-		}
+ 		int32_t subscore = fuzzy_match_recurse(
+ 				utf8_next_char(pattern),
+ 				utf8_next_char(match),
++				compute_score(jump, first_char, match),
+-				letter_score,
+ 				first_match_only,
+ 				false);
+ 		best_score = MAX(best_score, subscore);
+ 		match = utf8_next_char(match);
+-		jump++;
+ 
+ 		if (first_match_only) {
+ 			break;
+@@ -221,3 +243,59 @@ int32_t fuzzy_match_recurse(
+ 		return score + best_score;
+ 	}
+ }
++
++/*
++ * Calculate the score for a single matching letter.
++ * The scoring system is taken from fts_fuzzy_match v0.2.0 by Forrest Smith,
++ * which is licensed to the public domain.
++ *
++ * The factors affecting score are:
++ *   - Bonuses:
++ *     - If there are multiple adjacent matches.
++ *     - If a match occurs after a separator character.
++ *     - If a match is uppercase, and the previous character is lowercase.
++ *
++ *   - Penalties:
++ *     - If there are letters before the first match.
++ *     - If there are superfluous characters in str (already accounted for).
++ */
++int32_t compute_score(int32_t jump, bool first_char, const char *restrict match)
++{
++	const int adjacency_bonus = 15;
++	const int separator_bonus = 30;
++	const int camel_bonus = 30;
++	const int first_letter_bonus = 15;
++
++	const int leading_letter_penalty = -5;
++	const int max_leading_letter_penalty = -15;
++
++	int32_t score = 0;
++
++	const uint32_t cur = utf8_to_utf32(match);
++
++	/* Apply bonuses. */
++	if (!first_char && jump == 0) {
++		score += adjacency_bonus;
++	}
++	if (!first_char || jump > 0) {
++		const uint32_t prev = utf8_to_utf32(utf8_prev_char(match));
++		if (utf32_isupper(cur) && utf32_islower(prev)) {
++			score += camel_bonus;
++		}
++		if (utf32_isalnum(cur) && !utf32_isalnum(prev)) {
++			score += separator_bonus;
++		}
++	}
++	if (first_char && jump == 0) {
++		/* Match at start of string gets separator bonus. */
++		score += first_letter_bonus;
++	}
++
++	/* Apply penalties. */
++	if (first_char) {
++		score += MAX(leading_letter_penalty * jump,
++				max_leading_letter_penalty);
++	}
++
++	return score;
++}
+diff --git a/src/string_vec.c b/src/string_vec.c
+index 48dd921..eb3e117 100644
+--- a/src/string_vec.c
++++ b/src/string_vec.c
+@@ -183,53 +183,32 @@ struct string_ref_vec string_ref_vec_filter(
+ 		const char *restrict substr,
+ 		enum matching_algorithm algorithm)
+ {
++	if (substr[0] == '\0') {
++		return string_ref_vec_copy(vec);
++	}
++	struct string_ref_vec filt = string_ref_vec_create();
+-	bool copy_all = substr[0] == '\0';
+-	struct string_ref_vec filt = {
+-		.count = 0,
+-		.size = copy_all ? vec->size : 128,
+-	};
+-	filt.buf = xcalloc(filt.size, sizeof(*filt.buf));
+ 	for (size_t i = 0; i < vec->count; i++) {
++		int32_t search_score;
++		search_score = match_words(algorithm, substr, vec->buf[i].string);
++		if (search_score != INT32_MIN) {
++			string_ref_vec_add(&filt, vec->buf[i].string);
++			filt.buf[filt.count - 1].search_score = search_score;
++			filt.buf[filt.count - 1].history_score = vec->buf[i].history_score;
+-		int32_t search_score = copy_all ? vec->buf[i].search_score
+-			: match_words(algorithm, substr, vec->buf[i].string);
+-		if (copy_all || search_score != INT32_MIN) {
+-			if (filt.count == filt.size) {
+-				filt.size *= 2;
+-				filt.buf = xrealloc(filt.buf, filt.size * sizeof(*filt.buf));
+-			}
+-			filt.buf[filt.count++] = (struct scored_string_ref) {
+-				.string = vec->buf[i].string,
+-				.search_score = search_score,
+-				.history_score = vec->buf[i].history_score,
+-			};
+ 		}
+ 	}
+ 	/* Sort the results by their search score. */
++	qsort(filt.buf, filt.count, sizeof(filt.buf[0]), cmpscorep);
+-	if (!copy_all) {
+-		qsort(filt.buf, filt.count, sizeof(filt.buf[0]), cmpscorep);
+-	}
+ 	return filt;
+ }
+ 
+ struct string_ref_vec string_ref_vec_from_buffer(char *buffer)
+ {
++	struct string_ref_vec vec = string_ref_vec_create();
+-	struct string_ref_vec vec = {
+-		.count = 0,
+-		.size = 128,
+-		.buf = xcalloc(128, sizeof(*vec.buf)),
+-	};
+ 
+ 	char *saveptr = NULL;
+ 	char *line = strtok_r(buffer, "\n", &saveptr);
+ 	while (line != NULL) {
++		string_ref_vec_add(&vec, line);
+-		if (vec.count == vec.size) {
+-			vec.size *= 2;
+-			vec.buf = xrealloc(vec.buf, vec.size * sizeof(*vec.buf));
+-		}
+-		vec.buf[vec.count].string = line;
+-		vec.buf[vec.count].search_score = 0;
+-		vec.buf[vec.count].history_score = 0;
+-		vec.count++;
+ 		line = strtok_r(NULL, "\n", &saveptr);
+ 	}
+ 	return vec;

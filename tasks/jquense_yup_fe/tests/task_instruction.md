@@ -1,0 +1,3 @@
+Refactor misplaced responsibilities in Yup's schema consumers. Reference interpretation, conditional schema decisions, nested validation preparation and execution, enumeration handling, and error presentation should have clear ownership. Preserve public APIs and custom schema/reference extensions, synchronous and asynchronous validation, casting, error ordering and paths, and schema descriptions. Keep original tests and configuration unchanged. A concise correct repair is acceptable.
+
+Reference interpretation, condition resolution and nested casting/validation are spread across consumers that know too much about foreign schema state. Restore ownership across those phases while keeping custom references and synchronous/asynchronous behavior available.

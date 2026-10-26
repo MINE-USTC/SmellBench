@@ -1,0 +1,787 @@
+diff --git a/src/core/SubscriptionUpdater.ts b/src/core/SubscriptionUpdater.ts
+index 1e5237b..ca837fb 100644
+--- a/src/core/SubscriptionUpdater.ts
++++ b/src/core/SubscriptionUpdater.ts
+@@ -17,13 +17,9 @@
+ import { Debug, DiagDebug } from "../lib/Debug";
+ import { Settings } from "./Settings";
+ import { ProxyImporter } from "../lib/ProxyImporter";
+-import { SettingsOperation } from "./SettingsOperation";
+ import { RuleImporter } from "../lib/RuleImporter";
+-import { ProxyEngine } from "./ProxyEngine";
+ import { ImportedProxyRule, ProxyRulesSubscription, ProxyServer, SubscriptionStats } from "./definitions";
+-import { Utils } from "../lib/Utils";
+-import { PolyFill } from "../lib/PolyFill";
+-import { CountryCode } from "../lib/CountryCode";
++import { importContext } from "../lib/ImportContext";
+ 
+ export class SubscriptionUpdater {
+ 	private static serverSubscriptionTimers: SubscriptionTimerType[] = [{ timerId: null, subscriptionId: null, refreshRate: null }];
+@@ -168,6 +164,7 @@ export class SubscriptionUpdater {
+ 			subscription.stats = new SubscriptionStats();
+ 		}
+ 
++		const context = importContext(null, subscription);
+ 		ProxyImporter.readFromServer(subscription,
+ 			function (response: {
+ 				success: boolean,
+@@ -182,21 +179,17 @@ export class SubscriptionUpdater {
+ 					subscription.proxies = response.result;
+ 					subscription.totalCount = count;
+ 
+-					SubscriptionStats.updateStats(subscription.stats, true);
+-
+-					SettingsOperation.saveProxyServerSubscriptions();
+-					SettingsOperation.saveAllSync(false);
+-
+-					// Fire-and-forget: update country codes for proxy servers
+-					SubscriptionUpdater.updateProxyServersCountryCode(subscription.proxies);
++					context.finishUpdate(subscription.stats, true, () => {
++						SubscriptionUpdater.updateProxyServersCountryCode(subscription.proxies);
++					});
+ 
+ 				} else {
+-					SubscriptionStats.updateStats(subscription.stats, false);
++					context.finishUpdate(subscription.stats, false);
+ 					Debug.warn("Failed to read proxy server subscription: " + subscriptionName);
+ 				}
+ 			},
+ 			function (error: Error) {
+-				SubscriptionStats.updateStats(subscription.stats, false, error);
++				context.finishUpdate(subscription.stats, false, undefined, error);
+ 				Debug.warn("Failed to read proxy server subscription: " + subscriptionName, subscription, error);
+ 			});
+ 	}
+@@ -351,6 +344,7 @@ export class SubscriptionUpdater {
+ 			subscription.stats = new SubscriptionStats();
+ 		}
+ 
++		const context = importContext(subscription, null);
+ 		RuleImporter.readFromServerAndImport(subscription,
+ 			(importResult: {
+ 				success: boolean;
+@@ -368,20 +362,15 @@ export class SubscriptionUpdater {
+ 					subscription.whitelistRules = importResult.rules.whiteList;
+ 					subscription.totalCount = importResult.rules.blackList.length + importResult.rules.whiteList.length;
+ 
+-					SubscriptionStats.updateStats(subscription.stats, true);
+-
+-					SettingsOperation.saveProxyServerSubscriptions();
+-					SettingsOperation.saveAllSync(false);
+-
+-					ProxyEngine.notifyProxyRulesChanged();
++					context.finishUpdate(subscription.stats, true);
+ 
+ 				} else {
+-					SubscriptionStats.updateStats(subscription.stats, false);
++					context.finishUpdate(subscription.stats, false);
+ 					Debug.warn("Failed to read proxy rules subscription: " + subscription.name);
+ 				}
+ 			},
+ 			function (error: Error) {
+-				SubscriptionStats.updateStats(subscription.stats, false, error);
++				context.finishUpdate(subscription.stats, false, undefined, error);
+ 				Debug.warn("Failed to read proxy rules subscription: " + subscription.name, subscription, error);
+ 			});
+ 	}
+@@ -418,6 +407,7 @@ export class SubscriptionUpdater {
+ 	}
+ 
+ 	public static async updateProxyServerSubscriptionsCountryCode(save: boolean = true) {
++		const context = importContext(null, null);
+ 		// Update country codes for all proxy server subscriptions
+ 		const proxyServerSubscriptions = Settings.current.proxyServerSubscriptions;
+ 
+@@ -432,13 +422,13 @@ export class SubscriptionUpdater {
+ 
+ 		// Save once at the end if any updates were made
+ 		if (save) {
+-			SettingsOperation.saveProxyServerSubscriptions();
+-			SettingsOperation.saveAllSync(false);
++			context.saveSubscriptions();
+ 		}
+ 	}
+ 
+ 	public static async updateProxyServersCountryCode(proxies: ProxyServer[], save: boolean = true) {
+ 		if (!proxies || !proxies.length) return;
++		const context = importContext(null, null);
+ 
+ 		let updated = false;
+ 
+@@ -451,13 +441,11 @@ export class SubscriptionUpdater {
+ 				let ipAddress = proxy.host;
+ 
+ 				// Check if host is already an IP address
+-				if (!Utils.isIPRelaxed(proxy.host)) {
++				if (!context.isIP(proxy.host)) {
+ 					// Need to resolve hostname to IP
+ 					try {
+ 						// Use Promise wrapper for DNS resolve
+-						const dnsResult = await new Promise<any>((resolve, reject) => {
+-							PolyFill.dnsResolve(proxy.host, [], resolve, reject);
+-						});
++						const dnsResult = await context.resolveHost(proxy.host);
+ 
+ 						if (dnsResult?.addresses?.length > 0) {
+ 							ipAddress = dnsResult.addresses[0];
+@@ -471,8 +459,7 @@ export class SubscriptionUpdater {
+ 				}
+ 
+ 				// Check if IP is local/private
+-				if (Utils.isLocalIP(ipAddress)) {
+-					proxy.countryCode = "LOCAL";
++				if (context.applyCountry(proxy, ipAddress, true)) {
+ 					updated = true;
+ 					continue;
+ 				}
+@@ -484,20 +471,17 @@ export class SubscriptionUpdater {
+ 			}
+ 
+ 			if (proxiesToUpdate.length > 0) {
+-				CountryCode.ensureInitialized(() => {
++				context.ensureCountryCodes(() => {
+ 					for (const item of proxiesToUpdate) {
+ 						// Get country code from IP
+-						const countryInfo = CountryCode.getRecord(item.ipAddress);
+-						if (countryInfo?.isoCode) {
+-							item.proxy.countryCode = countryInfo.isoCode;
++						if (context.applyCountry(item.proxy, item.ipAddress, false)) {
+ 							updated = true;
+ 						}
+ 					}
+ 
+ 					// Save if any proxy was updated
+ 					if (updated && save) {
+-						SettingsOperation.saveProxyServerSubscriptions();
+-						SettingsOperation.saveAllSync(false);
++						context.saveSubscriptions();
+ 					}
+ 				})
+ 			}
+@@ -507,4 +491,4 @@ export class SubscriptionUpdater {
+ 	}
+ }
+ 
+-type SubscriptionTimerType = { timerId: NodeJS.Timeout, subscriptionId: string, refreshRate: number };
+\ No newline at end of file
++type SubscriptionTimerType = { timerId: NodeJS.Timeout, subscriptionId: string, refreshRate: number };
+diff --git a/src/lib/ImportContext.ts b/src/lib/ImportContext.ts
+new file mode 100644
+index 0000000..63a4836
+--- /dev/null
++++ b/src/lib/ImportContext.ts
+@@ -0,0 +1,98 @@
++import { api } from './environment';
++import { Utils } from './Utils';
++import { IExternalRulesConfig, ProxyServer, ProxyServerSubscription, ProxyServerSubscriptionFormat, SpecialRequestApplyProxyMode, SubscriptionStats } from '../core/definitions';
++import { ProxyEngineSpecialRequests } from '../core/ProxyEngineSpecialRequests';
++import { Settings } from '../core/Settings';
++import { SettingsOperation } from '../core/SettingsOperation';
++import { ProxyEngine } from '../core/ProxyEngine';
++import { PolyFill } from './PolyFill';
++import { CountryCode } from './CountryCode';
++
++export interface ImportContext {
++	rules: IExternalRulesConfig;
++	proxies: ProxyServerSubscription;
++	readFile(file: any, loaded: (text: string) => void): void;
++	request(url: string, init: RequestInit): Promise<Response>;
++	requestSubscription(init: RequestInit): Promise<Response>;
++	markSpecial(url: string, mode: SpecialRequestApplyProxyMode): void;
++	authorization(username: string, password: string): string;
++	proxyProtocol(): string;
++	proxyJson(): boolean;
++	validateProxy(proxy: ProxyServer): boolean;
++	updateStats(stats: SubscriptionStats, success: boolean, error?: Error): void;
++	finishUpdate(stats: SubscriptionStats, success: boolean, afterSave?: () => void, error?: Error): void;
++	saveSubscriptions(): void;
++	notifyRulesChanged(): void;
++	resolveHost(host: string): Promise<any>;
++	isIP(host: string): boolean;
++	isLocalIP(host: string): boolean;
++	ensureCountryCodes(ready: () => void): void;
++	countryCode(ip: string): string;
++	applyCountry(proxy: ProxyServer, ip: string, local: boolean): boolean;
++	decode(text: string, unicode: boolean): string;
++	decodeSubscription(text: string, unicode: boolean): string;
++	message(key: string): string;
++	unique<T>(items: T[], same: (a: T, b: T) => boolean): T[];
++	complete(result: any): void;
++	reject(error?: any): void;
++}
++
++export function importContext(rules: IExternalRulesConfig, proxies: ProxyServerSubscription,
++	success?: Function, fail?: Function): ImportContext {
++	return {
++		rules, proxies,
++		readFile(file, loaded) {
++			const reader = new FileReader();
++			reader.onerror = event => this.reject(event);
++			reader.onload = () => loaded(reader.result as string);
++			reader.readAsText(file);
++		},
++		request: (url, init) => fetch(url, init),
++		requestSubscription(init) {
++			const source = this.rules || this.proxies;
++			if (source.applyProxy !== null) this.markSpecial(source.url, source.applyProxy);
++			if (source.username) {
++				init.headers = { ...init.headers, Authorization: this.authorization(source.username, source.password) };
++			}
++			return this.request(source.url, init);
++		},
++		markSpecial: (url, mode) => ProxyEngineSpecialRequests.setSpecialUrl(url, mode),
++		authorization: (username, password) => 'Basic ' + btoa(username + ':' + atob(password)),
++		proxyProtocol: () => proxies?.proxyProtocol || 'HTTP',
++		proxyJson: () => proxies != null && proxies.format == ProxyServerSubscriptionFormat.Json,
++		validateProxy: proxy => Settings.validateProxyServer(proxy, true).success,
++		updateStats: (stats, success, error) => SubscriptionStats.updateStats(stats, success, error),
++		finishUpdate(stats, success, afterSave, error) {
++			this.updateStats(stats, success, error);
++			if (!success) return;
++			this.saveSubscriptions();
++			if (this.rules) this.notifyRulesChanged();
++			if (afterSave) afterSave();
++		},
++		saveSubscriptions() {
++			SettingsOperation.saveProxyServerSubscriptions();
++			SettingsOperation.saveAllSync(false);
++		},
++		notifyRulesChanged: () => ProxyEngine.notifyProxyRulesChanged(),
++		resolveHost: host => new Promise((resolve, reject) => PolyFill.dnsResolve(host, [], resolve, reject)),
++		isIP: host => Utils.isIPRelaxed(host),
++		isLocalIP: host => Utils.isLocalIP(host),
++		ensureCountryCodes: ready => CountryCode.ensureInitialized(ready),
++		countryCode: ip => CountryCode.getRecord(ip)?.isoCode,
++		applyCountry(proxy, ip, local) {
++			const code = local ? (this.isLocalIP(ip) ? 'LOCAL' : undefined) : this.countryCode(ip);
++			if (!code) return false;
++			proxy.countryCode = code;
++			return true;
++		},
++		decode: (text, unicode) => unicode ? Utils.b64DecodeUnicode(text) : atob(text),
++		decodeSubscription(text, unicode) {
++			const encoding = unicode ? this.rules.obfuscation : this.proxies?.obfuscation;
++			return encoding?.toLowerCase() == 'base64' ? this.decode(text, unicode) : text;
++		},
++		message: key => api.i18n.getMessage(key),
++		unique: (items, same) => Utils.removeDuplicatesFunc(items, same),
++		complete: result => { if (success) success(result); },
++		reject: error => { if (fail) fail(error); }
++	};
++}
+diff --git a/src/lib/ProxyImporter.ts b/src/lib/ProxyImporter.ts
+index 16f1bac..6d5965d 100644
+--- a/src/lib/ProxyImporter.ts
++++ b/src/lib/ProxyImporter.ts
+@@ -14,24 +14,22 @@
+  * You should have received a copy of the GNU General Public License
+  * along with SmartProxy.  If not, see <http://www.gnu.org/licenses/>.
+  */
+-import { Utils } from "./Utils";
+-import { api } from "./environment";
+-import { ProxyServerSubscription, ProxyServer, ProxyServerSubscriptionFormat } from "../core/definitions";
++import { ProxyServerSubscription, ProxyServer } from "../core/definitions";
+ import { Debug } from "./Debug";
+-import { Settings } from "../core/Settings";
+-import { ProxyEngineSpecialRequests } from "../core/ProxyEngineSpecialRequests";
++import { importContext } from './ImportContext';
+ 
+ export const ProxyImporter = {
+ 	readFromServer(serverDetail: ProxyServerSubscription, success?: Function, fail?: Function) {
++		const context = importContext(null, serverDetail, success, fail);
+ 		if (!serverDetail || !serverDetail.url) {
+-			if (fail) fail();
++			if (fail) context.reject();
+ 			return;
+ 		}
+ 		if (!success) throw "onSuccess callback is mandatory";
+ 
+ 		function ajaxSuccess(response: any) {
+ 			if (!response)
+-				if (fail) fail();
++				if (fail) context.reject();
+ 			ProxyImporter.importText(response,
+ 				null,
+ 				false,
+@@ -43,48 +41,39 @@ export const ProxyImporter = {
+ 				}) => {
+ 					if (!importResult.success) {
+ 						if (fail)
+-							fail(importResult);
++							context.reject(importResult);
+ 						return;
+ 					}
+ 					if (success)
+-						success(importResult);
++						context.complete(importResult);
+ 				},
+ 				(error: Error) => {
+ 					if (fail)
+-						fail(error);
++						context.reject(error);
+ 				},
+ 				serverDetail);
+ 		}
+ 
+-		if (serverDetail.applyProxy !== null)
+-			// mark this request as special
+-			ProxyEngineSpecialRequests.setSpecialUrl(serverDetail.url, serverDetail.applyProxy);
+-
+-		fetch(serverDetail.url, {
++		context.requestSubscription({
+ 			method: "GET",
+ 			cache: 'no-store',
+-			headers: {
+-				...(serverDetail.username
+-					? {
+-						Authorization: 'Basic ' + btoa(serverDetail.username + ':' + atob(serverDetail.password)),
+-					}
+-					: {}),
+-			}
++			headers: {}
+ 		})
+ 			.then(async res => {
+ 				if (res.status === 200) {
+ 					ajaxSuccess(await res.text());
+ 				} else
+-					if (fail) fail(new Error(`${res.status}, ${res.statusText}`));
++					if (fail) context.reject(new Error(`${res.status}, ${res.statusText}`));
+ 
+ 			})
+ 			.catch(err => {
+-				if (fail) fail(err);
++				if (fail) context.reject(err);
+ 			});
+ 	},
+ 	importText(text: string | ArrayBuffer, file: any, append: boolean, currentProxies: ProxyServer[], success: Function, fail?: Function, options?: ProxyServerSubscription) {
++		const context = importContext(null, options, success, fail);
+ 		if (!file && !text) {
+-			if (fail) fail();
++			if (fail) context.reject();
+ 			return;
+ 		}
+ 
+@@ -92,17 +81,9 @@ export const ProxyImporter = {
+ 			doImport(text as string, options);
+ 		}
+ 		else {
+-			let reader = new FileReader();
+-			reader.onerror = event => {
+-				if (fail) fail(event);
+-			};
+-			reader.onload = event => {
+-				//let textFile = event.target;
+-				let fileText = reader.result;
+-
++			context.readFile(file, fileText => {
+ 				doImport(fileText as string, options);
+-			};
+-			reader.readAsText(file);
++			});
+ 		}
+ 
+ 
+@@ -110,17 +91,17 @@ export const ProxyImporter = {
+ 
+ 			let parsedProxies: ProxyServer[];
+ 
+-			if (options && options.format == ProxyServerSubscriptionFormat.Json)
++			if (context.proxyJson())
+ 				parsedProxies = ProxyImporter.parseJson(text, options);
+ 			else
+ 				parsedProxies = ProxyImporter.parseText(text, options);
+ 
+ 			if (parsedProxies == null) {
+-				if (fail) fail();
++				if (fail) context.reject();
+ 				return;
+ 			}
+ 
+-			let importedProxies: ProxyServer[] = Utils.removeDuplicatesFunc(parsedProxies,
++			let importedProxies: ProxyServer[] = context.unique(parsedProxies,
+ 				(item1: ProxyServer, item2: ProxyServer) => item1.host == item2.host &&
+ 					item1.port == item2.port &&
+ 					item1.username == item2.username &&
+@@ -152,13 +133,13 @@ export const ProxyImporter = {
+ 				}
+ 
+ 				// Total ${appendedProxyCount} out of ${appendedProxyList.length} proxies are appended.<br>Don't forget to save the changes.
+-				let message = api.i18n.getMessage("importerImportProxySuccess")
++				let message = context.message("importerImportProxySuccess")
+ 					.replace("{0}", appendedProxyCount.toString())
+ 					.replace("{1}", importedProxies.length.toString());
+ 
+ 				if (success) {
+ 					// not need for any check, return straight away
+-					success({
++					context.complete({
+ 						success: true,
+ 						message: message,
+ 						result: appendedProxyList
+@@ -168,13 +149,13 @@ export const ProxyImporter = {
+ 			} else {
+ 
+ 				// Total ${importedRuleList.length} out of ${parsedRuleList.length} proxies are imported.<br>Don't forget to save the changes.
+-				let message = api.i18n.getMessage("importerImportProxySuccess")
++				let message = context.message("importerImportProxySuccess")
+ 					.replace("{0}", importedProxies.length.toString())
+ 					.replace("{1}", parsedProxies.length.toString());
+ 
+ 				if (success) {
+ 					// not need for any check, return straight away
+-					success({
++					context.complete({
+ 						success: true,
+ 						message: message,
+ 						result: importedProxies
+@@ -187,27 +168,21 @@ export const ProxyImporter = {
+ 	parseText: (proxyListText: string, options?: ProxyServerSubscription): ProxyServer[] => {
+ 		///<summary>Parses the proxy</summary>
+ 		if (!proxyListText || typeof (proxyListText) !== "string") return null;
++		const context = importContext(null, options);
+ 
+ 		// ip or host:port [protocol] [name] [username] [password]
+ 		const proxyRegex = /((?:[A-Za-z0-9-]+\.)+[A-Za-z0-9]{1,6})(?:(?::+|[\t\s,]+)(\d{2,5}))?(?:[\t\s]+\[(\w+)\][\t\s]+\[([\p{L}\p{N}_\s:\.-]+)\](?:[\t\s]+\[(.+)\][\t\s]+\[(.+)\])?)?/iu;
+ 
+-		if (options && options.obfuscation) {
+-			try {
+-				if (options.obfuscation.toLowerCase() == "base64") {
+-					// decode base64
+-					proxyListText = atob(proxyListText);
+-				}
+-			} catch (e) {
+-				return null;
+-			}
++		try {
++			proxyListText = context.decodeSubscription(proxyListText, false);
++		} catch (e) {
++			return null;
+ 		}
+ 
+ 		let proxyListLines = proxyListText.split(/(\r|\n)/);
+ 		let parsedProxies: ProxyServer[] = [];
+ 
+-		let defaultProxyProtocol = "HTTP";
+-		if (options && options.proxyProtocol)
+-			defaultProxyProtocol = options.proxyProtocol;
++		let defaultProxyProtocol = context.proxyProtocol();
+ 
+ 		for (let proxyLine of proxyListLines) {
+ 			// simple check
+@@ -244,16 +219,12 @@ export const ProxyImporter = {
+ 		return parsedProxies;
+ 	},
+ 	parseJson: (proxyListText: string, options?: ProxyServerSubscription): ProxyServer[] => {
++		const context = importContext(null, options);
+ 
+-		if (options && options.obfuscation) {
+-			try {
+-				if (options.obfuscation.toLowerCase() == "base64") {
+-					// decode base64
+-					proxyListText = atob(proxyListText);
+-				}
+-			} catch (e) {
+-				return null;
+-			}
++		try {
++			proxyListText = context.decodeSubscription(proxyListText, false);
++		} catch (e) {
++			return null;
+ 		}
+ 
+ 		let resultProxies: ProxyServer[] = [];
+@@ -276,7 +247,7 @@ export const ProxyImporter = {
+ 				item.username = proxy["username"];
+ 				item.password = proxy["password"];
+ 
+-				if (!Settings.validateProxyServer(item, true).success)
++				if (!context.validateProxy(item))
+ 					continue;
+ 
+ 				resultProxies.push(item);
+@@ -289,4 +260,4 @@ export const ProxyImporter = {
+ 			return null;
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/src/lib/RuleImporter.ts b/src/lib/RuleImporter.ts
+index 6445f67..68696c2 100644
+--- a/src/lib/RuleImporter.ts
++++ b/src/lib/RuleImporter.ts
+@@ -15,7 +15,6 @@
+  * along with SmartProxy.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ import { Utils } from './Utils';
+-import { api } from './environment';
+ import {
+ 	IExternalRulesConfig,
+ 	ExternalRulesFormat,
+@@ -24,13 +23,14 @@ import {
+ 	CompiledProxyRuleType,
+ 	ImportedProxyRule,
+ } from '../core/definitions';
+-import { ProxyEngineSpecialRequests } from '../core/ProxyEngineSpecialRequests';
+ import * as ruleImporterSwitchyScript from './RuleImporterSwitchy';
++import { importContext } from './ImportContext';
+ 
+ export const RuleImporter = {
+ 	readFromServerAndImport(rulesConfig: IExternalRulesConfig, success?: Function, fail?: Function) {
++		const context = importContext(rulesConfig, null, success, fail);
+ 		if (!rulesConfig || !rulesConfig.url) {
+-			if (fail) fail();
++			if (fail) context.reject();
+ 			return;
+ 		}
+ 		if (!success) throw 'onSuccess callback is mandatory';
+@@ -38,7 +38,7 @@ export const RuleImporter = {
+ 		function ajaxSuccess(response: any) {
+ 			if (!response) {
+ 				if (fail)
+-					fail();
++					context.reject();
+ 				return;
+ 			}
+ 
+@@ -58,39 +58,28 @@ export const RuleImporter = {
+ 					};
+ 				}) => {
+ 					if (!importResult.success) {
+-						if (fail) fail(importResult);
++						if (fail) context.reject(importResult);
+ 						return;
+ 					}
+-					if (success) success(importResult);
++					if (success) context.complete(importResult);
+ 				},
+ 				(error: Error) => {
+-					if (fail) fail(error);
++					if (fail) context.reject(error);
+ 				},
+ 			);
+ 		}
+ 
+-		if (rulesConfig.applyProxy !== null)
+-			// mark this request as special
+-			ProxyEngineSpecialRequests.setSpecialUrl(rulesConfig.url, rulesConfig.applyProxy);
+-
+ 		let fetchRequest: RequestInit = {
+ 			method: 'GET',
+ 			cache: 'no-store'
+ 		};
+-		if (rulesConfig.username) {
+-			let pass = atob(rulesConfig.password);
+-			fetchRequest.headers =
+-			{
+-				'Authorization': 'Basic ' + btoa(rulesConfig.username + ':' + pass)
+-			};
+-		}
+-		fetch(rulesConfig.url, fetchRequest)
++		context.requestSubscription(fetchRequest)
+ 			.then((response) => response.text())
+ 			.then((result) => {
+ 				ajaxSuccess(result);
+ 			})
+ 			.catch((error) => {
+-				if (fail) fail(error);
++				if (fail) context.reject(error);
+ 			});
+ 	},
+ 	importRulesBatch(
+@@ -102,11 +91,12 @@ export const RuleImporter = {
+ 		success: Function,
+ 		fail?: Function
+ 	) {
++		const context = importContext(rulesConfig, null, success, fail);
+ 		/**
+ 		 * TODO: Remove and replace with generic version
+ 		 */
+ 		if (!file && !text) {
+-			if (fail) fail();
++			if (fail) context.reject();
+ 			return;
+ 		}
+ 
+@@ -114,30 +104,19 @@ export const RuleImporter = {
+ 			try {
+ 				doImport(text as string, rulesConfig);
+ 			} catch (e) {
+-				if (fail) fail(e);
++				if (fail) context.reject(e);
+ 			}
+ 		} else {
+-			let reader = new FileReader();
+-			reader.onerror = (event) => {
+-				if (fail) fail(event);
+-			};
+-			reader.onload = (event) => {
+-				//let textFile = event.target;
+-				let fileText = reader.result;
+-
++			context.readFile(file, fileText => {
+ 				try {
+ 					doImport(fileText as string, rulesConfig);
+ 				} catch (e) {
+-					if (fail) fail(e);
++					if (fail) context.reject(e);
+ 				}
+-			};
+-			reader.readAsText(file);
++			});
+ 		}
+ 		function doImport(text: string, rulesConfig: IExternalRulesConfig) {
+-			if (rulesConfig.obfuscation?.toLowerCase() == 'base64') {
+-				// decode base64
+-				text = Utils.b64DecodeUnicode(text);
+-			}
++			text = context.decodeSubscription(text, true);
+ 
+ 			let rules: {
+ 				whiteList: ImportedProxyRule[];
+@@ -146,7 +125,7 @@ export const RuleImporter = {
+ 
+ 			if (rulesConfig && rulesConfig.format == ExternalRulesFormat.AutoProxy) {
+ 				if (!externalAppRuleParser.GFWList.detect(text, false)) {
+-					if (fail) fail();
++					if (fail) context.reject();
+ 					return;
+ 				}
+ 				rules = externalAppRuleParser.GFWList.parse(text);
+@@ -154,7 +133,7 @@ export const RuleImporter = {
+ 				let switchyRules = externalAppRuleParser.Switchy.parseAndCompile(text);
+ 
+ 				if (!switchyRules || !switchyRules.compiled) {
+-					if (fail) fail();
++					if (fail) context.reject();
+ 					return;
+ 				}
+ 				let blackListRules = externalAppRuleParser.Switchy.convertToProxyRule(switchyRules.compiled);
+@@ -163,7 +142,7 @@ export const RuleImporter = {
+ 					whiteList: [],
+ 				};
+ 			} else {
+-				if (fail) fail();
++				if (fail) context.reject();
+ 				return;
+ 			}
+ 
+@@ -208,14 +187,13 @@ export const RuleImporter = {
+ 				let finalRulesCount = rules.blackList.length + rules.whiteList.length;
+ 
+ 				// Total ${appendedRuleCount} out of ${parsedRuleList.length} rules are appended.<br>Don't forget to save the changes.
+-				let message = api.i18n
+-					.getMessage('importerImportSuccess')
++				let message = context.message('importerImportSuccess')
+ 					.replace('{0}', finalRulesCount.toString())
+ 					.replace('{1}', parsedRulesCount.toString());
+ 
+ 				if (success) {
+ 					// not need for any check, return straight away
+-					success({
++					context.complete({
+ 						success: true,
+ 						message: message,
+ 						rules: rules,
+@@ -224,14 +202,13 @@ export const RuleImporter = {
+ 
+ 			} else {
+ 				// Total of {0} proxy rules and {1} white listed rules are returned.<br>Don't forget to save the changes.
+-				let message = api.i18n
+-					.getMessage('importerImportRulesSuccess')
+-					.replace('{0}', rules.blackList.length)
+-					.replace('{1}', rules.whiteList.length);
++				let message = context.message('importerImportRulesSuccess')
++					.replace('{0}', rules.blackList.length.toString())
++					.replace('{1}', rules.whiteList.length.toString());
+ 
+ 				if (success) {
+ 					// not need for any check, return straight away
+-					success({
++					context.complete({
+ 						success: true,
+ 						message: message,
+ 						rules: rules,
+@@ -241,23 +218,17 @@ export const RuleImporter = {
+ 		}
+ 	},
+ 	importAutoProxy(file: any, append: any, currentRules: any, success: Function, fail: Function) {
++		const context = importContext(null, null, success, fail);
+ 		///<summary>
+ 		/// Parses AutoProxy rules and *JUST* uses it as a way to extract domain list to be proxyfied
+ 		/// Does not follow the rules of AutoProxy
+ 		///</summary>
+ 		if (!file) {
+-			if (fail) fail();
++			if (fail) context.reject();
+ 			return;
+ 		}
+ 
+-		let reader = new FileReader();
+-		reader.onerror = (event) => {
+-			if (fail) fail(event);
+-		};
+-		reader.onload = (event) => {
+-			//let textFile = event.target;
+-			let fileText = reader.result;
+-
++		context.readFile(file, fileText => {
+ 			try {
+ 				let parsedRuleList = externalAppRuleParser.AutoProxy.parse(fileText);
+ 
+@@ -277,7 +248,7 @@ export const RuleImporter = {
+ 				}
+ 
+ 				// remove the duplicates from imported rules
+-				importedRuleList = Utils.removeDuplicates(importedRuleList, 'pattern');
++				importedRuleList = context.unique(importedRuleList, (a, b) => a.pattern === b.pattern);
+ 
+ 				// rules are ready
+ 				if (append) {
+@@ -299,14 +270,13 @@ export const RuleImporter = {
+ 					}
+ 
+ 					// Total ${appendedRuleCount} out of ${parsedRuleList.length} rules are appended.<br>Don't forget to save the changes.
+-					let message = api.i18n
+-						.getMessage('importerImportSuccess')
++					let message = context.message('importerImportSuccess')
+ 						.replace('{0}', appendedRuleCount.toString())
+ 						.replace('{1}', parsedRuleList.length.toString());
+ 
+ 					if (success) {
+ 						// not need for any check, return straight away
+-						success({
++						context.complete({
+ 							success: true,
+ 							message: message,
+ 							result: appendedRuleList,
+@@ -314,14 +284,13 @@ export const RuleImporter = {
+ 					}
+ 				} else {
+ 					// Total ${importedRuleList.length} out of ${parsedRuleList.length} rules are imported.<br>Don't forget to save the changes.
+-					let message = api.i18n
+-						.getMessage('importerImportSuccess')
++					let message = context.message('importerImportSuccess')
+ 						.replace('{0}', importedRuleList.length.toString())
+ 						.replace('{1}', parsedRuleList.length.toString());
+ 
+ 					if (success) {
+ 						// not need for any check, return straight away
+-						success({
++						context.complete({
+ 							success: true,
+ 							message: message,
+ 							result: importedRuleList,
+@@ -329,10 +298,9 @@ export const RuleImporter = {
+ 					}
+ 				}
+ 			} catch (e) {
+-				if (fail) fail(e);
++				if (fail) context.reject(e);
+ 			}
+-		};
+-		reader.readAsText(file);
++		});
+ 	}
+ };
+ 

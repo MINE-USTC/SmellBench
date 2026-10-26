@@ -1,0 +1,470 @@
+diff --git a/packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts b/packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts
+index dea0e54..c08ac98 100644
+--- a/packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts
++++ b/packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts
+@@ -1,4 +1,4 @@
+-import { join, relative } from 'node:path';
++import { dirname, join, relative } from 'node:path';
+ import type { PathInfo } from '../../utils';
+ import {
+ 	addLeadingSlash,
+@@ -35,9 +35,7 @@ export async function collectFunctionConfigsRecursively(
+ 			const configPath = join(path, '.vc-config.json');
+ 			const config = await readJsonFile<VercelFunctionConfig>(configPath);
+ 
+-			const relativePath = addLeadingSlash(
+-				normalizePath(relative(configs.functionsDir, path)),
+-			);
++			const { relativePath } = describeFunctionPath(path, configs.functionsDir);
+ 
+ 			const isPrerenderedIsrFunc =
+ 				config?.operationType?.toLowerCase() === 'isr' &&
+@@ -77,6 +75,47 @@ function checkPrerenderConfigExists(funcPath: string, files: PathInfo[]) {
+ 	return files.find(({ path }) => path === prerenderConfigPath);
+ }
+ 
++export function describeFunctionPath(path: string, functionsDir: string) {
++	const relativePath = addLeadingSlash(
++		normalizePath(relative(functionsDir, path)),
++	);
++	const functionName = relativePath.replace(/\.func$/, '');
++	const segments = functionName.split('/').filter(Boolean);
++	const leaf = segments[segments.length - 1] ?? '';
++	const variant = leaf.endsWith('.action')
++		? 'action'
++		: leaf.endsWith('.rsc')
++		? 'rsc'
++		: 'route';
++	const routeName = functionName.replace(/\.(?:action|rsc)$/, '');
++	return { relativePath, variant, routeName, segments };
++}
++
++export function resolvePrerenderAsset(
++	config: VercelPrerenderConfig | null,
++	relativePath: string,
++) {
++	if (
++		config?.type?.toLowerCase() !== 'prerender' ||
++		config?.fallback?.type?.toLowerCase() !== 'filefsref' ||
++		!config?.fallback?.fsPath
++	)
++		return null;
++	const directory = dirname(relativePath);
++	const fileName = config.fallback.fsPath.replace(
++		/\.prerender-fallback(?:\.(?:rsc|body|json))?/gi,
++		'',
++	);
++	return {
++		sourceRoute: join(directory, config.fallback.fsPath),
++		destinationRoute: normalizePath(join(directory, fileName)),
++	};
++}
++
++export type PrerenderAsset = NonNullable<
++	ReturnType<typeof resolvePrerenderAsset>
++>;
++
+ export type CollectedFunctions = {
+ 	functionsDir: string;
+ 	edgeFunctions: Map<string, FunctionInfo>;
+diff --git a/packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts b/packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts
+index 19db6eb..baee80f 100644
+--- a/packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts
++++ b/packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts
+@@ -114,7 +114,7 @@ async function processFunctionIdentifiers(
+ 					);
+ 
+ 				fileContents = updatedContents;
+-				importsToPrepend.push(newImportToPrepend);
++				if (newImportToPrepend) importsToPrepend.push(newImportToPrepend);
+ 			} else if (identifierInfo.consumers.length > 1) {
+ 				// Only dedupe code blocks if there are multiple consumers.
+ 				const { updatedContents, newFilePath, newImport, wasmImports } =
+@@ -136,14 +136,32 @@ async function processFunctionIdentifiers(
+ 					const destImports = wasmImportsToPrepend.get(newDest)!;
+ 					wasmImports.forEach(wasmImport => destImports.add(wasmImport));
+ 				}
+-			} else if (identifierInfo.consumers.length === 1) {
++			} else {
+ 				// If there is only one consumer, we can leave the code block inlined.
+ 
+ 				identifierInfo.inlined = true;
+ 
++				const source = fileContents.slice(start, end);
++				let replacement = source;
++				if (!identifierInfo.consumers.includes(entrypoint)) {
++					replacement =
++						type === 'manifest'
++							? '{}'
++							: type === 'webpack'
++							? 'void 0'
++							: `(() => (${source}))()`;
++				}
++				if (replacement !== source) {
++					fileContents = replaceLastSubstringInstance(
++						fileContents,
++						source,
++						replacement,
++					);
++				}
+ 				if (!identifierInfo.byteLength) {
+-					const buffer = Buffer.from(fileContents.slice(start, end));
+-					identifierInfo.byteLength = buffer.byteLength;
++					identifierInfo.byteLength = identifierInfo.consumers.length
++						? Buffer.byteLength(source)
++						: 0;
+ 				}
+ 			}
+ 		}
+@@ -400,13 +418,15 @@ async function processImportIdentifier(
+ 		fnConfig,
+ 	}: ProcessImportIdentifierOpts,
+ 	{ nopDistDir, workerJsDir }: ProcessVercelFunctionsOpts,
+-): Promise<{ updatedContents: string; newImportToPrepend: NewImportInfo }> {
++): Promise<{ updatedContents: string; newImportToPrepend?: NewImportInfo }> {
+ 	const { type, identifier, start, end, importPath, info } = ident;
+ 	let updatedContents = fileContents;
+ 
+ 	const codeBlock = updatedContents.slice(start, end);
++	const retainImport = info.consumers.includes(entrypoint);
++	let localContents: string | undefined;
+ 
+-	if (!info.newDest) {
++	if (!info.newDest || !retainImport) {
+ 		const importPathWithoutLeadingDots = importPath
+ 			// Remove leading `../`s from import path.
+ 			.replace(/^(\.\.\/)+/, '');
+@@ -421,20 +441,36 @@ async function processImportIdentifier(
+ 				oldPath,
+ 		);
+ 
+-		const newPath = join(nopDistDir, type, importPathWithoutType);
+-		info.newDest = normalizePath(relative(workerJsDir, newPath));
+-
+-		await copyFileWithDir(originalFilePath, newPath);
++		if (retainImport) {
++			const newPath = join(nopDistDir, type, importPathWithoutType);
++			info.newDest = normalizePath(relative(workerJsDir, newPath));
++			await copyFileWithDir(originalFilePath, newPath);
++			const { size } = await stat(newPath);
++			info.byteLength = size;
++		} else {
++			localContents = await readFile(originalFilePath, 'utf8');
++		}
++	}
+ 
+-		const { size } = await stat(newPath);
+-		info.byteLength = size;
++	if (localContents !== undefined) {
++		const localName = type === 'webpack' ? `__chunk_${identifier}` : identifier;
++		info.inlined = true;
++		return {
++			updatedContents: replaceLastSubstringInstance(
++				updatedContents,
++				codeBlock,
++				`const ${localName} = (() => { ${localContents} })();`,
++			),
++		};
+ 	}
+ 
+ 	const relativeImportPath = getRelativePathToAncestor({
+ 		from: newFnLocation,
+ 		relativeTo: nopDistDir,
+ 	});
+-	const newImportPath = normalizePath(join(relativeImportPath, info.newDest));
++	const newImportPath = normalizePath(
++		join(relativeImportPath, info.newDest as string),
++	);
+ 
+ 	// let's remove the original import since it will be re-added later when appropriate
+ 	updatedContents = replaceLastSubstringInstance(
+@@ -653,10 +689,21 @@ async function getFunctionFile(
+ 	path: string,
+ 	fnInfo: FunctionInfo,
+ ): Promise<{ contents: string; entrypoint: string }> {
+-	const entrypoint = join(path, fnInfo.config.entrypoint);
++	let entrypoint = join(path, fnInfo.config.entrypoint);
++	let wrapCommonJs = fnInfo.config.runtime.toLowerCase() === 'nodejs';
++	if (wrapCommonJs) {
++		const serverEntrypoint =
++			fnInfo.config.filePathMap?.[fnInfo.config.entrypoint];
++		if (serverEntrypoint && (await validateFile(serverEntrypoint))) {
++			entrypoint = serverEntrypoint;
++			wrapCommonJs = false;
++		}
++	}
+ 
+ 	const fileContents = await readFile(entrypoint, 'utf8');
+-	const fixedContents = fixFunctionContents(fileContents);
++	const fixedContents = wrapCommonJs
++		? `const module = { exports: {} };\n${fileContents}\nexport default module.exports;`
++		: fixFunctionContents(fileContents);
+ 
+ 	return { contents: fixedContents, entrypoint };
+ }
+@@ -666,14 +713,27 @@ async function processBundledAssets(
+ 	{ nopDistDir }: ProcessVercelFunctionsOpts,
+ ): Promise<void> {
+ 	for (const [functionPath, { relativePath, config }] of edgeFunctions) {
+-		for (const { name, path } of config.assets ?? []) {
++		const assets = (config.assets ?? []).map(asset => ({
++			...asset,
++			bundled: true,
++		}));
++		if (config.runtime.toLowerCase() === 'nodejs') {
++			assets.unshift(
++				...Object.keys(config.filePathMap ?? {})
++					.filter(name => name !== config.entrypoint && !name.endsWith('.js'))
++					.map(name => ({ name, path: name, bundled: false })),
++			);
++		}
++		for (const { name, path, bundled } of assets) {
+ 			const originalFile = resolve(
+ 				config.filePathMap?.[path] ?? join(functionPath, path),
+ 			);
+-			const destFile = `${join(nopDistDir, 'assets', name)}.bin`;
++			const destFile = bundled
++				? `${join(nopDistDir, 'assets', name)}.bin`
++				: join(nopDistDir, 'server-assets', relativePath, name);
+ 			const relativeName = join(relativePath, path);
+ 
+-			const fileExists = await validateFile(originalFile);
++			const fileExists = !bundled || (await validateFile(originalFile));
+ 
+ 			if (!fileExists) {
+ 				cliError(`Could not find bundled asset file: ${originalFile}`);
+diff --git a/packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts b/packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts
+index 45d2375..9d1e2d0 100644
+--- a/packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts
++++ b/packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts
+@@ -7,6 +7,7 @@ import {
+ 	stripFuncExtension,
+ } from '../../utils';
+ import type { CollectedFunctions, FunctionInfo } from './configs';
++import { describeFunctionPath } from './configs';
+ import { join } from 'path';
+ import type { ProcessVercelFunctionsOpts } from '.';
+ import { isUsingAppRouter, isUsingPagesRouter } from '../getVercelConfig';
+@@ -45,7 +46,7 @@ export async function checkInvalidFunctions(
+ 
+ 	await fixFaviconInvalidRSCFuncFunction(collectedFunctions);
+ 
+-	await tryToFixInvalidFuncsWithValidIndexAlternative(collectedFunctions);
++	await tryToFixInvalidFuncsWithValidIndexAlternative(collectedFunctions, opts);
+ 	await tryToFixInvalidDynamicISRFuncs(collectedFunctions);
+ 
+ 	if (collectedFunctions.invalidFunctions.size > 0) {
+@@ -228,25 +229,36 @@ async function tryToFixI18nFunctions(
+ 	}
+ 
+ 	for (const [fullPath, fnInfo] of invalidFunctions.entries()) {
++		const identity = describeFunctionPath(fullPath, functionsDir);
++		const route = formatRoutePath(fnInfo.relativePath);
+ 		for (const i18nKey of foundI18nKeys) {
+ 			const firstRouteSegment = stripFuncExtension(fnInfo.relativePath)
+ 				.replace(/^\//, '')
+ 				.split('/')[0];
+ 
+-			if (firstRouteSegment === i18nKey) {
++			if (firstRouteSegment === i18nKey || identity.variant === 'action') {
+ 				const pathWithoutI18nKey = fnInfo.relativePath
+ 					.replace(new RegExp(`^/${i18nKey}.func`), '/index.func')
+ 					.replace(new RegExp(`^/${i18nKey}/`), '/');
+ 				const fullPathWithoutI18nKey = join(functionsDir, pathWithoutI18nKey);
+ 
+-				const edgeFn = edgeFunctions.get(fullPathWithoutI18nKey);
++				const edgeFn =
++					identity.variant === 'action'
++						? [...edgeFunctions.values()].find(
++								candidate => candidate.route?.overrides?.includes(route),
++						  )
++						: edgeFunctions.get(fullPathWithoutI18nKey);
+ 				if (edgeFn) {
+ 					invalidFunctions.delete(fullPath);
+ 					ignoredFunctions.set(fullPath, {
+-						reason: 'unnecessary invalid i18n function',
++						reason:
++							identity.variant === 'action'
++								? `action route served by ${edgeFn.relativePath}`
++								: 'unnecessary invalid i18n function',
+ 						...fnInfo,
+ 					});
+-					edgeFn.route?.overrides?.push(formatRoutePath(fnInfo.relativePath));
++					if (identity.variant === 'action') break;
++					edgeFn.route?.overrides?.push(route);
+ 				}
+ 			}
+ 		}
+@@ -310,27 +322,42 @@ async function printInvalidFunctionsErrorMessage(
+  *
+  * @param collectedFunctions Collected functions from the Vercel build output.
+  */
+-async function tryToFixInvalidFuncsWithValidIndexAlternative({
+-	edgeFunctions,
+-	prerenderedFunctions,
+-	invalidFunctions,
+-	ignoredFunctions,
+-}: CollectedFunctions) {
++async function tryToFixInvalidFuncsWithValidIndexAlternative(
++	{
++		edgeFunctions,
++		prerenderedFunctions,
++		invalidFunctions,
++		ignoredFunctions,
++	}: CollectedFunctions,
++	{ functionsDir }: InvalidFunctionsOpts,
++) {
+ 	for (const [fullPath, fnInfo] of invalidFunctions.entries()) {
+ 		const withoutFuncExt = stripFuncExtension(fullPath);
++		const identity = describeFunctionPath(fullPath, functionsDir);
++		const isIcon =
++			identity.variant === 'rsc' && identity.routeName === '/favicon.ico';
+ 		const fullPathForIndex = withoutFuncExt.endsWith('.rsc')
+ 			? withoutFuncExt.replace(/\.rsc$/, '/index.rsc.func')
+ 			: `${withoutFuncExt}/index.func`;
+ 
+-		if (
+-			edgeFunctions.has(fullPathForIndex) ||
+-			prerenderedFunctions.has(fullPathForIndex)
+-		) {
++		const alternatives = isIcon
++			? [fullPath.replace(/\.rsc\.func$/, '.func'), fullPathForIndex]
++			: [fullPathForIndex];
++		for (const candidatePath of alternatives) {
++			const candidate =
++				edgeFunctions.get(candidatePath) ??
++				prerenderedFunctions.get(candidatePath);
++			if (!candidate) continue;
++			const servesIcon = isIcon && candidatePath !== fullPathForIndex;
++			if (servesIcon) candidate.route?.overrides?.push('/favicon.ico.rsc');
+ 			ignoredFunctions.set(fullPath, {
+-				reason: 'invalid function with valid /index alternative',
++				reason: servesIcon
++					? 'favicon RSC route served by icon alternative'
++					: 'invalid function with valid /index alternative',
+ 				...fnInfo,
+ 			});
+ 			invalidFunctions.delete(fullPath);
++			break;
+ 		}
+ 	}
+ }
+diff --git a/packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts b/packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts
+index 17afcd3..d882317 100644
+--- a/packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts
++++ b/packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts
+@@ -1,6 +1,7 @@
+ import { dirname, join } from 'node:path';
+ import type { ProcessVercelFunctionsOpts } from '.';
+-import type { CollectedFunctions } from './configs';
++import type { CollectedFunctions, PrerenderAsset } from './configs';
++import { resolvePrerenderAsset } from './configs';
+ import {
+ 	addLeadingSlash,
+ 	copyFileWithDir,
+@@ -85,13 +86,14 @@ async function validateRoute(
+ 	relativePath: string,
+ 	opts: PrerenderFunctionsOpts,
+ ): Promise<ValidatedRouteInfo | null> {
+-	const config = await getRouteConfig(fullPath, relativePath);
+-	if (!config) return null;
++	const prepared = await getRouteConfig(fullPath, relativePath);
++	if (!prepared) return null;
++	const { config, asset } = prepared;
+ 
+-	const originalFile = await getRoutePath(config, relativePath, opts);
++	const originalFile = await getRoutePath(config, relativePath, opts, asset);
+ 	if (!originalFile) return null;
+ 
+-	const dest = await getRouteDest(config, relativePath, opts);
++	const dest = await getRouteDest(config, relativePath, opts, asset);
+ 
+ 	return { config, originalFile, ...dest };
+ }
+@@ -113,21 +115,18 @@ type ValidatedRouteInfo = {
+ async function getRouteConfig(
+ 	fullPath: string,
+ 	relativePath: string,
+-): Promise<VercelPrerenderConfig | null> {
++): Promise<{ config: VercelPrerenderConfig; asset: PrerenderAsset } | null> {
+ 	const configPath = fullPath.replace(/\.func$/, '.prerender-config.json');
+ 	const config = await readJsonFile<VercelPrerenderConfig>(configPath);
+ 
+-	if (
+-		config?.type?.toLowerCase() !== 'prerender' ||
+-		config?.fallback?.type?.toLowerCase() !== 'filefsref' ||
+-		!config?.fallback?.fsPath
+-	) {
++	const asset = resolvePrerenderAsset(config, relativePath);
++	if (!config || !asset) {
+ 		const relativeName = stripFuncExtension(relativePath);
+ 		cliWarn(`Invalid prerender config for ${relativeName}`);
+ 		return null;
+ 	}
+ 
+-	return config;
++	return { config, asset };
+ }
+ 
+ /**
+@@ -139,17 +138,36 @@ async function getRouteConfig(
+  * @returns The path to the prerendered route, or null if it does not exist.
+  */
+ async function getRoutePath(
+-	{ fallback }: VercelPrerenderConfig,
++	{ fallback, initialHeaders }: VercelPrerenderConfig,
+ 	relativePath: string,
+ 	{ functionsDir }: PrerenderFunctionsOpts,
++	asset: PrerenderAsset,
+ ): Promise<string | null> {
+-	const prerenderRoute = join(dirname(relativePath), fallback.fsPath);
++	const kind = fallback.type.toLowerCase();
++	const location = initialHeaders?.['location'];
++	if (kind === 'redirect' && !location) return null;
++	const assetName =
++		kind === 'redirect'
++			? 'redirect.html'
++			: kind === 'inline'
++			? 'index.html'
++			: fallback.fsPath;
++	const prerenderRoute =
++		kind === 'filefsref'
++			? asset.sourceRoute
++			: join(dirname(relativePath), assetName);
+ 	const prerenderFile = join(functionsDir, prerenderRoute);
+ 
+ 	// Check the prerendered file exists.
+ 	if (!(await validateFile(prerenderFile))) {
+ 		const normalizedPath = normalizePath(prerenderRoute);
+-		cliWarn(`Could not find prerendered file for ${normalizedPath}`);
++		const warning =
++			kind === 'redirect'
++				? `Missing redirect asset for ${relativePath}: ${location}`
++				: kind === 'inline'
++				? `Missing inline prerender asset for ${relativePath}`
++				: `Could not find prerendered file for ${normalizedPath}`;
++		cliWarn(warning);
+ 		return null;
+ 	}
+ 
+@@ -176,13 +194,14 @@ async function getRouteDest(
+ 	{ fallback }: VercelPrerenderConfig,
+ 	relativePath: string,
+ 	{ outputDir }: PrerenderFunctionsOpts,
++	asset: PrerenderAsset,
+ ): Promise<{ destFile: string; destRoute: string }> {
+-	const fixedFileName = fallback.fsPath.replace(
+-		/\.prerender-fallback(?:\.(?:rsc|body|json))?/gi,
+-		'',
+-	);
+-	const destRoute = normalizePath(join(dirname(relativePath), fixedFileName));
+-	const destFile = join(outputDir, destRoute);
++	const destRoute = fallback.fsPath
++		? asset.destinationRoute
++		: stripFuncExtension(relativePath);
++	const destFile = fallback.fsPath
++		? join(outputDir, destRoute)
++		: join(outputDir, destRoute, 'index.html');
+ 
+ 	return { destFile, destRoute: addLeadingSlash(destRoute) };
+ }

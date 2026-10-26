@@ -1,0 +1,986 @@
+diff --git a/src/raw/build.rs b/src/raw/build.rs
+index 5eb182e..e93626b 100644
+--- a/src/raw/build.rs
++++ b/src/raw/build.rs
+@@ -79,12 +79,8 @@ struct UnfinishedNodes {
+ 
+ #[derive(Debug)]
+ struct BuilderNodeUnfinished {
++    node: BuilderNode,
++    last: Option<LastTransition>,
+-    is_final: bool,
+-    final_output: Output,
+-    trans: Vec<Transition>,
+-    last_inp: Option<u8>,
+-    last_out: Output,
+-    trans_prefix: Output,
+ }
+ 
+ #[derive(Debug, Hash, Eq, PartialEq)]
+@@ -94,6 +90,12 @@ pub struct BuilderNode {
+     pub trans: Vec<Transition>,
+ }
+ 
++#[derive(Debug)]
++struct LastTransition {
++    inp: u8,
++    out: Output,
++}
++
+ impl Builder<Vec<u8>> {
+     /// Create a builder that builds an fst in memory.
+     #[inline]
+@@ -212,8 +214,8 @@ impl<W: io::Write> Builder<W> {
+     /// flushing it.
+     pub fn into_inner(mut self) -> Result<W> {
+         self.compile_from(0)?;
++        let root_node = self.unfinished.pop_root();
++        let root_addr = self.compile(&root_node)?;
+-        let (root_node, prefix) = self.unfinished.pop_root();
+-        let root_addr = self.compile(&root_node, prefix)?;
+         bytes::io_write_u64_le(self.len as u64, &mut self.wtr)?;
+         bytes::io_write_u64_le(root_addr as u64, &mut self.wtr)?;
+ 
+@@ -258,31 +260,31 @@ impl<W: io::Write> Builder<W> {
+     fn compile_from(&mut self, istate: usize) -> Result<()> {
+         let mut addr = NONE_ADDRESS;
+         while istate + 1 < self.unfinished.len() {
++            let node = if addr == NONE_ADDRESS {
+-            let (node, prefix) = if addr == NONE_ADDRESS {
+                 self.unfinished.pop_empty()
+             } else {
+                 self.unfinished.pop_freeze(addr)
+             };
++            addr = self.compile(&node)?;
+-            addr = self.compile(&node, prefix)?;
+             assert!(addr != NONE_ADDRESS);
+         }
+         self.unfinished.top_last_freeze(addr);
+         Ok(())
+     }
+ 
++    fn compile(&mut self, node: &BuilderNode) -> Result<CompiledAddr> {
+-    fn compile(&mut self, node: &BuilderNode, prefix: Output) -> Result<CompiledAddr> {
+         if node.is_final
+             && node.trans.is_empty()
+             && node.final_output.is_zero()
+         {
+             return Ok(EMPTY_ADDRESS);
+         }
++        let entry = self.registry.entry(&node);
+-        let entry = self.registry.entry_with_prefix(node.is_final, node.final_output, &node.trans, prefix);
+         if let RegistryEntry::Found(ref addr) = entry {
+             return Ok(*addr);
+         }
+         let start_addr = self.wtr.count() as CompiledAddr;
++        node.compile_to(&mut self.wtr, self.last_addr, start_addr)?;
+-        node.compile_with_prefix(&mut self.wtr, self.last_addr, start_addr, prefix)?;
+         self.last_addr = self.wtr.count() as CompiledAddr - 1;
+         if let RegistryEntry::NotFound(cell) = entry {
+             cell.insert(self.last_addr);
+@@ -336,37 +338,32 @@ impl UnfinishedNodes {
+ 
+     fn push_empty(&mut self, is_final: bool) {
+         self.stack.push(BuilderNodeUnfinished {
++            node: BuilderNode { is_final, ..BuilderNode::default() },
++            last: None,
+-            is_final,
+-            final_output: Output::zero(),
+-            trans: vec![],
+-            last_inp: None,
+-            last_out: Output::zero(),
+-            trans_prefix: Output::zero(),
+         });
+     }
+ 
++    fn pop_root(&mut self) -> BuilderNode {
+-    fn pop_root(&mut self) -> (BuilderNode, Output) {
+         assert!(self.stack.len() == 1);
++        assert!(self.stack[0].last.is_none());
++        self.stack.pop().unwrap().node
+-        assert!(self.stack[0].last_inp.is_none());
+-        let node = self.stack.pop().unwrap();
+-        (BuilderNode { is_final: node.is_final, final_output: node.final_output, trans: node.trans }, node.trans_prefix)
+     }
+ 
++    fn pop_freeze(&mut self, addr: CompiledAddr) -> BuilderNode {
+-    fn pop_freeze(&mut self, addr: CompiledAddr) -> (BuilderNode, Output) {
+         let mut unfinished = self.stack.pop().unwrap();
+         unfinished.last_compiled(addr);
++        unfinished.node
+-        (BuilderNode { is_final: unfinished.is_final, final_output: unfinished.final_output, trans: unfinished.trans }, unfinished.trans_prefix)
+     }
+ 
++    fn pop_empty(&mut self) -> BuilderNode {
+-    fn pop_empty(&mut self) -> (BuilderNode, Output) {
+         let unfinished = self.stack.pop().unwrap();
++        assert!(unfinished.last.is_none());
++        unfinished.node
+-        assert!(unfinished.last_inp.is_none());
+-        (BuilderNode { is_final: unfinished.is_final, final_output: unfinished.final_output, trans: unfinished.trans }, unfinished.trans_prefix)
+     }
+ 
+     fn set_root_output(&mut self, out: Output) {
++        self.stack[0].node.is_final = true;
++        self.stack[0].node.final_output = out;
+-        self.stack[0].is_final = true;
+-        self.stack[0].final_output = out;
+     }
+ 
+     fn top_last_freeze(&mut self, addr: CompiledAddr) {
+@@ -379,17 +376,12 @@ impl UnfinishedNodes {
+             return;
+         }
+         let last = self.stack.len().checked_sub(1).unwrap();
++        assert!(self.stack[last].last.is_none());
++        self.stack[last].last = Some(LastTransition { inp: bs[0], out });
+-        assert!(self.stack[last].last_inp.is_none());
+-        self.stack[last].last_inp = Some(bs[0]);
+-        self.stack[last].last_out = out;
+         for &b in &bs[1..] {
+             self.stack.push(BuilderNodeUnfinished {
++                node: BuilderNode::default(),
++                last: Some(LastTransition { inp: b, out: Output::zero() }),
+-                is_final: false,
+-                final_output: Output::zero(),
+-                trans: vec![],
+-                last_inp: Some(b),
+-                last_out: Output::zero(),
+-                trans_prefix: Output::zero(),
+             });
+         }
+         self.push_empty(true);
+@@ -399,7 +391,7 @@ impl UnfinishedNodes {
+         bs.iter()
+             .zip(&self.stack)
+             .take_while(|&(&b, ref node)| {
++                node.last.as_ref().map(|t| t.inp == b).unwrap_or(false)
+-                node.last_inp.map(|inp| inp == b).unwrap_or(false)
+             })
+             .count()
+     }
+@@ -411,27 +403,19 @@ impl UnfinishedNodes {
+     ) -> (usize, Output) {
+         let mut i = 0;
+         while i < bs.len() {
++            let add_prefix = match self.stack[i].last.as_mut() {
++                Some(ref mut t) if t.inp == bs[i] => {
+-            let add_prefix = match self.stack[i].last_inp {
+-                Some(inp) if inp == bs[i] => {
+-                    let previous = self.stack[i].last_out;
+                     i += 1;
++                    let common_pre = t.out.prefix(out);
++                    let add_prefix = t.out.sub(common_pre);
+-                    let common_pre = previous.prefix(out);
+-                    let add_prefix = previous.sub(common_pre);
+                     out = out.sub(common_pre);
++                    t.out = common_pre;
+-                    self.stack[i - 1].last_out = common_pre;
+                     add_prefix
+                 }
+                 _ => break,
+             };
+             if !add_prefix.is_zero() {
++                self.stack[i].add_output_prefix(add_prefix);
+-                let successor = &mut self.stack[i];
+-                if successor.is_final {
+-                    successor.final_output = add_prefix.cat(successor.final_output);
+-                }
+-                successor.add_output_prefix(add_prefix);
+-                if successor.last_inp.is_some() {
+-                    successor.last_out = add_prefix.cat(successor.last_out);
+-                }
+             }
+         }
+         (i, out)
+@@ -440,24 +424,24 @@ impl UnfinishedNodes {
+ 
+ impl BuilderNodeUnfinished {
+     fn last_compiled(&mut self, addr: CompiledAddr) {
++        if let Some(trans) = self.last.take() {
++            self.node.trans.push(Transition {
++                inp: trans.inp,
++                out: trans.out,
+-        if let Some(inp) = self.last_inp.take() {
+-            if self.last_out < self.trans_prefix {
+-                for t in &mut self.trans {
+-                    t.out = self.trans_prefix.cat(t.out);
+-                }
+-                self.trans_prefix = Output::zero();
+-            }
+-            self.trans.push(Transition {
+-                inp,
+-                out: self.last_out.sub(self.trans_prefix),
+                 addr,
+             });
+         }
+     }
+ 
+     fn add_output_prefix(&mut self, prefix: Output) {
++        if self.node.is_final {
++            self.node.final_output = prefix.cat(self.node.final_output);
++        }
++        for t in &mut self.node.trans {
++            t.out = prefix.cat(t.out);
++        }
++        if let Some(ref mut t) = self.last {
++            t.out = prefix.cat(t.out);
+-        if !self.trans.is_empty() {
+-            self.trans_prefix = prefix.cat(self.trans_prefix);
+         }
+     }
+ }
+diff --git a/src/raw/mod.rs b/src/raw/mod.rs
+index b9108f1..6cc0eeb 100644
+--- a/src/raw/mod.rs
++++ b/src/raw/mod.rs
+@@ -518,7 +518,7 @@ impl<D: AsRef<[u8]>> Fst<D> {
+     pub fn verify(&self) -> Result<()> {
+         use crate::raw::crc32::CheckSummer;
+ 
++        let expected = match self.as_ref().meta.checksum {
+-        let expected = match self.as_ref().checksum {
+             None => return Err(Error::ChecksumMissing.into()),
+             Some(expected) => expected,
+         };
+@@ -634,7 +634,7 @@ impl<D: AsRef<[u8]>> Fst<D> {
+ 
+     #[inline]
+     fn as_ref(&self) -> FstRef {
++        FstRef { meta: &self.meta, data: self.data.as_ref() }
+-        FstRef { version: self.meta.version, root_addr: self.meta.root_addr, ty: self.meta.ty, len: self.meta.len, checksum: self.meta.checksum, data: self.data.as_ref() }
+     }
+ }
+ 
+@@ -673,11 +673,7 @@ impl<'a, 'f, D: AsRef<[u8]>> IntoStreamer<'a> for &'f Fst<D> {
+ }
+ 
+ struct FstRef<'f> {
++    meta: &'f Meta,
+-    version: u64,
+-    root_addr: CompiledAddr,
+-    ty: FstType,
+-    len: usize,
+-    checksum: Option<u32>,
+     data: &'f [u8],
+ }
+ 
+@@ -737,12 +733,12 @@ impl<'f> FstRef<'f> {
+ 
+     #[inline]
+     fn len(&self) -> usize {
++        self.meta.len
+-        self.len
+     }
+ 
+     #[inline]
+     fn is_empty(&self) -> bool {
++        self.meta.len == 0
+-        self.len == 0
+     }
+ 
+     #[inline]
+@@ -752,12 +748,12 @@ impl<'f> FstRef<'f> {
+ 
+     #[inline]
+     fn fst_type(&self) -> FstType {
++        self.meta.ty
+-        self.ty
+     }
+ 
+     #[inline]
+     fn root_addr(&self) -> CompiledAddr {
++        self.meta.root_addr
+-        self.root_addr
+     }
+ 
+     #[inline]
+@@ -767,7 +763,7 @@ impl<'f> FstRef<'f> {
+ 
+     #[inline]
+     fn node(&self, addr: CompiledAddr) -> Node<'f> {
++        Node::new(self.meta.version, addr, self.as_bytes())
+-        Node::new(self.version, addr, self.as_bytes())
+     }
+ 
+     #[inline]
+@@ -946,6 +942,15 @@ enum Bound {
+ }
+ 
+ impl Bound {
++    #[inline]
++    fn exceeded_by(&self, inp: &[u8]) -> bool {
++        match *self {
++            Bound::Included(ref v) => inp > v,
++            Bound::Excluded(ref v) => inp >= v,
++            Bound::Unbounded => false,
++        }
++    }
++
+     #[inline]
+     fn is_empty(&self) -> bool {
+         match *self {
+@@ -1065,13 +1070,16 @@ where
+     aut: A,
+     inp: Vec<u8>,
+     empty_output: Option<Output>,
++    stack: Vec<StreamState<'f, A::State>>,
++    end_at: Bound,
++}
++
++#[derive(Clone, Debug)]
++struct StreamState<'f, S> {
++    node: Node<'f>,
++    trans: usize,
++    out: Output,
++    aut_state: S,
+-    stack: Vec<Node<'f>>,
+-    stack_trans: Vec<usize>,
+-    stack_out: Vec<Output>,
+-    output: Output,
+-    stack_aut: Vec<A::State>,
+-    end_key: Option<Vec<u8>>,
+-    end_inclusive: bool,
+ }
+ 
+ impl<'f, A: Automaton> StreamWithState<'f, A> {
+@@ -1081,23 +1089,13 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+         min: Bound,
+         max: Bound,
+     ) -> StreamWithState<'f, A> {
+-        let (end_key, end_inclusive) = match max {
+-            Bound::Included(key) => (Some(key), true),
+-            Bound::Excluded(key) => (Some(key), false),
+-            Bound::Unbounded => (None, true),
+-        };
+         let mut rdr = StreamWithState {
+             fst,
+             aut,
+             inp: Vec::with_capacity(16),
+             empty_output: None,
+             stack: vec![],
++            end_at: max,
+-            stack_trans: vec![],
+-            stack_out: vec![],
+-            output: Output::zero(),
+-            stack_aut: vec![],
+-            end_key,
+-            end_inclusive,
+         };
+         rdr.seek_min(min);
+         rdr
+@@ -1115,11 +1113,12 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+             if min.is_inclusive() {
+                 self.empty_output = self.fst.empty_final_output();
+             }
++            self.stack = vec![StreamState {
++                node: self.fst.root(),
++                trans: 0,
++                out: Output::zero(),
++                aut_state: self.aut.start(),
++            }];
+-            self.stack = vec![self.fst.root()];
+-            self.stack_trans = vec![0];
+-            self.stack_out.clear();
+-            self.output = Output::zero();
+-            self.stack_aut = vec![self.aut.start()];
+             return;
+         }
+         let (key, inclusive) = match min {
+@@ -1143,10 +1142,12 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+                     let prev_state = aut_state;
+                     aut_state = self.aut.accept(&prev_state, b);
+                     self.inp.push(b);
++                    self.stack.push(StreamState {
++                        node,
++                        trans: i + 1,
++                        out,
++                        aut_state: prev_state,
++                    });
+-                    self.stack.push(node);
+-                    self.stack_trans.push(i + 1);
+-                    self.stack_out.push(out);
+-                    self.stack_aut.push(prev_state);
+                     out = out.cat(t.out);
+                     node = self.fst.node(t.addr);
+                 }
+@@ -1156,10 +1157,15 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+                     // Since this is a minimum bound, we need to find the
+                     // first transition in this node that proceeds the current
+                     // input byte.
++                    self.stack.push(StreamState {
++                        node,
++                        trans: node
++                            .transitions()
++                            .position(|t| t.inp > b)
++                            .unwrap_or(node.len()),
++                        out,
++                        aut_state,
++                    });
+-                    self.stack.push(node);
+-                    self.stack_trans.push(node.transitions().position(|t| t.inp > b).unwrap_or(node.len()));
+-                    self.output = out;
+-                    self.stack_aut.push(aut_state);
+                     return;
+                 }
+             }
+@@ -1167,16 +1173,17 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+         if !self.stack.is_empty() {
+             let last = self.stack.len() - 1;
+             if inclusive {
++                self.stack[last].trans -= 1;
+-                self.stack_trans[last] -= 1;
+-                self.output = self.stack_out.pop().unwrap();
+                 self.inp.pop();
+             } else {
++                let node = self.stack[last].node;
++                let trans = self.stack[last].trans;
++                self.stack.push(StreamState {
++                    node: self.fst.node(node.transition(trans - 1).addr),
++                    trans: 0,
++                    out,
++                    aut_state,
++                });
+-                let node = self.stack[last];
+-                let trans = self.stack_trans[last];
+-                self.stack.push(self.fst.node(node.transition(trans - 1).addr));
+-                self.stack_trans.push(0);
+-                self.output = out;
+-                self.stack_aut.push(aut_state);
+             }
+         }
+     }
+@@ -1186,11 +1193,8 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+         mut map: impl FnMut(&A::State) -> T,
+     ) -> Option<(&[u8], Output, T)> {
+         if let Some(out) = self.empty_output.take() {
++            if self.end_at.exceeded_by(&[]) {
+-            if self.end_key.as_ref().map_or(false, |end| end.is_empty() && !self.end_inclusive) {
+                 self.stack.clear();
+-                self.stack_trans.clear();
+-                self.stack_out.clear();
+-                self.stack_aut.clear();
+                 return None;
+             }
+ 
+@@ -1199,22 +1203,18 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+                 return Some((&[], out, map(&start)));
+             }
+         }
++        while let Some(state) = self.stack.pop() {
++            if state.trans >= state.node.len()
++                || !self.aut.can_match(&state.aut_state)
+-        while let Some(node) = self.stack.pop() {
+-            let trans_index = self.stack_trans.pop().unwrap();
+-            let prefix = self.output;
+-            let aut_state = self.stack_aut.pop().unwrap();
+-            if trans_index >= node.len()
+-                || !self.aut.can_match(&aut_state)
+             {
++                if state.node.addr() != self.fst.root_addr() {
+-                if node.addr() != self.fst.root_addr() {
+                     self.inp.pop().unwrap();
+                 }
+-                self.output = self.stack_out.pop().unwrap_or(Output::zero());
+                 continue;
+             }
++            let trans = state.node.transition(state.trans);
++            let out = state.out.cat(trans.out);
++            let next_state = self.aut.accept(&state.aut_state, trans.inp);
+-            let trans = node.transition(trans_index);
+-            let out = prefix.cat(trans.out);
+-            let next_state = self.aut.accept(&aut_state, trans.inp);
+             let t = map(&next_state);
+             let mut is_match = self.aut.is_match(&next_state);
+             let next_node = self.fst.node(trans.addr);
+@@ -1224,20 +1224,16 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
+                     is_match = self.aut.is_match(&eof_state);
+                 }
+             }
++            self.stack.push(StreamState { trans: state.trans + 1, ..state });
++            self.stack.push(StreamState {
++                node: next_node,
++                trans: 0,
++                out,
++                aut_state: next_state,
++            });
++            if self.end_at.exceeded_by(&self.inp) {
+-            self.stack.push(node);
+-            self.stack_trans.push(trans_index + 1);
+-            self.stack_out.push(prefix);
+-            self.stack_aut.push(aut_state);
+-            self.stack.push(next_node);
+-            self.stack_trans.push(0);
+-            self.output = out;
+-            self.stack_aut.push(next_state);
+-            if self.end_key.as_ref().map_or(false, |end| self.inp > *end || (self.inp == *end && !self.end_inclusive)) {
+                 // We are done, forever.
+                 self.stack.clear();
+-                self.stack_trans.clear();
+-                self.stack_out.clear();
+-                self.stack_aut.clear();
+                 return None;
+             }
+             if next_node.is_final() && is_match {
+diff --git a/src/raw/node.rs b/src/raw/node.rs
+index f20c1b5..820b29e 100644
+--- a/src/raw/node.rs
++++ b/src/raw/node.rs
+@@ -27,8 +27,7 @@ pub struct Node<'f> {
+     end: usize,
+     is_final: bool,
+     ntrans: usize,
++    sizes: PackSizes,
+-    transition_size: usize,
+-    output_size: usize,
+     final_output: Output,
+ }
+ 
+@@ -68,8 +67,7 @@ impl<'f> Node<'f> {
+                 end: EMPTY_ADDRESS,
+                 is_final: true,
+                 ntrans: 0,
++                sizes: PackSizes::new(),
+-                transition_size: 0,
+-                output_size: 0,
+                 final_output: Output::zero(),
+             },
+             State::OneTransNext(s) => {
+@@ -81,8 +79,7 @@ impl<'f> Node<'f> {
+                     start: addr,
+                     end: s.end_addr(data),
+                     is_final: false,
++                    sizes: PackSizes::new(),
+-                    transition_size: 0,
+-                output_size: 0,
+                     ntrans: 1,
+                     final_output: Output::zero(),
+                 }
+@@ -95,11 +92,10 @@ impl<'f> Node<'f> {
+                     version,
+                     state,
+                     start: addr,
++                    end: s.end_addr(data, sizes),
+-                    end: s.end_addr(data, sizes.transition_pack_size(), sizes.output_pack_size()),
+                     is_final: false,
+                     ntrans: 1,
++                    sizes,
+-                    transition_size: sizes.transition_pack_size(),
+-                    output_size: sizes.output_pack_size(),
+                     final_output: Output::zero(),
+                 }
+             }
+@@ -107,18 +103,16 @@ impl<'f> Node<'f> {
+                 let data = &data[..addr + 1];
+                 let sizes = s.sizes(data);
+                 let ntrans = s.ntrans(data);
+-                let final_width = if s.is_final_state() { sizes.output_pack_size() } else { 0 };
+                 Node {
+                     data,
+                     version,
+                     state,
+                     start: addr,
++                    end: s.end_addr(version, data, sizes, ntrans),
+-                    end: s.end_addr(version, data, sizes.transition_pack_size(), sizes.output_pack_size(), final_width, ntrans),
+                     is_final: s.is_final_state(),
+                     ntrans,
++                    sizes,
++                    final_output: s.final_output(version, data, sizes, ntrans),
+-                    transition_size: sizes.transition_pack_size(),
+-                    output_size: sizes.output_pack_size(),
+-                    final_output: if final_width == 0 { Output::zero() } else { s.final_output(version, data, sizes.transition_pack_size(), sizes.output_pack_size(), ntrans) },
+                 }
+             }
+         }
+@@ -251,27 +245,21 @@ impl<'f> Node<'f> {
+         wtr: W,
+         last_addr: CompiledAddr,
+         addr: CompiledAddr,
++        node: &BuilderNode,
+-        is_final: bool,
+-        final_output: Output,
+-        trans: &[Transition],
+-        prefix: Output,
+     ) -> io::Result<()> {
++        assert!(node.trans.len() <= 256);
++        if node.trans.is_empty()
++            && node.is_final
++            && node.final_output.is_zero()
+-        assert!(trans.len() <= 256);
+-        if trans.is_empty()
+-            && is_final
+-            && final_output.is_zero()
+         {
+             return Ok(());
++        } else if node.trans.len() != 1 || node.is_final {
++            StateAnyTrans::compile(wtr, addr, node)
+-        } else if trans.len() != 1 || is_final {
+-            let final_size = bytes::pack_size(final_output.value());
+-            let has_final_output = !final_output.is_zero();
+-            StateAnyTrans::compile(wtr, addr, is_final, final_output, final_size, has_final_output, trans, prefix)
+         } else {
++            if node.trans[0].addr == last_addr && node.trans[0].out.is_zero() {
++                StateOneTransNext::compile(wtr, addr, node.trans[0].inp)
+-            let output = prefix.cat(trans[0].out);
+-            if trans[0].addr == last_addr && output.is_zero() {
+-                StateOneTransNext::compile(wtr, addr, trans[0].inp)
+             } else {
++                StateOneTrans::compile(wtr, addr, node.trans[0])
+-                StateOneTrans::compile(wtr, addr, Transition { out: output, ..trans[0] })
+             }
+         }
+     }
+@@ -284,17 +272,7 @@ impl BuilderNode {
+         last_addr: CompiledAddr,
+         addr: CompiledAddr,
+     ) -> io::Result<()> {
++        Node::compile(wtr, last_addr, addr, self)
+-        self.compile_with_prefix(wtr, last_addr, addr, Output::zero())
+-    }
+-
+-    pub fn compile_with_prefix<W: io::Write>(
+-        &self,
+-        wtr: W,
+-        last_addr: CompiledAddr,
+-        addr: CompiledAddr,
+-        prefix: Output,
+-    ) -> io::Result<()> {
+-        Node::compile(wtr, last_addr, addr, self.is_final, self.final_output, &self.trans, prefix)
+     }
+ }
+ 
+@@ -445,12 +423,12 @@ impl StateOneTrans {
+     }
+ 
+     #[inline]
++    fn end_addr(&self, data: &[u8], sizes: PackSizes) -> usize {
+-    fn end_addr(&self, data: &[u8], transition_size: usize, output_size: usize) -> usize {
+         data.len() - 1
+         - self.input_len()
+         - 1 // pack size
++        - sizes.transition_pack_size()
++        - sizes.output_pack_size()
+-        - transition_size
+-        - output_size
+     }
+ 
+     #[inline]
+@@ -464,11 +442,11 @@ impl StateOneTrans {
+ 
+     #[inline]
+     fn output(&self, node: &Node<'_>) -> Output {
++        let osize = node.sizes.output_pack_size();
+-        let osize = node.output_size;
+         if osize == 0 {
+             return Output::zero();
+         }
++        let tsize = node.sizes.transition_pack_size();
+-        let tsize = node.transition_size;
+         let i = node.start
+                 - self.input_len()
+                 - 1 // pack size
+@@ -478,7 +456,7 @@ impl StateOneTrans {
+ 
+     #[inline]
+     fn trans_addr(&self, node: &Node<'_>) -> CompiledAddr {
++        let tsize = node.sizes.transition_pack_size();
+-        let tsize = node.transition_size;
+         let i = node.start
+                 - self.input_len()
+                 - 1 // pack size
+@@ -491,23 +469,17 @@ impl StateAnyTrans {
+     fn compile<W: io::Write>(
+         mut wtr: W,
+         addr: CompiledAddr,
++        node: &BuilderNode,
+-        is_final: bool,
+-        final_output: Output,
+-        final_size: u8,
+-        has_final_output: bool,
+-        trans: &[Transition],
+-        prefix: Output,
+     ) -> io::Result<()> {
++        assert!(node.trans.len() <= 256);
+-        assert!(trans.len() <= 256);
+ 
+         let mut tsize = 0;
++        let mut osize = bytes::pack_size(node.final_output.value());
++        let mut any_outs = !node.final_output.is_zero();
++        for t in &node.trans {
+-        let mut osize = final_size;
+-        let mut any_outs = has_final_output;
+-        for t in trans {
+             tsize = cmp::max(tsize, pack_delta_size(addr, t.addr));
++            osize = cmp::max(osize, bytes::pack_size(t.out.value()));
++            any_outs = any_outs || !t.out.is_zero();
+-            let output = prefix.cat(t.out);
+-            osize = cmp::max(osize, bytes::pack_size(output.value()));
+-            any_outs = any_outs || !output.is_zero();
+         }
+ 
+         let mut pack_sizes = PackSizes::new();
+@@ -519,34 +491,34 @@ impl StateAnyTrans {
+         pack_sizes.set_transition_pack_size(tsize);
+ 
+         let mut state = StateAnyTrans::new();
++        state.set_final_state(node.is_final);
++        state.set_state_ntrans(node.trans.len() as u8);
+-        state.set_final_state(is_final);
+-        state.set_state_ntrans(trans.len() as u8);
+ 
+         if any_outs {
++            if node.is_final {
+-            if is_final {
+                 bytes::pack_uint_in(
+                     &mut wtr,
++                    node.final_output.value(),
+-                    final_output.value(),
+                     osize,
+                 )?;
+             }
++            for t in node.trans.iter().rev() {
++                bytes::pack_uint_in(&mut wtr, t.out.value(), osize)?;
+-            for t in trans.iter().rev() {
+-                bytes::pack_uint_in(&mut wtr, prefix.cat(t.out).value(), osize)?;
+             }
+         }
++        for t in node.trans.iter().rev() {
+-        for t in trans.iter().rev() {
+             pack_delta_in(&mut wtr, addr, t.addr, tsize)?;
+         }
++        for t in node.trans.iter().rev() {
+-        for t in trans.iter().rev() {
+             wtr.write_all(&[t.inp])?;
+         }
++        if node.trans.len() > TRANS_INDEX_THRESHOLD {
+-        if trans.len() > TRANS_INDEX_THRESHOLD {
+             // A value of 255 indicates that no transition exists for the byte
+             // at that index. (Except when there are 256 transitions.) Namely,
+             // any value greater than or equal to the number of transitions in
+             // this node indicates an absent transition.
+             let mut index = [255u8; 256];
++            for (i, t) in node.trans.iter().enumerate() {
+-            for (i, t) in trans.iter().enumerate() {
+                 index[t.inp as usize] = i as u8;
+             }
+             wtr.write_all(&index)?;
+@@ -554,13 +526,13 @@ impl StateAnyTrans {
+ 
+         wtr.write_all(&[pack_sizes.encode()])?;
+         if state.state_ntrans().is_none() {
++            if node.trans.len() == 256 {
+-            if trans.len() == 256 {
+                 // 256 can't be represented in a u8, so we abuse the fact that
+                 // the # of transitions can never be 1 here, since 1 is always
+                 // encoded in the state byte.
+                 wtr.write_all(&[1])?;
+             } else {
++                wtr.write_all(&[node.trans.len() as u8])?;
+-                wtr.write_all(&[trans.len() as u8])?;
+             }
+         }
+         wtr.write_all(&[state.0])?;
+@@ -611,11 +583,11 @@ impl StateAnyTrans {
+     fn total_trans_size(
+         &self,
+         version: u64,
++        sizes: PackSizes,
+-        transition_size: usize,
+         ntrans: usize,
+     ) -> usize {
+         let index_size = self.trans_index_size(version, ntrans);
++        ntrans + (ntrans * sizes.transition_pack_size()) + index_size
+-        ntrans + (ntrans * transition_size) + index_size
+     }
+ 
+     #[inline]
+@@ -657,15 +629,17 @@ impl StateAnyTrans {
+         &self,
+         version: u64,
+         data: &[u8],
++        sizes: PackSizes,
+-        transition_size: usize,
+-        output_size: usize,
+         ntrans: usize,
+     ) -> Output {
++        let osize = sizes.output_pack_size();
++        if osize == 0 || !self.is_final_state() {
++            return Output::zero();
++        }
+-        let osize = output_size;
+         let at = data.len() - 1
+                  - self.ntrans_len()
+                  - 1 // pack size
++                 - self.total_trans_size(version, sizes, ntrans)
+-                 - self.total_trans_size(version, transition_size, ntrans)
+                  - (ntrans * osize) // output values
+                  - osize; // the desired output value
+         Output::new(bytes::unpack_uint(&data[at..], osize as u8))
+@@ -676,16 +650,15 @@ impl StateAnyTrans {
+         &self,
+         version: u64,
+         data: &[u8],
++        sizes: PackSizes,
+-        transition_size: usize,
+-        output_size: usize,
+-        final_osize: usize,
+         ntrans: usize,
+     ) -> usize {
++        let osize = sizes.output_pack_size();
++        let final_osize = if !self.is_final_state() { 0 } else { osize };
+-        let osize = output_size;
+         data.len() - 1
+         - self.ntrans_len()
+         - 1 // pack size
++        - self.total_trans_size(version, sizes, ntrans)
+-        - self.total_trans_size(version, transition_size, ntrans)
+         - (ntrans * osize) // output values
+         - final_osize // final output
+     }
+@@ -693,7 +666,7 @@ impl StateAnyTrans {
+     #[inline]
+     fn trans_addr(&self, node: &Node<'_>, i: usize) -> CompiledAddr {
+         assert!(i < node.ntrans);
++        let tsize = node.sizes.transition_pack_size();
+-        let tsize = node.transition_size;
+         let at = node.start
+                  - self.ntrans_len()
+                  - 1 // pack size
+@@ -741,14 +714,14 @@ impl StateAnyTrans {
+ 
+     #[inline]
+     fn output(&self, node: &Node<'_>, i: usize) -> Output {
++        let osize = node.sizes.output_pack_size();
+-        let osize = node.output_size;
+         if osize == 0 {
+             return Output::zero();
+         }
+         let at = node.start
+                  - self.ntrans_len()
+                  - 1 // pack size
++                 - self.total_trans_size(node.version, node.sizes, node.ntrans)
+-                 - self.total_trans_size(node.version, node.transition_size, node.ntrans)
+                  - (i * osize) // the previous outputs
+                  - osize; // the desired output value
+         Output::new(bytes::unpack_uint(&node.data[at..], osize as u8))
+diff --git a/src/raw/registry.rs b/src/raw/registry.rs
+index df1b360..3b00a5b 100644
+--- a/src/raw/registry.rs
++++ b/src/raw/registry.rs
+@@ -1,5 +1,5 @@
+ use crate::raw::build::BuilderNode;
++use crate::raw::{CompiledAddr, NONE_ADDRESS};
+-use crate::raw::{CompiledAddr, Output, Transition, NONE_ADDRESS};
+ 
+ #[derive(Debug)]
+ pub struct Registry {
+@@ -34,24 +34,16 @@ impl Registry {
+     }
+ 
+     pub fn entry<'a>(&'a mut self, node: &BuilderNode) -> RegistryEntry<'a> {
+-        self.entry_parts(node.is_final, node.final_output, &node.trans)
+-    }
+-
+-    pub fn entry_parts<'a>(&'a mut self, is_final: bool, final_output: Output, trans: &[Transition]) -> RegistryEntry<'a> {
+-        self.entry_with_prefix(is_final, final_output, trans, Output::zero())
+-    }
+-
+-    pub fn entry_with_prefix<'a>(&'a mut self, is_final: bool, final_output: Output, trans: &[Transition], prefix: Output) -> RegistryEntry<'a> {
+         if self.table.is_empty() {
+             return RegistryEntry::Rejected;
+         }
++        let bucket = self.hash(node);
+-        let bucket = self.hash(is_final, final_output, trans, prefix);
+         let start = self.mru_size * bucket;
+         let end = start + self.mru_size;
++        RegistryCache { cells: &mut self.table[start..end] }.entry(node)
+-        RegistryCache { cells: &mut self.table[start..end] }.entry(is_final, final_output, trans, prefix)
+     }
+ 
++    fn hash(&self, node: &BuilderNode) -> usize {
+-    fn hash(&self, is_final: bool, final_output: Output, trans: &[Transition], prefix: Output) -> usize {
+         // Basic FNV-1a hash as described:
+         // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
+         //
+@@ -59,11 +51,11 @@ impl Registry {
+         // as `std::hash::SipHasher` but is much much faster.
+         const FNV_PRIME: u64 = 1099511628211;
+         let mut h = 14695981039346656037;
++        h = (h ^ (node.is_final as u64)).wrapping_mul(FNV_PRIME);
++        h = (h ^ node.final_output.value()).wrapping_mul(FNV_PRIME);
++        for t in &node.trans {
+-        h = (h ^ (is_final as u64)).wrapping_mul(FNV_PRIME);
+-        h = (h ^ final_output.value()).wrapping_mul(FNV_PRIME);
+-        for t in trans {
+             h = (h ^ (t.inp as u64)).wrapping_mul(FNV_PRIME);
++            h = (h ^ t.out.value()).wrapping_mul(FNV_PRIME);
+-            h = (h ^ prefix.cat(t.out).value()).wrapping_mul(FNV_PRIME);
+             h = (h ^ (t.addr as u64)).wrapping_mul(FNV_PRIME);
+         }
+         (h as usize) % self.table_size
+@@ -71,57 +63,40 @@ impl Registry {
+ }
+ 
+ impl<'a> RegistryCache<'a> {
++    fn entry(mut self, node: &BuilderNode) -> RegistryEntry<'a> {
+-    fn entry(mut self, is_final: bool, final_output: Output, trans: &[Transition], prefix: Output) -> RegistryEntry<'a> {
+-        let matches = |node: &BuilderNode| {
+-            node.is_final == is_final && node.final_output == final_output
+-                && node.trans.len() == trans.len()
+-                && node.trans.iter().zip(trans).all(|(stored, pending)| {
+-                    stored.inp == pending.inp && stored.addr == pending.addr
+-                        && stored.out == prefix.cat(pending.out)
+-                })
+-        };
+         if self.cells.len() == 1 {
+             let cell = &mut self.cells[0];
++            if !cell.is_none() && &cell.node == node {
+-            if !cell.is_none() && matches(&cell.node) {
+                 RegistryEntry::Found(cell.addr)
+             } else {
++                cell.node.clone_from(node);
+-                cell.node.is_final = is_final;
+-                cell.node.final_output = final_output;
+-                cell.node.trans.clear();
+-                cell.node.trans.extend(trans.iter().map(|t| Transition { out: prefix.cat(t.out), ..*t }));
+                 RegistryEntry::NotFound(cell)
+             }
+         } else if self.cells.len() == 2 {
+             let cell1 = &mut self.cells[0];
++            if !cell1.is_none() && &cell1.node == node {
+-            if !cell1.is_none() && matches(&cell1.node) {
+                 return RegistryEntry::Found(cell1.addr);
+             }
+ 
+             let cell2 = &mut self.cells[1];
++            if !cell2.is_none() && &cell2.node == node {
+-            if !cell2.is_none() && matches(&cell2.node) {
+                 let addr = cell2.addr;
+                 self.cells.swap(0, 1);
+                 return RegistryEntry::Found(addr);
+             }
+ 
++            self.cells[1].node.clone_from(node);
+-            self.cells[1].node.is_final = is_final;
+-                self.cells[1].node.final_output = final_output;
+-                self.cells[1].node.trans.clear();
+-                self.cells[1].node.trans.extend(trans.iter().map(|t| Transition { out: prefix.cat(t.out), ..*t }));
+             self.cells.swap(0, 1);
+             RegistryEntry::NotFound(&mut self.cells[0])
+         } else {
++            let find = |c: &RegistryCell| !c.is_none() && &c.node == node;
+-            let find = |c: &RegistryCell| !c.is_none() && matches(&c.node);
+             if let Some(i) = self.cells.iter().position(find) {
+                 let addr = self.cells[i].addr;
+                 self.promote(i); // most recently used
+                 RegistryEntry::Found(addr)
+             } else {
+                 let last = self.cells.len() - 1;
++                self.cells[last].node.clone_from(node); // discard LRU
+-                self.cells[last].node.is_final = is_final;
+-                self.cells[last].node.final_output = final_output;
+-                self.cells[last].node.trans.clear();
+-                self.cells[last].node.trans.extend(trans.iter().map(|t| Transition { out: prefix.cat(t.out), ..*t })); // discard LRU
+                 self.promote(last);
+                 RegistryEntry::NotFound(&mut self.cells[0])
+             }

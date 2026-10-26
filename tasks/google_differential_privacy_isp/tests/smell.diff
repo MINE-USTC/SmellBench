@@ -1,0 +1,1021 @@
+diff --git a/go/dpagg/backend.go b/go/dpagg/backend.go
+new file mode 100644
+index 0000000..632477e
+--- /dev/null
++++ b/go/dpagg/backend.go
+@@ -0,0 +1,164 @@
++package dpagg
++
++import (
++	"fmt"
++	"github.com/google/differential-privacy/go/v4/checks"
++	"github.com/google/differential-privacy/go/v4/noise"
++	"github.com/google/differential-privacy/go/v4/rand"
++)
++
++type aggregationBackend interface {
++	noise.Noise
++	Encode(interface{}, *aggregationState) ([]byte, error)
++	Decode(interface{}, []byte) error
++	SampleInt64(int64, int64, int64, float64, float64, *aggregationState) (int64, error)
++	SampleFloat64(float64, int64, float64, float64, float64, *aggregationState) (float64, error)
++	Kind() noise.Kind
++	Restore(noise.Kind) noise.Noise
++	ClampInt64(int64, int64, int64) (int64, error)
++	ClampFloat64(float64, float64, float64) (float64, error)
++	CachedCount(map[int]int64, map[int]float64, int, int64, float64, float64, float64) (float64, bool, error)
++	PartitionProbability(int64, int64, float64, float64) (float64, error)
++	Uniform() float64
++	DefaultNoise() noise.Noise
++	NewCount(*CountOptions) (*Count, error)
++	NewSum(*BoundedSumFloat64Options) (*BoundedSumFloat64, error)
++	IntBounds(int64, int64) error
++	FloatBounds(float64, float64) (bool, error)
++	PartitionCount(int64, float64, float64) (*Count, float64, error)
++	CountValue(*Count) (int64, bool, error)
++	SumValue(*BoundedSumFloat64) (float64, bool, error)
++}
++
++type nativeAggregationBackend struct {
++	noise.Noise
++}
++
++func backend(n noise.Noise) aggregationBackend {
++	return nativeAggregationBackend{Noise: n}
++}
++
++func (b nativeAggregationBackend) Encode(v interface{}, state *aggregationState) ([]byte, error) {
++	switch record := v.(type) {
++	case encodableCount:
++		record.NoiseKind = b.Kind()
++		v = record
++	case encodableBoundedSumInt64:
++		record.NoiseKind = b.Kind()
++		v = record
++	case encodableBoundedSumFloat64:
++		record.NoiseKind = b.Kind()
++		v = record
++	case encodableBoundedQuantiles:
++		record.NoiseKind = b.Kind()
++		v = record
++	}
++	*state = serialized
++	return encode(v)
++}
++
++func (b nativeAggregationBackend) SampleInt64(v, l0, lInf int64, epsilon, delta float64, state *aggregationState) (int64, error) {
++	*state = resultReturned
++	return b.AddNoiseInt64(v, l0, lInf, epsilon, delta)
++}
++
++func (b nativeAggregationBackend) SampleFloat64(v float64, l0 int64, lInf, epsilon, delta float64, state *aggregationState) (float64, error) {
++	*state = resultReturned
++	return b.AddNoiseFloat64(v, l0, lInf, epsilon, delta)
++}
++
++func (b nativeAggregationBackend) Decode(v interface{}, data []byte) error {
++	return decode(v, data)
++}
++
++func (b nativeAggregationBackend) Kind() noise.Kind {
++	return noise.ToKind(b.Noise)
++}
++
++func (b nativeAggregationBackend) Restore(k noise.Kind) noise.Noise {
++	return noise.ToNoise(k)
++}
++
++func (b nativeAggregationBackend) ClampInt64(v, lower, upper int64) (int64, error) {
++	return ClampInt64(v, lower, upper)
++}
++
++func (b nativeAggregationBackend) ClampFloat64(v, lower, upper float64) (float64, error) {
++	return ClampFloat64(v, lower, upper)
++}
++
++func (b nativeAggregationBackend) CachedCount(tree map[int]int64, cache map[int]float64, index int, l0 int64, lInf, epsilon, delta float64) (float64, bool, error) {
++	if value, ok := cache[index]; ok {
++		return value, false, nil
++	}
++	value, err := b.AddNoiseFloat64(float64(tree[index]), l0, lInf, epsilon, delta)
++	if err != nil {
++		return 0, false, err
++	}
++	return value, true, nil
++}
++
++func (b nativeAggregationBackend) PartitionProbability(count, l0 int64, epsilon, delta float64) (float64, error) {
++	return keepPartitionProbability(count, l0, epsilon, delta)
++}
++
++func (b nativeAggregationBackend) Uniform() float64 {
++	return rand.Uniform()
++}
++
++func (b nativeAggregationBackend) DefaultNoise() noise.Noise {
++	if b.Noise == nil {
++		return noise.Laplace()
++	}
++	return b.Noise
++}
++
++func (b nativeAggregationBackend) NewCount(options *CountOptions) (*Count, error) {
++	configured := *options
++	configured.Noise = b.Noise
++	return NewCount(&configured)
++}
++
++func (b nativeAggregationBackend) NewSum(options *BoundedSumFloat64Options) (*BoundedSumFloat64, error) {
++	configured := *options
++	configured.Noise = b.Noise
++	return NewBoundedSumFloat64(&configured)
++}
++
++func (b nativeAggregationBackend) IntBounds(lower, upper int64) error {
++	if b.Kind() == noise.Unrecognised {
++		return checks.CheckBoundsInt64IgnoreOverflows(lower, upper)
++	}
++	return checks.CheckBoundsInt64(lower, upper)
++}
++
++func (b nativeAggregationBackend) FloatBounds(lower, upper float64) (bool, error) {
++	if b.Kind() == noise.Unrecognised {
++		return false, checks.CheckBoundsFloat64IgnoreOverflows(lower, upper)
++	}
++	return true, checks.CheckBoundsFloat64(lower, upper)
++}
++
++func (b nativeAggregationBackend) PartitionCount(l0 int64, epsilon, delta float64) (*Count, float64, error) {
++	thresholdDelta := delta / 2
++	count, err := b.NewCount(&CountOptions{
++		Epsilon: epsilon, Delta: thresholdDelta, MaxPartitionsContributed: l0,
++	})
++	return count, thresholdDelta, err
++}
++
++func (b nativeAggregationBackend) CountValue(c *Count) (int64, bool, error) {
++	if c.state != defaultState {
++		return 0, false, fmt.Errorf("Count's noised result cannot be computed: %s", c.state.errorMessage())
++	}
++	value, err := backend(c.Noise).SampleInt64(c.count, c.l0Sensitivity, c.lInfSensitivity, c.epsilon, c.delta, &c.state)
++	return value, true, err
++}
++
++func (b nativeAggregationBackend) SumValue(s *BoundedSumFloat64) (float64, bool, error) {
++	if s.state != defaultState {
++		return 0, false, fmt.Errorf("BoundedSumFloat64's noised result cannot be computed: %s", s.state.errorMessage())
++	}
++	value, err := backend(s.Noise).SampleFloat64(s.sum, s.l0Sensitivity, s.lInfSensitivity, s.epsilon, s.delta, &s.state)
++	return value, true, err
++}
+diff --git a/go/dpagg/count.go b/go/dpagg/count.go
+index 0126bfd..8c0735e 100644
+--- a/go/dpagg/count.go
++++ b/go/dpagg/count.go
+@@ -94,14 +94,11 @@ func NewCount(opt *CountOptions) (*Count, error) {
+ 		lInf = 1
+ 	}
+ 
+-	n := opt.Noise
+-	if n == nil {
+-		n = noise.Laplace()
+-	}
++	n := backend(opt.Noise).DefaultNoise()
+ 	// Check that the parameters are compatible with the noise chosen by calling
+ 	// the noise on some placeholder value.
+ 	eps, del := opt.Epsilon, opt.Delta
+-	_, err := n.AddNoiseInt64(0, l0, lInf, eps, del)
++	_, err := backend(n).AddNoiseInt64(0, l0, lInf, eps, del)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("NewCount: %w", err)
+ 	}
+@@ -112,7 +109,7 @@ func NewCount(opt *CountOptions) (*Count, error) {
+ 		l0Sensitivity:   l0,
+ 		lInfSensitivity: lInf,
+ 		Noise:           n,
+-		noiseKind:       noise.ToKind(n),
++		noiseKind:       backend(n).Kind(),
+ 		count:           0,
+ 		state:           defaultState,
+ 	}, nil
+@@ -176,13 +173,11 @@ func checkMergeCount(c1, c2 *Count) error {
+ // negative results to 0. Note that such post processing introduces bias to the
+ // result.
+ func (c *Count) Result() (int64, error) {
+-	if c.state != defaultState {
+-		return 0, fmt.Errorf("Count's noised result cannot be computed: %s", c.state.errorMessage())
++	value, consumed, err := backend(c.Noise).CountValue(c)
++	if consumed {
++		c.noisedCount = value
+ 	}
+-	c.state = resultReturned
+-	var err error
+-	c.noisedCount, err = c.Noise.AddNoiseInt64(c.count, c.l0Sensitivity, c.lInfSensitivity, c.epsilon, c.delta)
+-	return c.noisedCount, err
++	return value, err
+ }
+ 
+ // ThresholdedResult is similar to Result() but applies thresholding to the result.
+@@ -192,7 +187,7 @@ func (c *Count) Result() (int64, error) {
+ // Note that partitions associated with nil results should not be published if the mere
+ // existence of partitions is determined by private data.
+ func (c *Count) ThresholdedResult(thresholdDelta float64) (*int64, error) {
+-	threshold, err := c.Noise.Threshold(c.l0Sensitivity, float64(c.lInfSensitivity), c.epsilon, c.delta, thresholdDelta)
++	threshold, err := backend(c.Noise).Threshold(c.l0Sensitivity, float64(c.lInfSensitivity), c.epsilon, c.delta, thresholdDelta)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -231,7 +226,7 @@ func (c *Count) PreThresholdedResult(preThreshold int64, thresholdDelta float64)
+ 		return nil, nil
+ 	}
+ 
+-	threshold, err := c.Noise.Threshold(c.l0Sensitivity, float64(c.lInfSensitivity), c.epsilon, c.delta, thresholdDelta)
++	threshold, err := backend(c.Noise).Threshold(c.l0Sensitivity, float64(c.lInfSensitivity), c.epsilon, c.delta, thresholdDelta)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -262,7 +257,7 @@ func (c *Count) ComputeConfidenceInterval(alpha float64) (noise.ConfidenceInterv
+ 	if c.state != resultReturned {
+ 		return noise.ConfidenceInterval{}, fmt.Errorf("Result() must be called before calling ComputeConfidenceInterval()")
+ 	}
+-	confInt, err := c.Noise.ComputeConfidenceIntervalInt64(c.noisedCount, c.l0Sensitivity, c.lInfSensitivity, c.epsilon, c.delta, alpha)
++	confInt, err := backend(c.Noise).ComputeConfidenceIntervalInt64(c.noisedCount, c.l0Sensitivity, c.lInfSensitivity, c.epsilon, c.delta, alpha)
+ 	if err != nil {
+ 		return noise.ConfidenceInterval{}, err
+ 	}
+@@ -291,17 +286,15 @@ func (c *Count) GobEncode() ([]byte, error) {
+ 		Delta:           c.delta,
+ 		L0Sensitivity:   c.l0Sensitivity,
+ 		LInfSensitivity: c.lInfSensitivity,
+-		NoiseKind:       noise.ToKind(c.Noise),
+ 		Count:           c.count,
+ 	}
+-	c.state = serialized
+-	return encode(enc)
++	return backend(c.Noise).Encode(enc, &c.state)
+ }
+ 
+ // GobDecode decodes Count.
+ func (c *Count) GobDecode(data []byte) error {
+ 	var enc encodableCount
+-	err := decode(&enc, data)
++	err := backend(nil).Decode(&enc, data)
+ 	if err != nil {
+ 		return fmt.Errorf("couldn't decode Count from bytes")
+ 	}
+@@ -311,7 +304,7 @@ func (c *Count) GobDecode(data []byte) error {
+ 		l0Sensitivity:   enc.L0Sensitivity,
+ 		lInfSensitivity: enc.LInfSensitivity,
+ 		noiseKind:       enc.NoiseKind,
+-		Noise:           noise.ToNoise(enc.NoiseKind),
++		Noise:           backend(nil).Restore(enc.NoiseKind),
+ 		count:           enc.Count,
+ 		state:           defaultState,
+ 	}
+diff --git a/go/dpagg/mean.go b/go/dpagg/mean.go
+index 292b69e..1e661cd 100644
+--- a/go/dpagg/mean.go
++++ b/go/dpagg/mean.go
+@@ -102,21 +102,13 @@ func NewBoundedMean(opt *BoundedMeanOptions) (*BoundedMean, error) {
+ 		return nil, fmt.Errorf("NewBoundedMean: MaxPartitionsContributed must be set")
+ 	}
+ 
+-	n := opt.Noise
+-	if n == nil {
+-		n = noise.Laplace()
+-	}
++	n := backend(opt.Noise).DefaultNoise()
+ 	// Check bounds & use them to compute L_∞ sensitivity.
+ 	lower, upper := opt.Lower, opt.Upper
+ 	if lower == 0 && upper == 0 {
+ 		return nil, fmt.Errorf("NewBoundedMean: Lower and Upper must be set (automatic bounds determination is not implemented yet). Lower and Upper cannot be both 0")
+ 	}
+-	switch noise.ToKind(opt.Noise) {
+-	case noise.Unrecognised:
+-		err = checks.CheckBoundsFloat64IgnoreOverflows(lower, upper)
+-	default:
+-		err = checks.CheckBoundsFloat64(lower, upper)
+-	}
++	_, err = backend(opt.Noise).FloatBounds(lower, upper)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("NewBoundedMean: %w", err)
+ 	}
+@@ -140,7 +132,7 @@ func NewBoundedMean(opt *BoundedMeanOptions) (*BoundedMean, error) {
+ 
+ 	// Check that the parameters are compatible with the noise chosen by calling
+ 	// the noise on some placeholder value.
+-	n.AddNoiseFloat64(0, 1, 1, halfEpsilon, halfDelta)
++	backend(n).AddNoiseFloat64(0, 1, 1, halfEpsilon, halfDelta)
+ 
+ 	// count yields a differentially private count of the entries.
+ 	//
+@@ -155,24 +147,22 @@ func NewBoundedMean(opt *BoundedMeanOptions) (*BoundedMean, error) {
+ 	//   (Σ_i e_i) / c
+ 	//
+ 	// the rest follows from the code.
+-	count, err := NewCount(&CountOptions{
++	count, err := backend(n).NewCount(&CountOptions{
+ 		Epsilon:                      halfEpsilon,
+ 		Delta:                        halfDelta,
+ 		MaxPartitionsContributed:     maxPartitionsContributed,
+-		Noise:                        n,
+ 		maxContributionsPerPartition: maxContributionsPerPartition,
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("couldn't initialize count for NewBoundedMean: %w", err)
+ 	}
+ 
+-	normalizedSum, err := NewBoundedSumFloat64(&BoundedSumFloat64Options{
++	normalizedSum, err := backend(n).NewSum(&BoundedSumFloat64Options{
+ 		Epsilon:                      halfEpsilon,
+ 		Delta:                        halfDelta,
+ 		MaxPartitionsContributed:     maxPartitionsContributed,
+ 		Lower:                        -maxDistFromMidpoint,
+ 		Upper:                        maxDistFromMidpoint,
+-		Noise:                        n,
+ 		maxContributionsPerPartition: maxContributionsPerPartition,
+ 	})
+ 	if err != nil {
+@@ -198,7 +188,7 @@ func (bm *BoundedMean) Add(e float64) error {
+ 		return fmt.Errorf("BoundedMean cannot be amended: %v", bm.state.errorMessage())
+ 	}
+ 	if !math.IsNaN(e) {
+-		clamped, err := ClampFloat64(e, bm.lower, bm.upper)
++		clamped, err := backend(nil).ClampFloat64(e, bm.lower, bm.upper)
+ 		if err != nil {
+ 			return fmt.Errorf("couldn't clamp input value %v: %w", e, err)
+ 		}
+@@ -233,16 +223,23 @@ func (bm *BoundedMean) ResultWithCount() (BoundedMeanResult, error) {
+ 			"BoundedMean's noised result cannot be computed: %s", bm.state.errorMessage())
+ 	}
+ 	bm.state = resultReturned
+-	noisedCount, err := bm.Count.Result()
++	operations := backend(nil)
++	noisedCount, countConsumed, err := operations.CountValue(&bm.Count)
++	if countConsumed {
++		bm.Count.noisedCount = noisedCount
++	}
+ 	if err != nil {
+ 		return nullResult, fmt.Errorf("couldn't compute dp count: %w", err)
+ 	}
+ 	noisedCountClamped := math.Max(1.0, float64(noisedCount))
+-	noisedSum, err := bm.NormalizedSum.Result()
++	noisedSum, sumConsumed, err := operations.SumValue(&bm.NormalizedSum)
++	if sumConsumed {
++		bm.NormalizedSum.noisedSum = noisedSum
++	}
+ 	if err != nil {
+ 		return nullResult, fmt.Errorf("couldn't compute dp sum: %w", err)
+ 	}
+-	clamped, err := ClampFloat64(noisedSum/noisedCountClamped+bm.midPoint, bm.lower, bm.upper)
++	clamped, err := operations.ClampFloat64(noisedSum/noisedCountClamped+bm.midPoint, bm.lower, bm.upper)
+ 	if err != nil {
+ 		return nullResult, fmt.Errorf("couldn't clamp the result: %w", err)
+ 	}
+@@ -317,11 +314,11 @@ func (bm *BoundedMean) computeConfidenceIntervalForExplicitAlphaNum(alpha, alpha
+ 	}
+ 	// Ensuring that the lower and upper bounds of the mean are consistent with how Result() processes the mean.
+ 	meanLowerBound, meanUpperBound = meanLowerBound+bm.midPoint, meanUpperBound+bm.midPoint
+-	meanLowerBound, err = ClampFloat64(meanLowerBound, bm.lower, bm.upper)
++	meanLowerBound, err = backend(nil).ClampFloat64(meanLowerBound, bm.lower, bm.upper)
+ 	if err != nil {
+ 		return noise.ConfidenceInterval{}, fmt.Errorf("couldn't clamp lower bound for mean: %w", err)
+ 	}
+-	meanUpperBound, err = ClampFloat64(meanUpperBound, bm.lower, bm.upper)
++	meanUpperBound, err = backend(nil).ClampFloat64(meanUpperBound, bm.lower, bm.upper)
+ 	if err != nil {
+ 		return noise.ConfidenceInterval{}, fmt.Errorf("couldn't clamp upper bound for mean: %w", err)
+ 	}
+@@ -368,14 +365,13 @@ func (bm *BoundedMean) GobEncode() ([]byte, error) {
+ 		EncodableNormalizedSum: &bm.NormalizedSum,
+ 		MidPoint:               bm.midPoint,
+ 	}
+-	bm.state = serialized
+-	return encode(enc)
++	return backend(nil).Encode(enc, &bm.state)
+ }
+ 
+ // GobDecode decodes Count.
+ func (bm *BoundedMean) GobDecode(data []byte) error {
+ 	var enc encodableBoundedMeanFloat64
+-	err := decode(&enc, data)
++	err := backend(nil).Decode(&enc, data)
+ 	if err != nil {
+ 		return fmt.Errorf("couldn't decode BoundedMean from bytes")
+ 	}
+diff --git a/go/dpagg/quantiles.go b/go/dpagg/quantiles.go
+index b25dc6c..1b05f7c 100644
+--- a/go/dpagg/quantiles.go
++++ b/go/dpagg/quantiles.go
+@@ -105,10 +105,7 @@ func NewBoundedQuantiles(opt *BoundedQuantilesOptions) (*BoundedQuantiles, error
+ 		return nil, fmt.Errorf("NewBoundedQuantiles: MaxPartitionsContributed must be set")
+ 	}
+ 
+-	n := opt.Noise
+-	if n == nil {
+-		n = noise.Laplace()
+-	}
++	n := backend(opt.Noise).DefaultNoise()
+ 	// Check bounds.
+ 	lower, upper := opt.Lower, opt.Upper
+ 	if lower == 0 && upper == 0 {
+@@ -154,7 +151,7 @@ func NewBoundedQuantiles(opt *BoundedQuantilesOptions) (*BoundedQuantiles, error
+ 
+ 	// Check that the parameters are compatible with the noise chosen by calling
+ 	// the noise on some placeholder value.
+-	_, err := n.AddNoiseFloat64(0, l0Sensitivity, lInfSensitivity, eps, del)
++	_, err := backend(n).AddNoiseFloat64(0, l0Sensitivity, lInfSensitivity, eps, del)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("NewBoundedQuantiles: %w", err)
+ 	}
+@@ -169,7 +166,7 @@ func NewBoundedQuantiles(opt *BoundedQuantilesOptions) (*BoundedQuantiles, error
+ 		l0Sensitivity:     l0Sensitivity,
+ 		lInfSensitivity:   lInfSensitivity,
+ 		Noise:             n,
+-		noiseKind:         noise.ToKind(n),
++		noiseKind:         backend(n).Kind(),
+ 		tree:              make(map[int]int64),
+ 		noisedTree:        make(map[int]float64),
+ 		numLeaves:         numLeaves,
+@@ -187,7 +184,7 @@ func (bq *BoundedQuantiles) Add(e float64) error {
+ 	if !math.IsNaN(e) {
+ 		// Increment all counts on the path from the leaf node where the value is inserted up to the
+ 		// first level (root not included).
+-		clamped, err := ClampFloat64(e, bq.lower, bq.upper)
++		clamped, err := backend(bq.Noise).ClampFloat64(e, bq.lower, bq.upper)
+ 		if err != nil {
+ 			return fmt.Errorf("couldn't clamp input value %f, err %w", e, err)
+ 		}
+@@ -229,10 +226,13 @@ func (bq *BoundedQuantiles) Result(rank float64) (float64, error) {
+ 
+ 		totalCount := 0.0
+ 		for i := leftmostChildIndex; i <= rightmostChildIndex; i++ {
+-			noisedCount, err := bq.getNoisedCount(i)
++			noisedCount, sampled, err := backend(bq.Noise).CachedCount(bq.tree, bq.noisedTree, i, bq.l0Sensitivity, bq.lInfSensitivity, bq.epsilon, bq.delta)
+ 			if err != nil {
+ 				return 0, fmt.Errorf("couldn't get noised count for node %d: %w", i, err)
+ 			}
++			if sampled {
++				bq.noisedTree[i] = noisedCount
++			}
+ 			totalCount += math.Max(0.0, noisedCount)
+ 		}
+ 
+@@ -330,16 +330,11 @@ func (bq *BoundedQuantiles) getParent(index int) int {
+ }
+ 
+ func (bq *BoundedQuantiles) getNoisedCount(index int) (float64, error) {
+-	if noisedCount, ok := bq.noisedTree[index]; ok {
+-		return noisedCount, nil
+-	}
+-	rawCount := bq.tree[index]
+-	noisedCount, err := bq.Noise.AddNoiseFloat64(float64(rawCount), bq.l0Sensitivity, bq.lInfSensitivity, bq.epsilon, bq.delta)
+-	if err != nil {
+-		return 0, err
++	value, sampled, err := backend(bq.Noise).CachedCount(bq.tree, bq.noisedTree, index, bq.l0Sensitivity, bq.lInfSensitivity, bq.epsilon, bq.delta)
++	if sampled {
++		bq.noisedTree[index] = value
+ 	}
+-	bq.noisedTree[index] = noisedCount
+-	return noisedCount, nil
++	return value, err
+ }
+ 
+ // Clamps the rank to a value between 0.005 and 0.995. The purpose of this adjustment is to mitigate
+@@ -431,17 +426,15 @@ func (bq *BoundedQuantiles) GobEncode() ([]byte, error) {
+ 		Upper:             bq.upper,
+ 		NumLeaves:         bq.numLeaves,
+ 		LeftmostLeafIndex: bq.leftmostLeafIndex,
+-		NoiseKind:         noise.ToKind(bq.Noise),
+ 		QuantileTree:      bq.tree,
+ 	}
+-	bq.state = serialized
+-	return encode(enc)
++	return backend(bq.Noise).Encode(enc, &bq.state)
+ }
+ 
+ // GobDecode decodes BoundedQuantiles.
+ func (bq *BoundedQuantiles) GobDecode(data []byte) error {
+ 	var enc encodableBoundedQuantiles
+-	err := decode(&enc, data)
++	err := backend(nil).Decode(&enc, data)
+ 	if err != nil {
+ 		return fmt.Errorf("couldn't decode BoundedQuantiles from bytes")
+ 	}
+@@ -455,7 +448,7 @@ func (bq *BoundedQuantiles) GobDecode(data []byte) error {
+ 		lower:             enc.Lower,
+ 		upper:             enc.Upper,
+ 		noiseKind:         enc.NoiseKind,
+-		Noise:             noise.ToNoise(enc.NoiseKind),
++		Noise:             backend(nil).Restore(enc.NoiseKind),
+ 		numLeaves:         enc.NumLeaves,
+ 		leftmostLeafIndex: enc.LeftmostLeafIndex,
+ 		tree:              enc.QuantileTree,
+diff --git a/go/dpagg/select_partition.go b/go/dpagg/select_partition.go
+index 805fc56..bb55128 100644
+--- a/go/dpagg/select_partition.go
++++ b/go/dpagg/select_partition.go
+@@ -22,7 +22,6 @@ import (
+ 
+ 	"github.com/google/differential-privacy/go/v4/checks"
+ 	"github.com/google/differential-privacy/go/v4/noise"
+-	"github.com/google/differential-privacy/go/v4/rand"
+ )
+ 
+ // PreAggSelectPartition is used to compute an (ε,δ)-differentially private decision
+@@ -256,11 +255,7 @@ func (s *PreAggSelectPartition) ShouldKeepPartition() (bool, error) {
+ 	s.idCount = s.idCount - (s.preThreshold - 1)
+ 
+ 	if s.l0Sensitivity > 3 { // Gaussian thresholding outperforms in this case.
+-		c, err := NewCount(&CountOptions{
+-			Epsilon:                  s.epsilon,
+-			Delta:                    s.delta / 2,
+-			MaxPartitionsContributed: s.l0Sensitivity,
+-			Noise:                    noise.Gaussian()})
++		c, thresholdDelta, err := backend(noise.Gaussian()).PartitionCount(s.l0Sensitivity, s.epsilon, s.delta)
+ 		if err != nil {
+ 			return false, fmt.Errorf("couldn't initialize count for PreAggSelectPartition: %v", err)
+ 		}
+@@ -268,17 +263,24 @@ func (s *PreAggSelectPartition) ShouldKeepPartition() (bool, error) {
+ 		if err != nil {
+ 			return false, fmt.Errorf("couldn't increment count for PreAggSelectPartition: %v", err)
+ 		}
+-		result, err := c.ThresholdedResult(s.delta / 2)
++		threshold, err := backend(c.Noise).Threshold(c.l0Sensitivity, float64(c.lInfSensitivity), c.epsilon, c.delta, thresholdDelta)
+ 		if err != nil {
+ 			return false, fmt.Errorf("couldn't compute thresholded result for PreAggSelectPartition: %v", err)
+ 		}
+-		return result != nil, nil
++		result, consumed, err := backend(c.Noise).CountValue(c)
++		if consumed {
++			c.noisedCount = result
++		}
++		if err != nil {
++			return false, fmt.Errorf("couldn't compute thresholded result for PreAggSelectPartition: %v", err)
++		}
++		return result >= int64(math.Ceil(threshold)), nil
+ 	}
+-	prob, err := keepPartitionProbability(s.idCount, s.l0Sensitivity, s.epsilon, s.delta)
++	prob, err := backend(nil).PartitionProbability(s.idCount, s.l0Sensitivity, s.epsilon, s.delta)
+ 	if err != nil {
+ 		return false, fmt.Errorf("couldn't compute keepPartitionProbability for PreAggSelectPartition: %v", err)
+ 	}
+-	return rand.Uniform() < prob, nil
++	return backend(nil).Uniform() < prob, nil
+ }
+ 
+ // sumExpPowers returns the evaluation of
+@@ -395,7 +397,7 @@ func keepPartitionProbability(idCount, l0Sensitivity int64, epsilon, delta float
+ // (however small).
+ func (s *PreAggSelectPartition) GetHardThreshold() (int, error) {
+ 	for i := int64(1); ; i++ {
+-		prob, err := keepPartitionProbability(i, s.l0Sensitivity, s.epsilon, s.delta)
++		prob, err := backend(nil).PartitionProbability(i, s.l0Sensitivity, s.epsilon, s.delta)
+ 		if err != nil {
+ 			return 0, err
+ 		}
+@@ -428,14 +430,13 @@ func (s *PreAggSelectPartition) GobEncode() ([]byte, error) {
+ 		State:         s.state,
+ 		PreThreshold:  s.preThreshold,
+ 	}
+-	s.state = serialized
+-	return encode(enc)
++	return backend(nil).Encode(enc, &s.state)
+ }
+ 
+ // GobDecode decodes PreAggSelectPartition.
+ func (s *PreAggSelectPartition) GobDecode(data []byte) error {
+ 	var enc encodablePreAggSelectPartition
+-	err := decode(&enc, data)
++	err := backend(nil).Decode(&enc, data)
+ 	if err != nil {
+ 		return fmt.Errorf("couldn't decode PreAggSelectPartition from bytes")
+ 	}
+diff --git a/go/dpagg/standard_deviation.go b/go/dpagg/standard_deviation.go
+index 96747db..3f17ca9 100644
+--- a/go/dpagg/standard_deviation.go
++++ b/go/dpagg/standard_deviation.go
+@@ -148,14 +148,13 @@ func (bstdv *BoundedStandardDeviation) GobEncode() ([]byte, error) {
+ 	enc := encodableBoundedStandardDeviation{
+ 		EncodableVariance: &bstdv.Variance,
+ 	}
+-	bstdv.state = serialized
+-	return encode(enc)
++	return backend(nil).Encode(enc, &bstdv.state)
+ }
+ 
+ // GobDecode decodes BoundedStandardDeviation.
+ func (bstdv *BoundedStandardDeviation) GobDecode(data []byte) error {
+ 	var enc encodableBoundedStandardDeviation
+-	err := decode(&enc, data)
++	err := backend(nil).Decode(&enc, data)
+ 	if err != nil {
+ 		return fmt.Errorf("couldn't decode BoundedStandardDeviation from bytes")
+ 	}
+diff --git a/go/dpagg/sum.go b/go/dpagg/sum.go
+index 5c84938..6959b0d 100644
+--- a/go/dpagg/sum.go
++++ b/go/dpagg/sum.go
+@@ -117,21 +117,13 @@ func NewBoundedSumInt64(opt *BoundedSumInt64Options) (*BoundedSumInt64, error) {
+ 		maxContributionsPerPartition = 1
+ 	}
+ 
+-	n := opt.Noise
+-	if n == nil {
+-		n = noise.Laplace()
+-	}
++	n := backend(opt.Noise).DefaultNoise()
+ 	// Check bounds & use them to compute L_∞ sensitivity
+ 	lower, upper := opt.Lower, opt.Upper
+ 	if opt.MaxPartitionsContributed > 0 && lower == 0 && upper == 0 {
+ 		return nil, fmt.Errorf("NewBoundedSumInt64: When using MaxPartitionsContributed, Lower and Upper must be set (automatic bounds determination is not implemented yet). Lower and Upper cannot be both 0")
+ 	}
+-	switch noise.ToKind(opt.Noise) {
+-	case noise.Unrecognised:
+-		err = checks.CheckBoundsInt64IgnoreOverflows(lower, upper)
+-	default:
+-		err = checks.CheckBoundsInt64(lower, upper)
+-	}
++	err = backend(opt.Noise).IntBounds(lower, upper)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("NewBoundedSumInt64: %w", err)
+ 	}
+@@ -150,7 +142,7 @@ func NewBoundedSumInt64(opt *BoundedSumInt64Options) (*BoundedSumInt64, error) {
+ 		lInf, err = getLInfInt(lower, upper, maxContributionsPerPartition)
+ 	}
+ 	if err != nil {
+-		if noise.ToKind(opt.Noise) == noise.Unrecognised {
++		if backend(opt.Noise).Kind() == noise.Unrecognised {
+ 			// Ignore sensitivity overflows if noise is not recognised.
+ 			log.Warningf("NewBoundedSumInt64: getLInfInt failed with %q, using largest representable integer as lInf_sensitivity", err.Error())
+ 		} else {
+@@ -160,7 +152,7 @@ func NewBoundedSumInt64(opt *BoundedSumInt64Options) (*BoundedSumInt64, error) {
+ 	// Check that the parameters are compatible with the noise chosen by calling
+ 	// the noise on some placeholder value.
+ 	eps, del := opt.Epsilon, opt.Delta
+-	_, err = n.AddNoiseInt64(0, l0, lInf, eps, del)
++	_, err = backend(n).AddNoiseInt64(0, l0, lInf, eps, del)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("NewBoundedSumInt64: %w", err)
+ 	}
+@@ -173,7 +165,7 @@ func NewBoundedSumInt64(opt *BoundedSumInt64Options) (*BoundedSumInt64, error) {
+ 		lower:           lower,
+ 		upper:           upper,
+ 		Noise:           n,
+-		noiseKind:       noise.ToKind(n),
++		noiseKind:       backend(n).Kind(),
+ 		sum:             0,
+ 		state:           defaultState,
+ 	}, nil
+@@ -232,7 +224,7 @@ func (bs *BoundedSumInt64) Add(e int64) error {
+ 	if bs.state != defaultState {
+ 		return fmt.Errorf("BoundedSumInt64 cannot be amended: %v", bs.state.errorMessage())
+ 	}
+-	clamped, err := ClampInt64(e, bs.lower, bs.upper)
++	clamped, err := backend(bs.Noise).ClampInt64(e, bs.lower, bs.upper)
+ 	if err != nil {
+ 		return fmt.Errorf("couldn't clamp input value %v, err %v", e, err)
+ 	}
+@@ -281,9 +273,8 @@ func (bs *BoundedSumInt64) Result() (int64, error) {
+ 	if bs.state != defaultState {
+ 		return 0, fmt.Errorf("BoundedSumInt64's noised result cannot be computed: %s", bs.state.errorMessage())
+ 	}
+-	bs.state = resultReturned
+ 	var err error
+-	bs.noisedSum, err = bs.Noise.AddNoiseInt64(bs.sum, bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta)
++	bs.noisedSum, err = backend(bs.Noise).SampleInt64(bs.sum, bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta, &bs.state)
+ 	return bs.noisedSum, err
+ }
+ 
+@@ -295,7 +286,7 @@ func (bs *BoundedSumInt64) Result() (int64, error) {
+ // Note that the nil results should not be published when the existence of a
+ // partition in the output depends on private data.
+ func (bs *BoundedSumInt64) ThresholdedResult(thresholdDelta float64) (*int64, error) {
+-	threshold, err := bs.Noise.Threshold(bs.l0Sensitivity, float64(bs.lInfSensitivity), bs.epsilon, bs.delta, thresholdDelta)
++	threshold, err := backend(bs.Noise).Threshold(bs.l0Sensitivity, float64(bs.lInfSensitivity), bs.epsilon, bs.delta, thresholdDelta)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -324,7 +315,7 @@ func (bs *BoundedSumInt64) ComputeConfidenceInterval(alpha float64) (noise.Confi
+ 	if bs.state != resultReturned {
+ 		return noise.ConfidenceInterval{}, fmt.Errorf("Result() must be called before calling ComputeConfidenceInterval()")
+ 	}
+-	confInt, err := bs.Noise.ComputeConfidenceIntervalInt64(bs.noisedSum, bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta, alpha)
++	confInt, err := backend(bs.Noise).ComputeConfidenceIntervalInt64(bs.noisedSum, bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta, alpha)
+ 	if err != nil {
+ 		return noise.ConfidenceInterval{}, err
+ 	}
+@@ -363,17 +354,15 @@ func (bs *BoundedSumInt64) GobEncode() ([]byte, error) {
+ 		LInfSensitivity: bs.lInfSensitivity,
+ 		Lower:           bs.lower,
+ 		Upper:           bs.upper,
+-		NoiseKind:       noise.ToKind(bs.Noise),
+ 		Sum:             bs.sum,
+ 	}
+-	bs.state = serialized
+-	return encode(enc)
++	return backend(bs.Noise).Encode(enc, &bs.state)
+ }
+ 
+ // GobDecode decodes BoundedSumInt64.
+ func (bs *BoundedSumInt64) GobDecode(data []byte) error {
+ 	var enc encodableBoundedSumInt64
+-	err := decode(&enc, data)
++	err := backend(nil).Decode(&enc, data)
+ 	if err != nil {
+ 		return fmt.Errorf("couldn't decode BoundedSumInt64 from bytes")
+ 	}
+@@ -385,7 +374,7 @@ func (bs *BoundedSumInt64) GobDecode(data []byte) error {
+ 		lower:           enc.Lower,
+ 		upper:           enc.Upper,
+ 		noiseKind:       enc.NoiseKind,
+-		Noise:           noise.ToNoise(enc.NoiseKind),
++		Noise:           backend(nil).Restore(enc.NoiseKind),
+ 		sum:             enc.Sum,
+ 		state:           defaultState,
+ 	}
+@@ -465,28 +454,19 @@ func NewBoundedSumFloat64(opt *BoundedSumFloat64Options) (*BoundedSumFloat64, er
+ 		maxContributionsPerPartition = 1
+ 	}
+ 
+-	n := opt.Noise
+-	if n == nil {
+-		n = noise.Laplace()
+-	}
++	n := backend(opt.Noise).DefaultNoise()
+ 	// Check bounds & use them to compute L_∞ sensitivity
+ 	lower, upper := opt.Lower, opt.Upper
+ 	if lower == 0 && upper == 0 {
+ 		return nil, fmt.Errorf("NewBoundedSumFloat64: Lower and Upper must be set (automatic bounds determination is not implemented yet). Lower and Upper cannot be both 0")
+ 	}
+-	var err error
+-	switch noise.ToKind(opt.Noise) {
+-	case noise.Unrecognised:
+-		err = checks.CheckBoundsFloat64IgnoreOverflows(lower, upper)
+-	default:
+-		err = checks.CheckBoundsFloat64(lower, upper)
+-	}
++	_, err := backend(opt.Noise).FloatBounds(lower, upper)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("NewBoundedSumFloat64: %w", err)
+ 	}
+ 	lInf, err := getLInfFloat(lower, upper, maxContributionsPerPartition)
+ 	if err != nil {
+-		if noise.ToKind(opt.Noise) == noise.Unrecognised {
++		if backend(opt.Noise).Kind() == noise.Unrecognised {
+ 			// Ignore sensitivity overflows if noise is not recognised.
+ 			log.Warningf("NewBoundedSumFloat64: getLInfFloat failed with %q, using largest representable integer as lInf_sensitivity", err.Error())
+ 		} else {
+@@ -496,7 +476,7 @@ func NewBoundedSumFloat64(opt *BoundedSumFloat64Options) (*BoundedSumFloat64, er
+ 	// Check that the parameters are compatible with the noise chosen by calling
+ 	// the noise on some placeholder value.
+ 	eps, del := opt.Epsilon, opt.Delta
+-	_, err = n.AddNoiseFloat64(0, l0, lInf, eps, del)
++	_, err = backend(n).AddNoiseFloat64(0, l0, lInf, eps, del)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("NewBoundedSumFloat64: %w", err)
+ 	}
+@@ -509,7 +489,7 @@ func NewBoundedSumFloat64(opt *BoundedSumFloat64Options) (*BoundedSumFloat64, er
+ 		lower:           lower,
+ 		upper:           upper,
+ 		Noise:           n,
+-		noiseKind:       noise.ToKind(n),
++		noiseKind:       backend(n).Kind(),
+ 		sum:             0,
+ 		state:           defaultState,
+ 	}, nil
+@@ -554,7 +534,7 @@ func (bs *BoundedSumFloat64) Add(e float64) error {
+ 		return fmt.Errorf("BoundedSumFloat64 cannot be amended: %v", bs.state.errorMessage())
+ 	}
+ 	if !math.IsNaN(e) {
+-		clamped, err := ClampFloat64(e, bs.lower, bs.upper)
++		clamped, err := backend(bs.Noise).ClampFloat64(e, bs.lower, bs.upper)
+ 		if err != nil {
+ 			return fmt.Errorf("couldn't clamp input value %v, err %w", e, err)
+ 		}
+@@ -601,20 +581,18 @@ func checkMergeBoundedSumFloat64(bs1, bs2 *BoundedSumFloat64) error {
+ // value representing a bounded sum that is possible. Note that such post
+ // processing introduces bias to the result.
+ func (bs *BoundedSumFloat64) Result() (float64, error) {
+-	if bs.state != defaultState {
+-		return 0, fmt.Errorf("BoundedSumFloat64's noised result cannot be computed: %s", bs.state.errorMessage())
++	value, consumed, err := backend(bs.Noise).SumValue(bs)
++	if consumed {
++		bs.noisedSum = value
+ 	}
+-	bs.state = resultReturned
+-	var err error
+-	bs.noisedSum, err = bs.Noise.AddNoiseFloat64(bs.sum, bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta)
+-	return bs.noisedSum, err
++	return value, err
+ }
+ 
+ // ThresholdedResult is similar to Result() but applies thresholding to the
+ // result. So, if the result is less than the threshold specified by the noise,
+ // mechanism, it returns nil. Otherwise, it returns the result.
+ func (bs *BoundedSumFloat64) ThresholdedResult(thresholdDelta float64) (*float64, error) {
+-	threshold, err := bs.Noise.Threshold(bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta, thresholdDelta)
++	threshold, err := backend(bs.Noise).Threshold(bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta, thresholdDelta)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -641,7 +619,7 @@ func (bs *BoundedSumFloat64) ComputeConfidenceInterval(alpha float64) (noise.Con
+ 	if bs.state != resultReturned {
+ 		return noise.ConfidenceInterval{}, fmt.Errorf("Result() must be called before calling ComputeConfidenceInterval()")
+ 	}
+-	confInt, err := bs.Noise.ComputeConfidenceIntervalFloat64(bs.noisedSum, bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta, alpha)
++	confInt, err := backend(bs.Noise).ComputeConfidenceIntervalFloat64(bs.noisedSum, bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta, alpha)
+ 	if err != nil {
+ 		return noise.ConfidenceInterval{}, err
+ 	}
+@@ -680,17 +658,15 @@ func (bs *BoundedSumFloat64) GobEncode() ([]byte, error) {
+ 		LInfSensitivity: bs.lInfSensitivity,
+ 		Lower:           bs.lower,
+ 		Upper:           bs.upper,
+-		NoiseKind:       noise.ToKind(bs.Noise),
+ 		Sum:             bs.sum,
+ 	}
+-	bs.state = serialized
+-	return encode(enc)
++	return backend(bs.Noise).Encode(enc, &bs.state)
+ }
+ 
+ // GobDecode decodes BoundedSumInt64.
+ func (bs *BoundedSumFloat64) GobDecode(data []byte) error {
+ 	var enc encodableBoundedSumFloat64
+-	err := decode(&enc, data)
++	err := backend(nil).Decode(&enc, data)
+ 	if err != nil {
+ 		return fmt.Errorf("couldn't decode BoundedSumFloat64 from bytes")
+ 	}
+@@ -702,7 +678,7 @@ func (bs *BoundedSumFloat64) GobDecode(data []byte) error {
+ 		lower:           enc.Lower,
+ 		upper:           enc.Upper,
+ 		noiseKind:       enc.NoiseKind,
+-		Noise:           noise.ToNoise(enc.NoiseKind),
++		Noise:           backend(nil).Restore(enc.NoiseKind),
+ 		sum:             enc.Sum,
+ 		state:           defaultState,
+ 	}
+diff --git a/go/dpagg/variance.go b/go/dpagg/variance.go
+index 3a6352d..838553b 100644
+--- a/go/dpagg/variance.go
++++ b/go/dpagg/variance.go
+@@ -99,24 +99,19 @@ func NewBoundedVariance(opt *BoundedVarianceOptions) (*BoundedVariance, error) {
+ 		return nil, fmt.Errorf("NewBoundedVariance: MaxPartitionsContributed must be set")
+ 	}
+ 
+-	n := opt.Noise
+-	if n == nil {
+-		n = noise.Laplace()
+-	}
++	n := backend(opt.Noise).DefaultNoise()
+ 	// Check bounds & use them to compute L_∞ sensitivity.
+ 	lower, upper := opt.Lower, opt.Upper
+ 	if lower == 0 && upper == 0 {
+ 		return nil, fmt.Errorf("NewBoundedVariance: Lower and  Upper must be set (automatic bounds determination is not implemented yet). Lower and Upper cannot be both 0")
+ 	}
+-	switch noise.ToKind(opt.Noise) {
+-	case noise.Unrecognised:
+-		if err := checks.CheckBoundsFloat64IgnoreOverflows(lower, upper); err != nil {
+-			return nil, fmt.Errorf("NewBoundedVariance: CheckBoundFloat64IgnoreOverflows: %w", err)
+-		}
+-	default:
+-		if err := checks.CheckBoundsFloat64(lower, upper); err != nil {
++	strictBounds, boundsErr := backend(opt.Noise).FloatBounds(lower, upper)
++	if boundsErr != nil {
++		if strictBounds {
++			err := boundsErr
+ 			return nil, fmt.Errorf("NewBoundedVariance: CheckBoundsFloat64: %w", err)
+ 		}
++		return nil, fmt.Errorf("NewBoundedVariance: CheckBoundFloat64IgnoreOverflows: %w", boundsErr)
+ 	}
+ 	if err := checks.CheckBoundsNotEqual(lower, upper); err != nil {
+ 		return nil, fmt.Errorf("NewBoundedVariance: CheckBoundsNotEqual: %w", err)
+@@ -143,9 +138,9 @@ func NewBoundedVariance(opt *BoundedVarianceOptions) (*BoundedVariance, error) {
+ 
+ 	// Check that the parameters are compatible with the noise chosen by calling
+ 	// the noise on some placeholder value.
+-	n.AddNoiseFloat64(0, 1, 1, countEpsilon, countDelta)
+-	n.AddNoiseFloat64(0, 1, 1, sumEpsilon, sumDelta)
+-	n.AddNoiseFloat64(0, 1, 1, sumOfSquaresEpsilon, sumOfSquaresDelta)
++	backend(n).AddNoiseFloat64(0, 1, 1, countEpsilon, countDelta)
++	backend(n).AddNoiseFloat64(0, 1, 1, sumEpsilon, sumDelta)
++	backend(n).AddNoiseFloat64(0, 1, 1, sumOfSquaresEpsilon, sumOfSquaresDelta)
+ 
+ 	// normalizedSumOfSquares s2 yields a differentially private sum of squares of the position of the
+ 	// entries e_i relative to the midpoint m = (lower + upper) / 2 of the range of the bounded variance,
+@@ -161,38 +156,35 @@ func NewBoundedVariance(opt *BoundedVarianceOptions) (*BoundedVariance, error) {
+ 	// variance = s2 / c - (s / c)^2
+ 	//
+ 	// the rest follows from the code.
+-	count, err := NewCount(&CountOptions{
++	count, err := backend(n).NewCount(&CountOptions{
+ 		Epsilon:                      countEpsilon,
+ 		Delta:                        countDelta,
+ 		MaxPartitionsContributed:     maxPartitionsContributed,
+-		Noise:                        n,
+ 		maxContributionsPerPartition: maxContributionsPerPartition,
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("couldn't initialize count for NewBoundedVariance: %w", err)
+ 	}
+ 
+-	normalizedSum, err := NewBoundedSumFloat64(&BoundedSumFloat64Options{
++	normalizedSum, err := backend(n).NewSum(&BoundedSumFloat64Options{
+ 		Epsilon:                      sumEpsilon,
+ 		Delta:                        sumDelta,
+ 		MaxPartitionsContributed:     maxPartitionsContributed,
+ 		Lower:                        -sumMaxDistFromMidpoint,
+ 		Upper:                        sumMaxDistFromMidpoint,
+-		Noise:                        n,
+ 		maxContributionsPerPartition: maxContributionsPerPartition,
+ 	})
+ 	if err != nil {
+ 		return nil, fmt.Errorf("couldn't initialize normalized sum for NewBoundedVariance: %w", err)
+ 	}
+ 
+-	normalizedSumOfSquares, err := NewBoundedSumFloat64(&BoundedSumFloat64Options{
++	normalizedSumOfSquares, err := backend(n).NewSum(&BoundedSumFloat64Options{
+ 		Epsilon:                  sumOfSquaresEpsilon,
+ 		Delta:                    sumOfSquaresDelta,
+ 		MaxPartitionsContributed: maxPartitionsContributed,
+ 		// TODO: Do a second round of normalization for halving the lInf by two.
+ 		Lower:                        0,
+ 		Upper:                        math.Pow(sumMaxDistFromMidpoint, 2),
+-		Noise:                        n,
+ 		maxContributionsPerPartition: maxContributionsPerPartition,
+ 	})
+ 	if err != nil {
+@@ -225,7 +217,7 @@ func (bv *BoundedVariance) Add(e float64) error {
+ 		return fmt.Errorf("BoundedVariance cannot be amended: %v", bv.state.errorMessage())
+ 	}
+ 	if !math.IsNaN(e) {
+-		clamped, err := ClampFloat64(e, bv.lower, bv.upper)
++		clamped, err := backend(nil).ClampFloat64(e, bv.lower, bv.upper)
+ 		if err != nil {
+ 			return fmt.Errorf("couldn't clamp input value %v, err %w", e, err)
+ 		}
+@@ -263,16 +255,26 @@ func (bv *BoundedVariance) ResultWithCountAndMean() (BoundedVarianceResult, erro
+ 	}
+ 	bv.state = resultReturned
+ 
+-	noisedCountInt, err := bv.Count.Result()
++	operations := backend(nil)
++	noisedCountInt, countConsumed, err := operations.CountValue(&bv.Count)
++	if countConsumed {
++		bv.Count.noisedCount = noisedCountInt
++	}
+ 	if err != nil {
+ 		return nullResult, fmt.Errorf("couldn't compute dp count: %w", err)
+ 	}
+ 	noisedCountClamped := math.Max(1.0, float64(noisedCountInt))
+-	noisedSum, err := bv.NormalizedSum.Result()
++	noisedSum, sumConsumed, err := operations.SumValue(&bv.NormalizedSum)
++	if sumConsumed {
++		bv.NormalizedSum.noisedSum = noisedSum
++	}
+ 	if err != nil {
+ 		return nullResult, fmt.Errorf("couldn't compute dp normalized sum: %w", err)
+ 	}
+-	noisedSumOfSquares, err := bv.NormalizedSumOfSquares.Result()
++	noisedSumOfSquares, squaresConsumed, err := operations.SumValue(&bv.NormalizedSumOfSquares)
++	if squaresConsumed {
++		bv.NormalizedSumOfSquares.noisedSum = noisedSumOfSquares
++	}
+ 	if err != nil {
+ 		return nullResult, fmt.Errorf("couldn't compute dp normalized sum of squares: %w", err)
+ 	}
+@@ -280,13 +282,13 @@ func (bv *BoundedVariance) ResultWithCountAndMean() (BoundedVarianceResult, erro
+ 	normalizedMean := noisedSum / noisedCountClamped
+ 	normalizedMeanOfSquares := noisedSumOfSquares / noisedCountClamped
+ 
+-	noisedMeanClamped, err := ClampFloat64(normalizedMean+bv.midPoint, bv.lower, bv.upper)
++	noisedMeanClamped, err := operations.ClampFloat64(normalizedMean+bv.midPoint, bv.lower, bv.upper)
+ 	if err != nil {
+ 		return nullResult, fmt.Errorf("couldn't clamp the mean: %w", err)
+ 	}
+ 
+ 	variance := normalizedMeanOfSquares - normalizedMean*normalizedMean
+-	noisedVarianceClamped, err := ClampFloat64(variance, 0.0, computeMaxVariance(bv.lower, bv.upper))
++	noisedVarianceClamped, err := operations.ClampFloat64(variance, 0.0, computeMaxVariance(bv.lower, bv.upper))
+ 	if err != nil {
+ 		return nullResult, fmt.Errorf("couldn't clamp the variance: %w", err)
+ 	}
+@@ -339,14 +341,13 @@ func (bv *BoundedVariance) GobEncode() ([]byte, error) {
+ 		EncodableNormalizedSumOfSquares: &bv.NormalizedSumOfSquares,
+ 		Midpoint:                        bv.midPoint,
+ 	}
+-	bv.state = serialized
+-	return encode(enc)
++	return backend(nil).Encode(enc, &bv.state)
+ }
+ 
+ // GobDecode decodes BoundedVariance.
+ func (bv *BoundedVariance) GobDecode(data []byte) error {
+ 	var enc encodableBoundedVariance
+-	err := decode(&enc, data)
++	err := backend(nil).Decode(&enc, data)
+ 	if err != nil {
+ 		return fmt.Errorf("couldn't decode BoundedVariance from bytes")
+ 	}

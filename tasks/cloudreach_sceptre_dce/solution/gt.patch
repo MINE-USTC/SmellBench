@@ -1,0 +1,461 @@
+diff --git a/sceptre/config/merge.py b/sceptre/config/merge.py
+deleted file mode 100644
+--- a/sceptre/config/merge.py
++++ /dev/null
+@@ -1,23 +0,0 @@
+-def validate_merge_inputs(parent, child, container_type):
+-    for value in (parent, child):
+-        if value and not isinstance(value, container_type):
+-            raise TypeError("{} is not a {}".format(value, container_type.__name__))
+-    return parent, child
+-
+-
+-def merge_operands(parent, child, container_type):
+-    parent, child = validate_merge_inputs(parent, child, container_type)
+-    if parent is None:
+-        return (child,)
+-    if child is None:
+-        return (parent,)
+-    return parent, child
+-
+-
+-def merge_entries(parent, child):
+-    combined = {**parent, **child}
+-    for key, value in combined.items():
+-        if key in child:
+-            yield key, value, None
+-        else:
+-            yield key, value, parent
+diff --git a/sceptre/config/strategies.py b/sceptre/config/strategies.py
+--- a/sceptre/config/strategies.py
++++ b/sceptre/config/strategies.py
+@@ -8,7 +8,6 @@
+ """
+ 
+ from copy import deepcopy
+-from sceptre.config.merge import merge_entries, merge_operands
+ 
+ 
+ def list_join(a, b):
+@@ -22,18 +21,19 @@
+     :returns: A joined list from the two parameters.
+     :rtype: list
+     """
++    if a and not isinstance(a, list):
++        raise TypeError("{} is not a list".format(a))
++
++    if b and not isinstance(b, list):
++        raise TypeError("{} is not a list".format(b))
++
++    if a is None:
++        return deepcopy(b)
++
++    if b is not None:
++        return deepcopy(a + b)
++
++    return deepcopy(a)
+-    operands = merge_operands(a, b, list)
+-    result = operands[0]
+-    if result and not isinstance(result, list):
+-        raise TypeError("{} is not a list".format(result))
+-    for value in operands[1:]:
+-        if result is None:
+-            result = value
+-        else:
+-            if value and not isinstance(value, list):
+-                raise TypeError("{} is not a list".format(value))
+-            result = result + value
+-    return deepcopy(result)
+ 
+ 
+ def dict_merge(a, b):
+@@ -47,23 +47,18 @@
+     :returns: A merged dict.
+     :rtype: dict
+     """
++    if a and not isinstance(a, dict):
++        raise TypeError("{} is not a dict".format(a))
++    if b and not isinstance(b, dict):
++        raise TypeError("{} is not a dict".format(b))
++
++    if a is None:
++        return deepcopy(b)
++
++    if b is not None:
++        return deepcopy({**a, **b})
++
++    return deepcopy(a)
+-    operands = merge_operands(a, b, dict)
+-    result = operands[0]
+-    if result and not isinstance(result, dict):
+-        raise TypeError("{} is not a dict".format(result))
+-    for child in operands[1:]:
+-        if child and not isinstance(child, dict):
+-            raise TypeError("{} is not a dict".format(child))
+-        if result is None:
+-            result = child
+-            continue
+-        merged = {}
+-        for key, value, source in merge_entries(result, child):
+-            if source is result and key in child:
+-                value = child[key]
+-            merged[key] = value
+-        result = merged
+-    return deepcopy(result)
+ 
+ 
+ def child_wins(a, b):
+diff --git a/sceptre/resolvers/__init__.py b/sceptre/resolvers/__init__.py
+--- a/sceptre/resolvers/__init__.py
++++ b/sceptre/resolvers/__init__.py
+@@ -8,7 +8,6 @@
+ from sceptre.exceptions import InvalidResolverArgumentError
+ from sceptre.helpers import _call_func_on_values, delete_keys_from_containers
+ from sceptre.logging import StackLoggerAdapter
+-from sceptre.resolvers.argument import resolve_argument_values
+ from sceptre.resolvers.placeholders import (
+     create_placeholder_value,
+     are_placeholders_enabled,
+@@ -93,14 +92,15 @@
+ 
+         keys_to_delete = []
+ 
++        def resolve(containing_list_or_dict, key, obj: Resolver):
++            result = obj.resolve()
+-        def resolve(containing_list_or_dict, key, result, source):
+             # If the resolver "resolves to nothing", then it should get deleted out of its container.
+             if result is None:
+                 keys_to_delete.append((containing_list_or_dict, key))
+             else:
+                 containing_list_or_dict[key] = result
+ 
++        _call_func_on_values(resolve, self._argument, Resolver)
+-        keys_to_delete.extend(resolve_argument_values(self._argument, Resolver, resolve))
+         delete_keys_from_containers(keys_to_delete)
+ 
+         self._argument_is_resolved = True
+@@ -181,17 +181,6 @@
+     """
+     Resolver is an abstract base class that should be subclassed by all Resolvers.
+     """
+-
+-    def _resolve_pair(self, message, first_type=None, second_type=None):
+-        argument = self.argument
+-        if not isinstance(argument, list) or len(argument) != 2:
+-            self.raise_invalid_argument_error(message)
+-        first, second = argument
+-        if first_type is not None and not isinstance(first, first_type):
+-            self.raise_invalid_argument_error(message)
+-        if second_type is not None and not isinstance(second, second_type):
+-            self.raise_invalid_argument_error(message)
+-        return argument
+ 
+     @abc.abstractmethod
+     def resolve(self):
+@@ -350,9 +339,10 @@
+         """
+         keys_to_delete = []
+ 
++        def resolve(attr: Union[dict, list], key: Union[int, str], value: Resolver):
+-        def resolve(attr: Union[dict, list], key: Union[int, str], result, source):
+             # Update the container key's value with the resolved value, if possible...
+             try:
++                result = self.resolve_resolver_value(value)
+                 if result is None:
+                     self.logger.debug(
+                         f"Removing item {key} because resolver returned None."
+@@ -374,21 +364,11 @@
+                     stack,
+                     self.name,
+                     key,
++                    lambda: value.resolve(),
+-                    lambda: source.resolve(),
+                 )
+ 
+-        def defer(attr, key, value):
+-            return self.ResolveLater(stack, self.name, key, lambda: value.resolve())
+-
+-        def removed(key):
+-            self.logger.debug(f"Removing item {key} because resolver returned None.")
+-
+         container = getattr(stack, self.name)
++        _call_func_on_values(resolve, container, Resolver)
+-        keys_to_delete.extend(resolve_argument_values(
+-            container, Resolver, resolve,
+-            evaluate=self.resolve_resolver_value,
+-            on_empty=removed, recover=defer, recover_error=RecursiveResolve,
+-        ))
+         delete_keys_from_containers(keys_to_delete)
+ 
+         return container
+diff --git a/sceptre/resolvers/argument.py b/sceptre/resolvers/argument.py
+deleted file mode 100644
+--- a/sceptre/resolvers/argument.py
++++ /dev/null
+@@ -1,21 +0,0 @@
+-from sceptre.helpers import _call_func_on_values
+-
+-
+-def resolve_argument_values(argument, resolver_type, assign, evaluate=None,
+-                            on_empty=None, recover=None, recover_error=()):
+-    removals = []
+-
+-    def visit(container, key, resolver):
+-        try:
+-            value = evaluate(resolver) if evaluate is not None else resolver.resolve()
+-            if value is None:
+-                if on_empty is not None:
+-                    on_empty(key)
+-                removals.append((container, key))
+-                return
+-        except recover_error:
+-            value = recover(container, key, resolver)
+-        assign(container, key, value, resolver)
+-
+-    _call_func_on_values(visit, argument, resolver_type)
+-    return removals
+diff --git a/sceptre/resolvers/join.py b/sceptre/resolvers/join.py
+--- a/sceptre/resolvers/join.py
++++ b/sceptre/resolvers/join.py
+@@ -24,11 +24,10 @@
+             "The argument to !join must be a 2-element list, where the first element is the join "
+             "string and the second is a list of items to join."
+         )
++        if not isinstance(self.argument, list) or len(self.argument) != 2:
+-        argument = self._resolve_pair(error_message, str, list)
+-        if not isinstance(argument, list) or len(argument) != 2:
+             self.raise_invalid_argument_error(error_message)
+ 
++        delimiter, items_list = self.argument
+-        delimiter, items_list = argument
+         if not isinstance(delimiter, str) or not isinstance(items_list, list):
+             self.raise_invalid_argument_error(error_message)
+ 
+diff --git a/sceptre/resolvers/select.py b/sceptre/resolvers/select.py
+--- a/sceptre/resolvers/select.py
++++ b/sceptre/resolvers/select.py
+@@ -27,11 +27,10 @@
+             "The argument to !select must be a two-element list, where the first element is the "
+             "index or key to select with and the second element is the list or dict to select from."
+         )
++        if not isinstance(self.argument, list) or len(self.argument) != 2:
+-        argument = self._resolve_pair(error_message, second_type=(dict, list))
+-        if not isinstance(argument, list) or len(argument) != 2:
+             self.raise_invalid_argument_error(error_message)
+ 
++        index, items = self.argument
+-        index, items = argument
+         if not isinstance(items, (dict, list)):
+             self.raise_invalid_argument_error(error_message)
+ 
+diff --git a/sceptre/resolvers/split.py b/sceptre/resolvers/split.py
+--- a/sceptre/resolvers/split.py
++++ b/sceptre/resolvers/split.py
+@@ -22,13 +22,12 @@
+             "The argument to !split must be a two-element list, where the first element is the "
+             "string to split on and the second element string to split."
+         )
+-        argument = self._resolve_pair(error_message, str, str)
+         if (
++            not isinstance(self.argument, list)
++            or len(self.argument) != 2
++            or not all(isinstance(a, str) for a in self.argument)
+-            not isinstance(argument, list)
+-            or len(argument) != 2
+-            or not all(isinstance(a, str) for a in argument)
+         ):
+             self.raise_invalid_argument_error(error_message)
+ 
++        split_on, split_string = self.argument
+-        split_on, split_string = argument
+         return split_string.split(split_on)
+diff --git a/sceptre/resolvers/sub.py b/sceptre/resolvers/sub.py
+--- a/sceptre/resolvers/sub.py
++++ b/sceptre/resolvers/sub.py
+@@ -27,11 +27,10 @@
+             "The argument to !sub must be a two-element list, where the first element is the "
+             "a format string and the second element is a dict of values to interpolate into it."
+         )
++        if not isinstance(self.argument, list) or len(self.argument) != 2:
+-        argument = self._resolve_pair(error_message, str, dict)
+-        if not isinstance(argument, list) or len(argument) != 2:
+             self.raise_invalid_argument_error(error_message)
+ 
++        template, variables = self.argument
+-        template, variables = argument
+         if not isinstance(template, str) or not isinstance(variables, dict):
+             self.raise_invalid_argument_error(error_message)
+ 
+diff --git a/sceptre/template_handlers/__init__.py b/sceptre/template_handlers/__init__.py
+--- a/sceptre/template_handlers/__init__.py
++++ b/sceptre/template_handlers/__init__.py
+@@ -5,10 +5,7 @@
+ import six
+ from jsonschema import validate, ValidationError
+ 
++from sceptre.exceptions import TemplateHandlerArgumentsInvalidError
+-from sceptre.exceptions import (
+-    TemplateHandlerArgumentsInvalidError,
+-    UnsupportedTemplateFileTypeError,
+-)
+ from sceptre.logging import StackLoggerAdapter
+ 
+ 
+@@ -93,13 +90,3 @@
+             validate(instance=self.arguments, schema=self.schema())
+         except ValidationError as e:
+             raise TemplateHandlerArgumentsInvalidError(e)
+-
+-    def _validated_suffix(self, path, supported):
+-        suffix = path.suffix
+-        if suffix not in supported:
+-            raise UnsupportedTemplateFileTypeError(
+-                "Template has file extension %s. Only %s are supported.",
+-                suffix,
+-                ",".join(supported),
+-            )
+-        return suffix
+diff --git a/sceptre/template_handlers/file.py b/sceptre/template_handlers/file.py
+--- a/sceptre/template_handlers/file.py
++++ b/sceptre/template_handlers/file.py
+@@ -30,8 +30,7 @@
+         input_path = Path(self.arguments["path"])
+         path = self._resolve_template_path(str(input_path))
+ 
++        if input_path.suffix not in self.supported_template_extensions:
+-        suffix = self._validated_suffix(input_path, self.supported_template_extensions)
+-        if suffix not in self.supported_template_extensions:
+             raise UnsupportedTemplateFileTypeError(
+                 "Template has file extension %s. Only %s are supported.",
+                 input_path.suffix,
+@@ -39,24 +38,16 @@
+             )
+ 
+         try:
++            if input_path.suffix in self.standard_template_extensions:
+-            template, pending_path = helper.prepare_template(
+-                Path(path), self.sceptre_user_data,
+-                self.stack_group_config.get("j2_environment", {}),
+-                self.jinja_template_extensions, self.python_template_extensions,
+-                raw_suffixes=self.standard_template_extensions,
+-            )
+-            if pending_path is None:
+-                return template
+-            if suffix in self.standard_template_extensions:
+                 with open(path) as template_file:
+                     return template_file.read()
++            elif input_path.suffix in self.jinja_template_extensions:
+-            elif suffix in self.jinja_template_extensions:
+                 return helper.render_jinja_template(
+                     path,
+                     {"sceptre_user_data": self.sceptre_user_data},
+                     self.stack_group_config.get("j2_environment", {}),
+                 )
++            elif input_path.suffix in self.python_template_extensions:
+-            elif suffix in self.python_template_extensions:
+                 return helper.call_sceptre_handler(path, self.sceptre_user_data)
+         except Exception as e:
+             helper.print_template_traceback(path)
+diff --git a/sceptre/template_handlers/helper.py b/sceptre/template_handlers/helper.py
+--- a/sceptre/template_handlers/helper.py
++++ b/sceptre/template_handlers/helper.py
+@@ -21,26 +21,6 @@
+ """
+ Template handler helpers.
+ """
+-
+-
+-def prepare_template(path, user_data, environment, jinja_suffixes, python_suffixes,
+-                     stream=None, raw_suffixes=()):
+-    suffix = path.suffix
+-    if suffix in raw_suffixes or suffix not in jinja_suffixes + python_suffixes:
+-        return stream.read() if stream is not None else None, path
+-
+-    def render(filename):
+-        if suffix in jinja_suffixes:
+-            return render_jinja_template(
+-                filename, {"sceptre_user_data": user_data}, environment
+-            )
+-        return call_sceptre_handler(filename, user_data)
+-
+-    if stream is None:
+-        return render(str(path)), None
+-    stream.seek(0)
+-    stream.read()
+-    return render(stream.name), None
+ 
+ 
+ def call_sceptre_handler(path, sceptre_user_data):
+diff --git a/sceptre/template_handlers/http.py b/sceptre/template_handlers/http.py
+--- a/sceptre/template_handlers/http.py
++++ b/sceptre/template_handlers/http.py
+@@ -43,8 +43,7 @@
+         url = self.arguments["url"]
+         path = pathlib.Path(urlparse(url).path)
+ 
++        if path.suffix not in self.supported_template_extensions:
+-        suffix = self._validated_suffix(path, self.supported_template_extensions)
+-        if suffix not in self.supported_template_extensions:
+             raise UnsupportedTemplateFileTypeError(
+                 "Template has file extension %s. Only %s are supported.",
+                 path.suffix,
+@@ -67,19 +66,15 @@
+                 self.logger.debug("Template file saved to: %s", file.name)
+                 with file as f:
+                     f.write(template)
++                    f.seek(0)
++                    f.read()
++                    if path.suffix in self.jinja_template_extensions:
+-                    template, pending_path = helper.prepare_template(
+-                        path, self.sceptre_user_data,
+-                        self.stack_group_config.get("j2_environment", {}),
+-                        self.jinja_template_extensions, self.python_template_extensions,
+-                        stream=f,
+-                    )
+-                    if pending_path is not None and path.suffix in self.jinja_template_extensions:
+                         template = helper.render_jinja_template(
+                             f.name,
+                             {"sceptre_user_data": self.sceptre_user_data},
+                             self.stack_group_config.get("j2_environment", {}),
+                         )
++                    elif path.suffix in self.python_template_extensions:
+-                    elif pending_path is not None and path.suffix in self.python_template_extensions:
+                         template = helper.call_sceptre_handler(
+                             f.name, self.sceptre_user_data
+                         )
+diff --git a/sceptre/template_handlers/s3.py b/sceptre/template_handlers/s3.py
+--- a/sceptre/template_handlers/s3.py
++++ b/sceptre/template_handlers/s3.py
+@@ -39,8 +39,7 @@
+             standard_template_suffix + jinja_template_suffix + python_template_suffix
+         )
+ 
++        if path.suffix not in supported_suffix:
+-        suffix = self._validated_suffix(path, supported_suffix)
+-        if suffix not in supported_suffix:
+             raise UnsupportedTemplateFileTypeError(
+                 "Template has file extension %s. Only %s are supported.",
+                 path.suffix,
+@@ -53,18 +52,15 @@
+                 file = tempfile.NamedTemporaryFile(prefix=path.stem)
+                 with file as f:
+                     f.write(template)
++                    f.seek(0)
++                    f.read()
++                    if path.suffix in jinja_template_suffix:
+-                    template, pending_path = helper.prepare_template(
+-                        path, self.sceptre_user_data,
+-                        self.stack_group_config.get("j2_environment", {}),
+-                        jinja_template_suffix, python_template_suffix, stream=f,
+-                    )
+-                    if pending_path is not None and path.suffix in jinja_template_suffix:
+                         template = helper.render_jinja_template(
+                             f.name,
+                             {"sceptre_user_data": self.sceptre_user_data},
+                             self.stack_group_config.get("j2_environment", {}),
+                         )
++                    elif path.suffix in python_template_suffix:
+-                    elif pending_path is not None and path.suffix in python_template_suffix:
+                         template = helper.call_sceptre_handler(
+                             f.name, self.sceptre_user_data
+                         )

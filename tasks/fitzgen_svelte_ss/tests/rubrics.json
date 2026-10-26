@@ -1,0 +1,607 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "fitzgen_svelte_ss",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "json_strings",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1-R3 six JSON copies; original depth value loops.",
+      "baseline_defect": "String values and local key encoders repeat character handling across six analyses.",
+      "criterion": "Maintain one shared string-encoding policy for both member names and string values.",
+      "acceptance": "Preserve exact existing quote handling, single backslash emission, literal newline and ordinary character writes. Do not replace these quirks with standards-compliant escaping or alter field/output bytes. All flat, nested and summary name paths must use the policy. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/diff.rs",
+          "symbol": "emit_json,JsonPrimitive",
+          "detail": "String values and local key encoders repeat character handling across six analyses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "emit_json,JsonPrimitive",
+          "detail": "String values and local key encoders repeat character handling across six analyses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "emit_json,JsonPrimitive",
+          "detail": "String values and local key encoders repeat character handling across six analyses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "emit_json,JsonPrimitive",
+          "detail": "String values and local key encoders repeat character handling across six analyses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "emit_json,JsonPrimitive",
+          "detail": "String values and local key encoders repeat character handling across six analyses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/top.rs",
+          "symbol": "emit_json,JsonPrimitive",
+          "detail": "String values and local key encoders repeat character handling across six analyses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "json_members",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry member continuity transferred to schemas.",
+      "baseline_defect": "Object name, leading commas and primitive writes are independently sequenced in report code.",
+      "criterion": "Own ordinary member framing and primitive emission coherently across affected reports.",
+      "acceptance": "Preserve key-before-colon-before-value and field order, existing numeric Display behavior (including f64 cast for Diff) and conditional Top retained fields. A sequence-driven or stateful API qualifies; a helper is not required to hide meaningful field selection. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/diff.rs",
+          "symbol": "emit_json,Object::name",
+          "detail": "Object name, leading commas and primitive writes are independently sequenced in report code.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "emit_json,Object::name",
+          "detail": "Object name, leading commas and primitive writes are independently sequenced in report code.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "emit_json,Object::name",
+          "detail": "Object name, leading commas and primitive writes are independently sequenced in report code.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "emit_json,Object::name",
+          "detail": "Object name, leading commas and primitive writes are independently sequenced in report code.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "emit_json,Object::name",
+          "detail": "Object name, leading commas and primitive writes are independently sequenced in report code.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/top.rs",
+          "symbol": "emit_json,Object::name",
+          "detail": "Object name, leading commas and primitive writes are independently sequenced in report code.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "json_elements",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1-R3 opening breadth; retry separator state removal.",
+      "baseline_defect": "Report loops open containers and compute first/subsequent punctuation independently.",
+      "criterion": "Centralize container opening and element separation for flat and nested sequences.",
+      "acceptance": "Preserve empty containers, per-container continuity and selected-entry rather than source-index ordering. Top/diff flat loops and all nested consumers must connect to shared mechanics. Stateless shared sequence rendering is valid; callers may supply semantic sequence data without manually maintaining JSON punctuation. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/diff.rs",
+          "symbol": "emit_json,Array,Object",
+          "detail": "Report loops open containers and compute first/subsequent punctuation independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "emit_json,Array,Object",
+          "detail": "Report loops open containers and compute first/subsequent punctuation independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "emit_json,Array,Object",
+          "detail": "Report loops open containers and compute first/subsequent punctuation independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "emit_json,Array,Object",
+          "detail": "Report loops open containers and compute first/subsequent punctuation independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "emit_json,Array,Object",
+          "detail": "Report loops open containers and compute first/subsequent punctuation independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/top.rs",
+          "symbol": "emit_json,Array,Object",
+          "detail": "Report loops open containers and compute first/subsequent punctuation independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "json_lifetime",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1-R3 copied RAII closing.",
+      "baseline_defect": "Six local container types separately implement scope-closing writes while emitters own openings.",
+      "criterion": "Own container lifecycle and closing/error behavior through a shared formatting contract.",
+      "acceptance": "Preserve opening failure propagation, explicit field/value error propagation and existing best-effort closing that ignores Drop errors, including nested scope order during early returns. No forced Rust Drop implementation if an equivalent scoped operation preserves these effects; whole-buffer serialization cannot change observed partial writes/errors. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/diff.rs",
+          "symbol": "Drop for Array,Drop for Object",
+          "detail": "Six local container types separately implement scope-closing writes while emitters own openings.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "Drop for Array,Drop for Object",
+          "detail": "Six local container types separately implement scope-closing writes while emitters own openings.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "Drop for Array,Drop for Object",
+          "detail": "Six local container types separately implement scope-closing writes while emitters own openings.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "Drop for Array,Drop for Object",
+          "detail": "Six local container types separately implement scope-closing writes while emitters own openings.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "Drop for Array,Drop for Object",
+          "detail": "Six local container types separately implement scope-closing writes while emitters own openings.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/top.rs",
+          "symbol": "Drop for Array,Drop for Object",
+          "detail": "Six local container types separately implement scope-closing writes while emitters own openings.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "table_shape",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1-R3 full Table copies.",
+      "baseline_defect": "Each analysis repeats nonempty-header and row-arity validation plus storage shape.",
+      "criterion": "Maintain the shared table shape contract at one boundary.",
+      "acceptance": "Preserve empty-header assertion, row/header length equality before insertion and row order; report-specific cells and headers remain freely chosen. Direct shared Table reuse satisfies this and other table rules together. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/diff.rs",
+          "symbol": "Table::with_header,Table::add_row",
+          "detail": "Each analysis repeats nonempty-header and row-arity validation plus storage shape.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "Table::with_header,Table::add_row",
+          "detail": "Each analysis repeats nonempty-header and row-arity validation plus storage shape.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "Table::with_header,Table::add_row",
+          "detail": "Each analysis repeats nonempty-header and row-arity validation plus storage shape.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "Table::with_header,Table::add_row",
+          "detail": "Each analysis repeats nonempty-header and row-arity validation plus storage shape.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "Table::with_header,Table::add_row",
+          "detail": "Each analysis repeats nonempty-header and row-arity validation plus storage shape.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/top.rs",
+          "symbol": "Table::with_header,Table::add_row",
+          "detail": "Each analysis repeats nonempty-header and row-arity validation plus storage shape.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "table_width",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1-R3 duplicated width policy.",
+      "baseline_defect": "Six fmt bodies scan headers and all rows for maximum widths.",
+      "criterion": "Own width measurement consistently across text reports.",
+      "acceptance": "Preserve String::len byte lengths, header-inclusive maxima and all-row contribution. Do not replace with Unicode display width or impose a width cache; existing straightforward scan is valid. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/diff.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt bodies scan headers and all rows for maximum widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt bodies scan headers and all rows for maximum widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt bodies scan headers and all rows for maximum widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt bodies scan headers and all rows for maximum widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt bodies scan headers and all rows for maximum widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/top.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt bodies scan headers and all rows for maximum widths.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "table_header",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1-R3 header row layout.",
+      "baseline_defect": "Each table copy separately writes header prefix, column separator and padding.",
+      "criterion": "Share header layout policy across all table consumers.",
+      "acceptance": "Preserve leading space, vertical-bar separators, trailing-column no-padding exception and newline even when there are no body rows. Domain labels/column order remain local. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/diff.rs",
+          "symbol": "Table::fmt",
+          "detail": "Each table copy separately writes header prefix, column separator and padding.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "Table::fmt",
+          "detail": "Each table copy separately writes header prefix, column separator and padding.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "Table::fmt",
+          "detail": "Each table copy separately writes header prefix, column separator and padding.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "Table::fmt",
+          "detail": "Each table copy separately writes header prefix, column separator and padding.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "Table::fmt",
+          "detail": "Each table copy separately writes header prefix, column separator and padding.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/top.rs",
+          "symbol": "Table::fmt",
+          "detail": "Each table copy separately writes header prefix, column separator and padding.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "table_rule",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1-R3 horizontal header rule.",
+      "baseline_defect": "Six fmt copies independently emit horizontal line/junction geometry from widths.",
+      "criterion": "Maintain header-rule geometry at a shared layout boundary.",
+      "acceptance": "Preserve leading horizontal glyph, junction and per-column repetition with exact newline. Sharing only width calculation while duplicating geometry does not satisfy this independent policy. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/diff.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt copies independently emit horizontal line/junction geometry from widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt copies independently emit horizontal line/junction geometry from widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt copies independently emit horizontal line/junction geometry from widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt copies independently emit horizontal line/junction geometry from widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt copies independently emit horizontal line/junction geometry from widths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/top.rs",
+          "symbol": "Table::fmt",
+          "detail": "Six fmt copies independently emit horizontal line/junction geometry from widths.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "table_body",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1-R3 alignment/body separators.",
+      "baseline_defect": "Body delimiters and left/right padding repeat across copies.",
+      "criterion": "Share body-row alignment and separator policy across all text reports.",
+      "acceptance": "Preserve leading space, dotted vertical delimiters, right padding for left-aligned non-last cells, no padding for last left cell and pre-padding for every right cell; propagate formatter errors in the same write order. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/diff.rs",
+          "symbol": "Table::fmt,Align",
+          "detail": "Body delimiters and left/right padding repeat across copies.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "Table::fmt,Align",
+          "detail": "Body delimiters and left/right padding repeat across copies.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "Table::fmt,Align",
+          "detail": "Body delimiters and left/right padding repeat across copies.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "Table::fmt,Align",
+          "detail": "Body delimiters and left/right padding repeat across copies.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "Table::fmt,Align",
+          "detail": "Body delimiters and left/right padding repeat across copies.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/top.rs",
+          "symbol": "Table::fmt,Align",
+          "detail": "Body delimiters and left/right padding repeat across copies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "garbage_summary",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry selected-row and summary continuity.",
+      "baseline_defect": "Summary branches predict whether ordinary/omitted rows preceded them to emit commas.",
+      "criterion": "Separate Garbage population decisions from shared output continuity.",
+      "acceptance": "Keep limit-zero omitted row without leading comma, total after ordinary or remainder rows, total alone for empty source and optional data segment summary after total. A semantic combined iterator or existing writer is valid; limits and optional summary changes must not require manual delimiter edits. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/garbage.rs",
+          "symbol": "Garbage::emit_json",
+          "detail": "Summary branches predict whether ordinary/omitted rows preceded them to emit commas.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dominator_continuation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry shallow/retained cross-method split.",
+      "baseline_defect": "add_json_item emits shallow fields while recursion assumes prior members before retained fields/children; root summary assumes items already emitted.",
+      "criterion": "Compose dominator fields and nested report sections through a coherent shared serialization contract.",
+      "acceptance": "Preserve shallow then retained fields, children key only when tree entry exists, sorted recursive children, items first and summary following even empty items. Field ownership may be regrouped or use a continuing shared object; no need to preserve current helper split. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/dominators/emit.rs",
+          "symbol": "add_json_item,recursive_add_children,DominatorTree::emit_json",
+          "detail": "add_json_item emits shallow fields while recursion assumes prior members before retained fields/children; root summary assumes items already emitted.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "monos_continuation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry generic-name/metrics split.",
+      "baseline_defect": "Outer loop writes generic name; process_entry starts with a hard-coded comma and nested instances separately manage positions.",
+      "criterion": "Compose generic fields, metrics and nested instances without schema-specific punctuation obligations across methods.",
+      "acceptance": "Preserve generic name before bloat/size fields, independent nested instance sequence and empty monomorphizations array. Existing metrics/instance selection remain domain-owned; complete per-entry projection or a shared continuing writer both qualify. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/monos/emit.rs",
+          "symbol": "Monos::emit_json,process_entry",
+          "detail": "Outer loop writes generic name; process_entry starts with a hard-coded comma and nested instances separately manage positions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "paths_selection",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R2 recursion; retry independent child sequence continuity.",
+      "baseline_defect": "Depth/path limits determine the loop but manual callers framing stays embedded in recursion.",
+      "criterion": "Keep path traversal choices independent from shared JSON framing and sequence policy.",
+      "acceptance": "Preserve empty callers arrays at max depth, per-node path limits, recursive child order and fresh nested continuity. A generic sequence renderer may take selected children; no mandatory iterator or state object. Restoring existing shared formatting imports, shared functions/macros, streaming builders or equivalent composition is valid. No prescribed stateful writer, module layout or separate component per rule. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A local wrapper per analysis or a common type leaving the same independently maintained wire/layout decisions in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "analyze/analyses/paths/paths_emit.rs",
+          "symbol": "Paths::emit_json,emit_json_helpers::process_entry",
+          "detail": "Depth/path limits determine the loop but manual callers framing stays embedded in recursion.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "fitzgen_svelte_ss",
+    "language": "en",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "aggregation": "Each item has equal weight; score only a demonstrated structural repair of the stated injected defect."
+  }
+}

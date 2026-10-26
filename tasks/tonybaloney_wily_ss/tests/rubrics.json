@@ -1,0 +1,402 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "tonybaloney_wily_ss",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "W01",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Metric selection is repeated in diff, graph, rank, and report after the interaction stage removes intermediate helpers.",
+      "baseline_defect": "Each command scans ALL_METRICS by the unqualified entry name, ignoring the supplied operator qualifier and duplicating lookup policy.",
+      "criterion": "Metric selection for these commands uses one coherent qualified lookup responsibility and preserves operator and metric identity.",
+      "acceptance": "The shared boundary resolves a qualified selection consistently for diff, graph, rank, and report; command code does not independently scan ALL_METRICS. Qualified name ignores prefix for metric match, first registry match, multi-dot unpack errors; diff separately derives requested operator, report sorted unique requests, graph y/z resolve_metric remains. Existing cached resolver reconnection explicitly valid. Known warm-cache/direct registry mutation divergence is author limitation, not a requirement to preserve inconsistent lookup. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving each scan into a differently named command-local wrapper or only correcting one command."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/diff.py",
+          "symbol": "_resolve_metrics_and_operators",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/diff.py:_resolve_metrics_and_operators"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/graph.py",
+          "symbol": "metric_parts,graph",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/graph.py:metric_parts,graph"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "rank",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/rank.py:rank"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "report",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/report.py:report"
+        }
+      ]
+    },
+    {
+      "id": "W02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Cache path assembly is introduced across commands and remains in the final patch.",
+      "baseline_defect": "diff, graph, index, rank, and report each construct metrics.parquet paths from config and archiver.",
+      "criterion": "The cache-location convention has one owner used by the affected commands.",
+      "acceptance": "Each affected command obtains the metrics path through a common cache-path boundary without embedding the path layout. Preserve current root/archiver/metrics.parquet layout and each command existence/error branch; shared policy data also qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A shared string constant for metrics.parquet while each command still assembles the directory layout."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/diff.py",
+          "symbol": "diff",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/diff.py:diff"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/graph.py",
+          "symbol": "graph",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/graph.py:graph"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/index.py",
+          "symbol": "index",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/index.py:index"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "rank",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/rank.py:rank"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "report",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/report.py:report"
+        }
+      ]
+    },
+    {
+      "id": "W03",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Index and report both enumerate available archiver caches directly.",
+      "baseline_defect": "index and report enumerate ALL_ARCHIVERS and check directories themselves, bypassing the cache discovery boundary.",
+      "criterion": "Both cache-listing consumers receive archivers through the same cache discovery responsibility.",
+      "acceptance": "The configuration and archiver registry flow through one discovery boundary to index and report. Registry insertion order, include existing path even not directory; later parquet checks stay distinct. No new eager filesystem effects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing only index or copying the enumeration into a utility without using it in report."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/index.py",
+          "symbol": "index",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/index.py:index"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "report",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/report.py:report"
+        }
+      ]
+    },
+    {
+      "id": "W04",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The interaction stage expands graph axis parsing into separate scans.",
+      "baseline_defect": "graph resolves x, y, and z axes using separate scans and partly independent metric and operator values.",
+      "criterion": "Graph axis metric resolution is one coherent decision reused for all metric axes.",
+      "acceptance": "Qualified x, y, and z selections derive matching operator and metric identities through the same boundary. History x avoids metric lookup; x/y/z preserve consumer-specific key/operator use and absent z behavior. One resolver may satisfy W01 and W04, no duplicate implementation required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing the y axis only or retaining three separate scans with superficial helper calls."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/graph.py",
+          "symbol": "metric_parts,graph",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/graph.py:metric_parts,graph"
+        }
+      ]
+    },
+    {
+      "id": "W05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Diff and report independently compute direction-based presentation styles.",
+      "baseline_defect": "Diff embeds a measure-to-color map in cell formatting while report stores increase/decrease booleans and computes colors inside row assembly.",
+      "criterion": "Metric direction and presentation style decisions have a coherent owner shared by affected metric displays.",
+      "acceptance": "Diff and report obtain consistent style decisions for AimHigh, AimLow, and Informational measures through a focused boundary. AimHigh rising green/falling red; AimLow inverse; informational yellow; zero unstyled; report unknown measure fallback yellow versus diff dict unknown-key failure retained. HTML consumes existing Text style color mapping; no new output format. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extracting only a color literal or leaving report's direction decision separate from diff's."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/diff.py",
+          "symbol": "_format_table_cell",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/diff.py:_format_table_cell"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "report",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/report.py:report"
+        }
+      ]
+    },
+    {
+      "id": "W06",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The interaction stage inlines table creation after expansion-added command-local printers.",
+      "baseline_defect": "diff, index, list_metrics, rank, and report separately configure Rich Console, Table, box style, columns, overflow, row conversion, and printing.",
+      "criterion": "The repeated table-presentation mechanism is removed from command business flows and served through a reusable presentation boundary.",
+      "acceptance": "Affected commands provide their headings and rows while shared presentation logic handles common Rich table mechanics. Index optional Message column and empty table publication retained; diff no table/output if all rows excluded; list_metrics prints heading but no table for empty provider; rank/report no-data return preserved. Shared builder or phased renderer acceptable, not mandatory whole-table buffering. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving an intact table block to each command's private helper or sharing only the Console constructor."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/diff.py",
+          "symbol": "_format_table_output",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/diff.py:_format_table_output"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/index.py",
+          "symbol": "index",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/index.py:index"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/list_metrics.py",
+          "symbol": "list_metrics",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/list_metrics.py:list_metrics"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "rank",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/rank.py:rank"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "report",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/report.py:report"
+        }
+      ]
+    },
+    {
+      "id": "W07",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The final table code mixes display conversion with row gathering.",
+      "baseline_defect": "Commands individually convert path, scalar, and Rich Text cells while assembling domain rows.",
+      "criterion": "Give shared cell conversion and Rich Text preservation one coherent policy across the different staging paths.",
+      "acceptance": "A shared conversion operation or a redesigned row flow avoids independently maintained Text/string rules. Preserve Rich Text object/style, stringify ordinary cells once at equivalent effect boundaries; rank sorts/limits RAW values not string displays; report metric cells already converted while revision prefixes converted later, console reverse chronology and HTML traversal unchanged. Shared cell conversion callable within producer loops is valid, not necessarily relocation out of loops. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A common table constructor while each command retains its own value-to-cell normalization."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/diff.py",
+          "symbol": "_format_table_output",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/diff.py:_format_table_output"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/list_metrics.py",
+          "symbol": "list_metrics",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/list_metrics.py:list_metrics"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "rank",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/rank.py:rank"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "report",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/report.py:report"
+        }
+      ]
+    },
+    {
+      "id": "W08",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Every table command repeats wrap and box-style branching.",
+      "baseline_defect": "A change to an existing table style or wrapping mode must be coordinated through five command renderers.",
+      "criterion": "Existing box-style and wrap variations are handled at one presentation boundary.",
+      "acceptance": "Changing how DEFAULT_TABLE_STYLE or wrap maps to Rich box and overflow can be done in the shared renderer without editing each command. Case-insensitive BOX_STYLES with ROUNDED fallback; header bold/show_header, wrap=>fold elseignore consistently for revision and metric columns. Configuration and publication can share one coherent component. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A common style constant while commands still branch on wrap and look up BOX_STYLES separately."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/diff.py",
+          "symbol": "_format_table_output",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/diff.py:_format_table_output"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/index.py",
+          "symbol": "index",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/index.py:index"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/list_metrics.py",
+          "symbol": "list_metrics",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/list_metrics.py:list_metrics"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "rank",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/rank.py:rank"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "report",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/report.py:report"
+        }
+      ]
+    },
+    {
+      "id": "W10",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Several commands inline date and revision display conventions formerly delegated to formatting helpers.",
+      "baseline_defect": "graph, index, rank, and report directly choose timestamp conversions or seven-character revision abbreviations.",
+      "criterion": "Give date and datetime formatting a coherent policy while preserving the two output modes.",
+      "acceptance": "Index/rank/report use local date.fromtimestamp(...).isoformat; graph history uses local datetime.fromtimestamp(...).isoformat, without forcing UTC or identical precision. Shared formatting with distinct modes is valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Sharing only the literal 7 or replacing datetime imports with aliases in each command."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/graph.py",
+          "symbol": "graph",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/graph.py:graph"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/index.py",
+          "symbol": "index",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/index.py:index"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "rank",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/rank.py:rank"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "report",
+          "detail": null,
+          "raw": "environment/smell.diff:src/wily/commands/report.py:report"
+        }
+      ]
+    },
+    {
+      "id": "W11",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded",
+      "intent_basis": "Round3 revision presentation.",
+      "baseline_defect": "Index/rank/report independently slice revision identifiers while timestamps are another policy.",
+      "criterion": "Give abbreviated revision display a coherent policy across reporting consumers.",
+      "acceptance": "Retain first seven characters, full underlying revision identity and message truncation policy; do not truncate identifiers used for lookup. A shared formatter or policy can also serve date output. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consolidating timestamps alone leaves independent revision abbreviation copies."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/index.py",
+          "symbol": "index",
+          "detail": "Index/rank/report independently slice revision identifiers while timestamps are another policy.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "rank",
+          "detail": "Index/rank/report independently slice revision identifiers while timestamps are another policy.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "report",
+          "detail": "Index/rank/report independently slice revision identifiers while timestamps are another policy.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "tonybaloney_wily_ss",
+    "aggregation": "equal_weight",
+    "excluded": [
+      "post.diff is empty",
+      "Existing command output, tests, and compilation are constraints rather than independent repair credits",
+      "Expansion-only _metric_pair and _print_rows helper names are absent from the final injected state"
+    ]
+  }
+}

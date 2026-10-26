@@ -1,0 +1,447 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "srdja_collections_c_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "array_storage_growth",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + stage2 common append/interior growth.",
+      "baseline_defect": "The public cc_array_add_at path directly maintains array storage growth alongside other operation phases.",
+      "criterion": "Recover a cohesive array storage growth boundary that simplifies the outer operation.",
+      "acceptance": "Allow index=size append; reject invalid before allocation. Max/factor overflow normalization and capacity publication occur before allocator; failed allocation retains increased capacity/oldbuffer. Copy\u2192free\u2192publish then shift/write/count. Reconnect existing expansion or insertion operation legal. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_array.c",
+          "symbol": "cc_array_add_at",
+          "detail": "The public cc_array_add_at path directly maintains array storage growth alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "paired_array_insertion",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 zip inlines calls after preflight.",
+      "baseline_defect": "The public cc_array_zip_iter_add path directly maintains paired array insertion alongside other operation phases.",
+      "criterion": "Recover a cohesive paired array insertion boundary that simplifies the outer operation.",
+      "acceptance": "Preflight first then second and CC_ERR_ALLOC projection preserved; element sides execute sequentially, including ar1==ar2 changing second-side size/capacity. Post-preflight add failures are ignored as original calls, outer CC_OK remains; no transactional rollback or simultaneous snapshots. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_array.c",
+          "symbol": "cc_array_zip_iter_add",
+          "detail": "The public cc_array_zip_iter_add path directly maintains paired array insertion alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sized_array_insertion",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + stage2 byte addressing corrected macro precedence.",
+      "baseline_defect": "The public cc_array_sized_add_at path directly maintains sized array insertion alongside other operation phases.",
+      "criterion": "Recover a cohesive sized array insertion boundary that simplifies the outer operation.",
+      "acceptance": "Append/interior validation, growth failure publication and allocator order match supported path; use data_length for allocation/copy/shift/index+1 bytes, retain element memcpy semantics. Can share conceptual policy with pointer arrays without unsafe stride abstraction. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/sized/cc_array_sized.c",
+          "symbol": "cc_array_sized_add_at",
+          "detail": "The public cc_array_sized_add_at path directly maintains sized array insertion alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "deque_relocation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + stage2 growth ends with placement.",
+      "baseline_defect": "The public cc_deque_add_first,cc_deque_add_last path directly maintains deque relocation alongside other operation phases.",
+      "criterion": "Recover a cohesive deque relocation boundary that simplifies the outer operation.",
+      "acceptance": "Both directions share circular relocation policy: max error projected alloc, double calloc, contiguous or tail+head copy, free old before normalized first0,last=size,capacity,buffer. Failure no publication. Existing expand_capacity complete reconnect qualifies; no mandatory extra allocation plan. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_deque.c",
+          "symbol": "cc_deque_add_first,cc_deque_add_last",
+          "detail": "The public cc_deque_add_first,cc_deque_add_last path directly maintains deque relocation alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "deque_directional_placement",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 front/back different continuation after relocation.",
+      "baseline_defect": "The public cc_deque_add_first,cc_deque_add_last path directly maintains deque directional placement alongside other operation phases.",
+      "criterion": "Recover a cohesive deque directional placement boundary that simplifies the outer operation.",
+      "acceptance": "Front puts at newcapacity-1; back writes oldsize then increments/masks last; non-growth uses original masks and distinct full predicates >= versus ==. Keep size update once and callback-visible normalization; single complete insertion operation can satisfy relocation too. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_deque.c",
+          "symbol": "cc_deque_add_first,cc_deque_add_last",
+          "detail": "The public cc_deque_add_first,cc_deque_add_last path directly maintains deque directional placement alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash_resize_migration",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 resize\u2192move_entries collapsed.",
+      "baseline_defect": "The public cc_hashtable_add path directly maintains hash resize migration alongside other operation phases.",
+      "criterion": "Recover a cohesive hash resize migration boundary that simplifies the outer operation.",
+      "acceptance": "Threshold check precedes replacement/null insertion, max/failure unchanged. Migrate old chains by cached hashes and prepend order into new buckets; publish buckets/capacity/threshold before retired free callback. No rehash callbacks or changed allocation geometry; coherent resize suffices. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_hashtable.c",
+          "symbol": "cc_hashtable_add",
+          "detail": "The public cc_hashtable_add path directly maintains hash resize migration alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash_mapping_insertion",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 null/ordinary key publication integrated.",
+      "baseline_defect": "The public cc_hashtable_add path directly maintains hash mapping insertion alongside other operation phases.",
+      "criterion": "Recover a cohesive hash mapping insertion boundary that simplifies the outer operation.",
+      "acceptance": "Null uses hash0 and only null-key equality, no hash/comparator; ordinary excludes null entries then cmp, replacement changes value without count. Allocate/link new entry only on miss and after possible resize; failure keeps successful resize. Unified mapping owner or separate null helper both legal. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_hashtable.c",
+          "symbol": "cc_hashtable_add",
+          "detail": "The public cc_hashtable_add path directly maintains hash mapping insertion alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "doubly_linked_teardown",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 destroy/remove-all/unlink chain.",
+      "baseline_defect": "The public cc_list_destroy,cc_list_destroy_cb path directly maintains doubly linked teardown alongside other operation phases.",
+      "criterion": "Recover a cohesive doubly linked teardown boundary that simplifies the outer operation.",
+      "acceptance": "Capture next before optional element callback, callback before reconnect links, free node before decrement count, clear endpoints after loop then free list. Preserve per-node visible head/tail updates and live free callback; callback/no-callback can share coherent cleanup. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_list.c",
+          "symbol": "cc_list_destroy,cc_list_destroy_cb",
+          "detail": "The public cc_list_destroy,cc_list_destroy_cb path directly maintains doubly linked teardown alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "doubly_indexed_removal",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 additional traversal/unlink consumer.",
+      "baseline_defect": "The public cc_list_remove_at path directly maintains doubly indexed removal alongside other operation phases.",
+      "criterion": "Recover a cohesive doubly indexed removal boundary that simplifies the outer operation.",
+      "acceptance": "NULL/index guards; choose forward versus backward by index<size/2. Publish optional out before unlink/free/count decrement; preserve head/tail/prev/next and allocator timing. Lookup/unlink may be integrated in coherent list primitive rather than two mandatory helpers. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_list.c",
+          "symbol": "cc_list_remove_at",
+          "detail": "The public cc_list_remove_at path directly maintains doubly indexed removal alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "singly_linked_teardown",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 singly teardown different representation updates.",
+      "baseline_defect": "The public cc_slist_destroy,cc_slist_destroy_cb path directly maintains singly linked teardown alongside other operation phases.",
+      "criterion": "Recover a cohesive singly linked teardown boundary that simplifies the outer operation.",
+      "acceptance": "Capture next before optional cb, free then decrement size, endpoints cleared only after traversal; do not add doubly-list style per-node head updates. Finally free list; existing remove_all/cb wrappers are valid short repair. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_slist.c",
+          "symbol": "cc_slist_destroy,cc_slist_destroy_cb",
+          "detail": "The public cc_slist_destroy,cc_slist_destroy_cb path directly maintains singly linked teardown alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "singly_indexed_removal",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 indexed predecessor/retirement.",
+      "baseline_defect": "The public cc_slist_remove_at path directly maintains singly indexed removal alongside other operation phases.",
+      "criterion": "Recover a cohesive singly indexed removal boundary that simplifies the outer operation.",
+      "acceptance": "Index check before forward traversal; capture data, repair predecessor/head/tail then free/decrement, only afterward write optional out. Do not normalize output timing to doubly-list removal. Reuse coherent search/unlink behavior. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_slist.c",
+          "symbol": "cc_slist_remove_at",
+          "detail": "The public cc_slist_remove_at path directly maintains singly indexed removal alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "heap_storage_growth",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 growth collapsed into heap insertion.",
+      "baseline_defect": "The public cc_pqueue_push path directly maintains heap storage growth alongside other operation phases.",
+      "criterion": "Recover a cohesive heap storage growth boundary that simplifies the outer operation.",
+      "acceptance": "Push index captured before growth; preserve early capacity expansion/max/failure, copy/free/publish before existing heap insertion/comparison. Growth can share allocator policy but remains independent of downward restoration. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_pqueue.c",
+          "symbol": "cc_pqueue_push",
+          "detail": "The public cc_pqueue_push path directly maintains heap storage growth alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "heap_order_restoration",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 recursive heapify collapsed.",
+      "baseline_defect": "The public cc_pqueue_pop path directly maintains heap order restoration alongside other operation phases.",
+      "criterion": "Recover a cohesive heap order restoration boundary that simplifies the outer operation.",
+      "acceptance": "Capture removed top, swap last and decrement before heap restore, then optional out after comparisons. Left comparison before right with selected value, equal no swap, each descent swaps chosen child; preserve custom comparator observations. Iterative/recursive owner both valid; no requirement to retain unsafe speculative reads as design. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_pqueue.c",
+          "symbol": "cc_pqueue_pop",
+          "detail": "The public cc_pqueue_pop path directly maintains heap order restoration alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ordered_tree_search_neighbors",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R4 exact-key and neighbor chains.",
+      "baseline_defect": "The public cc_treetable_get_greater_than,cc_treetable_get_lesser_than path directly maintains ordered tree search neighbors alongside other operation phases.",
+      "criterion": "Recover a cohesive ordered tree search neighbors boundary that simplifies the outer operation.",
+      "acceptance": "Skip empty, preserve comparator calls and sentinel termination. Only exact found key permits neighbor, subtree min/max else climb ancestors, boundary sentinel key/status as existing API. Not nearest query for missing key; search owner may also serve remove/get/contains. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treetable.c",
+          "symbol": "cc_treetable_get_greater_than,cc_treetable_get_lesser_than",
+          "detail": "The public cc_treetable_get_greater_than,cc_treetable_get_lesser_than path directly maintains ordered tree search neighbors alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "red_black_transplant",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 successor and transplant.",
+      "baseline_defect": "The public cc_treetable_remove path directly maintains red black transplant alongside other operation phases.",
+      "criterion": "Recover a cohesive red black transplant boundary that simplifies the outer operation.",
+      "acceptance": "Optional out from original node before mutation; zero/one-child replacement and two-child successor-min maintain parent/root links, sentinel parent, original removed-color for fixup. Free original target only after balancing, then decrement once; successor relocation not value-copy replacement if observably different. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treetable.c",
+          "symbol": "cc_treetable_remove",
+          "detail": "The public cc_treetable_remove path directly maintains red black transplant alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "red_black_balance",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 black-height repair and selected rotations.",
+      "baseline_defect": "The public cc_treetable_remove path directly maintains red black balance alongside other operation phases.",
+      "criterion": "Recover a cohesive red black balance boundary that simplifies the outer operation.",
+      "acceptance": "Black removed color triggers mirrored sibling red/black-child cases, color propagation, near/far rotations and replacement-root termination, finally black replacement. Rotations preserve parent/root/sentinel links. Complete retained remove_node/rebalance operations valid, no forced helper per case or artificial symmetric rewrite. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treetable.c",
+          "symbol": "cc_treetable_remove",
+          "detail": "The public cc_treetable_remove path directly maintains red black balance alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ternary_prefix_navigation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R4 + stage2 consumed prefix vs branch progress.",
+      "baseline_defect": "The public cc_tsttable_add,cc_tsttable_remove path directly maintains ternary prefix navigation alongside other operation phases.",
+      "criterion": "Recover a cohesive ternary prefix navigation boundary that simplifies the outer operation.",
+      "acceptance": "Left/right do not consume key character, equal consumes/mid except final match; preserve captured strlen, live char comparator, empty-key behavior and terminal/eow distinction. Add/remove can share coherent matcher with equivalent representation, not mandated old result tuple. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_tsttable.c",
+          "symbol": "cc_tsttable_add,cc_tsttable_remove",
+          "detail": "The public cc_tsttable_add,cc_tsttable_remove path directly maintains ternary prefix navigation alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ternary_detached_suffix",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + stage2 unpublished suffix construction.",
+      "baseline_defect": "The public cc_tsttable_add path directly maintains ternary detached suffix alongside other operation phases.",
+      "criterion": "Recover a cohesive ternary detached suffix boundary that simplifies the outer operation.",
+      "acceptance": "Allocate first and successive mid nodes in order with parent/character fields; allocation failure returns before attaching to tree, preserving existing allocation/failure effects. Terminal entry allocated before size/key/value and final link publication; no mandatory invented rollback or allocator batching. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_tsttable.c",
+          "symbol": "cc_tsttable_add",
+          "detail": "The public cc_tsttable_add path directly maintains ternary detached suffix alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ternary_terminal_publication",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 existing terminal replacement and fresh terminal.",
+      "baseline_defect": "The public cc_tsttable_add path directly maintains ternary terminal publication alongside other operation phases.",
+      "criterion": "Recover a cohesive ternary terminal publication boundary that simplifies the outer operation.",
+      "acceptance": "Existing non-eow allocates data and increments only successful allocation; existing eow replaces key/value without extra size, stores supplied key pointer. Fresh suffix count and data publish before attachment. Preserve existing eow representation behavior, no unrelated new ownership or corrected empty key policy. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_tsttable.c",
+          "symbol": "cc_tsttable_add",
+          "detail": "The public cc_tsttable_add path directly maintains ternary terminal publication alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ternary_pruning",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 terminal clearing/upward pruning.",
+      "baseline_defect": "The public cc_tsttable_remove path directly maintains ternary pruning alongside other operation phases.",
+      "criterion": "Recover a cohesive ternary pruning boundary that simplifies the outer operation.",
+      "acceptance": "Exact eow+complete key match publishes optional out, clears data pointer then prunes only childless/non-eow ancestors; detach parent edge before free, root cleared when freed, saturating size decrement last. Keep iterator pruning supported through coherent operation; do not free user key/value or add unrelated terminal-data cleanup. Retained public/private complete operations may be reconnected; supported APIs and callbacks stay compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic whole-body relocation or fragments leaving the outer algorithm equally entangled are insufficient; no minimum helper count, fixed signatures or required original architecture."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_tsttable.c",
+          "symbol": "cc_tsttable_remove",
+          "detail": "The public cc_tsttable_remove path directly maintains ternary pruning alongside other operation phases.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "srdja_collections_c_dim",
+    "aggregation": {
+      "dimensions": [
+        "smell_elimination",
+        "responsibility_allocation",
+        "extensibility",
+        "cross_file_coordination"
+      ],
+      "item_weight": 1,
+      "method": "equal_weight_per_item"
+    },
+    "excluded_from_scoring": [
+      "The empty post.diff introduces no defect.",
+      "The intermediate sized-array BUF_ADDR parentheses correction is correctness-only and is already present in the final patch.",
+      "No final injected defect has a producer-to-consumer handoff across distinct source files, so cross_file_coordination has no fabricated item.",
+      "Passing tests, compilation, behavior restoration alone, cosmetic renames, and unchanged code receive no independent credit."
+    ]
+  }
+}

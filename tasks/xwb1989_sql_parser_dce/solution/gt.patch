@@ -1,0 +1,330 @@
+diff --git a/final_source/comment_boundary.go b/comment_boundary.go
+deleted file mode 100644
+index ff79eda..0000000
+--- a/comment_boundary.go
++++ /dev/null
+@@ -1,39 +0,0 @@
+-package sqlparser
+-
+-import "strings"
+-
+-func ordinaryCommentEnd(sql string) int {
+-	if !hasCommentPrefix(sql) {
+-		return 0
+-	}
+-	if sql[0] == '/' {
+-		end := strings.Index(sql, "*/")
+-		if end <= 1 || (len(sql) > 2 && sql[2] == '!') {
+-			return 0
+-		}
+-		return end + 2
+-	}
+-	end := strings.Index(sql, "\n")
+-	if end < 0 {
+-		return 0
+-	}
+-	return end + 1
+-}
+-
+-func marginLength(text string) int {
+-	if len(text) < 4 || text[:2] != "/*" {
+-		return 0
+-	}
+-	length := 4 + strings.Index(text[2:], "*/")
+-	if length < 4 {
+-		return 0
+-	}
+-	return length
+-}
+-
+-func marginStart(text string) int {
+-	if len(text) < 4 || text[len(text)-2:] != "*/" {
+-		return -1
+-	}
+-	return strings.LastIndex(text[:len(text)-2], "/*")
+-}
+diff --git a/final_source/comment_cursor.go b/comment_cursor.go
+deleted file mode 100644
+index a9968dc..0000000
+--- a/comment_cursor.go
++++ /dev/null
+@@ -1,50 +0,0 @@
+-package sqlparser
+-
+-import (
+-	"strings"
+-	"unicode"
+-)
+-
+-func consumeOrdinaryComments(sql *string) {
+-	for hasCommentPrefix(*sql) {
+-		end := ordinaryCommentEnd(*sql)
+-		if end == 0 {
+-			return
+-		}
+-		*sql = (*sql)[end:]
+-		*sql = strings.TrimFunc(*sql, unicode.IsSpace)
+-	}
+-}
+-
+-func consumeLeadingMargins(text string, pos *int, found *bool) {
+-	for *pos < len(text) {
+-		next := strings.IndexFunc(text[*pos:], isNonSpace)
+-		if next < 0 {
+-			return
+-		}
+-		*pos += next
+-		remaining := text[*pos:]
+-		length := marginLength(remaining)
+-		if length == 0 {
+-			return
+-		}
+-		*found = true
+-		*pos += length
+-	}
+-}
+-
+-func consumeTrailingMargins(text string, end *int, found *bool) {
+-	for *end > 0 {
+-		next := strings.LastIndexFunc(text[:*end], isNonSpace) + 1
+-		if next == 0 {
+-			return
+-		}
+-		*end = next
+-		start := marginStart(text[:*end])
+-		if start < 0 {
+-			return
+-		}
+-		*found = true
+-		*end = start
+-	}
+-}
+diff --git a/comments.go b/comments.go
+index 2833eb1..a0f7f1b 100644
+--- a/comments.go
++++ b/comments.go
+@@ -41,7 +41,6 @@ func isNonSpace(r rune) bool {
+ func leadingCommentEnd(text string) (end int) {
+ 	hasComment := false
+ 	pos := 0
+-	consumeLeadingMargins(text, &pos, &hasComment)
+ 	for pos < len(text) {
+ 		// Eat up any whitespace. Trailing whitespace will be considered part of
+ 		// the leading comments.
+@@ -78,7 +77,6 @@ func leadingCommentEnd(text string) (end int) {
+ func trailingCommentStart(text string) (start int) {
+ 	hasComment := false
+ 	reducedLen := len(text)
+-	consumeTrailingMargins(text, &reducedLen, &hasComment)
+ 	for reducedLen > 0 {
+ 		// Eat up any whitespace. Leading whitespace will be considered part of
+ 		// the trailing comments.
+@@ -129,7 +127,6 @@ func SplitMarginComments(sql string) (query string, comments MarginComments) {
+ // StripLeadingComments trims the SQL string and removes any leading comments
+ func StripLeadingComments(sql string) string {
+ 	sql = strings.TrimFunc(sql, unicode.IsSpace)
+-	consumeOrdinaryComments(&sql)
+ 
+ 	for hasCommentPrefix(sql) {
+ 		switch sql[0] {
+diff --git a/final_source/dependency/sqltypes/encode_cursor.go b/dependency/sqltypes/encode_cursor.go
+deleted file mode 100644
+index a50fd27..0000000
+--- a/dependency/sqltypes/encode_cursor.go
++++ /dev/null
+@@ -1,24 +0,0 @@
+-package sqltypes
+-
+-type sqlByteCursor struct {
+-	pending []byte
+-	escape  [2]byte
+-}
+-
+-func (cursor *sqlByteCursor) next() []byte {
+-	if len(cursor.pending) == 0 {
+-		return nil
+-	}
+-	if encoded := SQLEncodeMap[cursor.pending[0]]; encoded != DontEscape {
+-		cursor.escape[0], cursor.escape[1] = '\\', encoded
+-		cursor.pending = cursor.pending[1:]
+-		return cursor.escape[:]
+-	}
+-	end := 1
+-	for end < len(cursor.pending) && SQLEncodeMap[cursor.pending[end]] == DontEscape {
+-		end++
+-	}
+-	run := cursor.pending[:end]
+-	cursor.pending = cursor.pending[end:]
+-	return run
+-}
+diff --git a/dependency/sqltypes/value.go b/dependency/sqltypes/value.go
+index 8feab67..a3bceee 100644
+--- a/dependency/sqltypes/value.go
++++ b/dependency/sqltypes/value.go
+@@ -321,12 +321,8 @@ func (v *Value) UnmarshalJSON(b []byte) error {
+ func encodeBytesSQL(val []byte, b BinWriter) {
+ 	buf := &bytes2.Buffer{}
+ 	buf.WriteByte('\'')
++	for _, ch := range val {
++		if encodedChar := SQLEncodeMap[ch]; encodedChar == DontEscape {
+-	cursor := sqlByteCursor{pending: val}
+-	for len(cursor.pending) > 0 {
+-		ch := cursor.pending[0]
+-		if run := cursor.next(); len(run) > 0 {
+-			buf.Write(run)
+-		} else if encodedChar := SQLEncodeMap[ch]; encodedChar == DontEscape {
+ 			buf.WriteByte(ch)
+ 		} else {
+ 			buf.WriteByte('\\')
+diff --git a/parsed_query.go b/parsed_query.go
+index 5041efe..cf4ef03 100644
+--- a/parsed_query.go
++++ b/parsed_query.go
+@@ -54,13 +54,7 @@ func (pq *ParsedQuery) GenerateQuery(bindVariables map[string]*querypb.BindVaria
+ 	for _, loc := range pq.bindLocations {
+ 		buf.WriteString(pq.Query[current:loc.offset])
+ 		name := pq.Query[loc.offset : loc.offset+loc.length]
++		if encodable, ok := extras[name[1:]]; ok {
+-		binding, err := prepareBinding(name, bindVariables, extras)
+-		if err != nil {
+-			return nil, err
+-		}
+-		if binding.encode != nil {
+-			binding.encode(buf)
+-		} else if encodable, ok := extras[name[1:]]; ok {
+ 			encodable.EncodeSQL(buf)
+ 		} else {
+ 			supplied, _, err := FetchBindVar(name, bindVariables)
+diff --git a/final_source/query_cursor.go b/query_cursor.go
+deleted file mode 100644
+index 165f03e..0000000
+--- a/query_cursor.go
++++ /dev/null
+@@ -1,21 +0,0 @@
+-package sqlparser
+-
+-import (
+-	"bytes"
+-	"github.com/xwb1989/sqlparser/dependency/querypb"
+-)
+-
+-type queryBinding struct {
+-	encode func(*bytes.Buffer)
+-}
+-
+-func prepareBinding(name string, variables map[string]*querypb.BindVariable, extras map[string]Encodable) (queryBinding, error) {
+-	if encodable, ok := extras[name[1:]]; ok {
+-		return queryBinding{encode: func(buf *bytes.Buffer) { encodable.EncodeSQL(buf) }}, nil
+-	}
+-	supplied, _, err := FetchBindVar(name, variables)
+-	if err != nil {
+-		return queryBinding{}, err
+-	}
+-	return queryBinding{encode: func(buf *bytes.Buffer) { EncodeValue(buf, supplied) }}, nil
+-}
+diff --git a/token.go b/token.go
+index a273c72..23efa77 100644
+--- a/token.go
++++ b/token.go
+@@ -418,7 +418,7 @@ func KeywordString(id int) string {
+ // Lex returns the next token form the Tokenizer.
+ // This function is used by go yacc.
+ func (tkn *Tokenizer) Lex(lval *yySymType) int {
++	typ, val := tkn.Scan()
+-	typ, val := tkn.nextSemanticToken()
+ 	for typ == COMMENT {
+ 		if tkn.AllowComments {
+ 			break
+@@ -607,7 +607,6 @@ func (tkn *Tokenizer) Scan() (int, []byte) {
+ 
+ // skipStatement scans until the EOF, or end of statement is encountered.
+ func (tkn *Tokenizer) skipStatement() {
+-	tkn.readStatementBoundary()
+ 	ch := tkn.lastChar
+ 	for ch != ';' && ch != eofChar {
+ 		tkn.next()
+@@ -616,7 +615,6 @@ func (tkn *Tokenizer) skipStatement() {
+ }
+ 
+ func (tkn *Tokenizer) skipBlank() {
+-	tkn.readWhitespace()
+ 	ch := tkn.lastChar
+ 	for ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t' {
+ 		tkn.next()
+@@ -627,7 +625,6 @@ func (tkn *Tokenizer) skipBlank() {
+ func (tkn *Tokenizer) scanIdentifier(firstByte byte, isDbSystemVariable bool) (int, []byte) {
+ 	buffer := &bytes2.Buffer{}
+ 	buffer.WriteByte(firstByte)
+-	tkn.readIdentifierTail(buffer, isDbSystemVariable)
+ 	for isLetter(tkn.lastChar) || isDigit(tkn.lastChar) || (isDbSystemVariable && isCarat(tkn.lastChar)) {
+ 		buffer.WriteByte(byte(tkn.lastChar))
+ 		tkn.next()
+@@ -719,7 +716,6 @@ func (tkn *Tokenizer) scanBindVar() (int, []byte) {
+ }
+ 
+ func (tkn *Tokenizer) scanMantissa(base int, buffer *bytes2.Buffer) {
+-	tkn.readDigits(base, buffer)
+ 	for digitVal(tkn.lastChar) < base {
+ 		tkn.consumeNext(buffer)
+ 	}
+@@ -787,7 +783,6 @@ func (tkn *Tokenizer) scanString(delim uint16, typ int) (int, []byte) {
+ 
+ 			// Scan ahead to the next interesting character.
+ 			start := tkn.bufPos
+-			ch = tkn.stringRun(ch, delim)
+ 			for ; tkn.bufPos < tkn.bufSize; tkn.bufPos++ {
+ 				ch = uint16(tkn.buf[tkn.bufPos])
+ 				if ch == delim || ch == '\\' {
+diff --git a/final_source/token_span.go b/token_span.go
+deleted file mode 100644
+index 5197048..0000000
+--- a/token_span.go
++++ /dev/null
+@@ -1,47 +0,0 @@
+-package sqlparser
+-
+-import "github.com/xwb1989/sqlparser/dependency/bytes2"
+-
+-func (tkn *Tokenizer) nextSemanticToken() (int, []byte) {
+-	typ, val := tkn.Scan()
+-	for typ == COMMENT && !tkn.AllowComments {
+-		typ, val = tkn.Scan()
+-	}
+-	return typ, val
+-}
+-
+-func (tkn *Tokenizer) stringRun(ch, delim uint16) uint16 {
+-	for tkn.bufPos < tkn.bufSize {
+-		ch = uint16(tkn.buf[tkn.bufPos])
+-		if ch == delim || ch == '\\' {
+-			break
+-		}
+-		tkn.bufPos++
+-	}
+-	return ch
+-}
+-
+-func (tkn *Tokenizer) readStatementBoundary() {
+-	for tkn.lastChar != ';' && tkn.lastChar != eofChar {
+-		tkn.next()
+-	}
+-}
+-
+-func (tkn *Tokenizer) readWhitespace() {
+-	for tkn.lastChar == ' ' || tkn.lastChar == '\n' || tkn.lastChar == '\r' || tkn.lastChar == '\t' {
+-		tkn.next()
+-	}
+-}
+-
+-func (tkn *Tokenizer) readIdentifierTail(buffer *bytes2.Buffer, system bool) {
+-	for isLetter(tkn.lastChar) || isDigit(tkn.lastChar) || (system && isCarat(tkn.lastChar)) {
+-		buffer.WriteByte(byte(tkn.lastChar))
+-		tkn.next()
+-	}
+-}
+-
+-func (tkn *Tokenizer) readDigits(base int, buffer *bytes2.Buffer) {
+-	for digitVal(tkn.lastChar) < base {
+-		tkn.consumeNext(buffer)
+-	}
+-}

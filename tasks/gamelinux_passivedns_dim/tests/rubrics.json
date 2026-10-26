@@ -1,0 +1,534 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "gamelinux_passivedns_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "flight_answer",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 answer correlation.",
+      "baseline_defect": "Answer parser owns list lookup, timestamp copy, unlink/refund/free.",
+      "criterion": "Give answer matching and consumption a coherent operation distinct from packet parsing.",
+      "acceptance": "Preserve nonzero-id matching, age-before-lookup, transfer both time components before freeing and unmatched packet cleanup/statistics. Other flights remain retained; opaque dns_flight_clear teardown stays supported. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "dns_parser",
+          "detail": "Answer parser owns list lookup, timestamp copy, unlink/refund/free.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "flight_admission",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R2 and fused refresh/aging deepening.",
+      "baseline_defect": "Query parser fuses retry refresh, retained count, allocation, capacity eviction and insertion.",
+      "criterion": "Encapsulate the query admission transition with its ordering and failure contract.",
+      "acceptance": "Refresh matching query before assessing its expiry; retry never evicts another id. Allocate/charge a new node successfully before capacity eviction, refund failed allocation, select oldest seconds then usec, and set plid only on successful store. No required single traversal or registry class. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "dns_parser",
+          "detail": "Query parser fuses retry refresh, retained count, allocation, capacity eviction and insertion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "flight_timeout",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R2 age/free policy shared by answers and queries.",
+      "baseline_defect": "Query and answer branches independently implement expiry and disposal.",
+      "criterion": "Maintain the existing timeout policy coherently across admission and consumption.",
+      "acceptance": "Expire only when now >= stored seconds and difference > UDP_TIMEOUT; retain equality and future timestamps. Query refresh ordering remains as in admission. A shared age operation, predicate with shared disposal, or registry transition is valid; timeout and capacity need not be combined into one function. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "dns_parser",
+          "detail": "Query and answer branches independently implement expiry and disposal.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rdf_conversion",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R4 MX/SRV/SOA RDF conversions.",
+      "baseline_defect": "Three branches inline LDNS allocation/conversion/free and conditional dot trimming.",
+      "criterion": "Reuse cohesive RDF conversion semantics across the three expanded record types.",
+      "acceptance": "Preserve field order and trim choices: MX index1, SRV index3, SOA indices0/1; strip only a trailing dot when length>1. Preserve null/failure cleanup and unchanged joining. Existing rdf_text reuse is valid; no per-type new component. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "json_rdata",
+          "detail": "Three branches inline LDNS allocation/conversion/free and conditional dot trimming.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "packed_decode",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R4 packed-answer traversal.",
+      "baseline_defect": "JSON answer loop interprets 8-byte header/type/length and advances bounds itself.",
+      "criterion": "Separate packed-entry validation and decoding from JSON report assembly.",
+      "acceptance": "Preserve header bounds, payload bounds and offset advancement before serialization; existing pack_next remains valid and the other atypes pass must stay consistent. Iterator, callback, parser helper or whole decoded sequence qualifies without forcing materialization. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "build_v2_json",
+          "detail": "JSON answer loop interprets 8-byte header/type/length and advances bounds itself.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "json_bytes",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 escaping plus stage-two encoded byte budget.",
+      "baseline_defect": "Answer traversal calculates escaped width, grows buffer and directly emits bytes.",
+      "criterion": "Give bounded byte-string JSON emission a cohesive reusable contract.",
+      "acceptance": "Preserve quote/backslash two-byte escaping and control/high-byte lowercase unicode escapes, ordinary bytes, quotes, NUL termination and LOG_LINE_MAX strict bounds. Actual packaged source preflights complete encoded width and reserves before emission; do not impose later archived token-by-token allocation progression. Preserve observable failure/output effects; no prescribed encoder implementation. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "build_v2_json",
+          "detail": "Answer traversal calculates escaped width, grows buffer and directly emits bytes.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "record_chronology",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R3 chronology touch/unlink.",
+      "baseline_defect": "Lookup and deletion directly mutate older/newer neighbors and oldest/newest globals.",
+      "criterion": "Maintain intrusive recency-list mutations through a coherent shared contract.",
+      "acceptance": "Touch follows last_seen refresh, newest touch is a no-op, move updates both endpoints/neighbors; deletion clears record links. Ordinary small list operations are a complete repair; no artificial complexity requirement. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "get_pdns_record",
+          "detail": "Lookup and deletion directly mutate older/newer neighbors and oldest/newest globals.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "delete_dns_record",
+          "detail": "Lookup and deletion directly mutate older/newer neighbors and oldest/newest globals.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "asset_disposal",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 disposal expanded into three consumers after deepening.",
+      "baseline_defect": "Three paths repeat asset detach, refunds, RR/answer/free and count decrement.",
+      "criterion": "Reuse asset disposal semantics across all expanded lifecycle paths.",
+      "acceptance": "Preserve head/middle/tail neighbor repair, refund answer_len+1 only with answer, RR/asset refunds and dns_assets decrement. Pending output precedes disposal. Existing delete_dns_asset is valid; disposer can be separate from expiry selection. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "delete_dns_record",
+          "detail": "Three paths repeat asset detach, refunds, RR/answer/free and count decrement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "expire_dns_assets",
+          "detail": "Three paths repeat asset detach, refunds, RR/answer/free and count decrement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "expire_dns_records",
+          "detail": "Three paths repeat asset detach, refunds, RR/answer/free and count decrement.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "asset_expiry_cursor",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Second deepening nested asset expiry.",
+      "baseline_defect": "Outer record traversal now owns an asset pointer-to-link through print, delete and conditional advancement.",
+      "criterion": "Restore a coherent expiration traversal contract independent of outer record iteration.",
+      "acceptance": "Expire last_seen <= cutoff, print only pending seen>0, retain newer entries, advance correctly after surviving/deleted nodes and keep prev links valid. Reusing expire_dns_assets or an equivalent safe iterator qualifies; no mandatory pointer-to-link representation. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "expire_dns_records",
+          "detail": "Outer record traversal now owns an asset pointer-to-link through print, delete and conditional advancement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "expire_dns_assets",
+          "detail": "Outer record traversal now owns an asset pointer-to-link through print, delete and conditional advancement.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ip4_continuation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R4 reconstructed IPv4 preparation.",
+      "baseline_defect": "Continuation repeats IPv4 validation, packet fields and counter before parser handoff.",
+      "criterion": "Reconnect reconstructed IPv4 input to a coherent preparation contract.",
+      "acceptance": "Preserve version4, IHL>=5 and captured-header bounds, declared length >= header, AF/TTL/payload bytes/l4 offset, counter before parse. Original prepare_ip4 reuse or specialized adapter is valid; do not change reconstructed buffer ownership. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/passivedns.c",
+          "symbol": "reasm_continue",
+          "detail": "Continuation repeats IPv4 validation, packet fields and counter before parser handoff.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/passivedns.c",
+          "symbol": "prepare_ip4",
+          "detail": "Continuation repeats IPv4 validation, packet fields and counter before parser handoff.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ip6_continuation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R4 reconstructed IPv6 preparation.",
+      "baseline_defect": "Continuation directly validates base header and initializes parser input/counter.",
+      "criterion": "Keep reconstructed IPv6 preparation and parser handoff coherent.",
+      "acceptance": "Preserve minimum base header length, version6, AF/hop limit/declared payload bytes/l4 offset and counter ordering. Shared or family-specific preparation is valid; one unified IP operation may satisfy both family items. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/passivedns.c",
+          "symbol": "reasm_continue",
+          "detail": "Continuation directly validates base header and initializes parser input/counter.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tcp_preparation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 TCP setup and second deepening bounds.",
+      "baseline_defect": "Dispatch branch owns TCP header validation, payload derivation and connection publication.",
+      "criterion": "Separate coherent TCP preparation from transport dispatch.",
+      "acceptance": "Preserve fixed header bounds and doff>=5/captured doff bounds, payload pointer, transport ports/protocol/counter, then connection_tracking and parse only when context exists. Existing prepare_tcp reuse is valid. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/passivedns.c",
+          "symbol": "l4_ready",
+          "detail": "Dispatch branch owns TCP header validation, payload derivation and connection publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "udp_preparation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 UDP setup and second deepening UDP claim.",
+      "baseline_defect": "UDP dispatch branch embeds header checks, own-length claim, metadata and connection setup.",
+      "criterion": "Give UDP preparation a coherent contract independent of dispatch.",
+      "acceptance": "Preserve captured fixed header validation, ulen>=header, payload length min(own declared payload, available datagram bytes), protocol/ports/counter, tracking then parse only with context. Do not force TCP and UDP into different components. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/passivedns.c",
+          "symbol": "l4_ready",
+          "detail": "UDP dispatch branch embeds header checks, own-length claim, metadata and connection setup.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "datagram_extent",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Second deepening claimed/captured IP ends.",
+      "baseline_defect": "TCP and UDP repeat IP-family declared-length selection and captured-end clipping inside payload arithmetic.",
+      "criterion": "Maintain datagram extent policy consistently across transport preparation.",
+      "acceptance": "Use captured end by default; honor recognized IPv4 total length or IPv6 base+payload span only when it fits captured bytes and base is valid. Reject payload beyond a valid declared end. A truncated oversized declaration retains captured end; do not blindly use min if that alters invalid-base or unknown-family handling. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/passivedns.c",
+          "symbol": "l4_ready",
+          "detail": "TCP and UDP repeat IP-family declared-length selection and captured-end clipping inside payload arithmetic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fragment_lookup",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 expanded fragment key lookup.",
+      "baseline_defect": "Both defragmenters duplicate list traversal and full address/AF/id/protocol comparison.",
+      "criterion": "Reuse coherent fragment identity and lookup semantics across families.",
+      "acceptance": "Preserve IPv4 converted addresses/id/protocol and IPv6 full addresses/id/IP_PROTO_FRAGMENT. Lookup must not accidentally merge different families or protocol keys. Search and allocation may be separate operations. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "ip4_defrag",
+          "detail": "Both defragmenters duplicate list traversal and full address/AF/id/protocol comparison.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "ip6_defrag",
+          "detail": "Both defragmenters duplicate list traversal and full address/AF/id/protocol comparison.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fragment_creation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 capacity/accounting/allocation lifecycle.",
+      "baseline_defect": "Both defragmenters embed cap, memory charge, three allocations, failure rollback and registry publication.",
+      "criterion": "Own fragment creation and publication through shared lifecycle semantics.",
+      "acceptance": "Check FRAG_MAX, charge complete object/data/bitmap, refund exactly once on any failure, publish link/count only after all allocations succeed and retain initial timestamps/key. No forced allocator abstraction or eager allocation on lookup hit. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "ip4_defrag",
+          "detail": "Both defragmenters embed cap, memory charge, three allocations, failure rollback and registry publication.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "ip6_defrag",
+          "detail": "Both defragmenters embed cap, memory charge, three allocations, failure rollback and registry publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "piece_admission",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1 plus fused overlap/terminal rules.",
+      "baseline_defect": "Both assembly flows embed piece size/alignment, conflicting terminal length and overlap checks plus byte/bitmap writes.",
+      "criterion": "Keep fragment piece validation and state publication under a reusable admission contract.",
+      "acceptance": "Reject zero/out-of-range and misaligned nonterminal pieces, overlap, conflicting terminal length and overrun beyond known total; invalid input frees fragment at caller-equivalent boundary. Publish coverage/terminal metadata only after validation; no prescribed fused scan. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "ip4_defrag",
+          "detail": "Both assembly flows embed piece size/alignment, conflicting terminal length and overlap checks plus byte/bitmap writes.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "ip6_defrag",
+          "detail": "Both assembly flows embed piece size/alignment, conflicting terminal length and overlap checks plus byte/bitmap writes.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fragment_completion",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening coverage outside incoming range.",
+      "baseline_defect": "Overlap scan also tracks holes outside incoming piece to decide completion in two families.",
+      "criterion": "Maintain a coherent shared completeness decision alongside piece admission.",
+      "acceptance": "Completion requires known nonzero total and coverage of all bytes including outside current piece; IPv4 still needs header, IPv6 unfragmentable prefix. No partial packet publication. Separate coverage/completion operations, maintained coverage state or combined result are all valid. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "ip4_defrag",
+          "detail": "Overlap scan also tracks holes outside incoming piece to decide completion in two families.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "ip6_defrag",
+          "detail": "Overlap scan also tracks holes outside incoming piece to decide completion in two families.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stream_direction",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 stream originator routing.",
+      "baseline_defect": "Assembler embeds IPv4/IPv6 source address and port comparisons before selecting directional buffer.",
+      "criterion": "Keep stream direction selection a focused reusable policy.",
+      "acceptance": "Match original initiator source address and port, independent of sc labels; missing IPv4 header defaults originator. Preserve preexisting null-context guard. Ordinary small extraction is sufficient; no required strategy hierarchy. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "tcp_reassemble",
+          "detail": "Assembler embeds IPv4/IPv6 source address and port comparisons before selecting directional buffer.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stream_append",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 append/growth and deepened rollback.",
+      "baseline_defect": "Frame/sequence orchestration owns limit checks, growth, charge/realloc/refund and append.",
+      "criterion": "Separate bounded stream storage mutation from frame processing.",
+      "acceptance": "Preserve stream limit arithmetic, capacity growth, charge only delta, refund attempted delta on realloc failure and copy/update length only after success. Failure must reach original stream reset and resume at seg_end; partial segment trimming still precedes append. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "tcp_reassemble",
+          "detail": "Frame/sequence orchestration owns limit checks, growth, charge/realloc/refund and append.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stream_cleanup",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 bidirectional teardown and deepening stream_drop.",
+      "baseline_defect": "Two connection buffers and assembler failure repeat free/refund/reset.",
+      "criterion": "Share stream resource cleanup semantics across teardown and recovery consumers.",
+      "acceptance": "Teardown resets both directions including sequence state; assembler failure clears data/charge/length/cap then retains have_seq=1 and expect=seg_end. Reusing public tcp_buf_free then applying recovery state is valid. dns_flight_clear remains an opaque supported call and is not a new independent defect. Ordinary extraction, reconnection to existing public primitives and wider coherent redesign qualify. No required helper count or original layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the orchestration block while leaving the listed mechanics embedded and independently maintained is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/reasm.c",
+          "symbol": "tcp_reassemble",
+          "detail": "Two connection buffers and assembler failure repeat free/refund/reset.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/passivedns.c",
+          "symbol": "del_connection",
+          "detail": "Two connection buffers and assembler failure repeat free/refund/reset.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "source-grounded-four-dimensions-v1",
+    "case_id": "gamelinux_passivedns_dim",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "aggregation": {
+      "method": "equal_weight_per_item",
+      "item_weight": 1
+    },
+    "derivation": "The final patch disperses previously focused DNS, packet, fragment, and TCP operations into large callers. Expanded.diff introduces most inlining; interaction_delta.diff removes the remaining lifecycle and fragment helpers and adds expiration duplication. The empty post.diff adds no scoring obligation. Protocol correctness, compilation, and unchanged behavior are constraints rather than independent structural credit. No matching design record was available, so each item rests on the frozen diffs and final code."
+  }
+}

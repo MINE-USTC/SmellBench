@@ -1,0 +1,47 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/hashicorp_serf_dc"
+version = "1.0.0"
+description = "Refactor an injected data_clumps smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "data_clumps", "go"]
+
+[metadata]
+repo_name = "serf"
+repo_url = "https://github.com/hashicorp/serf"
+git_commit = "fe2acb9e90d89e27409a88d086553a2ad429cb8b"
+language = "Go"
+smell_type = "data_clumps"
+prompt_mode = "natural"
+apt_packages = ["busybox","ca-certificates","curl","git","jq","python3"]
+test_case_count = 239
+smell_checker_match_count = 0
+judge_rubric_count = 11
+judge_call_count = 1
+judge_max_attempts_per_rubric = 3
+judge_max_call_count = 3
+has_ground_truth = true
+score_mode = "llm_as_judge"
+reward_fallback = "none"
+assembly_only = true
+checker_enabled = false
+packaged_runtime_validated = false
+unit_tests_contribute_to_reward = false
+
+[verifier]
+timeout_sec = 151200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/hashicorp/serf", CC_FORBIDDEN_REPO_URL = "serf", CC_FORBIDDEN_REPO_NAME = "serf" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

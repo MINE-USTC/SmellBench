@@ -1,0 +1,1716 @@
+diff --git a/analyze/analyses/diff.rs b/analyze/analyses/diff.rs
+index 1300fef..d7613f7 100644
+--- a/analyze/analyses/diff.rs
++++ b/analyze/analyses/diff.rs
+@@ -1,5 +1,5 @@
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+-
+-use self::table::{Align, Table};
+ use anyhow::anyhow;
+ use csv;
+ use regex;
+@@ -68,34 +68,12 @@ impl traits::Emit for Diff {
+ 
+     #[cfg(feature = "emit_json")]
+     fn emit_json(&self, _items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut arr = json::array(dest)?;
+-        let mut arr = {
+-            write!(dest, "[")?;
+-            json::Array { w: dest }
+-        };
+ 
++        for entry in &self.deltas {
++            let mut obj = arr.object()?;
++            obj.field("delta_bytes", entry.delta as f64)?;
++            obj.field("name", entry.name.as_str())?;
+-        for (position, entry) in self.deltas.iter().enumerate() {
+-            let mut obj = {
+-                if position != 0 { write!(arr.w, ",")?; }
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+-            obj.name("delta_bytes")?;
+-write!(obj.w, "{}", entry.delta as f64)?;
+-            {
+-                write!(obj.w, ",")?;
+-                obj.name("name")?;
+-                let text: &str = entry.name.as_str();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+         }
+ 
+         Ok(())
+@@ -235,170 +213,3 @@ pub fn diff(
+     let diff = Diff { deltas };
+     Ok(Box::new(diff) as Box<_>)
+ }
+-
+-mod json {
+-    use std::io;
+-
+-    pub trait JsonPrimitive {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()>;
+-    }
+-
+-    impl<'a> JsonPrimitive for &'a str {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()> {
+-            write!(w, "\"")?;
+-            for c in self.chars() {
+-                match c {
+-                    '"' => write!(w, "\\\"")?,
+-                    '\\' => write!(w, "\\")?,
+-                    '\n' => writeln!(w,)?,
+-                    c => write!(w, "{}", c)?,
+-                }
+-            }
+-            write!(w, "\"")
+-        }
+-    }
+-
+-
+-
+-
+-
+-    pub struct Array<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Array<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "]");
+-        }
+-    }
+-
+-
+-    pub struct Object<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Object<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "}}");
+-        }
+-    }
+-
+-    impl<'a> Object<'a> {
+-        pub(crate) fn name<S>(&mut self, name: S) -> io::Result<()>
+-        where
+-            S: AsRef<str>,
+-        {
+-            name.as_ref().json_primitive(self.w)?;
+-            write!(self.w, ":")
+-        }
+-
+-
+-
+-    }
+-
+-}
+-
+-mod table {
+-    use std::cmp;
+-    use std::fmt;
+-
+-    #[derive(Debug, Clone, Copy)]
+-    pub enum Align {
+-        Left,
+-        Right,
+-    }
+-
+-    #[derive(Debug, Clone)]
+-    pub struct Table {
+-        header: Vec<(Align, String)>,
+-        rows: Vec<Vec<String>>,
+-    }
+-
+-    impl Table {
+-        pub(crate) fn with_header(header: Vec<(Align, String)>) -> Table {
+-            assert!(!header.is_empty());
+-            Table {
+-                header,
+-                rows: vec![],
+-            }
+-        }
+-
+-        pub(crate) fn add_row(&mut self, row: Vec<String>) {
+-            assert_eq!(self.header.len(), row.len());
+-            self.rows.push(row);
+-        }
+-    }
+-
+-    impl fmt::Display for Table {
+-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+-            let mut maxs: Vec<_> = self.header.iter().map(|h| h.1.len()).collect();
+-
+-            for row in &self.rows {
+-                for (i, x) in row.iter().enumerate() {
+-                    maxs[i] = cmp::max(maxs[i], x.len());
+-                }
+-            }
+-
+-            let last = self.header.len() - 1;
+-
+-            for (i, h) in self.header.iter().map(|h| &h.1).enumerate() {
+-                if i == 0 {
+-                    write!(f, " ")?;
+-                } else {
+-                    write!(f, " │ ")?;
+-                }
+-
+-                write!(f, "{}", h)?;
+-                if i != last {
+-                    for _ in 0..maxs[i] - h.len() {
+-                        write!(f, " ")?;
+-                    }
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for (i, max_len) in maxs.iter().enumerate().take(self.header.len()) {
+-                if i == 0 {
+-                    write!(f, "─")?;
+-                } else {
+-                    write!(f, "─┼─")?;
+-                }
+-                for _ in 0..*max_len {
+-                    write!(f, "─")?;
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for row in &self.rows {
+-                for (i, (x, align)) in row.iter().zip(self.header.iter().map(|h| h.0)).enumerate() {
+-                    if i == 0 {
+-                        write!(f, " ")?;
+-                    } else {
+-                        write!(f, " ┊ ")?;
+-                    }
+-
+-                    match align {
+-                        Align::Left => {
+-                            write!(f, "{}", x)?;
+-                            if i != last {
+-                                for _ in 0..maxs[i] - x.len() {
+-                                    write!(f, " ")?;
+-                                }
+-                            }
+-                        }
+-                        Align::Right => {
+-                            for _ in 0..maxs[i] - x.len() {
+-                                write!(f, " ")?;
+-                            }
+-                            write!(f, "{}", x)?;
+-                        }
+-                    }
+-                }
+-                writeln!(f)?;
+-            }
+-
+-            Ok(())
+-        }
+-    }
+-
+-}
+diff --git a/analyze/analyses/dominators/emit.rs b/analyze/analyses/dominators/emit.rs
+index 736f69c..28b53d5 100644
+--- a/analyze/analyses/dominators/emit.rs
++++ b/analyze/analyses/dominators/emit.rs
+@@ -10,8 +10,8 @@ use twiggy_traits as traits;
+ 
+ use super::UnreachableItemsSummary;
+ use crate::analyses::dominators::DominatorTree;
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+-
+-use self::table::{Align, Table};
+ 
+ impl traits::Emit for DominatorTree {
+     #[cfg(feature = "emit_text")]
+@@ -103,27 +103,13 @@ impl traits::Emit for DominatorTree {
+         ) -> anyhow::Result<()> {
+             add_json_item(items, id, obj)?;
+ 
+-            let retained_size = items.retained_size(id);
+-            let retained_size_percent = f64::from(retained_size) / f64::from(items.size()) * 100.0;
+-            write!(obj.w, ",")?;
+-            obj.name("retained_size")?;
+-            write!(obj.w, "{}", retained_size)?;
+-            write!(obj.w, ",")?;
+-            obj.name("retained_size_percent")?;
+-            write!(obj.w, "{}", retained_size_percent)?;
+-
+             if let Some(children) = dominator_tree.get(&id) {
+                 let mut children = children.to_vec();
+                 children.sort_by(|a, b| items.retained_size(*b).cmp(&items.retained_size(*a)));
+ 
+-                write!(obj.w, ",")?;
+                 let mut arr = obj.array("children")?;
++                for child in children {
++                    let mut obj = arr.object()?;
+-                for (position, child) in children.into_iter().enumerate() {
+-                    let mut obj = {
+-                if position != 0 { write!(arr.w, ",")?; }
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+                     recursive_add_children(items, opts, dominator_tree, child, &mut obj)?;
+                 }
+             }
+@@ -132,18 +118,11 @@ impl traits::Emit for DominatorTree {
+         }
+ 
+         // Scoping the borrow of `arr` so we can get another object in the next block
++        let mut obj = json::object(dest)?;
+-        let mut obj = {
+-            write!(dest, "{{")?;
+-            json::Object { w: dest }
+-        };
+         {
+             let mut arr = obj.array("items")?;
++            for curr_id in &self.items {
++                let mut item = arr.object()?;
+-            for (position, curr_id) in self.items.iter().enumerate() {
+-                let mut item = {
+-                if position != 0 { write!(arr.w, ",")?; }
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+                 recursive_add_children(items, &self.opts, &self.tree, *curr_id, &mut item)?;
+             }
+         }
+@@ -154,33 +133,12 @@ impl traits::Emit for DominatorTree {
+             size_percent,
+         }) = self.unreachable_items_summary
+         {
+-            write!(obj.w, ",")?;
+             let mut summary_obj = obj.array("summary")?;
++            let mut unreachable_items_obj = summary_obj.object()?;
++            unreachable_items_obj
++                .field("name", format!("[{} Unreachable Items]", count).as_ref())?;
++            unreachable_items_obj.field("retained_size", size)?;
++            unreachable_items_obj.field("retained_size_percent", size_percent)?;
+-            let mut unreachable_items_obj = {
+-                write!(summary_obj.w, "{{")?;
+-                json::Object { w: &mut *summary_obj.w }
+-            };
+-            {
+-                unreachable_items_obj.name("name")?;
+-                let name = format!("[{} Unreachable Items]", count);
+-                let text: &str = &name;
+-                write!(unreachable_items_obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(unreachable_items_obj.w, "\\\"")?,
+-                        '\\' => write!(unreachable_items_obj.w, "\\")?,
+-                        '\n' => writeln!(unreachable_items_obj.w,)?,
+-                        c => write!(unreachable_items_obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(unreachable_items_obj.w, "\"")?;
+-            }
+-            write!(unreachable_items_obj.w, ",")?;
+-            unreachable_items_obj.name("retained_size")?;
+-            write!(unreachable_items_obj.w, "{}", size)?;
+-            write!(unreachable_items_obj.w, ",")?;
+-            unreachable_items_obj.name("retained_size_percent")?;
+-            write!(unreachable_items_obj.w, "{}", size_percent)?;
+         }
+ 
+         Ok(())
+@@ -259,30 +217,17 @@ fn add_text_item(items: &ir::Items, depth: u32, id: ir::Id, table: &mut Table) {
+ fn add_json_item(items: &ir::Items, id: ir::Id, obj: &mut json::Object) -> anyhow::Result<()> {
+     let item = &items[id];
+ 
++    obj.field("name", item.name())?;
+-    {
+-                obj.name("name")?;
+-                let text: &str = item.name();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+ 
+     let shallow_size = item.size();
+     let shallow_size_percent = f64::from(shallow_size) / f64::from(items.size()) * 100.0;
++    obj.field("shallow_size", shallow_size)?;
++    obj.field("shallow_size_percent", shallow_size_percent)?;
+-    write!(obj.w, ",")?;
+-    obj.name("shallow_size")?;
+-    write!(obj.w, "{}", shallow_size)?;
+-    write!(obj.w, ",")?;
+-    obj.name("shallow_size_percent")?;
+-    write!(obj.w, "{}", shallow_size_percent)?;
+ 
++    let retained_size = items.retained_size(id);
++    let retained_size_percent = f64::from(retained_size) / f64::from(items.size()) * 100.0;
++    obj.field("retained_size", retained_size)?;
++    obj.field("retained_size_percent", retained_size_percent)?;
+     Ok(())
+ }
+ 
+@@ -334,183 +279,3 @@ fn add_csv_item(
+     wtr.flush()?;
+     Ok(())
+ }
+-
+-mod json {
+-    use std::io;
+-
+-    pub trait JsonPrimitive {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()>;
+-    }
+-
+-    impl<'a> JsonPrimitive for &'a str {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()> {
+-            write!(w, "\"")?;
+-            for c in self.chars() {
+-                match c {
+-                    '"' => write!(w, "\\\"")?,
+-                    '\\' => write!(w, "\\")?,
+-                    '\n' => writeln!(w,)?,
+-                    c => write!(w, "{}", c)?,
+-                }
+-            }
+-            write!(w, "\"")
+-        }
+-    }
+-
+-
+-
+-    pub fn array(w: &mut dyn io::Write) -> io::Result<Array> {
+-        write!(w, "[")?;
+-        Ok(Array {
+-            w,
+-        })
+-    }
+-
+-
+-    pub struct Array<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Array<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "]");
+-        }
+-    }
+-
+-
+-    pub struct Object<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Object<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "}}");
+-        }
+-    }
+-
+-    impl<'a> Object<'a> {
+-        pub(crate) fn name<S>(&mut self, name: S) -> io::Result<()>
+-        where
+-            S: AsRef<str>,
+-        {
+-            name.as_ref().json_primitive(self.w)?;
+-            write!(self.w, ":")
+-        }
+-
+-
+-        pub fn array<S>(&mut self, name: S) -> io::Result<Array>
+-        where
+-            S: AsRef<str>,
+-        {
+-            self.name(name)?;
+-            array(&mut *self.w)
+-        }
+-
+-    }
+-
+-}
+-
+-mod table {
+-    use std::cmp;
+-    use std::fmt;
+-
+-    #[derive(Debug, Clone, Copy)]
+-    pub enum Align {
+-        Left,
+-        Right,
+-    }
+-
+-    #[derive(Debug, Clone)]
+-    pub struct Table {
+-        header: Vec<(Align, String)>,
+-        rows: Vec<Vec<String>>,
+-    }
+-
+-    impl Table {
+-        pub(crate) fn with_header(header: Vec<(Align, String)>) -> Table {
+-            assert!(!header.is_empty());
+-            Table {
+-                header,
+-                rows: vec![],
+-            }
+-        }
+-
+-        pub(crate) fn add_row(&mut self, row: Vec<String>) {
+-            assert_eq!(self.header.len(), row.len());
+-            self.rows.push(row);
+-        }
+-    }
+-
+-    impl fmt::Display for Table {
+-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+-            let mut maxs: Vec<_> = self.header.iter().map(|h| h.1.len()).collect();
+-
+-            for row in &self.rows {
+-                for (i, x) in row.iter().enumerate() {
+-                    maxs[i] = cmp::max(maxs[i], x.len());
+-                }
+-            }
+-
+-            let last = self.header.len() - 1;
+-
+-            for (i, h) in self.header.iter().map(|h| &h.1).enumerate() {
+-                if i == 0 {
+-                    write!(f, " ")?;
+-                } else {
+-                    write!(f, " │ ")?;
+-                }
+-
+-                write!(f, "{}", h)?;
+-                if i != last {
+-                    for _ in 0..maxs[i] - h.len() {
+-                        write!(f, " ")?;
+-                    }
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for (i, max_len) in maxs.iter().enumerate().take(self.header.len()) {
+-                if i == 0 {
+-                    write!(f, "─")?;
+-                } else {
+-                    write!(f, "─┼─")?;
+-                }
+-                for _ in 0..*max_len {
+-                    write!(f, "─")?;
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for row in &self.rows {
+-                for (i, (x, align)) in row.iter().zip(self.header.iter().map(|h| h.0)).enumerate() {
+-                    if i == 0 {
+-                        write!(f, " ")?;
+-                    } else {
+-                        write!(f, " ┊ ")?;
+-                    }
+-
+-                    match align {
+-                        Align::Left => {
+-                            write!(f, "{}", x)?;
+-                            if i != last {
+-                                for _ in 0..maxs[i] - x.len() {
+-                                    write!(f, " ")?;
+-                                }
+-                            }
+-                        }
+-                        Align::Right => {
+-                            for _ in 0..maxs[i] - x.len() {
+-                                write!(f, " ")?;
+-                            }
+-                            write!(f, "{}", x)?;
+-                        }
+-                    }
+-                }
+-                writeln!(f)?;
+-            }
+-
+-            Ok(())
+-        }
+-    }
+-
+-}
+diff --git a/analyze/analyses/garbage.rs b/analyze/analyses/garbage.rs
+index 7c2bd2c..77fce23 100644
+--- a/analyze/analyses/garbage.rs
++++ b/analyze/analyses/garbage.rs
+@@ -3,8 +3,8 @@ use std::io;
+ 
+ use petgraph::visit::Walker;
+ 
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+-
+-use self::table::{Align, Table};
+ use twiggy_ir as ir;
+ use twiggy_opt as opt;
+ use twiggy_traits as traits;
+@@ -79,42 +79,18 @@ impl traits::Emit for Garbage {
+ 
+     #[cfg(feature = "emit_json")]
+     fn emit_json(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut arr = json::array(dest)?;
+-        let mut arr = {
+-            write!(dest, "[")?;
+-            json::Array { w: dest }
+-        };
+ 
++        for &id in self.items.iter().take(self.limit) {
+-        for (position, &id) in self.items.iter().take(self.limit).enumerate() {
+             let item = &items[id];
+ 
++            let mut obj = arr.object()?;
++            obj.field("name", item.name())?;
+-            let mut obj = {
+-                if position != 0 { write!(arr.w, ",")?; }
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+-            {
+-                obj.name("name")?;
+-                let text: &str = item.name();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+ 
+             let size = item.size();
+             let size_percent = (f64::from(size)) / (f64::from(items.size())) * 100.0;
++            obj.field("bytes", size)?;
++            obj.field("size_percent", size_percent)?;
+-            write!(obj.w, ",")?;
+-            obj.name("bytes")?;
+-            write!(obj.w, "{}", size)?;
+-            write!(obj.w, ",")?;
+-            obj.name("size_percent")?;
+-            write!(obj.w, "{}", size_percent)?;
+         }
+ 
+         let (total_size, total_cnt) = self
+@@ -126,31 +102,10 @@ impl traits::Emit for Garbage {
+         if total_cnt > 0 {
+             let name = format!("... and {} more", total_cnt);
+             let total_size_percent = (f64::from(total_size)) / (f64::from(items.size())) * 100.0;
++            let mut obj = arr.object()?;
++            obj.field("name", name.as_str())?;
++            obj.field("bytes", total_size)?;
++            obj.field("size_percent", total_size_percent)?;
+-            let mut obj = {
+-                if self.limit > 0 && !self.items.is_empty() { write!(arr.w, ",")?; }
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+-            {
+-                obj.name("name")?;
+-                let text: &str = name.as_str();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+-            write!(obj.w, ",")?;
+-            obj.name("bytes")?;
+-            write!(obj.w, "{}", total_size)?;
+-            write!(obj.w, ",")?;
+-            obj.name("size_percent")?;
+-            write!(obj.w, "{}", total_size_percent)?;
+         }
+ 
+         // Scoping the borrow of `arr` so we can get another object in the next block
+@@ -158,31 +113,10 @@ impl traits::Emit for Garbage {
+             let total_name = format!("Σ [{} Total Rows]", self.items.len());
+             let total_size: u32 = self.items.iter().map(|&id| items[id].size()).sum();
+             let total_size_percent = (f64::from(total_size)) / (f64::from(items.size())) * 100.0;
++            let mut obj = arr.object()?;
++            obj.field("name", total_name.as_str())?;
++            obj.field("bytes", total_size)?;
++            obj.field("size_percent", total_size_percent)?;
+-            let mut obj = {
+-                if !self.items.is_empty() { write!(arr.w, ",")?; }
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+-            {
+-                obj.name("name")?;
+-                let text: &str = total_name.as_str();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+-            write!(obj.w, ",")?;
+-            obj.name("bytes")?;
+-            write!(obj.w, "{}", total_size)?;
+-            write!(obj.w, ",")?;
+-            obj.name("size_percent")?;
+-            write!(obj.w, "{}", total_size_percent)?;
+         }
+ 
+         if !self.data_segments.is_empty() {
+@@ -193,31 +127,10 @@ impl traits::Emit for Garbage {
+             let size: u32 = self.data_segments.iter().map(|&id| items[id].size()).sum();
+             let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
+ 
++            let mut obj = arr.object()?;
++            obj.field("name", name.as_str())?;
++            obj.field("bytes", size)?;
++            obj.field("size_percent", size_percent)?;
+-            let mut obj = {
+-                write!(arr.w, ",")?;
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+-            {
+-                obj.name("name")?;
+-                let text: &str = name.as_str();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+-            write!(obj.w, ",")?;
+-            obj.name("bytes")?;
+-            write!(obj.w, "{}", size)?;
+-            write!(obj.w, ",")?;
+-            obj.name("size_percent")?;
+-            write!(obj.w, "{}", size_percent)?;
+         }
+ 
+         Ok(())
+@@ -272,170 +185,3 @@ pub(crate) fn get_unreachable_items(items: &ir::Items) -> impl Iterator<Item = &
+         .iter()
+         .filter(move |item| !reachable_items.contains(&item.id()))
+ }
+-
+-mod json {
+-    use std::io;
+-
+-    pub trait JsonPrimitive {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()>;
+-    }
+-
+-    impl<'a> JsonPrimitive for &'a str {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()> {
+-            write!(w, "\"")?;
+-            for c in self.chars() {
+-                match c {
+-                    '"' => write!(w, "\\\"")?,
+-                    '\\' => write!(w, "\\")?,
+-                    '\n' => writeln!(w,)?,
+-                    c => write!(w, "{}", c)?,
+-                }
+-            }
+-            write!(w, "\"")
+-        }
+-    }
+-
+-
+-
+-
+-
+-    pub struct Array<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Array<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "]");
+-        }
+-    }
+-
+-
+-    pub struct Object<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Object<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "}}");
+-        }
+-    }
+-
+-    impl<'a> Object<'a> {
+-        pub(crate) fn name<S>(&mut self, name: S) -> io::Result<()>
+-        where
+-            S: AsRef<str>,
+-        {
+-            name.as_ref().json_primitive(self.w)?;
+-            write!(self.w, ":")
+-        }
+-
+-
+-
+-    }
+-
+-}
+-
+-mod table {
+-    use std::cmp;
+-    use std::fmt;
+-
+-    #[derive(Debug, Clone, Copy)]
+-    pub enum Align {
+-        Left,
+-        Right,
+-    }
+-
+-    #[derive(Debug, Clone)]
+-    pub struct Table {
+-        header: Vec<(Align, String)>,
+-        rows: Vec<Vec<String>>,
+-    }
+-
+-    impl Table {
+-        pub(crate) fn with_header(header: Vec<(Align, String)>) -> Table {
+-            assert!(!header.is_empty());
+-            Table {
+-                header,
+-                rows: vec![],
+-            }
+-        }
+-
+-        pub(crate) fn add_row(&mut self, row: Vec<String>) {
+-            assert_eq!(self.header.len(), row.len());
+-            self.rows.push(row);
+-        }
+-    }
+-
+-    impl fmt::Display for Table {
+-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+-            let mut maxs: Vec<_> = self.header.iter().map(|h| h.1.len()).collect();
+-
+-            for row in &self.rows {
+-                for (i, x) in row.iter().enumerate() {
+-                    maxs[i] = cmp::max(maxs[i], x.len());
+-                }
+-            }
+-
+-            let last = self.header.len() - 1;
+-
+-            for (i, h) in self.header.iter().map(|h| &h.1).enumerate() {
+-                if i == 0 {
+-                    write!(f, " ")?;
+-                } else {
+-                    write!(f, " │ ")?;
+-                }
+-
+-                write!(f, "{}", h)?;
+-                if i != last {
+-                    for _ in 0..maxs[i] - h.len() {
+-                        write!(f, " ")?;
+-                    }
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for (i, max_len) in maxs.iter().enumerate().take(self.header.len()) {
+-                if i == 0 {
+-                    write!(f, "─")?;
+-                } else {
+-                    write!(f, "─┼─")?;
+-                }
+-                for _ in 0..*max_len {
+-                    write!(f, "─")?;
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for row in &self.rows {
+-                for (i, (x, align)) in row.iter().zip(self.header.iter().map(|h| h.0)).enumerate() {
+-                    if i == 0 {
+-                        write!(f, " ")?;
+-                    } else {
+-                        write!(f, " ┊ ")?;
+-                    }
+-
+-                    match align {
+-                        Align::Left => {
+-                            write!(f, "{}", x)?;
+-                            if i != last {
+-                                for _ in 0..maxs[i] - x.len() {
+-                                    write!(f, " ")?;
+-                                }
+-                            }
+-                        }
+-                        Align::Right => {
+-                            for _ in 0..maxs[i] - x.len() {
+-                                write!(f, " ")?;
+-                            }
+-                            write!(f, "{}", x)?;
+-                        }
+-                    }
+-                }
+-                writeln!(f)?;
+-            }
+-
+-            Ok(())
+-        }
+-    }
+-
+-}
+diff --git a/analyze/analyses/monos/emit.rs b/analyze/analyses/monos/emit.rs
+index 0b0c021..2449ad4 100644
+--- a/analyze/analyses/monos/emit.rs
++++ b/analyze/analyses/monos/emit.rs
+@@ -4,8 +4,8 @@ use std::iter;
+ use csv;
+ use serde_derive::Serialize;
+ 
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+-
+-use self::table::{Align, Table};
+ use twiggy_ir as ir;
+ use twiggy_traits as traits;
+ 
+@@ -98,84 +98,36 @@ impl traits::Emit for Monos {
+         ) -> anyhow::Result<()> {
+             let get_size_percent = |size: u32| (f64::from(size)) / total_size * 100.0;
+             let MonosEntry {
++                name,
+                 insts,
+                 size,
+                 bloat,
+-                ..
+             } = entry;
++            obj.field("generic", name.as_str())?;
++            obj.field("approximate_monomorphization_bloat_bytes", *bloat)?;
++            obj.field(
++                "approximate_monomorphization_bloat_percent",
++                get_size_percent(*bloat),
++            )?;
++            obj.field("total_size", *size)?;
++            obj.field("total_size_percent", get_size_percent(*size))?;
+-
+-            write!(obj.w, ",")?;
+-            obj.name("approximate_monomorphization_bloat_bytes")?;
+-            write!(obj.w, "{}", *bloat)?;
+-            write!(obj.w, ",")?;
+-            obj.name("approximate_monomorphization_bloat_percent")?;
+-            write!(obj.w, "{}", get_size_percent(*bloat))?;
+-            write!(obj.w, ",")?;
+-            obj.name("total_size")?;
+-            write!(obj.w, "{}", *size)?;
+-            write!(obj.w, ",")?;
+-            obj.name("total_size_percent")?;
+-            write!(obj.w, "{}", get_size_percent(*size))?;
+-            write!(obj.w, ",")?;
+             let mut monos = obj.array("monomorphizations")?;
++            for (name, size, size_percent) in insts
+-            for (position, (name, size, size_percent)) in insts
+                 .iter()
++                .map(|(name, size)| (name, size, get_size_percent(*size)))
+-                .map(|(name, size)| (name, size, get_size_percent(*size))).enumerate()
+             {
++                let mut obj = monos.object()?;
++                obj.field("name", name.as_str())?;
++                obj.field("shallow_size", *size)?;
++                obj.field("shallow_size_percent", size_percent)?;
+-                let mut obj = {
+-                if position != 0 { write!(monos.w, ",")?; }
+-                write!(monos.w, "{{")?;
+-                json::Object { w: &mut *monos.w }
+-            };
+-                {
+-                obj.name("name")?;
+-                let text: &str = name.as_str();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+-                write!(obj.w, ",")?;
+-                obj.name("shallow_size")?;
+-                write!(obj.w, "{}", *size)?;
+-                write!(obj.w, ",")?;
+-                obj.name("shallow_size_percent")?;
+-                write!(obj.w, "{}", size_percent)?;
+             }
+             Ok(())
+         }
+ 
+         let items_size = f64::from(items.size());
++        let mut arr = json::array(dest)?;
++        for entry in &self.monos {
++            let mut obj = arr.object()?;
+-        let mut arr = {
+-            write!(dest, "[")?;
+-            json::Array { w: dest }
+-        };
+-        for (position, entry) in self.monos.iter().enumerate() {
+-            let mut obj = {
+-                if position != 0 { write!(arr.w, ",")?; }
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+-            {
+-                obj.name("generic")?;
+-                let text: &str = entry.name.as_str();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+             process_entry(entry, &mut obj, items_size)?;
+         }
+ 
+@@ -228,183 +180,3 @@ impl traits::Emit for Monos {
+         Ok(())
+     }
+ }
+-
+-mod json {
+-    use std::io;
+-
+-    pub trait JsonPrimitive {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()>;
+-    }
+-
+-    impl<'a> JsonPrimitive for &'a str {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()> {
+-            write!(w, "\"")?;
+-            for c in self.chars() {
+-                match c {
+-                    '"' => write!(w, "\\\"")?,
+-                    '\\' => write!(w, "\\")?,
+-                    '\n' => writeln!(w,)?,
+-                    c => write!(w, "{}", c)?,
+-                }
+-            }
+-            write!(w, "\"")
+-        }
+-    }
+-
+-
+-
+-    pub fn array(w: &mut dyn io::Write) -> io::Result<Array> {
+-        write!(w, "[")?;
+-        Ok(Array {
+-            w,
+-        })
+-    }
+-
+-
+-    pub struct Array<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Array<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "]");
+-        }
+-    }
+-
+-
+-    pub struct Object<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Object<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "}}");
+-        }
+-    }
+-
+-    impl<'a> Object<'a> {
+-        pub(crate) fn name<S>(&mut self, name: S) -> io::Result<()>
+-        where
+-            S: AsRef<str>,
+-        {
+-            name.as_ref().json_primitive(self.w)?;
+-            write!(self.w, ":")
+-        }
+-
+-
+-        pub fn array<S>(&mut self, name: S) -> io::Result<Array>
+-        where
+-            S: AsRef<str>,
+-        {
+-            self.name(name)?;
+-            array(&mut *self.w)
+-        }
+-
+-    }
+-
+-}
+-
+-mod table {
+-    use std::cmp;
+-    use std::fmt;
+-
+-    #[derive(Debug, Clone, Copy)]
+-    pub enum Align {
+-        Left,
+-        Right,
+-    }
+-
+-    #[derive(Debug, Clone)]
+-    pub struct Table {
+-        header: Vec<(Align, String)>,
+-        rows: Vec<Vec<String>>,
+-    }
+-
+-    impl Table {
+-        pub(crate) fn with_header(header: Vec<(Align, String)>) -> Table {
+-            assert!(!header.is_empty());
+-            Table {
+-                header,
+-                rows: vec![],
+-            }
+-        }
+-
+-        pub(crate) fn add_row(&mut self, row: Vec<String>) {
+-            assert_eq!(self.header.len(), row.len());
+-            self.rows.push(row);
+-        }
+-    }
+-
+-    impl fmt::Display for Table {
+-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+-            let mut maxs: Vec<_> = self.header.iter().map(|h| h.1.len()).collect();
+-
+-            for row in &self.rows {
+-                for (i, x) in row.iter().enumerate() {
+-                    maxs[i] = cmp::max(maxs[i], x.len());
+-                }
+-            }
+-
+-            let last = self.header.len() - 1;
+-
+-            for (i, h) in self.header.iter().map(|h| &h.1).enumerate() {
+-                if i == 0 {
+-                    write!(f, " ")?;
+-                } else {
+-                    write!(f, " │ ")?;
+-                }
+-
+-                write!(f, "{}", h)?;
+-                if i != last {
+-                    for _ in 0..maxs[i] - h.len() {
+-                        write!(f, " ")?;
+-                    }
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for (i, max_len) in maxs.iter().enumerate().take(self.header.len()) {
+-                if i == 0 {
+-                    write!(f, "─")?;
+-                } else {
+-                    write!(f, "─┼─")?;
+-                }
+-                for _ in 0..*max_len {
+-                    write!(f, "─")?;
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for row in &self.rows {
+-                for (i, (x, align)) in row.iter().zip(self.header.iter().map(|h| h.0)).enumerate() {
+-                    if i == 0 {
+-                        write!(f, " ")?;
+-                    } else {
+-                        write!(f, " ┊ ")?;
+-                    }
+-
+-                    match align {
+-                        Align::Left => {
+-                            write!(f, "{}", x)?;
+-                            if i != last {
+-                                for _ in 0..maxs[i] - x.len() {
+-                                    write!(f, " ")?;
+-                                }
+-                            }
+-                        }
+-                        Align::Right => {
+-                            for _ in 0..maxs[i] - x.len() {
+-                                write!(f, " ")?;
+-                            }
+-                            write!(f, "{}", x)?;
+-                        }
+-                    }
+-                }
+-                writeln!(f)?;
+-            }
+-
+-            Ok(())
+-        }
+-    }
+-
+-}
+diff --git a/analyze/analyses/paths/paths_emit.rs b/analyze/analyses/paths/paths_emit.rs
+index a770620..4d4b378 100644
+--- a/analyze/analyses/paths/paths_emit.rs
++++ b/analyze/analyses/paths/paths_emit.rs
+@@ -3,8 +3,8 @@ use std::io;
+ use csv;
+ 
+ use crate::analyses::paths::Paths;
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+-
+-use self::table::{Align, Table};
+ use twiggy_ir as ir;
+ use twiggy_traits as traits;
+ 
+@@ -60,16 +60,9 @@ impl traits::Emit for Paths {
+ 
+         // Initialize a JSON array. For each path entry, add a object to the
+         // array, and add that entry's information to the new JSON object.
++        let mut arr = json::array(dest)?;
++        for entry in &self.entries {
++            let mut obj = arr.object()?;
+-        let mut arr = {
+-            write!(dest, "[")?;
+-            json::Array { w: dest }
+-        };
+-        for (position, entry) in self.entries.iter().enumerate() {
+-            let mut obj = {
+-                if position != 0 { write!(arr.w, ",")?; }
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+             process_entry(
+                 entry,
+                 &mut obj,
+@@ -193,7 +186,7 @@ mod emit_text_helpers {
+ #[cfg(feature = "emit_json")]
+ mod emit_json_helpers {
+     use crate::analyses::paths::paths_entry::PathsEntry;
++    use crate::formats::json::Object;
+-    use super::json::{self, Object};
+     use std::io;
+     use twiggy_ir::Items;
+     use twiggy_opt::Paths;
+@@ -212,37 +205,15 @@ mod emit_json_helpers {
+             size,
+             children,
+         } = entry;
++        obj.field("name", name.as_str())?;
++        obj.field("shallow_size", *size)?;
+-        {
+-                obj.name("name")?;
+-                let text: &str = name.as_str();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+-        write!(obj.w, ",")?;
+-        obj.name("shallow_size")?;
+-        write!(obj.w, "{}", *size)?;
+         let size_percent = f64::from(*size) / f64::from(items.size()) * 100.0;
++        obj.field("shallow_size_percent", size_percent)?;
+-        write!(obj.w, ",")?;
+-        obj.name("shallow_size_percent")?;
+-        write!(obj.w, "{}", size_percent)?;
+ 
+-        write!(obj.w, ",")?;
+         let mut callers = obj.array("callers")?;
+         if depth < opts.max_depth() {
++            for child in children.iter().take(paths) {
++                let mut obj = callers.object()?;
+-            for (position, child) in children.iter().take(paths).enumerate() {
+-                let mut obj = {
+-                if position != 0 { write!(callers.w, ",")?; }
+-                write!(callers.w, "{{")?;
+-                json::Object { w: &mut *callers.w }
+-            };
+                 process_entry(child, &mut obj, depth + 1, paths, items, opts)?;
+             }
+         }
+@@ -328,183 +299,3 @@ mod emit_csv_helpers {
+         }
+     }
+ }
+-
+-mod json {
+-    use std::io;
+-
+-    pub trait JsonPrimitive {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()>;
+-    }
+-
+-    impl<'a> JsonPrimitive for &'a str {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()> {
+-            write!(w, "\"")?;
+-            for c in self.chars() {
+-                match c {
+-                    '"' => write!(w, "\\\"")?,
+-                    '\\' => write!(w, "\\")?,
+-                    '\n' => writeln!(w,)?,
+-                    c => write!(w, "{}", c)?,
+-                }
+-            }
+-            write!(w, "\"")
+-        }
+-    }
+-
+-
+-
+-    pub fn array(w: &mut dyn io::Write) -> io::Result<Array> {
+-        write!(w, "[")?;
+-        Ok(Array {
+-            w,
+-        })
+-    }
+-
+-
+-    pub struct Array<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Array<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "]");
+-        }
+-    }
+-
+-
+-    pub struct Object<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Object<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "}}");
+-        }
+-    }
+-
+-    impl<'a> Object<'a> {
+-        pub(crate) fn name<S>(&mut self, name: S) -> io::Result<()>
+-        where
+-            S: AsRef<str>,
+-        {
+-            name.as_ref().json_primitive(self.w)?;
+-            write!(self.w, ":")
+-        }
+-
+-
+-        pub fn array<S>(&mut self, name: S) -> io::Result<Array>
+-        where
+-            S: AsRef<str>,
+-        {
+-            self.name(name)?;
+-            array(&mut *self.w)
+-        }
+-
+-    }
+-
+-}
+-
+-mod table {
+-    use std::cmp;
+-    use std::fmt;
+-
+-    #[derive(Debug, Clone, Copy)]
+-    pub enum Align {
+-        Left,
+-        Right,
+-    }
+-
+-    #[derive(Debug, Clone)]
+-    pub struct Table {
+-        header: Vec<(Align, String)>,
+-        rows: Vec<Vec<String>>,
+-    }
+-
+-    impl Table {
+-        pub(crate) fn with_header(header: Vec<(Align, String)>) -> Table {
+-            assert!(!header.is_empty());
+-            Table {
+-                header,
+-                rows: vec![],
+-            }
+-        }
+-
+-        pub(crate) fn add_row(&mut self, row: Vec<String>) {
+-            assert_eq!(self.header.len(), row.len());
+-            self.rows.push(row);
+-        }
+-    }
+-
+-    impl fmt::Display for Table {
+-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+-            let mut maxs: Vec<_> = self.header.iter().map(|h| h.1.len()).collect();
+-
+-            for row in &self.rows {
+-                for (i, x) in row.iter().enumerate() {
+-                    maxs[i] = cmp::max(maxs[i], x.len());
+-                }
+-            }
+-
+-            let last = self.header.len() - 1;
+-
+-            for (i, h) in self.header.iter().map(|h| &h.1).enumerate() {
+-                if i == 0 {
+-                    write!(f, " ")?;
+-                } else {
+-                    write!(f, " │ ")?;
+-                }
+-
+-                write!(f, "{}", h)?;
+-                if i != last {
+-                    for _ in 0..maxs[i] - h.len() {
+-                        write!(f, " ")?;
+-                    }
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for (i, max_len) in maxs.iter().enumerate().take(self.header.len()) {
+-                if i == 0 {
+-                    write!(f, "─")?;
+-                } else {
+-                    write!(f, "─┼─")?;
+-                }
+-                for _ in 0..*max_len {
+-                    write!(f, "─")?;
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for row in &self.rows {
+-                for (i, (x, align)) in row.iter().zip(self.header.iter().map(|h| h.0)).enumerate() {
+-                    if i == 0 {
+-                        write!(f, " ")?;
+-                    } else {
+-                        write!(f, " ┊ ")?;
+-                    }
+-
+-                    match align {
+-                        Align::Left => {
+-                            write!(f, "{}", x)?;
+-                            if i != last {
+-                                for _ in 0..maxs[i] - x.len() {
+-                                    write!(f, " ")?;
+-                                }
+-                            }
+-                        }
+-                        Align::Right => {
+-                            for _ in 0..maxs[i] - x.len() {
+-                                write!(f, " ")?;
+-                            }
+-                            write!(f, "{}", x)?;
+-                        }
+-                    }
+-                }
+-                writeln!(f)?;
+-            }
+-
+-            Ok(())
+-        }
+-    }
+-
+-}
+diff --git a/analyze/analyses/top.rs b/analyze/analyses/top.rs
+index 214f6ad..65d7f04 100644
+--- a/analyze/analyses/top.rs
++++ b/analyze/analyses/top.rs
+@@ -1,7 +1,7 @@
+ use std::io;
+ 
++use crate::formats::json;
++use crate::formats::table::{Align, Table};
+-
+-use self::table::{Align, Table};
+ use anyhow::anyhow;
+ use csv;
+ use serde_derive::Serialize;
+@@ -135,55 +135,27 @@ impl traits::Emit for Top {
+ 
+     #[cfg(feature = "emit_json")]
+     fn emit_json(&self, items: &ir::Items, dest: &mut dyn io::Write) -> anyhow::Result<()> {
++        let mut arr = json::array(dest)?;
+-        let mut arr = {
+-            write!(dest, "[")?;
+-            json::Array { w: dest }
+-        };
+ 
+         let max_items = self.opts.max_items() as usize;
+         let items_iter = self.items.iter();
+ 
++        for &id in items_iter.take(max_items) {
+-        for (position, &id) in items_iter.take(max_items).enumerate() {
+             let item = &items[id];
+ 
++            let mut obj = arr.object()?;
++            obj.field("name", item.name())?;
+-            let mut obj = {
+-                if position != 0 { write!(arr.w, ",")?; }
+-                write!(arr.w, "{{")?;
+-                json::Object { w: &mut *arr.w }
+-            };
+-            {
+-                obj.name("name")?;
+-                let text: &str = item.name();
+-                write!(obj.w, "\"")?;
+-                for c in text.chars() {
+-                    match c {
+-                        '"' => write!(obj.w, "\\\"")?,
+-                        '\\' => write!(obj.w, "\\")?,
+-                        '\n' => writeln!(obj.w,)?,
+-                        c => write!(obj.w, "{}", c)?,
+-                    }
+-                }
+-                write!(obj.w, "\"")?;
+-            }
+ 
+             let size = item.size();
+             let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
++            obj.field("shallow_size", size)?;
++            obj.field("shallow_size_percent", size_percent)?;
+-            write!(obj.w, ",")?;
+-            obj.name("shallow_size")?;
+-            write!(obj.w, "{}", size)?;
+-            write!(obj.w, ",")?;
+-            obj.name("shallow_size_percent")?;
+-            write!(obj.w, "{}", size_percent)?;
+ 
+             if self.opts.retained() {
+                 let size = items.retained_size(id);
+                 let size_percent = f64::from(size) / f64::from(items.size()) * 100.0;
++                obj.field("retained_size", size)?;
++                obj.field("retained_size_percent", size_percent)?;
+-                write!(obj.w, ",")?;
+-                obj.name("retained_size")?;
+-                write!(obj.w, "{}", size)?;
+-                write!(obj.w, ",")?;
+-                obj.name("retained_size_percent")?;
+-                write!(obj.w, "{}", size_percent)?;
+             }
+         }
+ 
+@@ -270,170 +242,3 @@ pub fn top(items: &mut ir::Items, opts: &opt::Top) -> anyhow::Result<Box<dyn tra
+ 
+     Ok(Box::new(top) as Box<_>)
+ }
+-
+-mod json {
+-    use std::io;
+-
+-    pub trait JsonPrimitive {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()>;
+-    }
+-
+-    impl<'a> JsonPrimitive for &'a str {
+-        fn json_primitive(&self, w: &mut dyn io::Write) -> io::Result<()> {
+-            write!(w, "\"")?;
+-            for c in self.chars() {
+-                match c {
+-                    '"' => write!(w, "\\\"")?,
+-                    '\\' => write!(w, "\\")?,
+-                    '\n' => writeln!(w,)?,
+-                    c => write!(w, "{}", c)?,
+-                }
+-            }
+-            write!(w, "\"")
+-        }
+-    }
+-
+-
+-
+-
+-
+-    pub struct Array<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Array<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "]");
+-        }
+-    }
+-
+-
+-    pub struct Object<'a> {
+-        pub(crate) w: &'a mut dyn io::Write,
+-    }
+-
+-    impl<'a> Drop for Object<'a> {
+-        fn drop(&mut self) {
+-            let _ = write!(self.w, "}}");
+-        }
+-    }
+-
+-    impl<'a> Object<'a> {
+-        pub(crate) fn name<S>(&mut self, name: S) -> io::Result<()>
+-        where
+-            S: AsRef<str>,
+-        {
+-            name.as_ref().json_primitive(self.w)?;
+-            write!(self.w, ":")
+-        }
+-
+-
+-
+-    }
+-
+-}
+-
+-mod table {
+-    use std::cmp;
+-    use std::fmt;
+-
+-    #[derive(Debug, Clone, Copy)]
+-    pub enum Align {
+-        Left,
+-        Right,
+-    }
+-
+-    #[derive(Debug, Clone)]
+-    pub struct Table {
+-        header: Vec<(Align, String)>,
+-        rows: Vec<Vec<String>>,
+-    }
+-
+-    impl Table {
+-        pub(crate) fn with_header(header: Vec<(Align, String)>) -> Table {
+-            assert!(!header.is_empty());
+-            Table {
+-                header,
+-                rows: vec![],
+-            }
+-        }
+-
+-        pub(crate) fn add_row(&mut self, row: Vec<String>) {
+-            assert_eq!(self.header.len(), row.len());
+-            self.rows.push(row);
+-        }
+-    }
+-
+-    impl fmt::Display for Table {
+-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+-            let mut maxs: Vec<_> = self.header.iter().map(|h| h.1.len()).collect();
+-
+-            for row in &self.rows {
+-                for (i, x) in row.iter().enumerate() {
+-                    maxs[i] = cmp::max(maxs[i], x.len());
+-                }
+-            }
+-
+-            let last = self.header.len() - 1;
+-
+-            for (i, h) in self.header.iter().map(|h| &h.1).enumerate() {
+-                if i == 0 {
+-                    write!(f, " ")?;
+-                } else {
+-                    write!(f, " │ ")?;
+-                }
+-
+-                write!(f, "{}", h)?;
+-                if i != last {
+-                    for _ in 0..maxs[i] - h.len() {
+-                        write!(f, " ")?;
+-                    }
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for (i, max_len) in maxs.iter().enumerate().take(self.header.len()) {
+-                if i == 0 {
+-                    write!(f, "─")?;
+-                } else {
+-                    write!(f, "─┼─")?;
+-                }
+-                for _ in 0..*max_len {
+-                    write!(f, "─")?;
+-                }
+-            }
+-            writeln!(f)?;
+-
+-            for row in &self.rows {
+-                for (i, (x, align)) in row.iter().zip(self.header.iter().map(|h| h.0)).enumerate() {
+-                    if i == 0 {
+-                        write!(f, " ")?;
+-                    } else {
+-                        write!(f, " ┊ ")?;
+-                    }
+-
+-                    match align {
+-                        Align::Left => {
+-                            write!(f, "{}", x)?;
+-                            if i != last {
+-                                for _ in 0..maxs[i] - x.len() {
+-                                    write!(f, " ")?;
+-                                }
+-                            }
+-                        }
+-                        Align::Right => {
+-                            for _ in 0..maxs[i] - x.len() {
+-                                write!(f, " ")?;
+-                            }
+-                            write!(f, "{}", x)?;
+-                        }
+-                    }
+-                }
+-                writeln!(f)?;
+-            }
+-
+-            Ok(())
+-        }
+-    }
+-
+-}

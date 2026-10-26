@@ -1,0 +1,255 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "elastic_rally_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "sample_publication",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 sample measurement handoff.",
+      "baseline_defect": "Sample is expanded into measurement, operation identity, phase and timestamps at an added scalar helper boundary.",
+      "criterion": "Keep sample measurement context coherent through internal publication preparation.",
+      "acceptance": "Preserve selected measurement getattr, seconds-to-ms conversion, units, metadata and public put_value_cluster_level dispatch. Public scalar API may stay unchanged; simply using Sample directly in the postprocessor is a valid repair. Do not demand changing the cross-file public call to accept a new envelope. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/driver/driver.py",
+          "symbol": "SamplePostprocessor.put_sample,_put_sample_values",
+          "detail": "Sample is expanded into measurement, operation identity, phase and timestamps at an added scalar helper boundary.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "throughput_state",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 per-key TaskStats split; retry provisional progression.",
+      "baseline_defect": "Pending Samples, committed counts, elapsed intervals, bucket settings and phase flags occupy separately keyed dictionaries and transient tuple handoffs.",
+      "criterion": "Own per-task incremental throughput state coherently across initialization, replay and progression.",
+      "acceptance": "Keep retained Sample aliases, stable time sorting, initial start=absolute-time_period, first bucket configuration, monotone interval and distinction between provisional counts and persisted counts. Pending replay must not double-count; persistence advances only when publishing. Encapsulated parallel maps are permitted if their association is owned. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/driver/driver.py",
+          "symbol": "ThroughputCalculator.calculate,calculate_task_throughput,_task_progress",
+          "detail": "Pending Samples, committed counts, elapsed intervals, bucket settings and phase flags occupy separately keyed dictionaries and transient tuple handoffs.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "throughput_transition",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry phase advancement, bucket commit and fallback split.",
+      "baseline_defect": "Phase promotion invalidation, pending clearing, committed count, next bucket and published-presence are mutated in different layers.",
+      "criterion": "Give throughput phase and publication transitions a coherent state contract.",
+      "acceptance": "Keep monotone phase promotion, presence reset, positive-interval bucket threshold, int(interval)+stored bucket interval, fallback only when current phase lacks output, last sample time/unit and count/interval value. Progression and publication must retain equivalent interleaving; eager evaluation that changes phase/presence interactions fails, but an equivalent integrated loop is valid. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/driver/driver.py",
+          "symbol": "calculate_task_throughput,_task_progress,_append_task_throughput",
+          "detail": "Phase promotion invalidation, pending clearing, committed count, next bucket and published-presence are mutated in different layers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "store_provenance",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 live metric/raw document context.",
+      "baseline_defect": "Both insertion paths unpack race/environment/track/challenge/car/params into independent positional values.",
+      "criterion": "Keep store publication provenance associated through value and raw-document insertion.",
+      "acceptance": "Use the live store context at the existing insertion boundary, retain optional track params, and preserve _add dispatch. Raw document is updated in place; value publication constructs its own document. No immutable context captured at store construction is required. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/metrics.py",
+          "symbol": "MetricsStore._put_metric,_publish_metric,put_doc,_publish_document",
+          "detail": "Both insertion paths unpack race/environment/track/challenge/car/params into independent positional values.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "measurement_timing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 document timing; depth value timing converted before helper.",
+      "baseline_defect": "Value and raw envelopes transport time pairs in different units with conversion split across callers and publishers.",
+      "criterion": "Make envelope timing representation and conversion responsibilities explicit and coherent.",
+      "acceptance": "Keep None-only clock defaults (zero is supplied), epoch milliseconds versus relative milliseconds, one conversion per value and existing hook timing. Raw and typed inputs may use different well-defined projections; do not require one universal envelope. Preserve metadata scope/merge differences: raw level=None is allowed and raw meta merge is conditional, while typed metrics require a valid level. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/metrics.py",
+          "symbol": "MetricsStore._put_metric,_publish_metric,put_doc,_publish_document",
+          "detail": "Value and raw envelopes transport time pairs in different units with conversion split across callers and publishers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "race_persistence",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 race JSON projection and preservation correction.",
+      "baseline_defect": "Race persistence passes identity, runtime provenance and cluster-version fields as an independent scalar bundle.",
+      "criterion": "Keep persistence projection connected to coherent race provenance.",
+      "acceptance": "Retain raw car representation, cluster nesting, timestamp formats and result object/list/dict serialization dispatch. After result.as_dict callbacks, read track revision, challenge and reporting/car/plugin params at their original later points. Do not snapshot the whole race before callbacks. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/metrics.py",
+          "symbol": "Race.as_dict,_race_doc_values",
+          "detail": "Race persistence passes identity, runtime provenance and cluster-version fields as an independent scalar bundle.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "result_provenance",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 result-doc projection; depth version qualification split.",
+      "baseline_defect": "Result projection transports a wide scalar metadata bundle plus a separately derived version-valid flag.",
+      "criterion": "Own result provenance and optional-field qualification coherently within result projection.",
+      "acceptance": "Keep normalized car_name, challenge, active=True, qualified major version, revision fields, redacted reporting params, target fields and optional metadata. Existing Race access is sufficient; no forced common serialized shape with persistence or live MetricsStore context. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/metrics.py",
+          "symbol": "Race.result_doc_base,_result_doc_values",
+          "detail": "Result projection transports a wide scalar metadata bundle plus a separately derived version-valid flag.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "phase_windows",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 phase presence/endpoints and duration; depth overall min/max split.",
+      "baseline_defect": "Window builder receives separate presence flags, phase endpoints and redundant overall bounds; duration separately unpacks that window.",
+      "criterion": "Own phase windows and aggregate span coherently through window projection and duration consumption.",
+      "acceptance": "Keep warmup/normal store queries and cluster identity, omit absent phases, preserve zero endpoints, compute min/max on original numeric values then int conversion, and duration None only when an endpoint is None. Existing dict/tuple views are sufficient; no required new window type. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/metrics.py",
+          "symbol": "GlobalStatsCalculator.time_window,_phase_window,duration,_duration_between",
+          "detail": "Window builder receives separate presence flags, phase endpoints and redundant overall bounds; duration separately unpacks that window.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "operation_projection",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 six result projections; depth scalar value-shape moved to callers.",
+      "baseline_defect": "Six metric branches repeat task/operation/metadata-presence extraction and two separately construct scalar value shapes.",
+      "criterion": "Use coherent operation-result context through flat document projection and metric shape selection.",
+      "acceptance": "Keep throughput/latency/service/processing direct values, error/duration single wrappers, membership-based metric inclusion and meta presence even when None/empty. Preserve cluster None-vs-present and output order. Shared dispatch data or integrated item projection qualify; no requirement to manufacture a new projection class or move every expression into one helper. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/metrics.py",
+          "symbol": "GlobalStats.as_flat_list",
+          "detail": "Six metric branches repeat task/operation/metadata-presence extraction and two separately construct scalar value shapes.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cluster_report",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 cluster tuples; retry independently indexed metric sources, errors, units and warning records.",
+      "baseline_defect": "Task/cluster association is maintained across multiple metric maps and original-record maps.",
+      "criterion": "Keep each task/cluster report association coherent through collection, row projection and warning dispatch.",
+      "acceptance": "Preserve task encounter/cluster order, duplicate overwrite including absent metrics, first-cluster-only units/warnings and missing placeholders. Retain references to statistical mappings for late value lookup, captured scalar errors and original warning records; callbacks may mutate later mappings. An encapsulated column model is valid, not necessarily per-cluster records. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/reporter.py",
+          "symbol": "SummaryReporter._report_op_metrics_multi_cluster",
+          "detail": "Task/cluster association is maintained across multiple metric maps and original-record maps.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "single_report",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 single-cluster statistics handoff.",
+      "baseline_defect": "Throughput record is unpacked into four ordered statistic scalars plus unit for row building.",
+      "criterion": "Keep single-cluster throughput statistics and unit coherently associated through row projection.",
+      "acceptance": "Preserve min/mean/median/max order, labels, formatter, _line/_join extension dispatch and value-read semantics. Do not replace callbacks with pre-rendered static rows; direct existing mapping access or an appropriate captured view qualifies. Existing objects, mappings, direct owner access or encapsulated column storage qualify; neither a new dataclass nor one record per item is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper that leaves the same independent positional/keyed coordination in consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "esrally/reporter.py",
+          "symbol": "SummaryReporter._report_throughput,_throughput_lines",
+          "detail": "Throughput record is unpacked into four ordered statistic scalars plus unit for row building.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "elastic_rally_dc",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "weighting": "equal per item",
+    "excluded_from_scoring": [
+      "The empty post.diff introduces no independent defect.",
+      "The duration(start,end) forwarding helper is a small scalar shortcut but no independent data clump beyond the phase-window responsibility is supported.",
+      "Preserving tests, callbacks, output formats, and behavior is a constraint, not a separate structural score.",
+      "Historical intentions from unmatched synthesis versions and candidate GT shape do not define criteria."
+    ]
+  }
+}

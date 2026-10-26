@@ -1,0 +1,602 @@
+diff --git a/src/config.rs b/src/config.rs
+index b161bca..83da9f6 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -350,15 +350,59 @@ impl Config {
+     }
+ 
+     pub fn build_std(&self, target: &Target) -> Option<BuildStd> {
+-        self.get_from_ref(target, Environment::build_std, CrossToml::build_std)
++        let build = self.env.get_build_var("BUILD_STD");
++        let target_value = self.env.get_target_var(target, "BUILD_STD");
++        let toml = self.toml.as_ref().map(|t| t.build_std(target)).unwrap_or_default();
++        let raw = match (target_value, toml.target, build, toml.build) {
++            (Some(value), _, _, _) => value,
++            (None, Some(value), _, _) => return Some(value.to_owned()),
++            (None, None, Some(value), _) => value,
++            (None, None, None, Some(value)) => return Some(value.to_owned()),
++            _ => return None,
++        };
++        Some(if let Ok(value) = bool::from_str(&raw) {
++            BuildStd::Bool(value)
++        } else if let Ok(value) = i32::from_str(&raw) {
++            BuildStd::Bool(value != 0)
++        } else {
++            BuildStd::Crates(raw.split(',').map(str::to_owned).collect())
++        })
+     }
+ 
+     pub fn zig(&self, target: &Target) -> Option<bool> {
+-        self.get_from_value(target, Environment::zig, CrossToml::zig)
++        let build_key = format!("{}_BUILD_ZIG", self.env.0);
++        let build = self.env.1.as_ref().and_then(|map| map.get(build_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&build_key).ok()).map(|value| bool_from_envvar(&value));
++        let target_key = format!("{}_{}", self.env.0,
++            format!("TARGET_{target}_ZIG").to_ascii_uppercase().replace('-', "_"));
++        let target_value = self.env.1.as_ref().and_then(|map| map.get(target_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&target_key).ok()).map(|value| bool_from_envvar(&value));
++        let toml = self.toml.as_ref().map(|t| t.zig(target)).unwrap_or_default();
++        match (target_value, toml.target, build, toml.build) {
++            (Some(value), _, _, _) => Some(value),
++            (None, Some(value), _, _) => Some(value.to_owned()),
++            (None, None, Some(value), _) => Some(value),
++            (None, None, None, Some(value)) => Some(value.to_owned()),
++            _ => None,
++        }
+     }
+ 
+     pub fn zig_version(&self, target: &Target) -> Option<String> {
+-        self.get_from_value(target, Environment::zig_version, CrossToml::zig_version)
++        let build_key = format!("{}_BUILD_ZIG_VERSION", self.env.0);
++        let build = self.env.1.as_ref().and_then(|map| map.get(build_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&build_key).ok()).map(|value| value);
++        let target_key = format!("{}_{}", self.env.0,
++            format!("TARGET_{target}_ZIG_VERSION").to_ascii_uppercase().replace('-', "_"));
++        let target_value = self.env.1.as_ref().and_then(|map| map.get(target_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&target_key).ok()).map(|value| value);
++        let toml = self.toml.as_ref().map(|t| t.zig_version(target)).unwrap_or_default();
++        match (target_value, toml.target, build, toml.build) {
++            (Some(value), _, _, _) => Some(value),
++            (None, Some(value), _, _) => Some(value.to_owned()),
++            (None, None, Some(value), _) => Some(value),
++            (None, None, None, Some(value)) => Some(value.to_owned()),
++            _ => None,
++        }
+     }
+ 
+     pub fn zig_image(&self, target: &Target) -> Result<Option<PossibleImage>> {
+@@ -400,16 +444,41 @@ impl Config {
+     }
+ 
+     pub fn env_passthrough(&self, target: &Target) -> Option<Vec<String>> {
+-        self.vec_from_config(
+-            target,
+-            Environment::passthrough,
+-            CrossToml::env_passthrough,
+-            true,
+-        )
++        let build = self.env.get_build_var("ENV_PASSTHROUGH");
++        let target_value = self.env.get_target_var(target, "ENV_PASSTHROUGH");
++        if let Some(build) = build {
++            Some(build.split_whitespace()
++                .chain(target_value.as_deref().into_iter().flat_map(str::split_whitespace))
++                .map(str::to_owned).collect())
++        } else {
++            let mut defined = false;
++            let mut values = Vec::new();
++            if let Some(toml) = self.toml.as_ref().map(|t| t.env_passthrough(target)) {
++                if let Some(build) = toml.build {
++                    values.extend(build.iter().cloned());
++                    defined = true;
++                }
++                if let Some(target) = toml.target {
++                    values.extend(target.iter().cloned());
++                    defined = true;
++                }
++            }
++            defined.then_some(values)
++        }
+     }
+ 
+     pub fn env_volumes(&self, target: &Target) -> Option<Vec<String>> {
+-        self.get_from_ref(target, Environment::volumes, CrossToml::env_volumes)
++        let build = self.env.get_build_var("ENV_VOLUMES");
++        let target_value = self.env.get_target_var(target, "ENV_VOLUMES");
++        let toml = self.toml.as_ref().map(|t| t.env_volumes(target)).unwrap_or_default();
++        let raw = match (target_value, toml.target, build, toml.build) {
++            (Some(value), _, _, _) => value,
++            (None, Some(value), _, _) => return Some(value.to_owned()),
++            (None, None, Some(value), _) => value,
++            (None, None, None, Some(value)) => return Some(value.to_owned()),
++            _ => return None,
++        };
++        Some(raw.split_whitespace().map(str::to_owned).collect())
+     }
+ 
+     pub fn target(&self, target_list: &TargetList) -> Option<Target> {
+@@ -422,15 +491,39 @@ impl Config {
+     }
+ 
+     pub fn dockerfile(&self, target: &Target) -> Option<String> {
+-        self.get_from_ref(target, Environment::dockerfile, CrossToml::dockerfile)
++        let build_key = format!("{}_BUILD_DOCKERFILE", self.env.0);
++        let build = self.env.1.as_ref().and_then(|map| map.get(build_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&build_key).ok()).map(|value| value);
++        let target_key = format!("{}_{}", self.env.0,
++            format!("TARGET_{target}_DOCKERFILE").to_ascii_uppercase().replace('-', "_"));
++        let target_value = self.env.1.as_ref().and_then(|map| map.get(target_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&target_key).ok()).map(|value| value);
++        let toml = self.toml.as_ref().map(|t| t.dockerfile(target)).unwrap_or_default();
++        match (target_value, toml.target, build, toml.build) {
++            (Some(value), _, _, _) => Some(value),
++            (None, Some(value), _, _) => Some(value.to_owned()),
++            (None, None, Some(value), _) => Some(value),
++            (None, None, None, Some(value)) => Some(value.to_owned()),
++            _ => None,
++        }
+     }
+ 
+     pub fn dockerfile_context(&self, target: &Target) -> Option<String> {
+-        self.get_from_ref(
+-            target,
+-            Environment::dockerfile_context,
+-            CrossToml::dockerfile_context,
+-        )
++        let build_key = format!("{}_BUILD_DOCKERFILE_CONTEXT", self.env.0);
++        let build = self.env.1.as_ref().and_then(|map| map.get(build_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&build_key).ok()).map(|value| value);
++        let target_key = format!("{}_{}", self.env.0,
++            format!("TARGET_{target}_DOCKERFILE_CONTEXT").to_ascii_uppercase().replace('-', "_"));
++        let target_value = self.env.1.as_ref().and_then(|map| map.get(target_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&target_key).ok()).map(|value| value);
++        let toml = self.toml.as_ref().map(|t| t.dockerfile_context(target)).unwrap_or_default();
++        match (target_value, toml.target, build, toml.build) {
++            (Some(value), _, _, _) => Some(value),
++            (None, Some(value), _, _) => Some(value.to_owned()),
++            (None, None, Some(value), _) => Some(value),
++            (None, None, None, Some(value)) => Some(value.to_owned()),
++            _ => None,
++        }
+     }
+ 
+     pub fn dockerfile_build_args(&self, target: &Target) -> Option<HashMap<String, String>> {
+@@ -441,7 +534,28 @@ impl Config {
+     }
+ 
+     pub fn pre_build(&self, target: &Target) -> Option<PreBuild> {
+-        self.get_from_ref(target, Environment::pre_build, CrossToml::pre_build)
++        let build_key = format!("{}_BUILD_PRE_BUILD", self.env.0);
++        let build = self.env.1.as_ref()
++            .and_then(|map| map.get(build_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&build_key).ok());
++        let target_key = format!("{}_{}", self.env.0,
++            format!("TARGET_{target}_PRE_BUILD").to_ascii_uppercase().replace('-', "_"));
++        let target_value = self.env.1.as_ref()
++            .and_then(|map| map.get(target_key.as_str()).map(|v| (*v).to_owned()))
++            .or_else(|| env::var(&target_key).ok());
++        let toml = self.toml.as_ref().map(|t| t.pre_build(target)).unwrap_or_default();
++        let raw = match (target_value, toml.target, build, toml.build) {
++            (Some(value), _, _, _) => value,
++            (None, Some(value), _, _) => return Some(value.to_owned()),
++            (None, None, Some(value), _) => value,
++            (None, None, None, value) => return value.cloned(),
++        };
++        let mut lines: Vec<_> = raw.split('\n').map(String::from).collect();
++        Some(if lines.len() == 1 {
++            PreBuild::Single { line: lines.pop().expect("should contain one item"), env: true }
++        } else {
++            PreBuild::Lines(lines)
++        })
+     }
+ 
+     // FIXME: remove when we disable sums in 0.3.0.
+diff --git a/src/docker/custom.rs b/src/docker/custom.rs
+index 8502fca..152c5e5 100644
+--- a/src/docker/custom.rs
++++ b/src/docker/custom.rs
+@@ -108,7 +108,48 @@ impl<'a> Dockerfile<'a> {
+             ),
+         ]);
+ 
+-        let image_name = self.image_name(options.target.target(), &paths.metadata)?;
++        let image_name = match self {
++            Dockerfile::File { name: Some(name), .. } => (*name).to_owned(),
++            _ => {
++                let file_name = paths.metadata.workspace_root.file_name()
++                    .expect("workspace_root can't end in `..`").to_string_lossy();
++                let mut package_name = String::from(CROSS_CUSTOM_DOCKERFILE_IMAGE_PREFIX);
++                let package_start = package_name.len();
++                let mut package_end = package_start;
++                let mut consecutive_underscores = 0;
++                for c in file_name.chars() {
++                    match c {
++                        'a'..='z' | '0'..='9' | '.' | '-' => {
++                            consecutive_underscores = 0;
++                            if c != '.' || package_name.len() != package_start {
++                                package_name.push(c);
++                                if c != '.' && c != '-' { package_end = package_name.len(); }
++                            }
++                        }
++                        'A'..='Z' => {
++                            consecutive_underscores = 0;
++                            package_name.push(c.to_ascii_lowercase());
++                            package_end = package_name.len();
++                        }
++                        '_' => {
++                            consecutive_underscores += 1;
++                            if consecutive_underscores <= 2 && package_name.len() != package_start {
++                                package_name.push(c);
++                                package_end = package_name.len();
++                            }
++                        }
++                        _ => (),
++                    }
++                }
++                package_name.truncate(package_end);
++                if package_name.len() == package_start { package_name.push_str("empty"); }
++                package_name.push_str(&format!(":{}-{}{}",
++                    options.target.target(),
++                    path_hash(&paths.metadata.workspace_root, docker::PATH_HASH_SHORT)?,
++                    if matches!(self, Self::File { .. }) { "" } else { "-pre-build" }));
++                package_name
++            }
++        };
+         docker_build.args(["--tag", &image_name]);
+ 
+         for (key, arg) in build_args {
+diff --git a/src/docker/remote.rs b/src/docker/remote.rs
+index 82fb82c..321020c 100644
+--- a/src/docker/remote.rs
++++ b/src/docker/remote.rs
+@@ -362,9 +362,142 @@ impl ContainerDataVolume<'_, '_, '_> {
+     ) -> Result<()> {
+         let dirs = &self.toolchain_dirs;
+ 
+-        self.copy_rust_base(mount_prefix, msg_info)?;
+-        self.copy_rust_manifest(mount_prefix, msg_info)?;
+-        self.copy_rust_triple(dirs.host_target(), mount_prefix, false, msg_info)?;
++        {
++
++        // the rust toolchain is quite large, but most of it isn't needed
++        // we need the bin, libexec, and etc directories, and part of the lib directory.
++        let reldst = dirs.sysroot_mount_path_relative()?;
++        let rustlib = "lib/rustlib";
++        bail_container_exited!();
++        self.engine.subcommand("exec").arg(self.container)
++            .args(["sh", "-c", &format!("mkdir -p '{mount_prefix}/{reldst}/{rustlib}'")])
++            .run_and_get_status(msg_info, false)?;
++        for basename in ["bin", "libexec", "etc"] {
++            let file = dirs.get_sysroot().join(basename);
++            self.copy_files(&file, &reldst, mount_prefix, msg_info)?;
++        }
++
++        // the lib directories are rather large, so we want only a subset.
++        // now, we use a temp directory for everything else in the libdir
++        // we can pretty safely assume we don't have symlinks here.
++
++        // first, copy the shared libraries inside lib, all except rustlib.
++        // SAFETY: safe, single-threaded execution.
++        let tempdir = unsafe { temp::TempDir::new()? };
++        let temppath = tempdir.path();
++        file::create_dir_all(temppath.join(rustlib))?;
++        let mut had_symlinks = false;
++        for relative in ["lib", rustlib] {
++            let source = dirs.get_sysroot().join(relative);
++            let destination = temppath.join(relative);
++            let mut directory_symlinks = false;
++            for entry in fs::read_dir(&source)
++                .wrap_err_with(|| format!("when reading directory {source:?}"))?
++            {
++                let entry = entry?;
++                let name = entry.file_name();
++                if (relative == "lib" && name == "rustlib")
++                    || (relative == rustlib && name != "src" && name != "etc")
++                {
++                    continue;
++                }
++                let src_path = entry.path();
++                let dst_path = destination.join(name);
++                let kind = entry.file_type()?;
++                if kind.is_file() {
++                    fs::copy(&src_path, &dst_path)
++                        .wrap_err_with(|| format!("when copying file {src_path:?} -> {dst_path:?}"))?;
++                } else if kind.is_dir() {
++                    fs::create_dir(&dst_path).ok();
++                    directory_symlinks = copy_dir(&src_path, &dst_path, true, 1, |_, _| false)?;
++                } else if kind.is_symlink() {
++                    directory_symlinks = true;
++                    let link_dst = fs::read_link(src_path)?;
++                    #[cfg(target_family = "unix")]
++                    std::os::unix::fs::symlink(link_dst, dst_path)?;
++                    #[cfg(target_family = "windows")]
++                    {
++                        let absolute = if link_dst.is_absolute() {
++                            link_dst.clone()
++                        } else {
++                            source.join(&link_dst)
++                        };
++                        if absolute.is_dir() {
++                            std::os::windows::fs::symlink_dir(link_dst, dst_path)?;
++                        } else {
++                            std::os::windows::fs::symlink_file(link_dst, dst_path)?;
++                        }
++                    }
++                } else {
++                    directory_symlinks = true;
++                }
++            }
++            had_symlinks |= directory_symlinks;
++        }
++        self.copy_files(&temppath.join("lib"), &reldst, mount_prefix, msg_info)?;
++
++        warn_symlinks(had_symlinks, msg_info)?;
++        }
++        {
++
++        // copy over all the manifest files in rustlib
++        // these are small text files containing names/paths to toolchains
++        let reldst = dirs.sysroot_mount_path_relative()?;
++        let rustlib = "lib/rustlib";
++
++        // SAFETY: safe, single-threaded execution.
++        let tempdir = unsafe { temp::TempDir::new()? };
++        let temppath = tempdir.path();
++        file::create_dir_all(temppath.join(rustlib))?;
++        let source = dirs.get_sysroot().join(rustlib);
++        let mut had_symlinks = false;
++        for entry in fs::read_dir(&source)
++            .wrap_err_with(|| format!("when reading directory {source:?}"))?
++        {
++            let entry = entry?;
++            if entry.file_type().map_or(true, |kind| !kind.is_file()) {
++                continue;
++            }
++            let src_path = entry.path();
++            let dst_path = temppath.join(rustlib).join(entry.file_name());
++            let kind = entry.file_type()?;
++            if kind.is_file() {
++                fs::copy(&src_path, &dst_path)
++                    .wrap_err_with(|| format!("when copying file {src_path:?} -> {dst_path:?}"))?;
++            } else if kind.is_dir() {
++                fs::create_dir(&dst_path).ok();
++                had_symlinks = copy_dir(&src_path, &dst_path, true, 1, |_, _| true)?;
++            } else if kind.is_symlink() {
++                had_symlinks = true;
++                let link_dst = fs::read_link(src_path)?;
++                #[cfg(target_family = "unix")]
++                std::os::unix::fs::symlink(link_dst, dst_path)?;
++                #[cfg(target_family = "windows")]
++                {
++                    let absolute = if link_dst.is_absolute() {
++                        link_dst.clone()
++                    } else {
++                        source.join(&link_dst)
++                    };
++                    if absolute.is_dir() {
++                        std::os::windows::fs::symlink_dir(link_dst, dst_path)?;
++                    } else {
++                        std::os::windows::fs::symlink_file(link_dst, dst_path)?;
++                    }
++                }
++            } else {
++                had_symlinks = true;
++            }
++        }
++        self.copy_files(&temppath.join("lib"), &reldst, mount_prefix, msg_info)?;
++        warn_symlinks(had_symlinks, msg_info)?;
++        }
++        {
++            let reldst = dirs.sysroot_mount_path_relative()?;
++            let reldst_rustlib = format!("{reldst}/lib/rustlib");
++            let src_toolchain = dirs.get_sysroot().join("lib/rustlib").join(dirs.host_target().triple());
++            self.copy_files(&src_toolchain, &reldst_rustlib, mount_prefix, msg_info)?;
++        }
+         if let Some(target_triple) = target_triple {
+             if target_triple.triple() != dirs.host_target().triple() {
+                 self.copy_rust_triple(target_triple, mount_prefix, false, msg_info)?;
+@@ -405,8 +538,30 @@ impl ContainerDataVolume<'_, '_, '_> {
+                 if fingerprint.exists()
+                     && self.container_path_exists(reldst, mount_prefix, msg_info)?
+                 {
+-                    let previous = Fingerprint::read_file(&fingerprint)?;
+-                    let (to_copy, to_remove) = previous.difference(&current);
++                    let input = fs::OpenOptions::new().read(true).open(&fingerprint)?;
++                    let mut changed: std::collections::BTreeSet<&str> =
++                        current.map.keys().map(String::as_str).collect();
++                    let mut removed = std::collections::BTreeSet::new();
++                    for line in io::BufReader::new(input).lines() {
++                        let line = line?;
++                        let (timestamp, relpath) = line.split_once('\t')
++                            .ok_or_else(|| eyre::eyre!("unable to parse fingerprint line '{line}'"))?;
++                        let modified = time::SystemTime::UNIX_EPOCH
++                            + time::Duration::from_millis(timestamp.parse::<u64>()?);
++                        match current.map.get_key_value(relpath) {
++                            Some((path, now)) if *now == modified => {
++                                changed.remove(path.as_str());
++                            }
++                            Some((path, _)) => {
++                                changed.insert(path.as_str());
++                            }
++                            None => {
++                                removed.insert(relpath.to_owned());
++                            }
++                        }
++                    }
++                    let to_copy: Vec<&str> = changed.into_iter().collect();
++                    let to_remove: Vec<&str> = removed.iter().map(String::as_str).collect();
+                     if !to_copy.is_empty() {
+                         self.copy_file_list(src, reldst, mount_prefix, &to_copy, msg_info)?;
+                     }
+@@ -1081,8 +1236,24 @@ symlink_recurse \"${{prefix}}\"
+ 
+     bail_container_exited!();
+ 
+-    let (status, command_stdout) =
+-        docker.run_and_get_output_streamed(msg_info, |line| !is_cargo_json_message(line))?;
++    let mut artifact_files = Vec::new();
++    let (status, _command_stdout) = docker.run_and_get_output_streamed(msg_info, |line| {
++        if produces_artifacts && !skip_artifacts && !copy_full_target_dir {
++                if let Ok(artifact) = serde_json::from_str::<CargoCompilerArtifact>(line) {
++                    if artifact.reason == "compiler-artifact" && artifact.package_id.starts_with("path+file://") {
++                        for filename in artifact.filenames {
++                            if filename.contains("/deps/") && (filename.ends_with("rlib") || filename.ends_with("rmeta"))
++                                || filename.ends_with("build-script-build") { continue; }
++                            if !artifact_files.contains(&filename) { artifact_files.push(filename); }
++                        }
++                        if let Some(executable) = artifact.executable {
++                            if !artifact_files.contains(&executable) { artifact_files.push(executable); }
++                        }
++                    }
++                }
++        }
++        !is_cargo_json_message(line)
++    })?;
+     // Per-artifact copies should land inside the host target directory
+     // itself, e.g. <project>/target/<triple>/debug/<bin>.
+     let host_target_dir = package_dirs.target().to_owned();
+@@ -1102,7 +1273,6 @@ symlink_recurse \"${{prefix}}\"
+         && data_volume.container_path_exists(&mount_target_dir, mount_prefix, msg_info)?
+     {
+         if produces_artifacts && !copy_full_target_dir {
+-            let artifact_files = parse_artifact_filenames(&command_stdout);
+ 
+             if !artifact_files.is_empty() {
+                 copy_artifacts_from_container(
+diff --git a/src/docker/shared.rs b/src/docker/shared.rs
+index 70c81a7..15173b1 100644
+--- a/src/docker/shared.rs
++++ b/src/docker/shared.rs
+@@ -1259,7 +1259,18 @@ pub fn get_image_name(
+     target: &Target,
+     uses_zig: bool,
+ ) -> Result<String, GetImageError> {
+-    if let Some(image) = get_user_image(config, target, uses_zig)? {
++    let mut configured = if uses_zig { config.zig_image(target) } else { config.image(target) }
++        .map_err(GetImageError::Other)?;
++    if let Some(image) = &mut configured {
++        let target_name = if uses_zig { "zig" } else { target.triple() };
++        use super::ImageReference;
++        image.reference = match &image.reference {
++            ImageReference::Name(name) => ImageReference::Name(name.clone()),
++            ImageReference::Identifier(id) => ImageReference::Name(format!("{CROSS_IMAGE}/{target_name}{id}")),
++            ImageReference::Subtarget(sub) => ImageReference::Name(format!("{CROSS_IMAGE}/{target_name}:{DEFAULT_IMAGE_VERSION}{sub}")),
++        };
++    }
++    if let Some(image) = configured {
+         return Ok(image.reference.get().to_owned());
+     }
+ 
+@@ -1276,26 +1287,43 @@ pub fn get_image(
+     target: &Target,
+     uses_zig: bool,
+ ) -> Result<PossibleImage, GetImageError> {
+-    if let Some(image) = get_user_image(config, target, uses_zig)? {
++    let mut configured = if uses_zig { config.zig_image(target) } else { config.image(target) }
++        .map_err(GetImageError::Other)?;
++    if let Some(image) = &mut configured {
++        let target_name = if uses_zig { "zig" } else { target.triple() };
++        use super::ImageReference;
++        image.reference = match &image.reference {
++            ImageReference::Name(name) => ImageReference::Name(name.clone()),
++            ImageReference::Identifier(id) => ImageReference::Name(format!("{CROSS_IMAGE}/{target_name}{id}")),
++            ImageReference::Subtarget(sub) => ImageReference::Name(format!("{CROSS_IMAGE}/{target_name}:{DEFAULT_IMAGE_VERSION}{sub}")),
++        };
++    }
++    if let Some(image) = configured {
+         return Ok(image);
+     }
+ 
+     let target_name = get_target_name(target, uses_zig);
+-    let compatible = get_provided_images_for_target(target_name)?;
+-    let pick = if let [first] = compatible[..] {
+-        // If only one match, use that
+-        first
+-    } else if compatible
+-        .iter()
+-        .filter(|provided| provided.sub.is_none())
+-        .count()
+-        == 1
+-    {
+-        // if multiple matches, but only one is not a sub-target, pick that one
+-        compatible
+-            .iter()
+-            .find(|provided| provided.sub.is_none())
+-            .expect("should exists at least one non-sub image in list")
++    let repository = CROSS_IMAGE.to_lowercase();
++    let mut compatible = Vec::new();
++    let mut default_index = None;
++    let mut default_count = 0;
++    for provided in PROVIDED_IMAGES.iter().filter(|provided| provided.name == target_name) {
++        let image_name = if let Some(sub) = provided.sub {
++            format!("{repository}/{}:{DEFAULT_IMAGE_VERSION}-{sub}", provided.name)
++        } else {
++            default_index = Some(compatible.len());
++            default_count += 1;
++            format!("{repository}/{}:{DEFAULT_IMAGE_VERSION}", provided.name)
++        };
++        compatible.push((provided, image_name));
++    }
++    if compatible.is_empty() {
++        return Err(GetImageError::NoCompatibleImages(target_name.to_owned()));
++    }
++    let index = if compatible.len() == 1 {
++        0
++    } else if default_count == 1 {
++        default_index.expect("should exists at least one non-sub image in list")
+     } else {
+         // if there's multiple targets and no option can be chosen, bail
+         return Err(GetImageError::MultipleImages(
+@@ -1308,7 +1336,7 @@ pub fn get_image(
+                     "candidates: {}",
+                     compatible
+                         .iter()
+-                        .map(|provided| format!("\"{}\"", provided.default_image_name()))
++                        .map(|(_, image_name)| format!("\"{}\"", image_name))
+                         .collect::<Vec<_>>()
+                         .join(", ")
+                 )
+@@ -1316,7 +1344,7 @@ pub fn get_image(
+         ));
+     };
+ 
+-    let image_name = pick.default_image_name();
++    let (pick, image_name) = compatible.swap_remove(index);
+     if pick.platforms.is_empty() {
+         return Err(GetImageError::SpecifiedImageNoPlatform(image_name));
+     }
+@@ -1473,7 +1501,34 @@ impl MountFinder {
+ 
+     pub fn create(engine: &Engine, msg_info: &mut MessageInfo) -> Result<MountFinder> {
+         Ok(if engine.in_docker {
+-            MountFinder::new(docker_read_mount_paths(engine, msg_info)?)
++            let output = docker_inspect_self(engine, msg_info)?;
++            let info: serde_json::Value = serde_json::from_str(&output)
++                .wrap_err("failed to parse docker inspect output")?;
++            let mut mounts = Vec::new();
++            if let Some(entries) = info.pointer("/0/Mounts").and_then(|v| v.as_array()) {
++                for details in entries {
++                    let source = PathBuf::from(details["Source"].as_str().expect("docker mount should be defined"));
++                    let destination = PathBuf::from(details["Destination"].as_str().expect("docker mount should be defined"));
++                    let priority = destination.as_os_str().len();
++                    let index = mounts.partition_point(|mount: &MountDetail| {
++                        mount.destination.as_os_str().len() >= priority
++                    });
++                    mounts.insert(index, MountDetail { source, destination });
++                }
++            }
++            let driver_name = info.pointer("/0/GraphDriver/Name").and_then(|v| v.as_str())
++                .ok_or_else(|| eyre::eyre!("no driver name found"))?;
++            if !driver_name.to_lowercase().contains("overlay") {
++                eyre::bail!("want driver overlay2, got {driver_name}");
++            }
++            let path = info.pointer("/0/GraphDriver/Data/MergedDir").and_then(|v| v.as_str())
++                .ok_or_else(|| eyre::eyre!("No merge directory found"))?;
++            let destination = PathBuf::from("/");
++            let index = mounts.partition_point(|mount| {
++                mount.destination.as_os_str().len() >= destination.as_os_str().len()
++            });
++            mounts.insert(index, MountDetail { source: PathBuf::from(path), destination });
++            MountFinder { mounts }
+         } else {
+             MountFinder::default()
+         })

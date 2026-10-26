@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/pawanosman_chatgpt_dce"
+version = "1.0.0"
+description = "Refactor an injected dead_code_elimination smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "deeply_inlined_method", "typescript"]
+
+[metadata]
+repo_name = "ChatGPT"
+repo_url = "https://github.com/PawanOsman/ChatGPT"
+git_commit = "b4528f95ca5ab4cddf22bef3e19431fad00feb01"
+language = "TypeScript"
+smell_type = "dead_code_elimination"
+prompt_mode = "natural"
+apt_packages = []
+smell_checker_match_count = 4
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 4
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/PawanOsman/ChatGPT", CC_FORBIDDEN_REPO_URL = "ChatGPT", CC_FORBIDDEN_REPO_NAME = "ChatGPT" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

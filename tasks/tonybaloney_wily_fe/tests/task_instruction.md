@@ -1,0 +1,5 @@
+Responsibility boundaries in Wily's analysis and history-reporting workflow have become confused. Command consumers now implement policies belonging to metric registries, configuration/cache state and revision sources, while native index consumers reach into row and metric-builder details. This makes changes to those concepts require understanding unrelated command and storage paths.
+
+Metric registry resolution, configuration/cache state and revision-source interpretation are mixed into command consumers and native index readers. Restore ownership of those policies while leaving query selection and presentation in the commands that use them.
+
+Refactor the affected code so these policies and data invariants have coherent ownership and consumers retain their own query, presentation and orchestration responsibilities. Preserve existing public interfaces and extension behavior, lazy configuration/cache behavior, revision restoration and error ordering, native row/schema output and metric values. Keep the repository's original tests unchanged and passing; equivalent concise designs are welcome.

@@ -1,0 +1,1106 @@
+diff --git a/src/algs/auglag/auglag.c b/src/algs/auglag/auglag.c
+index 465e980..247bfcc 100644
+--- a/src/algs/auglag/auglag.c
++++ b/src/algs/auglag/auglag.c
+@@ -13,7 +13,7 @@ int auglag_verbose = 0;
+ /***************************************************************************/
+ 
+ typedef struct {
+-     nlopt_func f; void *f_data;
++     nlopt_callback_service service;
+      int m, mm; nlopt_constraint *fc;
+      int p, pp; nlopt_constraint *h;
+      double rho, *lambda, *mu;
+@@ -33,15 +33,18 @@ static double auglag(unsigned n, const double *x, double *grad, void *data)
+      int i, ii;
+      unsigned j, k;
+ 
+-     L = d->f(n, x, grad, d->f_data);
+-     ++ *(d->stop->nevals_p);
++     nlopt_callback_evaluate(&d->service, &L, n, x, grad);
+      if (nlopt_stop_forced(d->stop)) return L;
+ 
+      for (ii = i = 0; i < d->p; ++i) {
+-	  nlopt_eval_constraint(restmp, gradtmp, d->h + i, n, x);
++          nlopt_callback_service constraint = nlopt_constraint_service(d->h + i, NULL, NULL);
++          constraint.multipliers = lambda + ii;
++          constraint.penalty = rho;
++          constraint.force_stop = d->stop->force_stop;
++          nlopt_callback_evaluate(&constraint, restmp, n, x, gradtmp);
+ 	  if (nlopt_stop_forced(d->stop)) return L;
+-	  for (k = 0; k < d->h[i].m; ++k) {
+-	       double h = restmp[k] + lambda[ii++] / rho;
++	  for (k = 0; k < constraint.count; ++k, ++ii) {
++	       double h = restmp[k];
+ 	       L += 0.5 * rho * h*h;
+ 	       if (grad) for (j = 0; j < n; ++j) 
+ 			      grad[j] += (rho * h) * gradtmp[k*n + j];
+@@ -49,10 +52,14 @@ static double auglag(unsigned n, const double *x, double *grad, void *data)
+      }
+ 
+      for (ii = i = 0; i < d->m; ++i) {
+-	  nlopt_eval_constraint(restmp, gradtmp, d->fc + i, n, x);
++          nlopt_callback_service constraint = nlopt_constraint_service(d->fc + i, NULL, NULL);
++          constraint.multipliers = mu + ii;
++          constraint.penalty = rho;
++          constraint.force_stop = d->stop->force_stop;
++          nlopt_callback_evaluate(&constraint, restmp, n, x, gradtmp);
+ 	  if (nlopt_stop_forced(d->stop)) return L;
+-	  for (k = 0; k < d->fc[i].m; ++k) {
+-	       double fc = restmp[k] + mu[ii++] / rho;
++	  for (k = 0; k < constraint.count; ++k, ++ii) {
++	       double fc = restmp[k];
+ 	       if (fc > 0) {
+ 		    L += 0.5 * rho * fc*fc;
+ 		    if (grad) for (j = 0; j < n; ++j) 
+@@ -66,7 +73,7 @@ static double auglag(unsigned n, const double *x, double *grad, void *data)
+ 
+ /***************************************************************************/
+ 
+-nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
++nlopt_result auglag_minimize(int n, const nlopt_callback_service *service,
+ 			     int m, nlopt_constraint *fc,
+ 			     int p, nlopt_constraint *h,
+ 			     const double *lb, const double *ub, /* bounds */
+@@ -76,6 +83,8 @@ nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
+ 			     nlopt_opt sub_opt, int sub_has_fc)
+ {
+      auglag_data d;
++     nlopt_func f = service->scalar;
++     void *f_data = service->data;
+      nlopt_result ret = NLOPT_SUCCESS;
+      double ICM = HUGE_VAL, minf_penalty = HUGE_VAL, penalty;
+      double *xcur = NULL, fcur;
+@@ -88,7 +97,9 @@ nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
+      const double tau = 0.5, gam = 10;
+      const double lam_min = -1e20, lam_max = 1e20, mu_max = 1e20;
+ 
+-     d.f = f; d.f_data = f_data;
++     d.service = *service;
++     d.service.evaluations = stop->nevals_p;
++     d.service.count_before = 0;
+      d.m = m; d.fc = fc;
+      d.p = p; d.h = h;
+      d.stop = stop;
+diff --git a/src/algs/auglag/auglag.h b/src/algs/auglag/auglag.h
+index d2d006e..1350c24 100644
+--- a/src/algs/auglag/auglag.h
++++ b/src/algs/auglag/auglag.h
+@@ -33,7 +33,7 @@ extern "C"
+ 
+ extern int auglag_verbose;
+ 
+-nlopt_result auglag_minimize(int n, nlopt_func f, void *f_data,
++nlopt_result auglag_minimize(int n, const nlopt_callback_service *service,
+ 			     int m, nlopt_constraint *fc,
+ 			     int p, nlopt_constraint *h,
+ 			     const double *lb, const double *ub, /* bounds */
+diff --git a/src/algs/cobyla/cobyla.c b/src/algs/cobyla/cobyla.c
+index 118a724..1e89663 100644
+--- a/src/algs/cobyla/cobyla.c
++++ b/src/algs/cobyla/cobyla.c
+@@ -66,8 +66,7 @@
+ /* SGJ, 2008: NLopt-style interface function: */
+ 
+ typedef struct {
+-     nlopt_func f;
+-     void *f_data;
++     nlopt_callback_service service;
+      unsigned m_orig;
+      nlopt_constraint *fc;
+      unsigned p;
+@@ -82,7 +81,7 @@ static int func_wrap(int ni, int mi, double *x, double *f, double *con,
+ 		     func_wrap_state *s)
+ {
+      unsigned n = U(ni);
+-     unsigned i, j, k;
++     unsigned i, j;
+      double *xtmp = s->xtmp;
+      const double *lb = s->lb, *ub = s->ub;
+ 
+@@ -93,29 +92,29 @@ static int func_wrap(int ni, int mi, double *x, double *f, double *con,
+ 	that this leads to discontinuity in the first derivative, which
+         slows convergence if we don't enable the ENFORCE_BOUNDS feature
+ 	above. */
+-     for (j = 0; j < n; ++j) {
+-	  if (x[j] < lb[j]) xtmp[j] = lb[j];
+-	  else if (x[j] > ub[j]) xtmp[j] = ub[j];
+-	  else xtmp[j] = x[j];
+-     }
+-     nlopt_unscale(n, s->scale, xtmp, xtmp);
+-
+-     *f = s->f(n, xtmp, NULL, s->f_data);
++     s->service.input_dimension = n;
++     s->service.input_point = xtmp;
++     s->service.input_lb = lb;
++     s->service.input_ub = ub;
++     s->service.input_scale = s->scale;
++     nlopt_callback_evaluate(&s->service, f, n, x, NULL);
+      if (nlopt_stop_forced(s->stop)) return 1;
+      i = 0;
+      for (j = 0; j < s->m_orig; ++j) {
+-	  nlopt_eval_constraint(con + i, NULL, s->fc+j, n, xtmp);
++          nlopt_callback_service constraint = nlopt_constraint_service(s->fc + j, NULL, NULL);
++          constraint.negate = 1;
++          constraint.force_stop = s->stop->force_stop;
++          nlopt_callback_evaluate(&constraint, con + i, n, xtmp, NULL);
+ 	  if (nlopt_stop_forced(s->stop)) return 1;
+-	  for (k = 0; k < s->fc[j].m; ++k)
+-	       con[i + k] = -con[i + k];
+-	  i += s->fc[j].m;
++	  i += constraint.count;
+      }
+      for (j = 0; j < s->p; ++j) {
+-	  nlopt_eval_constraint(con + i, NULL, s->h+j, n, xtmp);
++          nlopt_callback_service constraint = nlopt_constraint_service(s->h + j, NULL, NULL);
++          constraint.opposite = con + i + constraint.count;
++          constraint.force_stop = s->stop->force_stop;
++          nlopt_callback_evaluate(&constraint, con + i, n, xtmp, NULL);
+ 	  if (nlopt_stop_forced(s->stop)) return 1;
+-	  for (k = 0; k < s->h[j].m; ++k)
+-	       con[(i + s->h[j].m) + k] = -con[i + k];
+-	  i += 2 * s->h[j].m;
++	  i += 2 * constraint.count;
+      }
+      for (j = 0; j < n; ++j) {
+ 	  if (!nlopt_isinf(lb[j]))
+@@ -177,7 +176,7 @@ typedef int cobyla_function(int n, int m, double *x, double *f, double *con,
+ extern nlopt_result cobyla(int n, int m, double *x, double *minf, double rhobeg, double rhoend, nlopt_stopping *stop, const double *lb, const double *ub,
+   int message, cobyla_function *calcfc, func_wrap_state *state);
+ 
+-nlopt_result cobyla_minimize(unsigned n, nlopt_func f, void *f_data,
++nlopt_result cobyla_minimize(unsigned n, const nlopt_callback_service *service,
+ 			     unsigned m, nlopt_constraint *fc,
+                              unsigned p, nlopt_constraint *h,
+ 			     const double *lb, const double *ub, /* bounds */
+@@ -191,7 +190,7 @@ nlopt_result cobyla_minimize(unsigned n, nlopt_func f, void *f_data,
+      nlopt_result ret;
+      double rhobeg, rhoend;
+ 
+-     s.f = f; s.f_data = f_data;
++     s.service = *service;
+      s.m_orig = m;
+      s.fc = fc; 
+      s.p = p;
+diff --git a/src/algs/cobyla/cobyla.h b/src/algs/cobyla/cobyla.h
+index fd71ee1..2dabe6a 100644
+--- a/src/algs/cobyla/cobyla.h
++++ b/src/algs/cobyla/cobyla.h
+@@ -46,7 +46,7 @@ extern "C"
+ #endif /* __cplusplus */
+ 
+ /* NLopt-style interface function */
+-nlopt_result cobyla_minimize(unsigned n, nlopt_func f, void *f_data,
++nlopt_result cobyla_minimize(unsigned n, const nlopt_callback_service *service,
+                              unsigned m, nlopt_constraint *fc,
+                              unsigned p, nlopt_constraint *h,
+                              const double *lb, const double *ub, /* bounds */
+diff --git a/src/algs/crs/crs.c b/src/algs/crs/crs.c
+index c74b4a8..e39326a 100644
+--- a/src/algs/crs/crs.c
++++ b/src/algs/crs/crs.c
+@@ -37,7 +37,7 @@ typedef struct {
+      int n; /* # dimensions */
+      const double *lb, *ub;
+      nlopt_stopping *stop; /* stopping criteria */
+-     nlopt_func f; void *f_data;
++     nlopt_callback_service service;
+ 
+      int N; /* # points in population */
+      double *ps; /* population array N x (n+1) of tuples [f(x), x] */
+@@ -130,8 +130,7 @@ static nlopt_result crs_trial(crs_data *d)
+      int i, n = d->n;
+      random_trial(d, d->p + 1, best);
+      do {
+-     	  d->p[0] = d->f(n, d->p + 1, NULL, d->f_data);
+-	  ++ *(d->stop->nevals_p);
++     	  nlopt_callback_evaluate(&d->service, d->p, n, d->p + 1, NULL);
+ 	  if (nlopt_stop_forced(d->stop)) return NLOPT_FORCED_STOP;
+ 	  if (d->p[0] < worst->k[0]) break;
+ 	  if (nlopt_stop_evals(d->stop)) return NLOPT_MAXEVAL_REACHED;
+@@ -185,7 +184,8 @@ static nlopt_result crs_init(crs_data *d, int n, const double *x,
+ 
+      d->n = n;
+      d->stop = stop;
+-     d->f = f; d->f_data = f_data;
++     d->service = nlopt_callback_bind(f, NULL, NULL, f_data, 1, NULL, NULL);
++     d->service.evaluations = stop->nevals_p;
+      d->ub = ub; d->lb = lb;
+      d->ps = (double *) malloc(sizeof(double) * (n + 1) * (d->N + 1));
+      if (!d->ps) return NLOPT_OUT_OF_MEMORY;
+@@ -202,8 +202,7 @@ static nlopt_result crs_init(crs_data *d, int n, const double *x,
+ 
+      /* generate initial points randomly, plus starting guess x */
+      memcpy(d->ps + 1, x, sizeof(double) * n);
+-     d->ps[0] = f(n, x, NULL, f_data);
+-     ++ *(stop->nevals_p);
++     nlopt_callback_evaluate(&d->service, d->ps, n, x, NULL);
+      if (!nlopt_rb_tree_insert(&d->t, d->ps)) return NLOPT_OUT_OF_MEMORY;
+      if (d->ps[0] < stop->minf_max) return NLOPT_MINF_MAX_REACHED;
+      if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+@@ -217,8 +216,7 @@ static nlopt_result crs_init(crs_data *d, int n, const double *x,
+ 	       for (j = 0; j < n; ++j) 
+ 		    k[1 + j] = nlopt_urand(lb[j], ub[j]);
+ 	  }
+-	  k[0] = f(n, k + 1, NULL, f_data);
+-	  ++ *(stop->nevals_p);
++	  nlopt_callback_evaluate(&d->service, k, n, k + 1, NULL);
+ 	  if (!nlopt_rb_tree_insert(&d->t, k)) return NLOPT_OUT_OF_MEMORY;
+ 	  if (k[0] < stop->minf_max) return NLOPT_MINF_MAX_REACHED;
+ 	  if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+@@ -228,7 +226,7 @@ static nlopt_result crs_init(crs_data *d, int n, const double *x,
+      return NLOPT_SUCCESS;;
+ }
+ 
+-nlopt_result crs_minimize(int n, nlopt_func f, void *f_data,
++nlopt_result crs_minimize(int n, const nlopt_callback_service *service,
+ 			  const double *lb, const double *ub, /* bounds */
+ 			  double *x, /* in: initial guess, out: minimizer */
+ 			  double *minf,
+@@ -238,9 +236,14 @@ nlopt_result crs_minimize(int n, nlopt_func f, void *f_data,
+ {
+      nlopt_result ret;
+      crs_data d;
++     nlopt_func f = service->scalar;
++     void *f_data = service->data;
+      rb_node *best;
+ 
+      ret = crs_init(&d, n, x, lb, ub, stop, f, f_data, population, lds);
++     d.service = *service;
++     d.service.evaluations = stop->nevals_p;
++     d.service.count_before = 0;
+      if (ret < 0) return ret;
+      
+      best = nlopt_rb_tree_min(&d.t);
+diff --git a/src/algs/crs/crs.h b/src/algs/crs/crs.h
+index f3e5b5a..a9713f4 100644
+--- a/src/algs/crs/crs.h
++++ b/src/algs/crs/crs.h
+@@ -31,7 +31,7 @@ extern "C"
+ {
+ #endif /* __cplusplus */
+ 
+-nlopt_result crs_minimize(int n, nlopt_func f, void *f_data,
++nlopt_result crs_minimize(int n, const nlopt_callback_service *service,
+ 			  const double *lb, const double *ub, /* bounds */
+ 			  double *x, /* in: initial guess, out: minimizer */
+ 			  double *minf,
+diff --git a/src/algs/mlsl/mlsl.c b/src/algs/mlsl/mlsl.c
+index 7d7a749..105ec57 100644
+--- a/src/algs/mlsl/mlsl.c
++++ b/src/algs/mlsl/mlsl.c
+@@ -85,7 +85,7 @@ typedef struct {
+      int n; /* # dimensions */
+      const double *lb, *ub;
+      nlopt_stopping *stop; /* stopping criteria */
+-     nlopt_func f; void *f_data;
++     nlopt_callback_service service;
+ 
+      rb_tree pts; /* tree of points (k == pt), sorted by f */
+      rb_tree lms; /* tree of local minimizers, sorted by function value
+@@ -251,8 +251,9 @@ static pt *alloc_pt(int n)
+ static double fcount(unsigned n, const double *x, double *grad, void *p_)
+ {
+      mlsl_data *p = (mlsl_data *) p_;
+-     ++ *(p->stop->nevals_p);
+-     return p->f(n, x, grad, p->f_data);
++     double value;
++     nlopt_callback_evaluate(&p->service, &value, n, x, grad);
++     return value;
+ }
+ 
+ static void get_minf(mlsl_data *d, double *minf, double *x)
+@@ -274,7 +275,7 @@ static void get_minf(mlsl_data *d, double *minf, double *x)
+ #define MLSL_SIGMA 2. /* MLSL sigma parameter, using value from the papers */
+ #define MLSL_GAMMA 0.3 /* MLSL gamma parameter (FIXME: what should it be?) */
+ 
+-nlopt_result mlsl_minimize(int n, nlopt_func f, void *f_data,
++nlopt_result mlsl_minimize(int n, const nlopt_callback_service *service,
+ 			   const double *lb, const double *ub, /* bounds */
+ 			   double *x, /* in: initial guess, out: minimizer */
+ 			   double *minf,
+@@ -285,6 +286,8 @@ nlopt_result mlsl_minimize(int n, nlopt_func f, void *f_data,
+ {
+      nlopt_result ret = NLOPT_SUCCESS;
+      mlsl_data d;
++     nlopt_func f = service->scalar;
++     void *f_data = service->data;
+      int i;
+      pt *p;
+ 
+@@ -300,7 +303,9 @@ nlopt_result mlsl_minimize(int n, nlopt_func f, void *f_data,
+      d.n = n;
+      d.lb = lb; d.ub = ub;
+      d.stop = stop;
+-     d.f = f; d.f_data = f_data;
++     d.service = *service;
++     d.service.evaluations = stop->nevals_p;
++     d.service.count_before = 1;
+      nlopt_rb_tree_init(&d.pts, pt_compare);
+      nlopt_rb_tree_init(&d.lms, lm_compare);
+      d.s = lds ? nlopt_sobol_create((unsigned) n) : NULL;
+diff --git a/src/algs/mlsl/mlsl.h b/src/algs/mlsl/mlsl.h
+index df79e18..08ed28b 100644
+--- a/src/algs/mlsl/mlsl.h
++++ b/src/algs/mlsl/mlsl.h
+@@ -31,7 +31,7 @@ extern "C"
+ {
+ #endif /* __cplusplus */
+ 
+-nlopt_result mlsl_minimize(int n, nlopt_func f, void *f_data,
++nlopt_result mlsl_minimize(int n, const nlopt_callback_service *service,
+ 			   const double *lb, const double *ub, /* bounds */
+ 			   double *x, /* in: initial guess, out: minimizer */
+ 			   double *minf,
+diff --git a/src/algs/mma/ccsa_quadratic.c b/src/algs/mma/ccsa_quadratic.c
+index c4940e0..dde76da 100644
+--- a/src/algs/mma/ccsa_quadratic.c
++++ b/src/algs/mma/ccsa_quadratic.c
+@@ -69,8 +69,8 @@ typedef struct {
+      const double *fcval, *rhoc; /* arrays of length m */
+      double *xcur; /* array of length n, output each time */
+      double gval, wval, *gcval; /* output each time (array length m) */
+-     nlopt_precond pre; void *pre_data;
+-     nlopt_precond *prec; void **prec_data; /* length = # constraints */
++     nlopt_callback_service objective;
++     nlopt_callback_service *constraints; /* length = # constraints */
+      double *scratch; /* length = 2*n */
+ } dual_data;
+ 
+@@ -153,7 +153,7 @@ static double dual_func(unsigned m, const double *y, double *grad, void *d_)
+ static double gfunc(unsigned n, double f, const double *dfdx,
+ 		    double rho, const double *sigma,
+ 		    const double *x0,
+-		    nlopt_precond pre, void *pre_data, double *scratch,
++		    const nlopt_callback_service *service, double *scratch,
+ 		    const double *x, double *grad)
+ {
+      double *dx = scratch, *Hdx = scratch + n;
+@@ -167,8 +167,8 @@ static double gfunc(unsigned n, double f, const double *dfdx,
+ 	  if (grad) grad[j] = dfdx[j] + rho * dx[j] * sigma2inv;
+      }
+ 
+-     if (pre) {
+-	  pre(n, x0, dx, Hdx, pre_data);
++     if (service && service->precondition) {
++	  nlopt_callback_precondition(service, n, x0, dx, Hdx);
+ 	  for (j = 0; j < n; ++j)
+ 	       val += 0.5 * dx[j] * Hdx[j];
+ 	  if (grad)
+@@ -185,7 +185,7 @@ static double g0(unsigned n, const double *x, double *grad, void *d_)
+      d->count++;
+      return gfunc(n, d->fval, d->dfdx, d->rho, d->sigma,
+ 		  d->x,
+-		  d->pre, d->pre_data, d->scratch,
++		  &d->objective, d->scratch,
+ 		  x, grad);
+ }
+ 
+@@ -199,8 +199,7 @@ static void gi(unsigned m, double *result,
+ 	  result[i] = gfunc(n, d->fcval[i], d->dfcdx + i*n, d->rhoc[i],
+ 			    d->sigma,
+ 			    d->x,
+-			    d->prec ? d->prec[i] : NULL,
+-			    d->prec_data ? d->prec_data[i] : NULL,
++			    d->constraints ? d->constraints + i : NULL,
+ 			    d->scratch,
+ 			    x, grad);
+ }
+@@ -209,11 +208,9 @@ static void gi(unsigned m, double *result,
+ /***********************************************************************/
+ 
+ nlopt_result ccsa_quadratic_minimize(
+-     unsigned n, nlopt_func f, void *f_data,
++     unsigned n, const nlopt_callback_service *service,
+      unsigned m, nlopt_constraint *fc,
+ 
+-     nlopt_precond pre,
+-
+      const double *lb, const double *ub, /* bounds */
+      double *x, /* in: initial guess, out: minimizer */
+      double *minf,
+@@ -271,30 +268,28 @@ nlopt_result ccsa_quadratic_minimize(
+      dd.rhoc = rhoc;
+      dd.xcur = xcur;
+      dd.gcval = gcval;
+-     dd.pre = pre; dd.pre_data = f_data;
+-     dd.prec = NULL; dd.prec_data = NULL;
++     dd.objective = *service;
++     dd.constraints = NULL;
+      dd.scratch = NULL;
+ 
+      if (m) {
+-	  dd.prec = (nlopt_precond *) malloc(sizeof(nlopt_precond) * m);
+-	  dd.prec_data = (void **) malloc(sizeof(void *) * m);
+-	  if (!dd.prec || !dd.prec_data) {
++	  dd.constraints = (nlopt_callback_service *) malloc(sizeof(nlopt_callback_service) * m);
++	  if (!dd.constraints) {
+ 	       ret = NLOPT_OUT_OF_MEMORY;
+ 	       goto done;
+ 	  }
+ 	  for (i = ifc = 0; ifc < mfc; ++ifc) {
+ 	       unsigned inext = i + fc[ifc].m;
+ 	       for (; i < inext; ++i) {
+-		    dd.prec[i] = fc[ifc].pre;
+-		    dd.prec_data[i] = fc[ifc].f_data;
++		    dd.constraints[i] = nlopt_constraint_service(fc + ifc, NULL, NULL);
+ 	       }
+ 	  }
+      }
+ 
+-     no_precond = pre == NULL;
+-     if (dd.prec)
++     no_precond = service->precondition == NULL;
++     if (dd.constraints)
+ 	  for (i = 0; i < m; ++i)
+-	       no_precond = no_precond && dd.prec[i] == NULL;
++	       no_precond = no_precond && dd.constraints[i].precondition == NULL;
+ 
+      if (!no_precond) {
+ 	  dd.scratch = (double*) malloc(sizeof(double) * (4*n));
+@@ -339,7 +334,8 @@ nlopt_result ccsa_quadratic_minimize(
+ 	  dual_ub[i] = HUGE_VAL;
+      }
+ 
+-     dd.fval = fcur = *minf = f(n, x, dfdx, f_data);
++     nlopt_callback_evaluate(service, &fcur, n, x, dfdx);
++     dd.fval = *minf = fcur;
+      ++ *(stop->nevals_p);
+      memcpy(xcur, x, sizeof(double) * n);
+      if (nlopt_stop_forced(stop)) { ret = NLOPT_FORCED_STOP; goto done; }
+@@ -448,7 +444,7 @@ nlopt_result ccsa_quadratic_minimize(
+ 				i, y[i], i, dd.gcval[i]);
+ 	       }
+ 
+-	       fcur = f(n, xcur, inner_gradients ? dfdx_cur : NULL, f_data);
++	       nlopt_callback_evaluate(service, &fcur, n, xcur, inner_gradients ? dfdx_cur : NULL);
+ 	       ++ *(stop->nevals_p);
+ 		   ++inner_nevals;
+ 	       if (nlopt_stop_forced(stop)) {
+@@ -488,7 +484,7 @@ nlopt_result ccsa_quadratic_minimize(
+ 			 printf("CCSA - using infeasible point?\n");
+ 
+ 			if (!inner_gradients) { /* evaluate again, this time with gradients */
+-				fcur = f(n, xcur, dfdx_cur, f_data);
++				nlopt_callback_evaluate(service, &fcur, n, xcur, dfdx_cur);
+ 				/* don't update *(stop->nevals_p) -- hope user caches xcur
+ 			       so that they don't actually recompute f */
+ 				if (nlopt_stop_forced(stop)) {
+@@ -606,8 +602,7 @@ nlopt_result ccsa_quadratic_minimize(
+      nlopt_destroy(pre_opt);
+      if (dd.scratch) free(dd.scratch);
+      if (m) {
+-	  free(dd.prec_data);
+-	  free(dd.prec);
++	  free(dd.constraints);
+      }
+      free(sigma);
+      return ret;
+diff --git a/src/algs/mma/mma.h b/src/algs/mma/mma.h
+index 72a813c..5f82016 100644
+--- a/src/algs/mma/mma.h
++++ b/src/algs/mma/mma.h
+@@ -45,11 +45,9 @@ nlopt_result mma_minimize(unsigned n, nlopt_func f, void *f_data,
+                  const double *sigma_init);
+ 
+ nlopt_result ccsa_quadratic_minimize(
+-     unsigned n, nlopt_func f, void *f_data,
++     unsigned n, const nlopt_callback_service *service,
+      unsigned m, nlopt_constraint *fc,
+ 
+-     nlopt_precond pre,
+-
+      const double *lb, const double *ub, /* bounds */
+      double *x, /* in: initial guess, out: minimizer */
+      double *minf,
+diff --git a/src/api/nlopt-internal.h b/src/api/nlopt-internal.h
+index e191f15..4725260 100644
+--- a/src/api/nlopt-internal.h
++++ b/src/api/nlopt-internal.h
+@@ -87,6 +87,12 @@ extern "C" {
+         char *errmsg;           /* description of most recent error */
+     };
+ 
++    static nlopt_callback_service nlopt_objective_service(const nlopt_opt opt)
++    {
++        return nlopt_callback_bind(opt->f, NULL, opt->pre, opt->f_data,
++                                   1, opt->munge_on_destroy, opt->munge_on_copy);
++    }
++
+ /*********************************************************************/
+     extern void nlopt_srand_time_default(void); /* init the rand. seed only if unset */
+ 
+diff --git a/src/api/optimize.c b/src/api/optimize.c
+index d973231..30f9b7c 100644
+--- a/src/api/optimize.c
++++ b/src/api/optimize.c
+@@ -217,13 +217,7 @@ static nlopt_opt pop_force_stop_child(nlopt_opt opt)
+    larger vectors where I am loathe to make copies unnecessarily.) */
+ 
+ typedef struct {
+-    nlopt_func f;
+-    nlopt_mfunc mf;
+-    void *f_data;
+-    unsigned n;                 /* true dimension */
+-    double *x;                  /* scratch vector of length n */
+-    double *grad;               /* optional scratch vector of length n */
+-    const double *lb, *ub;      /* bounds, of length n */
++    nlopt_callback_service service;
+ } elimdim_data;
+ 
+ static void *elimdim_makedata(nlopt_func f, nlopt_mfunc mf, void *f_data, unsigned n, double *x, const double *lb, const double *ub, double *grad)
+@@ -231,58 +225,29 @@ static void *elimdim_makedata(nlopt_func f, nlopt_mfunc mf, void *f_data, unsign
+     elimdim_data *d = (elimdim_data *) malloc(sizeof(elimdim_data));
+     if (!d)
+         return NULL;
+-    d->f = f;
+-    d->mf = mf;
+-    d->f_data = f_data;
+-    d->n = n;
+-    d->x = x;
+-    d->lb = lb;
+-    d->ub = ub;
+-    d->grad = grad;
++    d->service = nlopt_callback_bind(f, mf, NULL, f_data, 1, NULL, NULL);
++    d->service.input_dimension = n;
++    d->service.input_point = x;
++    d->service.input_gradient = grad;
++    d->service.input_lb = lb;
++    d->service.input_ub = ub;
+     return d;
+ }
+ 
+ static double elimdim_func(unsigned n0, const double *x0, double *grad, void *d_)
+ {
+     elimdim_data *d = (elimdim_data *) d_;
+-    double *x = d->x;
+-    const double *lb = d->lb, *ub = d->ub;
+     double val;
+-    unsigned n = d->n, i, j;
+-
+-    (void) n0;                  /* unused */
+-    for (i = j = 0; i < n; ++i) {
+-        if (lb[i] == ub[i])
+-            x[i] = lb[i];
+-        else                    /* assert: j < n0 */
+-            x[i] = x0[j++];
+-    }
+-    val = d->f(n, x, grad ? d->grad : NULL, d->f_data);
+-    if (grad) {
+-        /* assert: d->grad != NULL */
+-        for (i = j = 0; i < n; ++i)
+-            if (lb[i] != ub[i])
+-                grad[j++] = d->grad[i];
+-    }
++    nlopt_callback_evaluate(&d->service, &val, n0, x0, grad);
+     return val;
+ }
+ 
+ static void elimdim_mfunc(unsigned m, double *result, unsigned n0, const double *x0, double *grad, void *d_)
+ {
+     elimdim_data *d = (elimdim_data *) d_;
+-    double *x = d->x;
+-    const double *lb = d->lb, *ub = d->ub;
+-    unsigned n = d->n, i, j;
+-
+-    (void) n0;                  /* unused */
+     (void) grad;                /* assert: grad == NULL */
+-    for (i = j = 0; i < n; ++i) {
+-        if (lb[i] == ub[i])
+-            x[i] = lb[i];
+-        else                    /* assert: j < n0 */
+-            x[i] = x0[j++];
+-    }
+-    d->mf(m, result, n, x, NULL, d->f_data);
++    d->service.count = m;
++    nlopt_callback_evaluate(&d->service, result, n0, x0, NULL);
+ }
+ 
+ /* compute the eliminated dimension: number of dims with lb[i] != ub[i] */
+@@ -359,6 +324,7 @@ static nlopt_opt elimdim_create(nlopt_opt opt)
+     opt0->f_data = elimdim_makedata(opt->f, NULL, opt->f_data, opt->n, x, opt->lb, opt->ub, grad);
+     if (!opt0->f_data)
+         goto bad;
++    ((elimdim_data *) opt0->f_data)->service.owns_input = 1;
+ 
+     for (i = 0; i < opt->m; ++i) {
+         opt0->fc[i].f = opt0->fc[i].f ? elimdim_func : NULL;
+@@ -391,8 +357,7 @@ static void elimdim_destroy(nlopt_opt opt)
+     if (!opt)
+         return;
+ 
+-    free(((elimdim_data *) opt->f_data)->x);
+-    free(((elimdim_data *) opt->f_data)->grad);
++    nlopt_callback_release_input(&((elimdim_data *) opt->f_data)->service);
+     free(opt->f_data);
+     opt->f_data = NULL;
+ 
+@@ -449,9 +414,7 @@ static int elimdim_wrapcheck(nlopt_opt opt)
+  * or returning only the last evaluation which might not be optimum */
+ 
+ typedef struct {
+-    nlopt_func f;
+-    void *f_data;
+-    const double *lb, *ub;      /* bounds, of length n */
++    nlopt_callback_service service;
+     double minf;
+     double *bestx;
+ } memoize_data;
+@@ -460,24 +423,9 @@ typedef struct {
+ static double memoize_func(unsigned n, const double *x, double *grad, void *d_)
+ {
+     memoize_data *d = (memoize_data *) d_;
+-    const double *lb = d->lb, *ub = d->ub;
+     double val;
+-    unsigned i, feasible = 1;
+ 
+-    val = d->f(n, x, grad, d->f_data);
+-
+-    for (i = 0; i < n; ++ i)
+-    {
+-        if (lb && (x[i] < lb[i]))
+-            feasible = 0;
+-        if (ub && (x[i] > ub[i]))
+-            feasible = 0;
+-    }
+-    if (feasible && (val < d->minf))
+-    {
+-        d->minf = val;
+-        memcpy(d->bestx, x, n * sizeof(double));
+-    }
++    nlopt_callback_evaluate(&d->service, &val, n, x, grad);
+     return val;
+ }
+ 
+@@ -744,7 +692,10 @@ static nlopt_result nlopt_optimize_(nlopt_opt opt, double *x, double *minf)
+     case NLOPT_GN_CRS2_LM:
+         if (!finite_domain(n, lb, ub))
+             RETURN_ERR(NLOPT_INVALID_ARGS, opt, "finite domain required for global algorithm");
+-        return crs_minimize(ni, f, f_data, lb, ub, x, minf, &stop, POP(0), 0);
++        {
++            nlopt_callback_service service = nlopt_objective_service(opt);
++            return crs_minimize(ni, &service, lb, ub, x, minf, &stop, POP(0), 0);
++        }
+ 
+     case NLOPT_G_MLSL:
+     case NLOPT_G_MLSL_LDS:
+@@ -785,7 +736,10 @@ static nlopt_result nlopt_optimize_(nlopt_opt opt, double *x, double *minf)
+                 nlopt_set_xtol_rel(local_opt, 1e-7);
+             }
+             push_force_stop_child(opt, local_opt);
+-            ret = mlsl_minimize(ni, f, f_data, lb, ub, x, minf, &stop, local_opt, POP(0), algorithm >= NLOPT_GN_MLSL_LDS && algorithm != NLOPT_G_MLSL);
++            {
++                nlopt_callback_service service = nlopt_objective_service(opt);
++                ret = mlsl_minimize(ni, &service, lb, ub, x, minf, &stop, local_opt, POP(0), algorithm >= NLOPT_GN_MLSL_LDS && algorithm != NLOPT_G_MLSL);
++            }
+             pop_force_stop_child(opt);
+             if (!opt->local_opt)
+                 nlopt_destroy(local_opt);
+@@ -828,7 +782,10 @@ static nlopt_result nlopt_optimize_(nlopt_opt opt, double *x, double *minf)
+             if (algorithm == NLOPT_LD_MMA)
+                 ret = mma_minimize(n, f, f_data, opt->m, opt->fc, lb, ub, x, minf, &stop, dual_opt, inner_maxeval, (unsigned)verbosity, rho_init, inner_gradients, always_improve, sigma_min, opt->dx);
+             else
+-                ret = ccsa_quadratic_minimize(n, f, f_data, opt->m, opt->fc, opt->pre, lb, ub, x, minf, &stop, dual_opt, inner_maxeval, (unsigned)verbosity, rho_init, inner_gradients, always_improve, sigma_min, opt->dx);
++                {
++                    nlopt_callback_service service = nlopt_objective_service(opt);
++                    ret = ccsa_quadratic_minimize(n, &service, opt->m, opt->fc, lb, ub, x, minf, &stop, dual_opt, inner_maxeval, (unsigned)verbosity, rho_init, inner_gradients, always_improve, sigma_min, opt->dx);
++                }
+             nlopt_destroy(dual_opt);
+             return ret;
+         }
+@@ -842,7 +799,10 @@ static nlopt_result nlopt_optimize_(nlopt_opt opt, double *x, double *minf)
+                 if (nlopt_set_default_initial_step(opt, x) != NLOPT_SUCCESS)
+                     RETURN_ERR(NLOPT_OUT_OF_MEMORY, opt, "failed to allocate initial step");
+             }
+-            ret = cobyla_minimize(n, f, f_data, opt->m, opt->fc, opt->p, opt->h, lb, ub, x, minf, &stop, opt->dx);
++            {
++                nlopt_callback_service service = nlopt_objective_service(opt);
++                ret = cobyla_minimize(n, &service, opt->m, opt->fc, opt->p, opt->h, lb, ub, x, minf, &stop, opt->dx);
++            }
+             if (freedx) {
+                 free(opt->dx);
+                 opt->dx = NULL;
+@@ -929,9 +889,12 @@ static nlopt_result nlopt_optimize_(nlopt_opt opt, double *x, double *minf)
+             if (opt->dx)
+                 nlopt_set_initial_step(local_opt, opt->dx);
+             push_force_stop_child(opt, local_opt);
+-            ret = auglag_minimize(ni, f, f_data,
++            {
++            nlopt_callback_service service = nlopt_objective_service(opt);
++            ret = auglag_minimize(ni, &service,
+                                   opt->m, opt->fc,
+                                   opt->p, opt->h, lb, ub, x, minf, &stop, local_opt, algorithm == NLOPT_AUGLAG_EQ || algorithm == NLOPT_LN_AUGLAG_EQ || algorithm == NLOPT_LD_AUGLAG_EQ);
++            }
+             pop_force_stop_child(opt);
+             if (!opt->local_opt)
+                 nlopt_destroy(local_opt);
+@@ -961,31 +924,22 @@ static nlopt_result nlopt_optimize_(nlopt_opt opt, double *x, double *minf)
+ /*********************************************************************/
+ 
+ typedef struct {
+-    nlopt_func f;
+-    nlopt_precond pre;
+-    void *f_data;
++    nlopt_callback_service service;
+ } f_max_data;
+ 
+ /* wrapper for maximizing: just flip the sign of f and grad */
+ static double f_max(unsigned n, const double *x, double *grad, void *data)
+ {
+     f_max_data *d = (f_max_data *) data;
+-    double val = d->f(n, x, grad, d->f_data);
+-    if (grad) {
+-        unsigned i;
+-        for (i = 0; i < n; ++i)
+-            grad[i] = -grad[i];
+-    }
+-    return -val;
++    double val;
++    nlopt_callback_evaluate(&d->service, &val, n, x, grad);
++    return val;
+ }
+ 
+ static void pre_max(unsigned n, const double *x, const double *v, double *vpre, void *data)
+ {
+     f_max_data *d = (f_max_data *) data;
+-    unsigned i;
+-    d->pre(n, x, v, vpre, d->f_data);
+-    for (i = 0; i < n; ++i)
+-        vpre[i] = -vpre[i];
++    nlopt_callback_precondition(&d->service, n, x, v, vpre);
+ }
+ 
+ nlopt_result NLOPT_STDCALL nlopt_optimize(nlopt_opt opt, double *x, double *opt_f)
+@@ -1012,9 +966,8 @@ nlopt_result NLOPT_STDCALL nlopt_optimize(nlopt_opt opt, double *x, double *opt_
+     /* for maximizing, just minimize the f_max wrapper, which
+        flips the sign of everything */
+     if ((maximize = opt->maximize)) {
+-        fmd.f = f;
+-        fmd.f_data = f_data;
+-        fmd.pre = pre;
++        fmd.service = nlopt_callback_bind(f, NULL, pre, f_data, 1, NULL, NULL);
++        fmd.service.negate = 1;
+         opt->f = f_max;
+         opt->f_data = &fmd;
+         if (opt->pre)
+@@ -1025,12 +978,13 @@ nlopt_result NLOPT_STDCALL nlopt_optimize(nlopt_opt opt, double *x, double *opt_
+ 
+     if (memoize_wrapcheck(opt))
+     {
+-        mmzd.f = opt->f;
+-        mmzd.f_data = opt->f_data;
+-        mmzd.lb = opt->lb;
+-        mmzd.ub = opt->ub;
++        mmzd.service = nlopt_objective_service(opt);
++        mmzd.service.feasible_lb = opt->lb;
++        mmzd.service.feasible_ub = opt->ub;
+         mmzd.minf = DBL_MAX;
+         mmzd.bestx = (double *) malloc(opt->n * sizeof(double));
++        mmzd.service.best_value = &mmzd.minf;
++        mmzd.service.best_point = mmzd.bestx;
+         opt->f = memoize_func;
+         opt->f_data = &mmzd;
+     }
+@@ -1066,8 +1020,8 @@ nlopt_result NLOPT_STDCALL nlopt_optimize(nlopt_opt opt, double *x, double *opt_
+         memcpy(x, mmzd.bestx, opt->n * sizeof(double));
+         free(mmzd.bestx);
+         *opt_f = mmzd.minf;
+-        opt->f = mmzd.f;
+-        opt->f_data = mmzd.f_data;
++        opt->f = mmzd.service.scalar;
++        opt->f_data = mmzd.service.data;
+     }
+ 
+     if (maximize) { /* restore original signs */
+diff --git a/src/api/options.c b/src/api/options.c
+index f70d1b5..8903b97 100644
+--- a/src/api/options.c
++++ b/src/api/options.c
+@@ -38,12 +38,16 @@ void NLOPT_STDCALL nlopt_destroy(nlopt_opt opt)
+     if (opt) {
+         unsigned i;
+         if (opt->munge_on_destroy) {
+-            nlopt_munge munge = opt->munge_on_destroy;
+-            munge(opt->f_data);
+-            for (i = 0; i < opt->m; ++i)
+-                munge(opt->fc[i].f_data);
+-            for (i = 0; i < opt->p; ++i)
+-                munge(opt->h[i].f_data);
++            nlopt_callback_service service = nlopt_objective_service(opt);
++            nlopt_callback_destroy(&service);
++            for (i = 0; i < opt->m; ++i) {
++                service = nlopt_constraint_service(opt->fc + i, opt->munge_on_destroy, opt->munge_on_copy);
++                nlopt_callback_destroy(&service);
++            }
++            for (i = 0; i < opt->p; ++i) {
++                service = nlopt_constraint_service(opt->h + i, opt->munge_on_destroy, opt->munge_on_copy);
++                nlopt_callback_destroy(&service);
++            }
+         }
+         for (i = 0; i < opt->m; ++i)
+             free(opt->fc[i].tol);
+@@ -148,9 +152,11 @@ nlopt_opt NLOPT_STDCALL nlopt_copy(const nlopt_opt opt)
+         nopt->nparams = 0;
+ 
+         munge = nopt->munge_on_copy;
+-        if (munge && nopt->f_data)
+-            if (!(nopt->f_data = munge(nopt->f_data)))
++        if (munge && nopt->f_data) {
++            nlopt_callback_service service = nlopt_objective_service(nopt);
++            if (!(nopt->f_data = nlopt_callback_copy(&service)))
+                 goto oom;
++        }
+ 
+         if (opt->n > 0) {
+             nopt->lb = (double *) malloc(sizeof(double) * (opt->n));
+@@ -189,8 +195,11 @@ nlopt_opt NLOPT_STDCALL nlopt_copy(const nlopt_opt opt)
+                 nopt->fc[i].tol = NULL;
+             if (munge)
+                 for (i = 0; i < opt->m; ++i)
+-                    if (nopt->fc[i].f_data && !(nopt->fc[i].f_data = munge(nopt->fc[i].f_data)))
+-                        goto oom;
++                    if (nopt->fc[i].f_data) {
++                        nlopt_callback_service service = nlopt_constraint_service(nopt->fc + i, nopt->munge_on_destroy, munge);
++                        if (!(nopt->fc[i].f_data = nlopt_callback_copy(&service)))
++                            goto oom;
++                    }
+             for (i = 0; i < opt->m; ++i)
+                 if (opt->fc[i].tol) {
+                     nopt->fc[i].tol = (double *) malloc(sizeof(double)
+@@ -212,8 +221,11 @@ nlopt_opt NLOPT_STDCALL nlopt_copy(const nlopt_opt opt)
+                 nopt->h[i].tol = NULL;
+             if (munge)
+                 for (i = 0; i < opt->p; ++i)
+-                    if (nopt->h[i].f_data && !(nopt->h[i].f_data = munge(nopt->h[i].f_data)))
+-                        goto oom;
++                    if (nopt->h[i].f_data) {
++                        nlopt_callback_service service = nlopt_constraint_service(nopt->h + i, nopt->munge_on_destroy, munge);
++                        if (!(nopt->h[i].f_data = nlopt_callback_copy(&service)))
++                            goto oom;
++                    }
+             for (i = 0; i < opt->p; ++i)
+                 if (opt->h[i].tol) {
+                     nopt->h[i].tol = (double *) malloc(sizeof(double)
+@@ -489,9 +501,10 @@ nlopt_result NLOPT_STDCALL nlopt_remove_inequality_constraints(nlopt_opt opt)
+     if (!opt)
+         return NLOPT_INVALID_ARGS;
+     if (opt->munge_on_destroy) {
+-        nlopt_munge munge = opt->munge_on_destroy;
+-        for (i = 0; i < opt->m; ++i)
+-            munge(opt->fc[i].f_data);
++        for (i = 0; i < opt->m; ++i) {
++            nlopt_callback_service service = nlopt_constraint_service(opt->fc + i, opt->munge_on_destroy, opt->munge_on_copy);
++            nlopt_callback_destroy(&service);
++        }
+     }
+     for (i = 0; i < opt->m; ++i)
+         free(opt->fc[i].tol);
+@@ -600,9 +613,10 @@ nlopt_result NLOPT_STDCALL nlopt_remove_equality_constraints(nlopt_opt opt)
+     if (!opt)
+         return NLOPT_INVALID_ARGS;
+     if (opt->munge_on_destroy) {
+-        nlopt_munge munge = opt->munge_on_destroy;
+-        for (i = 0; i < opt->p; ++i)
+-            munge(opt->h[i].f_data);
++        for (i = 0; i < opt->p; ++i) {
++            nlopt_callback_service service = nlopt_constraint_service(opt->h + i, opt->munge_on_destroy, opt->munge_on_copy);
++            nlopt_callback_destroy(&service);
++        }
+     }
+     for (i = 0; i < opt->p; ++i)
+         free(opt->h[i].tol);
+diff --git a/src/util/callback-service.h b/src/util/callback-service.h
+new file mode 100644
+index 0000000..d647d33
+--- /dev/null
++++ b/src/util/callback-service.h
+@@ -0,0 +1,152 @@
++#ifndef NLOPT_CALLBACK_SERVICE_H
++#define NLOPT_CALLBACK_SERVICE_H
++
++typedef struct {
++    nlopt_func scalar;
++    nlopt_mfunc vector;
++    nlopt_precond precondition;
++    void *data;
++    unsigned count;
++    nlopt_munge destroy;
++    nlopt_munge copy;
++    unsigned input_dimension;
++    const double *input_lb, *input_ub;
++    double *input_point, *input_gradient;
++    int owns_input;
++    int negate;
++    const double *feasible_lb, *feasible_ub;
++    double *best_value, *best_point;
++    int *evaluations;
++    int count_before;
++    const double *multipliers;
++    double penalty;
++    double *opposite;
++    const int *force_stop;
++    const double *input_scale;
++} nlopt_callback_service;
++
++static nlopt_callback_service nlopt_callback_bind(nlopt_func scalar,
++    nlopt_mfunc vector, nlopt_precond precondition, void *data,
++    unsigned count, nlopt_munge destroy, nlopt_munge copy)
++{
++    nlopt_callback_service s;
++    s.scalar = scalar;
++    s.vector = vector;
++    s.precondition = precondition;
++    s.data = data;
++    s.count = count;
++    s.destroy = destroy;
++    s.copy = copy;
++    s.input_dimension = 0;
++    s.input_lb = s.input_ub = NULL;
++    s.input_point = s.input_gradient = NULL;
++    s.owns_input = s.negate = 0;
++    s.feasible_lb = s.feasible_ub = NULL;
++    s.best_value = s.best_point = NULL;
++    s.evaluations = NULL;
++    s.count_before = 0;
++    s.multipliers = NULL;
++    s.penalty = 1;
++    s.opposite = NULL;
++    s.force_stop = NULL;
++    s.input_scale = NULL;
++    return s;
++}
++
++static void nlopt_callback_evaluate(const nlopt_callback_service *s,
++    double *result, unsigned n, const double *x, double *gradient)
++{
++    unsigned i, j, callback_n = n;
++    const double *callback_x = x;
++    double *callback_gradient = gradient;
++    if (s->evaluations && s->count_before)
++        ++*s->evaluations;
++    if (s->input_point) {
++        callback_n = s->input_dimension;
++        for (i = j = 0; i < callback_n; ++i) {
++            if (s->input_scale) {
++                double v = x[i];
++                if (v < s->input_lb[i]) v = s->input_lb[i];
++                else if (v > s->input_ub[i]) v = s->input_ub[i];
++                s->input_point[i] = v * s->input_scale[i];
++            } else {
++                s->input_point[i] = s->input_lb[i] == s->input_ub[i]
++                    ? s->input_lb[i] : x[j++];
++            }
++        }
++        callback_x = s->input_point;
++        callback_gradient = gradient ? s->input_gradient : NULL;
++    }
++    if (s->scalar)
++        result[0] = s->scalar(callback_n, callback_x, callback_gradient, s->data);
++    else
++        s->vector(s->count, result, callback_n, callback_x, callback_gradient, s->data);
++    if (s->evaluations && !s->count_before)
++        ++*s->evaluations;
++    if (s->force_stop && *s->force_stop)
++        return;
++    if (gradient && s->input_point)
++        for (i = j = 0; i < callback_n; ++i)
++            if (s->input_lb[i] != s->input_ub[i])
++                gradient[j++] = s->input_gradient[i];
++    if (s->negate) {
++        for (i = 0; i < s->count; ++i)
++            result[i] = -result[i];
++        if (gradient)
++            for (i = 0; i < n * s->count; ++i)
++                gradient[i] = -gradient[i];
++    }
++    for (i = 0; i < s->count; ++i) {
++        if (s->opposite)
++            s->opposite[i] = -result[i];
++        if (s->multipliers)
++            result[i] += s->multipliers[i] / s->penalty;
++    }
++    if (s->best_value) {
++        int feasible = 1;
++        for (i = 0; i < n; ++i) {
++            if (s->feasible_lb && x[i] < s->feasible_lb[i])
++                feasible = 0;
++            if (s->feasible_ub && x[i] > s->feasible_ub[i])
++                feasible = 0;
++        }
++        if (feasible && result[0] < *s->best_value) {
++            *s->best_value = result[0];
++            for (i = 0; i < n; ++i)
++                s->best_point[i] = x[i];
++        }
++    }
++}
++
++static void nlopt_callback_precondition(const nlopt_callback_service *s,
++    unsigned n, const double *x, const double *v, double *vpre)
++{
++    unsigned i;
++    s->precondition(n, x, v, vpre, s->data);
++    if (s->negate)
++        for (i = 0; i < n; ++i)
++            vpre[i] = -vpre[i];
++}
++
++static void nlopt_callback_release_input(nlopt_callback_service *s)
++{
++    if (s->owns_input) {
++        free(s->input_point);
++        free(s->input_gradient);
++        s->input_point = s->input_gradient = NULL;
++        s->owns_input = 0;
++    }
++}
++
++static void *nlopt_callback_copy(const nlopt_callback_service *s)
++{
++    return s->copy && s->data ? s->copy(s->data) : s->data;
++}
++
++static void nlopt_callback_destroy(const nlopt_callback_service *s)
++{
++    if (s->destroy)
++        s->destroy(s->data);
++}
++
++#endif
+diff --git a/src/util/nlopt-util.h b/src/util/nlopt-util.h
+index 40963b7..c77f9f7 100644
+--- a/src/util/nlopt-util.h
++++ b/src/util/nlopt-util.h
+@@ -125,6 +125,15 @@ extern "C" {
+         double *tol;
+     } nlopt_constraint;
+ 
++#include "callback-service.h"
++
++    static nlopt_callback_service nlopt_constraint_service(const nlopt_constraint *c,
++        nlopt_munge destroy, nlopt_munge copy)
++    {
++        return nlopt_callback_bind(c->f, c->mf, c->pre, c->f_data,
++                                   c->m, destroy, copy);
++    }
++
+     extern unsigned nlopt_count_constraints(unsigned p, const nlopt_constraint * c);
+     extern unsigned nlopt_max_constraint_dim(unsigned p, const nlopt_constraint * c);
+     extern void nlopt_eval_constraint(double *result, double *grad, const nlopt_constraint * c, unsigned n, const double *x);
+diff --git a/src/util/stop.c b/src/util/stop.c
+index bf21c38..60c040d 100644
+--- a/src/util/stop.c
++++ b/src/util/stop.c
+@@ -177,10 +177,8 @@ unsigned nlopt_max_constraint_dim(unsigned p, const nlopt_constraint * c)
+ 
+ void nlopt_eval_constraint(double *result, double *grad, const nlopt_constraint * c, unsigned n, const double *x)
+ {
+-    if (c->f)
+-        result[0] = c->f(n, x, grad, c->f_data);
+-    else
+-        c->mf(c->m, result, n, x, grad, c->f_data);
++    nlopt_callback_service service = nlopt_constraint_service(c, NULL, NULL);
++    nlopt_callback_evaluate(&service, result, n, x, grad);
+ }
+ 
+ char *nlopt_vsprintf(char *p, const char *format, va_list ap)

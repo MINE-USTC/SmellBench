@@ -1,0 +1,471 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "srdja_collections_c_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "hash_construction",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R5 allocator/configuration integration.",
+      "baseline_defect": "cc_hashset_new_conf independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained hash construction policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Retain facade\u2192table\u2192bucket allocation order, power-of-two capacity, configured fields, rollback via supplied free, and publish output only after success. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_hashset.c",
+          "symbol": "cc_hashset_new_conf",
+          "detail": "cc_hashset_new_conf independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash_growth",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + retry split migration/publication.",
+      "baseline_defect": "cc_hashset_add,resize independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained hash growth policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Resize before duplicate/null detection. Max/failure status preserved; cached hashes and chain-prepend migration, publish buckets/capacity/threshold before old-bucket free. Do not rehash or undo successful growth after later entry failure. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_hashset.c",
+          "symbol": "cc_hashset_add,resize",
+          "detail": "cc_hashset_add,resize independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash_membership",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2/R4 matching and sentinel value.",
+      "baseline_defect": "cc_hashset_add,cc_hashset_contains,cc_hashset_remove independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained hash membership policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Add/remove null paths skip hash/comparator; contains retains its hash/comparator path instead of normalizing it. Ordinary matching and replacement retain comparator order, dummy value, no replacement size change. Remove publishes stored value after unlink/free/count, not element key. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_hashset.c",
+          "symbol": "cc_hashset_add,cc_hashset_contains,cc_hashset_remove",
+          "detail": "cc_hashset_add,cc_hashset_contains,cc_hashset_remove independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 teardown/traversal.",
+      "baseline_defect": "cc_hashset_destroy,cc_hashset_remove_all,cc_hashset_foreach independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained hash lifecycle policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Bucket-order traversal reads next after callback. Clear frees entries and decrements each before clearing bucket; destroy frees entries/buckets/table without invented per-entry accounting. Configured allocator and borrowed keys remain intact. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_hashset.c",
+          "symbol": "cc_hashset_destroy,cc_hashset_remove_all,cc_hashset_foreach",
+          "detail": "cc_hashset_destroy,cc_hashset_remove_all,cc_hashset_foreach independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hash_iterator",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R5 bucket cursor and key projection.",
+      "baseline_defect": "cc_hashset_iter_init,cc_hashset_iter_next,cc_hashset_iter_remove independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained hash iterator policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Initialize zeroed cursor and first nonempty bucket, advance chain/later buckets before optional key output; removal uses previous key and preserves cached next for supported iteration. No new element ownership or different null-key behavior. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_hashset.c",
+          "symbol": "cc_hashset_iter_init,cc_hashset_iter_next,cc_hashset_iter_remove",
+          "detail": "cc_hashset_iter_init,cc_hashset_iter_next,cc_hashset_iter_remove independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "queue_construction",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R5 deque allocation.",
+      "baseline_defect": "cc_queue_new_conf independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained queue construction policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Preserve wrapper/deque/buffer allocation and cleanup, raw configured buffer allocation size versus normalized logical capacity, zero state and delayed output publication; do not silently repair allocation geometry as rubric requirement. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_queue.c",
+          "symbol": "cc_queue_new_conf",
+          "detail": "cc_queue_new_conf independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "queue_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R5 callback reset/retirement.",
+      "baseline_defect": "cc_queue_destroy,cc_queue_destroy_cb,cc_queue_foreach independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained queue lifecycle policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Foreach uses live size/ring fields per callback. Callback destroy traverses then resets first/last/size before freeing storage; wrapper callback variant uses free while ordinary destroy uses configured free. No forced callback snapshot or allocator normalization. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_queue.c",
+          "symbol": "cc_queue_destroy,cc_queue_destroy_cb,cc_queue_foreach",
+          "detail": "cc_queue_destroy,cc_queue_destroy_cb,cc_queue_foreach independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "queue_ring_operations",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + retry split growth/publication.",
+      "baseline_defect": "cc_queue_enqueue,cc_queue_poll,cc_queue_peek independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained queue ring operations policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "FIFO peek/poll at masked last-1, poll state before optional output; enqueue full>=capacity, double calloc and logical copy, free old before buffer/first0/lastsize/capacity publication then decrement first/write/count. Growth errors map to alloc; failure leaves ring state unchanged. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_queue.c",
+          "symbol": "cc_queue_enqueue,cc_queue_poll,cc_queue_peek",
+          "detail": "cc_queue_enqueue,cc_queue_poll,cc_queue_peek independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "queue_iterator",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 single cursor mechanics.",
+      "baseline_defect": "cc_queue_iter_init,cc_queue_iter_next,cc_queue_iter_replace independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained queue iterator policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Keep masked first==last termination as existing API even full-ring case, live size guard, index increment before output and last_removed reset. Single replacement uses current index (not index-1); do not harmonize with zip or stack. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_queue.c",
+          "symbol": "cc_queue_iter_init,cc_queue_iter_next,cc_queue_iter_replace",
+          "detail": "cc_queue_iter_init,cc_queue_iter_next,cc_queue_iter_replace independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "queue_zip_iterator",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + retry supported aliasing.",
+      "baseline_defect": "cc_queue_zip_iter_next,cc_queue_zip_iter_replace independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained queue zip iterator policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Check both ring ends/sizes, read outputs sequentially before index increment. Replacement validates index-1 for both before any write; output1 then write1, recompute side2 physical address then output2/write2. Same deque aliases observe first replacement in second output; no simultaneous snapshot. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_queue.c",
+          "symbol": "cc_queue_zip_iter_next,cc_queue_zip_iter_replace",
+          "detail": "cc_queue_zip_iter_next,cc_queue_zip_iter_replace independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stack_construction",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R5 array allocator integration.",
+      "baseline_defect": "cc_stack_new_conf independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained stack construction policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Wrapper allocation precedes capacity validation; factor<=1 defaults2, reject zero/overflow before array allocation. Array/buffer failure frees via configured callbacks; output published last. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_stack.c",
+          "symbol": "cc_stack_new_conf",
+          "detail": "cc_stack_new_conf independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stack_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 foreign buffer callback/lifetime.",
+      "baseline_defect": "cc_stack_destroy,cc_stack_destroy_cb,cc_stack_map independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained stack lifecycle policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Forward callback traversal reads live size/buffer, storage freed afterward. Ordinary wrapper uses configured free, callback wrapper uses free. Preserve borrowed element ownership and callback order. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_stack.c",
+          "symbol": "cc_stack_destroy,cc_stack_destroy_cb,cc_stack_map",
+          "detail": "cc_stack_destroy,cc_stack_destroy_cb,cc_stack_map independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stack_growth_and_ends",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + retry partial growth state.",
+      "baseline_defect": "cc_stack_push,cc_stack_pop,cc_stack_peek independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained stack growth and ends policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Capacity changes before allocator and remains changed on failure; success copies live size, frees old then publishes and appends. Peek empty VALUE_NOT_FOUND versus pop out-of-range retained; pop optional output before decrement. Do not impose transactional growth rollback. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_stack.c",
+          "symbol": "cc_stack_push,cc_stack_pop,cc_stack_peek",
+          "detail": "cc_stack_push,cc_stack_pop,cc_stack_peek independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stack_filter_compaction",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R5 predicate and compaction.",
+      "baseline_defect": "cc_stack_filter_mut independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained stack filter compaction policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Reverse predicate traversal and run compaction preserve stable kept order and size changes between callbacks; empty out-of-range. Boundary may be integrated with array filtering without requiring particular memmove grouping. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_stack.c",
+          "symbol": "cc_stack_filter_mut",
+          "detail": "cc_stack_filter_mut independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stack_filter_traversal",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R5 direct foreign iteration retained beside output-stack workflow.",
+      "baseline_defect": "cc_stack_filter independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained stack filter traversal policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Forward live-size traversal obtains element before predicate and pushes selected pointers to new default stack. Preserve existing constructor/push result handling; no required deep-copy or predicate snapshot. Independent from mutable reverse compaction. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_stack.c",
+          "symbol": "cc_stack_filter",
+          "detail": "cc_stack_filter independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stack_iterator",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 cursor/index.",
+      "baseline_defect": "cc_stack_iter_next,cc_stack_iter_replace independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained stack iterator policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Next reads element before increment/reset, ends on live size. Replace index-1 with bounds and optional old output before write; initial underflow rejected. Public iterator representation may remain compatible. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_stack.c",
+          "symbol": "cc_stack_iter_next,cc_stack_iter_replace",
+          "detail": "cc_stack_iter_next,cc_stack_iter_replace independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stack_zip_iterator",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + retry first replacement visible to second.",
+      "baseline_defect": "cc_stack_zip_iter_next,cc_stack_zip_iter_replace independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained stack zip iterator policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Both bounds checked first; next outputs before increment. Replacement output1/write1 then output2/write2 at index-1, including same array and supported aliased outputs. Single coherent paired operation accepted. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_stack.c",
+          "symbol": "cc_stack_zip_iter_next,cc_stack_zip_iter_replace",
+          "detail": "cc_stack_zip_iter_next,cc_stack_zip_iter_replace independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tree_construction_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R5 sentinel allocation and cleanup.",
+      "baseline_defect": "cc_treeset_new_conf,cc_treeset_destroy,cc_treeset_remove_all independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained tree construction lifecycle policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Allocate wrapper/table/black sentinel with configured rollback, root sentinel and output last. Postorder borrowed-node retirement; clear resets size/root after traversal, destroy frees sentinel/table/wrapper afterward. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treeset.c",
+          "symbol": "cc_treeset_new_conf,cc_treeset_destroy,cc_treeset_remove_all",
+          "detail": "cc_treeset_new_conf,cc_treeset_destroy,cc_treeset_remove_all independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tree_insertion",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 red-black insertion.",
+      "baseline_defect": "cc_treeset_add,rebalance_after_insert independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained tree insertion policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Exact compare match updates dummy without changing key/count; allocate on miss, increment then root or parent link (additional comparator call), mirrored repair/rotations and root-black invariant. No mandatory separate rotation helper or new node representation. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treeset.c",
+          "symbol": "cc_treeset_add,rebalance_after_insert",
+          "detail": "cc_treeset_add,rebalance_after_insert independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tree_deletion",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + retry transplant/repair/lifetime split.",
+      "baseline_defect": "cc_treeset_remove,cc_treeset_iter_remove,remove_node independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained tree deletion policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Optional stored dummy output before structural mutation; use physically removed color and sentinel replacement parent for repair, free original selected node then decrement. Iterator clears current after accounting and preserves prepared next; ordinary missing projects VALUE_NOT_FOUND while iterator missing uses KEY_NOT_FOUND. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treeset.c",
+          "symbol": "cc_treeset_remove,cc_treeset_iter_remove,remove_node",
+          "detail": "cc_treeset_remove,cc_treeset_iter_remove,remove_node independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tree_ordered_lookup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 ordered membership/boundaries.",
+      "baseline_defect": "cc_treeset_get_first,cc_treeset_get_greater_than,cc_treeset_contains independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained tree ordered lookup policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Empty min/max returns value-not-found, exact membership required before successor/predecessor, subtree extrema or ancestor climb; boundary sentinel key/status preserved. Missing key is not nearest-neighbor search. Retain live comparator behavior. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treeset.c",
+          "symbol": "cc_treeset_get_first,cc_treeset_get_greater_than,cc_treeset_contains",
+          "detail": "cc_treeset_get_first,cc_treeset_get_greater_than,cc_treeset_contains independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "tree_iteration",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/R5 successor/key projection.",
+      "baseline_defect": "cc_treeset_foreach,cc_treeset_iter_init,cc_treeset_iter_next independently implements foreign storage policy in the facade.",
+      "criterion": "Remove independently maintained tree iteration policy from facade operations through a cohesive ownership boundary.",
+      "acceptance": "Foreach callback before successor; iterator computes successor before key output, uses sentinel end and current selection compatible with deletion. Wrapper key projection stays legitimate; no required array snapshot or eager traversal. Existing owner APIs may be reconnected directly; equivalent ownership redesign qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or moving the same foreign representation choreography to another facade helper without consolidating policy is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/cc_treeset.c",
+          "symbol": "cc_treeset_foreach,cc_treeset_iter_init,cc_treeset_iter_next",
+          "detail": "cc_treeset_foreach,cc_treeset_iter_init,cc_treeset_iter_next independently implements foreign storage policy in the facade.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {}
+}

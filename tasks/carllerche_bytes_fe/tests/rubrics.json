@@ -1,0 +1,383 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "carllerche_bytes_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "FE01",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The final Buf::copy_to_bytes replaces BytesMut's put boundary with a Vec traversal and handwritten BytesMut representation publication.",
+      "baseline_defect": "Buf::copy_to_bytes computes BytesMut original-capacity encoding and writes its private pointer, length, capacity and tag after copying chunks.",
+      "criterion": "Buf::copy_to_bytes delegates mutable storage representation and final publication to an owner of BytesMut's invariants while retaining its Buf traversal role.",
+      "acceptance": "The Buf method obtains the requested bytes without calculating representation tags or constructing BytesMut fields; equivalent storage-owner APIs qualify. Ownership may be implemented by existing methods, new operations, composition or shared storage support in any module. File location and the presence of unsafe code alone do not determine responsibility. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_impl.rs",
+          "symbol": "Buf::copy_to_bytes",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_impl.rs:Buf::copy_to_bytes"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "BytesMut",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes_mut.rs:BytesMut"
+        }
+      ]
+    },
+    {
+      "id": "FE02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The final Buf traversal commits Vec initialized length before advancing the source, then suppresses Vec drop and publishes a BytesMut.",
+      "baseline_defect": "The consumer method owns allocation, raw copying, initialized-length updates, unwind lifetime, and transfer into BytesMut in one loop.",
+      "criterion": "The transfer boundary owns initialized-length and allocation lifetime consistently across each chunk and final ownership handoff.",
+      "acceptance": "Source advancement, partial progress, and panic unwinding remain coherent without the Buf consumer manually managing Vec initialized length and ManuallyDrop publication. Ownership may be implemented by existing methods, new operations, composition or shared storage support in any module. File location and the presence of unsafe code alone do not determine responsibility. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/buf/buf_impl.rs",
+          "symbol": "Buf::copy_to_bytes",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/buf/buf_impl.rs:Buf::copy_to_bytes"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_impl.rs",
+          "symbol": "storage.set_len",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_impl.rs:storage.set_len"
+        }
+      ]
+    },
+    {
+      "id": "FE03",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Chain consumes two Buf sources with a Take-limited tail and writes into BytesMut storage directly.",
+      "baseline_defect": "The spanning Chain loop selects source a versus the Take-limited tail while directly copying to ret.ptr and updating ret.len.",
+      "criterion": "Chain delegates destination append initialization and committed-length publication to a mutable-storage operation while retaining source selection.",
+      "acceptance": "Both phases append through a coherent storage boundary with destination length committed before source.advance; nonspanning fast-path dispatch remains supported. Factory construction is scored separately. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/chain.rs",
+          "symbol": "Chain::copy_to_bytes",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/chain.rs:Chain::copy_to_bytes"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "BytesMut",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes_mut.rs:BytesMut"
+        }
+      ]
+    },
+    {
+      "id": "FE04",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Generic BufMut byte transfer replaces UninitSlice copying with raw access to its backing MaybeUninit slice.",
+      "baseline_defect": "BufMut::put directly reads d.0 and performs pointer copying, so a generic trait consumer knows UninitSlice's representation.",
+      "criterion": "Generic BufMut::put uses an initialization operation whose owner encapsulates UninitSlice's backing representation.",
+      "acceptance": "Copy initialization uses a coherent storage operation rather than reimplementing backing-slice length/type rules. Existing copy_from_slice or equivalent owner operation qualifies; no ban on raw pointers inside the owner. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "BufMut::put",
+          "detail": null,
+          "raw": "expanded.diff:src/buf/buf_mut.rs:BufMut::put"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/uninit_slice.rs",
+          "symbol": "UninitSlice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/uninit_slice.rs:UninitSlice"
+        }
+      ]
+    },
+    {
+      "id": "FE05",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Generic BufMut slice transfer independently substitutes raw backing access for UninitSlice's normal initialization interface.",
+      "baseline_defect": "BufMut::put_slice reaches dst.0 and copies from src with raw pointers in its source-consuming loop.",
+      "criterion": "BufMut::put_slice delegates each destination initialization to its storage abstraction while retaining slice progress and advance_mut coordination.",
+      "acceptance": "Copy initialization uses a coherent storage operation rather than reimplementing backing-slice length/type rules. Existing copy_from_slice or equivalent owner operation qualifies; no ban on raw pointers inside the owner. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "BufMut::put_slice",
+          "detail": null,
+          "raw": "expanded.diff:src/buf/buf_mut.rs:BufMut::put_slice"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "destination",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/buf_mut.rs:destination"
+        }
+      ]
+    },
+    {
+      "id": "FE06",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The current BufMut trait supports both copying a source slice and filling repeated bytes through UninitSlice chunks.",
+      "baseline_defect": "BufMut::put_bytes writes directly through dst.0, while put and put_slice use separate raw-copy formulas; a change in UninitSlice initialization representation reaches all three consumers.",
+      "criterion": "Remove BufMut::put_bytes dependence on UninitSlice backing-field layout for repeated-byte initialization.",
+      "acceptance": "Using the supported UninitSlice pointer interface with its initialization contract, or a higher-level fill operation, qualifies; pointer writes are not categorically forbidden. Count and chunk progress remain with the transfer operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/buf/buf_mut.rs",
+          "symbol": "BufMut::put_bytes",
+          "detail": null,
+          "raw": "expanded.diff:src/buf/buf_mut.rs:BufMut::put_bytes"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/uninit_slice.rs",
+          "symbol": "UninitSlice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/uninit_slice.rs:UninitSlice"
+        }
+      ]
+    },
+    {
+      "id": "FE07",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Limit::chunk_mut exposes only the quota-sized part of an inner UninitSlice.",
+      "baseline_defect": "Limit slices bytes.0 and transmutes a MaybeUninit slice back to UninitSlice, combining quota projection with knowledge of storage representation.",
+      "criterion": "Keep quota selection in Limit while delegating bounded UninitSlice view construction to the storage abstraction.",
+      "acceptance": "Use slicing or an equivalent view operation without Limit rebuilding the UninitSlice representation. The view may contain uninitialized memory; no pre-initialization requirement is introduced. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "src/buf/limit.rs",
+          "symbol": "Limit::chunk_mut",
+          "detail": null,
+          "raw": "expanded.diff:src/buf/limit.rs:Limit::chunk_mut"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "src/buf/uninit_slice.rs",
+          "symbol": "UninitSlice",
+          "detail": null,
+          "raw": "expanded.diff:src/buf/uninit_slice.rs:UninitSlice"
+        }
+      ]
+    },
+    {
+      "id": "FE08",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Limit::put_slice writes into its inner BufMut chunk while decrementing its own quota.",
+      "baseline_defect": "The adapter reaches inner UninitSlice backing bytes and performs raw copies; inner advancement and limit decrement are separately coded after each copy.",
+      "criterion": "Limit's slice-write path coordinates storage initialization, inner BufMut advancement, and quota consumption through their respective owners.",
+      "acceptance": "Limit preserves bounds and quota progress while initialization uses the storage abstraction; underlying advance occurs before quota reduction, including panic cases. Existing adapter defaults or equivalent flow qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/buf/limit.rs",
+          "symbol": "Limit::put_slice",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/buf/limit.rs:Limit::put_slice"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/uninit_slice.rs",
+          "symbol": "UninitSlice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/uninit_slice.rs:UninitSlice"
+        }
+      ]
+    },
+    {
+      "id": "FE09",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Limit::put_bytes independently fills inner chunks and consumes quota over repeated writes.",
+      "baseline_defect": "The adapter uses raw write_bytes against inner bytes.0 and manually coordinates inner advance and remaining limit.",
+      "criterion": "Limit's repeated-byte path coordinates the inner writer and quota through an initialization boundary that owns backing storage.",
+      "acceptance": "Limit fill uses the supported storage interface, including a documented pointer interface where appropriate, while preserving inner-advance-before-quota ordering. No mandatory helper per write mode. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "src/buf/limit.rs",
+          "symbol": "Limit::put_bytes",
+          "detail": null,
+          "raw": "interaction_delta.diff:src/buf/limit.rs:Limit::put_bytes"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/uninit_slice.rs",
+          "symbol": "UninitSlice",
+          "detail": null,
+          "raw": "environment/smell.diff:src/buf/uninit_slice.rs:UninitSlice"
+        }
+      ]
+    },
+    {
+      "id": "FE10",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Immutable Bytes conversion to mutable storage now computes mutable tag and offset fields in bytes.rs.",
+      "baseline_defect": "promotable_to_mut creates BytesMut directly and decides representable offset versus promotion using BytesMut internals.",
+      "criterion": "A mutable-storage owner handles tag/offset encoding and promotion when promotable immutable Bytes becomes mutable.",
+      "acceptance": "bytes.rs supplies allocation/view facts but does not compute BytesMut representation bits or construct its private fields. Ownership may be implemented by existing methods, new operations, composition or shared storage support in any module. File location and the presence of unsafe code alone do not determine responsibility. Preserve allocation base/full capacity and initialized prefix before overflow promotion, then publish the visible pointer/length/capacity. A visible view is not the owning allocation extent. Zero-copy transfer remains possible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes.rs",
+          "symbol": "promotable_to_mut",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes.rs:promotable_to_mut"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "MAX_VEC_POS",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes_mut.rs:MAX_VEC_POS"
+        }
+      ]
+    },
+    {
+      "id": "FE11",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The current mutable representation varies between an inline Vec position and shared storage when an offset exceeds MAX_VEC_POS.",
+      "baseline_defect": "shared_to_mut_impl duplicates the inline-tag and overflow-promotion decision in bytes.rs, coupled to mutable representation constants.",
+      "criterion": "The inline-offset versus shared-promotion variation is handled at a focused mutable-storage boundary for unique shared-to-mutable conversion.",
+      "acceptance": "Changing the supported offset encoding or promotion threshold does not require editing the branch's hand-built BytesMut fields in bytes.rs. Ownership may be implemented by existing methods, new operations, composition or shared storage support in any module. File location and the presence of unsafe code alone do not determine responsibility. Preserve allocation base/full capacity and initialized prefix before overflow promotion, then publish the visible pointer/length/capacity. A visible view is not the owning allocation extent. Zero-copy transfer remains possible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes.rs",
+          "symbol": "shared_to_mut_impl",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes.rs:shared_to_mut_impl"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "VEC_POS_OFFSET",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes_mut.rs:VEC_POS_OFFSET"
+        }
+      ]
+    },
+    {
+      "id": "FE12",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The shared-copy fallback creates a new Vec, releases shared metadata, and returns a mutable buffer.",
+      "baseline_defect": "shared_to_mut_impl manually suppresses Vec drop, builds BytesMut pointer/length/capacity/tag, and interleaves metadata release with ownership handoff.",
+      "criterion": "The immutable-to-mutable fallback coordinates Shared release with a storage-owner transfer of the copied Vec allocation.",
+      "acceptance": "bytes.rs releases its old shared ownership and passes the new allocation to a boundary that owns BytesMut representation without manually publishing its fields. Ownership may be implemented by existing methods, new operations, composition or shared storage support in any module. File location and the presence of unsafe code alone do not determine responsibility. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A forwarding wrapper or relocated block that still leaves the consumer interpreting foreign representation rules does not qualify. A helper in the same file can qualify if it actually establishes a storage-owned invariant boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes.rs",
+          "symbol": "shared_to_mut_impl",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes.rs:shared_to_mut_impl"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "BytesMut",
+          "detail": null,
+          "raw": "environment/smell.diff:src/bytes_mut.rs:BytesMut"
+        }
+      ]
+    },
+    {
+      "id": "FE03_FACTORY",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage two adds mutable allocation tag construction in Chain.",
+      "baseline_defect": "Chain::copy_to_bytes computes original-capacity representation and constructs BytesMut fields from a ManuallyDrop Vec before traversal.",
+      "criterion": "Give Chain destination construction to an owner of mutable allocation adoption and representation.",
+      "acceptance": "Chain obtains a destination without interpreting the capacity tag or publishing raw mutable fields; existing factory or equivalent ownership transfer qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only extracting final append while leaving Chain responsible for the raw allocation tag."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/buf/chain.rs",
+          "symbol": "Chain::copy_to_bytes",
+          "detail": "Chain::copy_to_bytes computes original-capacity representation and constructs BytesMut fields from a ManuallyDrop Vec before traversal.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/bytes_mut.rs",
+          "symbol": "BytesMut",
+          "detail": "Chain::copy_to_bytes computes original-capacity representation and constructs BytesMut fields from a ManuallyDrop Vec before traversal.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "carllerche_bytes_fe",
+    "rubric_status": "ready",
+    "scoring": "Equal weight per item; score only removal of the stated injected structural defect.",
+    "excluded_from_scoring": [
+      "Existing public behavior and test passage",
+      "Restoring a panic or compile failure alone",
+      "The empty post.diff stage",
+      "Any historical depth intention absent from the final patch"
+    ]
+  }
+}

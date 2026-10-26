@@ -1,0 +1,670 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "cloudflare_next_on_pages_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "metadata_config",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Metadata deepening incorporates getVercelConfig into the header branch.",
+      "baseline_defect": "The header branch owns file read, JSON recovery and version validation directly.",
+      "criterion": "Recover focused ownership of metadata config loading and version validation.",
+      "acceptance": "Preserve read/parse failure and unsupported-version errors inside the header async branch; the concurrently started routes branch is not suppressed by moving validation before both branches. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildMetadataFiles.ts",
+          "symbol": "buildMetadataFiles",
+          "detail": "The header branch owns file read, JSON recovery and version validation directly.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metadata_hit_phase",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage one getPhaseRoutes and stage two bounded selection are absorbed into metadata production.",
+      "baseline_defect": "The output writer computes hit start/end markers and selects headers while managing file effects.",
+      "criterion": "Separate hit-phase route selection from metadata file effects.",
+      "acceptance": "Select the first matching static route only within hit bounds; absent phase or absent matching headers yields no header append. A whole phase selector or direct bounded-selection operation is valid. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildMetadataFiles.ts",
+          "symbol": "buildMetadataFiles",
+          "detail": "The output writer computes hit start/end markers and selects headers while managing file effects.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metadata_static_root",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "getNextStaticDirPath was inlined twice, feeding independent header and route outputs from static assets.",
+      "baseline_defect": "Both async outputs reproduce the same nested _next/static regex and fallback derivation.",
+      "criterion": "Give static-root derivation a coherent policy shared by both metadata consumers.",
+      "acceptance": "Honor the first matching supplied asset and default /_next/static. A shared function or once-derived value may be used without altering async error behavior. No new asset inventory is required. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildMetadataFiles.ts",
+          "symbol": "buildMetadataFiles",
+          "detail": "Both async outputs reproduce the same nested _next/static regex and fallback derivation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metadata_headers_write",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Header-generation helper is absorbed into the metadata orchestrator.",
+      "baseline_defect": "Header serialization, hardlink break and append run as implementation details inside the orchestration branch.",
+      "criterion": "Recover a focused header output operation that owns serialization and safe append.",
+      "acceptance": "Keep unlink/read/rewrite before append when nlink exceeds one, ignore only ENOENT in the existing pre-append check, and preserve other errors and generated content. It may consume already selected header data. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildMetadataFiles.ts",
+          "symbol": "buildMetadataFiles",
+          "detail": "Header serialization, hardlink break and append run as implementation details inside the orchestration branch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metadata_routes_write",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "buildRoutes is replaced by the second anonymous metadata branch.",
+      "baseline_defect": "Existing route-file validation, include/exclude defaults, deduplication and output errors are embedded in aggregate orchestration.",
+      "criterion": "Recover focused ownership of _routes.json production.",
+      "acceptance": "Keep version-1 handling, default include, static exclusion union, description and EEXIST-only suppression. Independent async execution with the header producer remains; the two outputs need not be different classes. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildMetadataFiles.ts",
+          "symbol": "buildMetadataFiles",
+          "detail": "Existing route-file validation, include/exclude defaults, deduplication and output errors are embedded in aggregate orchestration.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "build_project_config",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round three inlines generateProjectJsonFileIfNeeded.",
+      "baseline_defect": "Build orchestration constructs and writes project.json inline.",
+      "criterion": "Give missing-project configuration preparation a focused operation.",
+      "acceptance": "Check existing file first and preserve mkdir then placeholder serialization; no change to existing project configuration. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildVercelOutput.ts",
+          "symbol": "buildVercelOutput",
+          "detail": "Build orchestration constructs and writes project.json inline.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "build_bun_config",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round three inlines createTempVercelConfig into Bun preparation.",
+      "baseline_defect": "Bun config merge, temporary file publication and CLI argument assembly are embedded among generic build operations.",
+      "criterion": "Localize the supported Bun temporary-config policy and its build handoff.",
+      "acceptance": "Keep the version condition, user-value precedence over supplied defaults, temp path/args and success-only cleanup. No finally cleanup on failed install/build is required or allowed as a behavior change. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildVercelOutput.ts",
+          "symbol": "buildVercelOutput",
+          "detail": "Bun config merge, temporary file publication and CLI argument assembly are embedded among generic build operations.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "build_yarn_install",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "runVercelBuild inlining exposes the missing Yarn Classic CLI installation flow.",
+      "baseline_defect": "The generic build workflow owns Yarn package probing, install command and completion policy directly.",
+      "criterion": "Localize the Yarn Classic missing-Vercel installation responsibility.",
+      "acceptance": "Install only when required, await completion before build, and preserve messages and rejection behavior. Shared process execution may serve both install and build. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildVercelOutput.ts",
+          "symbol": "buildVercelOutput",
+          "detail": "The generic build workflow owns Yarn package probing, install command and completion policy directly.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "build_command",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "getVercelBuildChildProcess was retired after inlining.",
+      "baseline_defect": "Command resolution, missing-command error and spawn sit directly in higher-level build orchestration.",
+      "criterion": "Give Vercel build command construction and process creation a focused boundary.",
+      "acceptance": "Preserve package-manager exec structure, build/additional arguments, download preference and missing-command error. A unified process runner can satisfy this together with other lifecycle items. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildVercelOutput.ts",
+          "symbol": "buildVercelOutput",
+          "detail": "Command resolution, missing-command error and spawn sit directly in higher-level build orchestration.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "build_process_logging",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "logVercelProcessOutput was duplicated into install and build paths.",
+      "baseline_defect": "Both sites register the same stdout/stderr forwarding inline.",
+      "criterion": "Own child output forwarding coherently across both supported process paths.",
+      "acceptance": "Both streams remain ordinary cliLog with fromVercelCli and existing formatting; stderr is not reclassified as failure. No separate wrapper is mandatory if a shared runner owns the policy. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildVercelOutput.ts",
+          "symbol": "buildVercelOutput",
+          "detail": "Both sites register the same stdout/stderr forwarding inline.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "build_close_wait",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage two copies waitForProcessToClose listeners into two callers; the author explicitly permits short restoration.",
+      "baseline_defect": "Install and build each embed close-event Promise resolution/rejection.",
+      "criterion": "Recover reusable ownership of process close completion.",
+      "acceptance": "Zero close code resolves; other values reject as before. Completion remains awaited at both call sites and success-only cleanup ordering remains. Reusing waitForProcessToClose alone is sufficient for this item. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/buildVercelOutput.ts",
+          "symbol": "buildVercelOutput",
+          "detail": "Install and build each embed close-event Promise resolution/rejection.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "compiler_ancestor_path",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Standalone compiler-path region is explicitly shallow and supports short extraction.",
+      "baseline_defect": "Ancestor-depth sentinel/catch calculation is embedded before compiler setup despite an existing path helper.",
+      "criterion": "Move ancestor-relative computation behind a coherent path operation used by compilation.",
+      "acceptance": "Keep default relativeTo, current nesting interpretation and failure before BUILD_ID/mkdir/build. A same-file helper is valid; no forced external module or algorithm replacement. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/build.ts",
+          "symbol": "buildFile",
+          "detail": "Ancestor-depth sentinel/catch calculation is embedded before compiler setup despite an existing path helper.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "config_directory_inputs",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Configuration deepening copies directory enumeration and symlink recovery into recursion.",
+      "baseline_defect": "The classifier contains readdir, per-entry normalization and symlink stat fallback.",
+      "criterion": "Recover focused filesystem enumeration feeding function classification.",
+      "acceptance": "A directory read failure yields empty entries; a failed symlink stat yields a non-directory entry. Preserve entry order, files-versus-directories and recursive classification. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts",
+          "symbol": "collectFunctionConfigsRecursively",
+          "detail": "The classifier contains readdir, per-entry normalization and symlink stat fallback.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "config_json_inputs",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Configuration deepening also copies readJsonFile recovery.",
+      "baseline_defect": "Each function classifier iteration contains read/parse try/catch and null fallback.",
+      "criterion": "Recover a clear config-loading operation separate from classification policy.",
+      "acceptance": "Unreadable or malformed JSON remains a missing config rather than a newly thrown error. Existing ISR/API/edge classification conditions retain their meanings; no type-result object required. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts",
+          "symbol": "collectFunctionConfigsRecursively",
+          "detail": "Each function classifier iteration contains read/parse try/catch and null fallback.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "config_route_identity",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Route formatting and overrides are inlined during edge registration and used by downstream reconciliation/output.",
+      "baseline_defect": "Collector duplicates strip/normalize/root/group handling then a second formatting pass and HTML/index/RSC override policy.",
+      "criterion": "Recover coherent route formatting and override generation at the collection-to-routing handoff.",
+      "acceptance": "Preserve the second formatting effect for unusual repeated suffixes, override dedup/order and exclusion of the main route. Reusing existing formatRoutePath/getRouteOverrides is valid; no forced cached route model. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts",
+          "symbol": "collectFunctionConfigsRecursively",
+          "detail": "Collector duplicates strip/normalize/root/group handling then a second formatting pass and HTML/index/RSC override policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "edge_entrypoint",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "checkEntrypoint is absorbed and its status union removed in stage two.",
+      "baseline_defect": "Middleware substitution, file validation, ignored/invalid mutations and successful index registration share the outer loop.",
+      "criterion": "Recover focused entrypoint validation/classification feeding valid-route indexing.",
+      "acceptance": "Do not mutate the configured entrypoint before validation; preserve missing middleware warning/ignore versus other invalid cases and reason spread precedence. A callback or effectful classification operation is valid; a result union is optional. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/edgeFunctions.ts",
+          "symbol": "processEdgeFunctions",
+          "detail": "Middleware substitution, file validation, ignored/invalid mutations and successful index registration share the outer loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "edge_rsc_replacement",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "replaceRscWithNonRsc is copied into both RSC and invalid-map passes.",
+      "baseline_defect": "Two copies manage non-RSC lookup, override append and retirement across three maps.",
+      "criterion": "Own RSC replacement coherently for both callers.",
+      "acceptance": "Preserve lookup through the completed route index, fallback between edge/invalid records, override creation, all deletions and ignored reason precedence. One shared operation or unified pass qualifies. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/edgeFunctions.ts",
+          "symbol": "processEdgeFunctions",
+          "detail": "Two copies manage non-RSC lookup, override append and retirement across three maps.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "edge_invalid_reconciliation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "tryToFixInvalidFunctions is absorbed into the completed edge workflow.",
+      "baseline_defect": "The outer function owns the invalid-map scan, direct/index matching and RSC fallback policy after index construction.",
+      "criterion": "Recover a focused invalid-route reconciliation stage consuming the completed index.",
+      "acceptance": "Keep direct/index match removal and RSC fallback distinct from initial entrypoint validation, with index construction complete before reconciliation. No prescribed number of passes if equivalent order/effects are maintained. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/edgeFunctions.ts",
+          "symbol": "processEdgeFunctions",
+          "detail": "The outer function owns the invalid-map scan, direct/index matching and RSC fallback policy after index construction.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "prerender_validation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Config/path helpers and validation result are absorbed into the outer publication loop.",
+      "baseline_defect": "Protocol/path checks and stat failure recovery directly drive map deletion/continue amid success locals.",
+      "criterion": "Recover cohesive prerender config and source validation separated from successful publication.",
+      "acceptance": "Invalid config or missing source moves the entry to invalidFunctions, while copy errors still propagate. Returning a nullable object is only one option; equivalent staged or effectful operations are valid. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts",
+          "symbol": "processPrerenderFunctions",
+          "detail": "Protocol/path checks and stat failure recovery directly drive map deletion/continue amid success locals.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "prerender_destination",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "getRouteDest is retired and its suffix/path conversion lives in the outer loop.",
+      "baseline_defect": "Fallback-name stripping, normalized destination route and rooted public path are assembled inline among validation and copy effects.",
+      "criterion": "Give prerender destination derivation a focused responsibility.",
+      "acceptance": "Keep supported .prerender-fallback suffix rules and distinguish destination file from leading-slash route. It may be combined with a coherent validated-asset operation, without mandatory helper names. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts",
+          "symbol": "processPrerenderFunctions",
+          "detail": "Fallback-name stripping, normalized destination route and rooted public path are assembled inline among validation and copy effects.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "prerender_copy",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "copyAssetFile and copyFileWithDir implementations are nested in the producer.",
+      "baseline_defect": "Hash comparison, overwrite warning and repeated mkdir/copy branches are embedded before route publication.",
+      "criterion": "Recover coherent hash-aware asset copying used by prerender publication.",
+      "acceptance": "Preserve skip on matching hash, absent/different destination behavior, warnings and propagated copy errors. Publish route/source/RSC state only after the operation succeeds. Existing public copyAssetFile is a valid repair. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts",
+          "symbol": "processPrerenderFunctions",
+          "detail": "Hash comparison, overwrite warning and repeated mkdir/copy branches are embedded before route publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dedupe_import_assembly",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Grouped imports and removed export-map handoff feed Wasm/JS chunk source generation.",
+      "baseline_defect": "Identifier processing directly groups imports, chooses Wasm versus JS, assigns getter names and emits extraction declarations.",
+      "criterion": "Own import/chunk assembly behind a focused boundary for the supported import forms.",
+      "acceptance": "Preserve grouping order, deduplicated JS keys, Wasm default imports without proxy transformation and getter/extraction correspondence. Return strings, callbacks or structured data are all valid. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processFunctionIdentifiers",
+          "detail": "Identifier processing directly groups imports, chooses Wasm versus JS, assigns getter names and emits extraction declarations.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dedupe_route_isolation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "iifefyFunctionFile was absorbed into identifier processing.",
+      "baseline_defect": "Outer identifier processing detects local _ENTRIES, rewrites references/default export and emits route proxy/IIFE code.",
+      "criterion": "Recover focused route-isolated source transformation distinct from identifier bookkeeping and compiler execution.",
+      "acceptance": "Preserve local-declaration exemption, proxy selection and final imports/proxy/extractions/wrapper order. It may compose with import assembly without a mandatory intermediate export map. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processFunctionIdentifiers",
+          "detail": "Outer identifier processing detects local _ENTRIES, rewrites references/default export and emits route proxy/IIFE code.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dedupe_compile_publish",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage two absorbs buildFile and post-build size publication into per-function continuations.",
+      "baseline_defect": "The identifier workflow duplicates path calculation, BUILD_ID read, compiler options, mkdir/build and subsequent stat.",
+      "criterion": "Recover coherent compilation and completion handoff from assembled function source to published output metadata.",
+      "acceptance": "Preserve compiler/plugin/external/define behavior, outputPath timing, size only after successful build and aggregated completion. Reusing buildFile plus a completion continuation suffices; no mandatory size-return object or serial builds. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processFunctionIdentifiers",
+          "detail": "The identifier workflow duplicates path calculation, BUILD_ID read, compiler options, mkdir/build and subsequent stat.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "static_privacy_cleanup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "deleteNextTelemetryFiles and directory predicates are expanded into discovery.",
+      "baseline_defect": "Static discovery owns root/private stat recovery, telemetry removal and optional parent rmdir inline.",
+      "criterion": "Recover focused privacy cleanup before public asset discovery.",
+      "acceptance": "Root absence logs and returns empty; private removal errors propagate while parent rmdir failures are ignored as before. Existing cleanup/validation helpers may be reused; no new cleanup modes. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelOutput.ts",
+          "symbol": "getVercelStaticAssets",
+          "detail": "Static discovery owns root/private stat recovery, telemetry removal and optional parent rmdir inline.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "static_recursive_discovery",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage two expands readPathsRecursively into a nested collectPaths closure.",
+      "baseline_defect": "Outer privacy/filtering workflow contains recursive readdir, stat fallback and flattening.",
+      "criterion": "Give recursive path enumeration a focused reusable boundary for public asset discovery.",
+      "acceptance": "Keep per-directory empty-result catch and per-child non-directory fallback distinct. Normalize/filter resulting paths after cleanup as before; extracting the local recursive function is enough. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelOutput.ts",
+          "symbol": "getVercelStaticAssets",
+          "detail": "Outer privacy/filtering workflow contains recursive readdir, stat fallback and flattening.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "static_custom_copy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "copyVercelStaticAssets is expanded into custom output setup.",
+      "baseline_defect": "Output directory setup embeds asset count logging, per-file mkdir/copy, catch and Promise aggregation.",
+      "criterion": "Recover a focused static-asset copy operation distinct from output-directory reset policy.",
+      "acceptance": "Keep per-asset errors logged without rejecting the whole copy list and await all copies. Default output still clears only its worker directory; custom reset order remains. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelOutput.ts",
+          "symbol": "processOutputDir",
+          "detail": "Output directory setup embeds asset count logging, per-file mkdir/copy, catch and Promise aggregation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "output_config_phases",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "processVercelConfig/normalizeRouteSrc bodies are absorbed into output routing.",
+      "baseline_defect": "Output map construction also owns cloned config setup, phase grouping and source anchoring.",
+      "criterion": "Recover focused Vercel route normalization and phase grouping.",
+      "acceptance": "Preserve original route-object mutation/alias behavior despite cloning other config fields, locale-root exception and anchoring rules. No change to the phase ordering contract. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelOutput.ts",
+          "symbol": "processVercelOutput",
+          "detail": "Output map construction also owns cloned config setup, phase grouping and source anchoring.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "output_static_overrides",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "applyVercelOverrides is inlined as a complete output-map phase.",
+      "baseline_defect": "General routing owns static asset override objects, rooted/index aliases and not-found special handling.",
+      "criterion": "Recover a coherent static-override phase or equivalent policy boundary.",
+      "acceptance": "Keep missing-path not-found suppression, existing-static update conditions, served-path overwrites and index aliases. Short restoration of the old phase helper qualifies. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelOutput.ts",
+          "symbol": "processVercelOutput",
+          "detail": "General routing owns static asset override objects, rooted/index aliases and not-found special handling.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "output_prerender_overrides",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "applyPrerenderedRoutes is inlined after Vercel overrides.",
+      "baseline_defect": "The outer routing body directly publishes prerender path/headers and every alternate path.",
+      "criterion": "Recover focused prerender output publication from prerender route metadata.",
+      "acceptance": "Preserve route fallback, header forwarding and collision precedence after static overrides and before middleware relocation. No need for a new object model. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelOutput.ts",
+          "symbol": "processVercelOutput",
+          "detail": "The outer routing body directly publishes prerender path/headers and every alternate path.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "output_middleware_keys",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "collectMiddlewarePaths and rewriteMiddlewarePaths are retired.",
+      "baseline_defect": "General output routing collects middleware names, roots lookup keys, converts entries and deletes original keys itself.",
+      "criterion": "Recover coherent middleware key relocation driven by none-phase routes.",
+      "acceptance": "Keep deduplicated names, function-only conversion, set/delete order and missing-function warnings after prior map phases. Equivalent integrated phase processing is allowed if this policy has a focused boundary. Short focused extraction, reuse of an existing helper, or an equivalent responsibility-preserving redesign qualifies. No mandatory result object or original helper hierarchy. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A rename or wholesale relocation that leaves this responsibility embedded in the same unrelated workflow is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelOutput.ts",
+          "symbol": "processVercelOutput",
+          "detail": "General output routing collects middleware names, roots lookup keys, converts entries and deletes original keys itself.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "cloudflare_next_on_pages_dim",
+    "rubric_status": "ready",
+    "aggregation": "Equal weight per independent item; score is satisfied items divided by 13.",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "The config-null guard in configs.ts is a correctness repair, not a structural item",
+      "Child-process close-listener copying and formatting-only changes are not independent items",
+      "Preserving passing tests, output values and error codes alone earns no structural credit"
+    ]
+  }
+}

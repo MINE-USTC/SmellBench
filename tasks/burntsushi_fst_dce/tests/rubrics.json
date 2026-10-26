@@ -1,0 +1,278 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "burntsushi_fst_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "FST-DCE-01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 1 active bucket lookup replaces cache entry.",
+      "baseline_defect": "Registry::entry directly searches/rotates cells; RegistryCache::entry and its exclusive is_none helper have no live caller.",
+      "criterion": "Eliminate the retired cache lookup implementation and its exclusively dead closure.",
+      "acceptance": "Deletion or genuine consolidation into one active lookup qualifies; preserve test-used RegistryCache::promote and supported registry behavior. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/registry.rs",
+          "symbol": "Registry::entry/RegistryCache::entry/RegistryCell::is_none",
+          "detail": "Registry::entry directly searches/rotates cells; RegistryCache::entry and its exclusive is_none helper have no live caller.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-02",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "NodeEncoding replaces old private dispatch.",
+      "baseline_defect": "Node::compile has no incoming call after compile_to is replaced.",
+      "criterion": "Eliminate the uncalled parallel node encoder dispatcher.",
+      "acceptance": "Remove it or consolidate actual encoding through one equivalent dispatcher while removing displaced code; no requirement to retain NodeEncoding. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "Node::compile/BuilderNode::compile_to",
+          "detail": "Node::compile has no incoming call after compile_to is replaced.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-03_NEXT",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round 2 fixed-transition emitters retired; retry adds impossible version entry.",
+      "baseline_defect": "StateOneTransNext::compile is reachable only from the dead Node::compile or version<3; both supported compiler roots supply VERSION=3.",
+      "criterion": "Eliminate the unreachable implicit-next address and common input byte encoder alternative and its exclusively dead helpers.",
+      "acceptance": "The supported byte encoding remains via one live implementation; removing the obsolete method or genuinely reusing it while deleting displaced duplicate code is valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "BuilderNode::compile_format/StateOneTransNext::compile",
+          "detail": "StateOneTransNext::compile is reachable only from the dead Node::compile or version<3; both supported compiler roots supply VERSION=3.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::new_type/Builder::compile",
+          "detail": "StateOneTransNext::compile is reachable only from the dead Node::compile or version<3; both supported compiler roots supply VERSION=3.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-03_SINGLE",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round 2 fixed-transition emitters retired; retry adds impossible version entry.",
+      "baseline_defect": "StateOneTrans::compile is reachable only from the dead Node::compile or version<3; both supported compiler roots supply VERSION=3.",
+      "criterion": "Eliminate the unreachable packed explicit address delta and optional output encoder alternative and its exclusively dead helpers.",
+      "acceptance": "The supported byte encoding remains via one live implementation; removing the obsolete method or genuinely reusing it while deleting displaced duplicate code is valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "BuilderNode::compile_format/StateOneTrans::compile",
+          "detail": "StateOneTrans::compile is reachable only from the dead Node::compile or version<3; both supported compiler roots supply VERSION=3.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::new_type/Builder::compile",
+          "detail": "StateOneTrans::compile is reachable only from the dead Node::compile or version<3; both supported compiler roots supply VERSION=3.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-04_GENERAL_METHOD",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 3 general encoder displaced.",
+      "baseline_defect": "StateAnyTrans::compile is called only by uncalled Node::compile; its complete output/delta/input/index emitter remains.",
+      "criterion": "Eliminate the retired general-node encoder implementation.",
+      "acceptance": "Remove this independently unused emitter or consolidate to one supported emitter; retain shared live packing and decoder functions. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "Node::compile/StateAnyTrans::compile",
+          "detail": "StateAnyTrans::compile is called only by uncalled Node::compile; its complete output/delta/input/index emitter remains.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-04_WIDTH",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry mixes old width calculation into active General branch.",
+      "baseline_defect": "VERSION=3 makes both the initial version<3 width reset and per-transition width/output recomputation unreachable.",
+      "criterion": "Eliminate the impossible alternate General width-planning path and its now-empty scan.",
+      "acceptance": "Current widths may come from the existing plan or equivalent live calculation; no dead alternate calculation remains. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "BuilderNode::compile_format",
+          "detail": "VERSION=3 makes both the initial version<3 width reset and per-transition width/output recomputation unreachable.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "BuilderNode::encoding",
+          "detail": "VERSION=3 makes both the initial version<3 width reset and per-transition width/output recomputation unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-05",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry gates index emission on format.",
+      "baseline_defect": "version>=2 is always true at supported encoder entries; only transition count is a real index condition.",
+      "criterion": "Remove the permanently redundant format gate around transition-index emission.",
+      "acceptance": "Keep threshold-dependent index emission while removing impossible old-format omission; decoder historical-version gates remain live. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "BuilderNode::compile_format",
+          "detail": "version>=2 is always true at supported encoder entries; only transition count is a real index condition.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-06",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 2 moves public query traversal.",
+      "baseline_defect": "Fst::get traverses directly and FstRef::get has no caller.",
+      "criterion": "Eliminate the displaced private get traversal duplication.",
+      "acceptance": "Deleting the old method or delegating the supported public method to it while removing the duplicate body both qualify; public API remains available. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Fst::get/FstRef::get",
+          "detail": "Fst::get traverses directly and FstRef::get has no caller.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-07",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 2 moves public query traversal.",
+      "baseline_defect": "Fst::contains_key traverses directly and FstRef::contains_key has no caller.",
+      "criterion": "Eliminate the displaced private contains_key traversal duplication.",
+      "acceptance": "Deleting the old method or delegating the supported public method to it while removing the duplicate body both qualify; public API remains available. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Fst::contains_key/FstRef::contains_key",
+          "detail": "Fst::contains_key traverses directly and FstRef::contains_key has no caller.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-08",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Fixed builder version reaches writer finalization.",
+      "baseline_defect": "finish version<=2 checksum-free return and its sole into_inner call never execute; new/new_type/memory all bind version3.",
+      "criterion": "Eliminate the impossible checksum-free finalization and its exclusively dead unwrap closure.",
+      "acceptance": "Current trailer/checksum/flush remain live. Equivalent finalization may reuse an accessor if it replaces duplicate work; no finish method architecture is mandated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/counting_writer.rs",
+          "symbol": "CountingWriter::finish/CountingWriter::into_inner",
+          "detail": "finish version<=2 checksum-free return and its sole into_inner call never execute; new/new_type/memory all bind version3.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::new_type/Builder::into_inner",
+          "detail": "finish version<=2 checksum-free return and its sole into_inner call never execute; new/new_type/memory all bind version3.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FST-DCE-10_CHECKSUM",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 3 writer owns trailer checksum.",
+      "baseline_defect": "CountingWriter::masked_checksum is no longer called after Builder finalization moves into finish.",
+      "criterion": "Eliminate the unused checksum accessor left by the finalization migration.",
+      "acceptance": "Delete it or use it as the single real checksum boundary and remove the duplicated direct implementation; an artificial extra call does not qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming, hiding warnings, moving an uncalled body, or adding artificial calls without eliminating the redundant implementation does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/counting_writer.rs",
+          "symbol": "CountingWriter::masked_checksum/CountingWriter::finish",
+          "detail": "CountingWriter::masked_checksum is no longer called after Builder finalization moves into finish.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::into_inner",
+          "detail": "CountingWriter::masked_checksum is no longer called after Builder finalization moves into finish.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "burntsushi_fst_dce",
+    "aggregation": "equal_weight_per_item"
+  }
+}

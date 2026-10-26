@@ -1,0 +1,2620 @@
+diff --git a/leptonai/api/v2/devpod.py b/leptonai/api/v2/devpod.py
+index bf3bf45..652b9ef 100644
+--- a/leptonai/api/v2/devpod.py
++++ b/leptonai/api/v2/devpod.py
+@@ -45,127 +45,7 @@ class DevPodAPI(APIResourse):
+     def _http_devpod_to_model(self, raw: dict) -> LeptonDeployment:
+         if not isinstance(raw, dict):
+             raise TypeError(f"expected a DevPod object, got {type(raw).__name__}")
++        model = LeptonDeployment(**translation.http_devpod_to_legacy(raw))
+-        devpod_view_1_dp = raw
+-        devpod_view_1_md = translation._get(devpod_view_1_dp, "metadata", {})
+-        devpod_view_1_spec = translation._get(devpod_view_1_dp, "spec", {})
+-        devpod_view_1_status = translation._get(devpod_view_1_dp, "status", {})
+-        devpod_view_1_name = translation._get(devpod_view_1_md, "name") or ""
+-        wire_1_state = translation._get(devpod_view_1_status, "state", "")
+-        wire_1_result = (
+-            translation._DEVPOD_STATE_TO_LEGACY.get(wire_1_state, wire_1_state)
+-            if wire_1_state
+-            else ""
+-        )
+-        devpod_view_1_state = wire_1_result
+-        devpod_view_1_container = translation._get(devpod_view_1_spec, "container", {})
+-        devpod_view_1_ports = (
+-            translation._get(devpod_view_1_container, "ports", []) or []
+-        )
+-        wire_2_result = (
+-            0 if translation._get(devpod_view_1_spec, "stopped") is True else 1
+-        )
+-        devpod_view_1_resource_requirement = translation._prune_none({
+-            "resource_shape": translation._get(devpod_view_1_spec, "resource_shape"),
+-            "min_replicas": wire_2_result,
+-            "shared_memory_size": translation._get(
+-                devpod_view_1_spec, "shared_memory_size"
+-            ),
+-            "affinity": translation._get(devpod_view_1_spec, "affinity"),
+-            "host_network": translation._get(devpod_view_1_spec, "host_network"),
+-        })
+-        devpod_view_1_legacy_spec = translation._prune_none({
+-            "is_pod": True,
+-            "container": translation._get(devpod_view_1_spec, "container"),
+-            "resource_requirement": devpod_view_1_resource_requirement or None,
+-            "envs": translation._get(devpod_view_1_spec, "envs"),
+-            "mounts": translation._get(devpod_view_1_spec, "mounts"),
+-            "storage_attachments": translation._get(
+-                devpod_view_1_spec, "storage_attachments"
+-            ),
+-            "image_pull_secrets": translation._get(
+-                devpod_view_1_spec, "image_pull_secrets"
+-            ),
+-            "queue_config": translation._get(devpod_view_1_spec, "queue_config"),
+-            "reservation_config": translation._get(
+-                devpod_view_1_spec, "reservation_config"
+-            ),
+-            "user_security_context": translation._get(
+-                devpod_view_1_spec, "user_security_context"
+-            ),
+-            "log": translation._get(devpod_view_1_spec, "log"),
+-            "metrics": translation._get(devpod_view_1_spec, "metrics"),
+-            "ingress_timeout_seconds": translation._get(
+-                devpod_view_1_spec, "ingress_timeout_seconds"
+-            ),
+-        })
+-        devpod_view_1_external_url = translation._get(
+-            devpod_view_1_status, "external_url"
+-        )
+-        devpod_view_1_container_port_status = None
+-        devpod_view_1_port_statuses = translation._get(
+-            devpod_view_1_status, "port_statuses"
+-        )
+-        if devpod_view_1_port_statuses:
+-            devpod_view_1_ports_by_number = {}
+-            for devpod_view_1_port in devpod_view_1_ports:
+-                devpod_view_1_strategies = (
+-                    translation._get(devpod_view_1_port, "expose_strategies", []) or []
+-                )
+-                if "HostPortMapping" in devpod_view_1_strategies:
+-                    devpod_view_1_ports_by_number.setdefault(
+-                        translation._get(devpod_view_1_port, "container_port"), []
+-                    ).append(devpod_view_1_port)
+-            devpod_view_1_container_port_status = []
+-            for devpod_view_1_ps in devpod_view_1_port_statuses:
+-                devpod_view_1_candidates = devpod_view_1_ports_by_number.get(
+-                    translation._get(devpod_view_1_ps, "container_port"), []
+-                )
+-                devpod_view_1_matched = (
+-                    devpod_view_1_candidates.pop(0) if devpod_view_1_candidates else {}
+-                )
+-                devpod_view_1_container_port_status.append(
+-                    translation._prune_none({
+-                        "container_port": translation._get(
+-                            devpod_view_1_ps, "container_port"
+-                        ),
+-                        "protocol": translation._get(
+-                            devpod_view_1_matched, "protocol", "TCP"
+-                        ),
+-                        "host_port": translation._get(devpod_view_1_ps, "host_port"),
+-                        "external_endpoint": translation._get(
+-                            devpod_view_1_ps, "external_url"
+-                        ),
+-                        "name": translation._get(devpod_view_1_matched, "name"),
+-                    })
+-                )
+-        devpod_view_1_legacy_status = translation._prune_none({
+-            "state": devpod_view_1_state or "UNK",
+-            "phase": devpod_view_1_state or "UNK",
+-            "endpoint": {
+-                "internal_endpoint": "",
+-                "external_endpoint": devpod_view_1_external_url or "",
+-            },
+-            "container_port_status": devpod_view_1_container_port_status,
+-            "public_ip": translation._get(devpod_view_1_status, "public_ip"),
+-        })
+-        devpod_view_1_metadata = translation._prune_none({
+-            "id": devpod_view_1_name,
+-            "name": devpod_view_1_name,
+-            "created_at": translation._get(devpod_view_1_md, "created_at"),
+-            "version": translation._get(devpod_view_1_md, "version"),
+-            "resource_version": translation._get(devpod_view_1_md, "resource_version"),
+-            "created_by": translation._get(devpod_view_1_md, "created_by"),
+-            "owner": translation._get(devpod_view_1_md, "owner"),
+-            "last_modified_by": translation._get(devpod_view_1_md, "last_modified_by"),
+-            "last_modified_at": translation._get(devpod_view_1_md, "last_modified_at"),
+-            "visibility": translation._get(devpod_view_1_md, "visibility"),
+-        })
+-        devpod_view_1_result = {
+-            "metadata": devpod_view_1_metadata,
+-            "spec": devpod_view_1_legacy_spec,
+-            "status": devpod_view_1_legacy_status,
+-        }
+-        model = LeptonDeployment(**devpod_view_1_result)
+         if model.metadata is None or not (model.metadata.name or model.metadata.id_):
+             raise ValueError("DevPod response is missing metadata.name")
+         return model
+@@ -239,128 +119,7 @@ class DevPodAPI(APIResourse):
+                 "allow_unauthenticated_access applies only to endpoints and cannot"
+                 " be set on a pod spec."
+             )
++        translation.legacy_to_http_devpod(self.safe_json(spec))
+-        devpod_create_1_legacy = self.safe_json(spec)
+-        devpod_create_1_spec = translation._get(devpod_create_1_legacy, "spec", {})
+-        pod_check_1_spec = devpod_create_1_spec
+-        pod_check_1_unsupported = []
+-        if "health" in pod_check_1_spec and pod_check_1_spec["health"] is not None:
+-            pod_check_1_unsupported.append("health")
+-        pod_check_1_scheduling = pod_check_1_spec.get("scheduling_policy")
+-        if (
+-            isinstance(pod_check_1_scheduling, dict)
+-            and pod_check_1_scheduling.get("replica_spread") is not None
+-        ):
+-            pod_check_1_unsupported.append("scheduling_policy")
+-        for pod_check_1_field in (
+-            "routing_policy",
+-            "auth_config",
+-            "load_balance_config",
+-        ):
+-            if pod_check_1_spec.get(pod_check_1_field):
+-                pod_check_1_unsupported.append(pod_check_1_field)
+-        if pod_check_1_unsupported:
+-            raise ValueError(
+-                "The new DevPod API cannot represent legacy pod field(s): "
+-                + ", ".join(pod_check_1_unsupported)
+-                + ". Remove them before creating this DevPod."
+-            )
+-        devpod_create_1_rr = translation._get(
+-            devpod_create_1_spec, "resource_requirement", {}
+-        )
+-        resource_check_2_rr = devpod_create_1_rr
+-        resource_check_2_resource_kind = "DevPod"
+-        resource_check_2_unsupported_fields = (
+-            "cpu",
+-            "memory",
+-            "ephemeral_storage_in_gb",
+-            "accelerator_type",
+-            "accelerator_num",
+-            "resourse_affinity",
+-        )
+-        resource_check_2_unsupported = [
+-            resource_check_2_field
+-            for resource_check_2_field in resource_check_2_unsupported_fields
+-            if translation._get(resource_check_2_rr, resource_check_2_field) is not None
+-        ]
+-        if resource_check_2_unsupported:
+-            raise ValueError(
+-                f"The new {resource_check_2_resource_kind} API accepts resource_shape"
+-                " rather than legacy direct resource field(s):"
+-                f" {', '.join(resource_check_2_unsupported)}."
+-            )
+-        devpod_create_1_container = translation._get(
+-            devpod_create_1_spec, "container", {}
+-        )
+-        for devpod_create_1_port in (
+-            translation._get(devpod_create_1_container, "ports", []) or []
+-        ):
+-            devpod_create_1_proto = translation._get(devpod_create_1_port, "protocol")
+-            if devpod_create_1_proto and devpod_create_1_proto not in ("TCP", "UDP"):
+-                raise ValueError(
+-                    "The new DevPod API does not support"
+-                    f" {devpod_create_1_proto} ports. Use TCP or UDP."
+-                )
+-        devpod_create_1_devpod_spec = translation._prune_none({
+-            "container": translation._get(devpod_create_1_spec, "container"),
+-            "resource_shape": translation._get(devpod_create_1_rr, "resource_shape"),
+-            "shared_memory_size": translation._get(
+-                devpod_create_1_rr, "shared_memory_size"
+-            ),
+-            "affinity": translation._get(devpod_create_1_rr, "affinity"),
+-            "envs": translation._get(devpod_create_1_spec, "envs"),
+-            "mounts": translation._get(devpod_create_1_spec, "mounts"),
+-            "storage_attachments": translation._get(
+-                devpod_create_1_spec, "storage_attachments"
+-            ),
+-            "image_pull_secrets": translation._get(
+-                devpod_create_1_spec, "image_pull_secrets"
+-            ),
+-            "queue_config": translation._get(devpod_create_1_spec, "queue_config"),
+-            "reservation_config": translation._get(
+-                devpod_create_1_spec, "reservation_config"
+-            ),
+-            "user_security_context": translation._get(
+-                devpod_create_1_spec, "user_security_context"
+-            ),
+-            "host_network": translation._get(devpod_create_1_rr, "host_network"),
+-            "log": translation._get(devpod_create_1_spec, "log"),
+-            "metrics": translation._get(devpod_create_1_spec, "metrics"),
+-            "ingress_timeout_seconds": translation._get(
+-                devpod_create_1_spec, "ingress_timeout_seconds"
+-            ),
+-        })
+-        devpod_create_1_legacy_metadata = translation._get(
+-            devpod_create_1_legacy, "metadata", {}
+-        )
+-        label_check_3_metadata = devpod_create_1_legacy_metadata
+-        label_check_3_resource_kind = "DevPod"
+-        if isinstance(label_check_3_metadata, dict) and label_check_3_metadata.get(
+-            "labels"
+-        ):
+-            raise ValueError(
+-                f"The new {label_check_3_resource_kind} API does not expose metadata"
+-                " labels; remove metadata.labels before creating or updating this"
+-                " resource."
+-            )
+-        devpod_create_1_metadata = {}
+-        devpod_create_1_name = translation._get(
+-            devpod_create_1_legacy_metadata, "name"
+-        ) or translation._get(devpod_create_1_legacy_metadata, "id")
+-        if devpod_create_1_name:
+-            devpod_create_1_metadata["name"] = devpod_create_1_name
+-        if translation._get(devpod_create_1_legacy_metadata, "visibility"):
+-            devpod_create_1_metadata["visibility"] = translation._get(
+-                devpod_create_1_legacy_metadata, "visibility"
+-            )
+-        if translation._get(devpod_create_1_legacy_metadata, "owner"):
+-            devpod_create_1_metadata["owner"] = translation._get(
+-                devpod_create_1_legacy_metadata, "owner"
+-            )
+-        devpod_create_1_result = {
+-            "metadata": devpod_create_1_metadata,
+-            "spec": devpod_create_1_devpod_spec,
+-        }
+-        devpod_create_1_result
+ 
+     def create(self, spec: LeptonDeployment) -> bool:
+         """Create a devpod from a legacy pod deployment spec.
+@@ -368,128 +127,7 @@ class DevPodAPI(APIResourse):
+         @implements LEP-5665 (devpod create via new API)
+         """
+         spec.spec = self._sanity_check_pod_spec(spec.spec)
++        payload = translation.legacy_to_http_devpod(self.safe_json(spec))
+-        devpod_create_2_legacy = self.safe_json(spec)
+-        devpod_create_2_spec = translation._get(devpod_create_2_legacy, "spec", {})
+-        pod_check_4_spec = devpod_create_2_spec
+-        pod_check_4_unsupported = []
+-        if "health" in pod_check_4_spec and pod_check_4_spec["health"] is not None:
+-            pod_check_4_unsupported.append("health")
+-        pod_check_4_scheduling = pod_check_4_spec.get("scheduling_policy")
+-        if (
+-            isinstance(pod_check_4_scheduling, dict)
+-            and pod_check_4_scheduling.get("replica_spread") is not None
+-        ):
+-            pod_check_4_unsupported.append("scheduling_policy")
+-        for pod_check_4_field in (
+-            "routing_policy",
+-            "auth_config",
+-            "load_balance_config",
+-        ):
+-            if pod_check_4_spec.get(pod_check_4_field):
+-                pod_check_4_unsupported.append(pod_check_4_field)
+-        if pod_check_4_unsupported:
+-            raise ValueError(
+-                "The new DevPod API cannot represent legacy pod field(s): "
+-                + ", ".join(pod_check_4_unsupported)
+-                + ". Remove them before creating this DevPod."
+-            )
+-        devpod_create_2_rr = translation._get(
+-            devpod_create_2_spec, "resource_requirement", {}
+-        )
+-        resource_check_5_rr = devpod_create_2_rr
+-        resource_check_5_resource_kind = "DevPod"
+-        resource_check_5_unsupported_fields = (
+-            "cpu",
+-            "memory",
+-            "ephemeral_storage_in_gb",
+-            "accelerator_type",
+-            "accelerator_num",
+-            "resourse_affinity",
+-        )
+-        resource_check_5_unsupported = [
+-            resource_check_5_field
+-            for resource_check_5_field in resource_check_5_unsupported_fields
+-            if translation._get(resource_check_5_rr, resource_check_5_field) is not None
+-        ]
+-        if resource_check_5_unsupported:
+-            raise ValueError(
+-                f"The new {resource_check_5_resource_kind} API accepts resource_shape"
+-                " rather than legacy direct resource field(s):"
+-                f" {', '.join(resource_check_5_unsupported)}."
+-            )
+-        devpod_create_2_container = translation._get(
+-            devpod_create_2_spec, "container", {}
+-        )
+-        for devpod_create_2_port in (
+-            translation._get(devpod_create_2_container, "ports", []) or []
+-        ):
+-            devpod_create_2_proto = translation._get(devpod_create_2_port, "protocol")
+-            if devpod_create_2_proto and devpod_create_2_proto not in ("TCP", "UDP"):
+-                raise ValueError(
+-                    "The new DevPod API does not support"
+-                    f" {devpod_create_2_proto} ports. Use TCP or UDP."
+-                )
+-        devpod_create_2_devpod_spec = translation._prune_none({
+-            "container": translation._get(devpod_create_2_spec, "container"),
+-            "resource_shape": translation._get(devpod_create_2_rr, "resource_shape"),
+-            "shared_memory_size": translation._get(
+-                devpod_create_2_rr, "shared_memory_size"
+-            ),
+-            "affinity": translation._get(devpod_create_2_rr, "affinity"),
+-            "envs": translation._get(devpod_create_2_spec, "envs"),
+-            "mounts": translation._get(devpod_create_2_spec, "mounts"),
+-            "storage_attachments": translation._get(
+-                devpod_create_2_spec, "storage_attachments"
+-            ),
+-            "image_pull_secrets": translation._get(
+-                devpod_create_2_spec, "image_pull_secrets"
+-            ),
+-            "queue_config": translation._get(devpod_create_2_spec, "queue_config"),
+-            "reservation_config": translation._get(
+-                devpod_create_2_spec, "reservation_config"
+-            ),
+-            "user_security_context": translation._get(
+-                devpod_create_2_spec, "user_security_context"
+-            ),
+-            "host_network": translation._get(devpod_create_2_rr, "host_network"),
+-            "log": translation._get(devpod_create_2_spec, "log"),
+-            "metrics": translation._get(devpod_create_2_spec, "metrics"),
+-            "ingress_timeout_seconds": translation._get(
+-                devpod_create_2_spec, "ingress_timeout_seconds"
+-            ),
+-        })
+-        devpod_create_2_legacy_metadata = translation._get(
+-            devpod_create_2_legacy, "metadata", {}
+-        )
+-        label_check_6_metadata = devpod_create_2_legacy_metadata
+-        label_check_6_resource_kind = "DevPod"
+-        if isinstance(label_check_6_metadata, dict) and label_check_6_metadata.get(
+-            "labels"
+-        ):
+-            raise ValueError(
+-                f"The new {label_check_6_resource_kind} API does not expose metadata"
+-                " labels; remove metadata.labels before creating or updating this"
+-                " resource."
+-            )
+-        devpod_create_2_metadata = {}
+-        devpod_create_2_name = translation._get(
+-            devpod_create_2_legacy_metadata, "name"
+-        ) or translation._get(devpod_create_2_legacy_metadata, "id")
+-        if devpod_create_2_name:
+-            devpod_create_2_metadata["name"] = devpod_create_2_name
+-        if translation._get(devpod_create_2_legacy_metadata, "visibility"):
+-            devpod_create_2_metadata["visibility"] = translation._get(
+-                devpod_create_2_legacy_metadata, "visibility"
+-            )
+-        if translation._get(devpod_create_2_legacy_metadata, "owner"):
+-            devpod_create_2_metadata["owner"] = translation._get(
+-                devpod_create_2_legacy_metadata, "owner"
+-            )
+-        devpod_create_2_result = {
+-            "metadata": devpod_create_2_metadata,
+-            "spec": devpod_create_2_devpod_spec,
+-        }
+-        payload = devpod_create_2_result
+         response = self._post("/devpods", json=payload)
+         return self.ensure_ok(response)
+ 
+diff --git a/leptonai/api/v2/endpoint.py b/leptonai/api/v2/endpoint.py
+index 8cac855..cd5565e 100644
+--- a/leptonai/api/v2/endpoint.py
++++ b/leptonai/api/v2/endpoint.py
+@@ -72,185 +72,7 @@ class EndpointAPI(APIResourse):
+                 )
+             if self._has_misplaced_api_token_field(raw):
+                 raise ValueError("endpoint response has a misplaced token field")
++            model = LeptonDeployment(**translation.http_endpoint_to_legacy(raw))
+-            endpoint_view_3_ep = raw
+-            endpoint_view_3_md = translation._get(endpoint_view_3_ep, "metadata", {})
+-            endpoint_view_3_lm = translation._get(
+-                endpoint_view_3_md, "lepton_metadata", {}
+-            )
+-            wire_2_components = translation._get(
+-                translation._get(endpoint_view_3_ep, "spec", {}), "components", []
+-            )
+-            wire_2_result = wire_2_components[0] if wire_2_components else {}
+-            for wire_2_component in wire_2_components:
+-                if wire_2_component.get("frontend") is True:
+-                    wire_2_result = wire_2_component
+-                    break
+-            endpoint_view_3_component = wire_2_result
+-            endpoint_view_3_status = translation._get(endpoint_view_3_ep, "status", {})
+-            endpoint_view_3_name = (
+-                translation._get(endpoint_view_3_md, "name")
+-                or translation._get(endpoint_view_3_md, "id")
+-                or ""
+-            )
+-            if translation._get(endpoint_view_3_md, "deleted_at"):
+-                endpoint_view_3_phase = "Deleting"
+-            else:
+-                wire_6_state = translation._get(endpoint_view_3_status, "state")
+-                wire_6_result = (
+-                    translation._ENDPOINT_STATE_TO_LEGACY_PHASE.get(
+-                        wire_6_state, wire_6_state
+-                    )
+-                    if wire_6_state
+-                    else ""
+-                )
+-                endpoint_view_3_phase = wire_6_result
+-            if translation._get(endpoint_view_3_md, "deleted_at"):
+-                endpoint_view_3_state = "Deleting"
+-            elif endpoint_view_3_phase in ("Stopping", "Stopped"):
+-                endpoint_view_3_state = "Not Ready"
+-            else:
+-                endpoint_view_3_state = endpoint_view_3_phase
+-            endpoint_view_3_ports = translation._get(endpoint_view_3_component, "ports")
+-            endpoint_view_3_container = translation._prune_none({
+-                "image": translation._get(endpoint_view_3_component, "image"),
+-                "command": translation._get(endpoint_view_3_component, "command"),
+-                "ports": (
+-                    [
+-                        translation._prune_none({
+-                            "container_port": translation._get(
+-                                endpoint_view_3_p, "container_port"
+-                            ),
+-                            "protocol": translation._get(endpoint_view_3_p, "protocol"),
+-                            "app_protocol": translation._get(
+-                                endpoint_view_3_p, "app_protocol"
+-                            ),
+-                        })
+-                        for endpoint_view_3_p in endpoint_view_3_ports
+-                    ]
+-                    if endpoint_view_3_ports
+-                    else None
+-                ),
+-            })
+-            endpoint_view_3_resource_requirement = translation._prune_none({
+-                "resource_shape": translation._get(
+-                    endpoint_view_3_component, "resource_shape"
+-                ),
+-                "min_replicas": translation._get(
+-                    endpoint_view_3_component, "min_replicas"
+-                ),
+-                "max_replicas": translation._get(
+-                    endpoint_view_3_component, "max_replicas"
+-                ),
+-                "shared_memory_size": translation._get(
+-                    endpoint_view_3_component, "shared_memory_size"
+-                ),
+-                "affinity": translation._get(endpoint_view_3_component, "affinity"),
+-                "host_network": translation._get(
+-                    endpoint_view_3_component, "host_network"
+-                ),
+-            })
+-            endpoint_view_3_spec = translation._prune_none({
+-                "resource_requirement": endpoint_view_3_resource_requirement or None,
+-                "container": endpoint_view_3_container or None,
+-                "envs": translation._get(endpoint_view_3_component, "envs"),
+-                "mounts": translation._get(endpoint_view_3_component, "mounts"),
+-                "storage_attachments": translation._get(
+-                    endpoint_view_3_component, "storage_attachments"
+-                ),
+-                "api_tokens": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}), "api_tokens"
+-                ),
+-                "image_pull_secrets": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}),
+-                    "image_pull_secrets",
+-                ),
+-                "queue_config": translation._get(
+-                    endpoint_view_3_component, "queue_config"
+-                ),
+-                "auto_scaler": translation._get(
+-                    endpoint_view_3_component, "autoscaling"
+-                ),
+-                "auth_config": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}), "access_config"
+-                ),
+-                "allow_unauthenticated_access": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}),
+-                    "allow_unauthenticated_access",
+-                ),
+-                "reservation_config": translation._get(
+-                    endpoint_view_3_component, "reservation_config"
+-                ),
+-                "load_balance_config": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}), "load_balancing"
+-                ),
+-                "health": translation._get(endpoint_view_3_component, "health"),
+-                "log": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}), "log"
+-                ),
+-                "metrics": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}), "metrics"
+-                ),
+-                "ingress_enabled": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}), "ingress_enabled"
+-                ),
+-                "ingress_timeout_seconds": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}),
+-                    "ingress_timeout_seconds",
+-                ),
+-                "scheduling_policy": translation._get(
+-                    endpoint_view_3_component, "scheduling_policy"
+-                ),
+-                "routing_policy": translation._get(
+-                    translation._get(endpoint_view_3_ep, "spec", {}), "routing_policy"
+-                ),
+-                "user_security_context": translation._get(
+-                    endpoint_view_3_component, "user_security_context"
+-                ),
+-            })
+-            endpoint_view_3_external_url = translation._get(
+-                endpoint_view_3_status, "external_url"
+-            )
+-            endpoint_view_3_metadata = translation._prune_none({
+-                "id": endpoint_view_3_name,
+-                "name": endpoint_view_3_name,
+-                "created_at": translation._get(endpoint_view_3_md, "created_at"),
+-                "created_by": translation._get(endpoint_view_3_lm, "created_by"),
+-                "owner": translation._get(endpoint_view_3_lm, "owner"),
+-                "last_modified_at": translation._get(
+-                    endpoint_view_3_lm, "last_modified_at"
+-                ),
+-                "last_modified_by": translation._get(
+-                    endpoint_view_3_lm, "last_modified_by"
+-                ),
+-                "visibility": translation._get(endpoint_view_3_lm, "visibility"),
+-                "version": translation._get(endpoint_view_3_md, "version"),
+-                "semantic_version": translation._get(
+-                    endpoint_view_3_md, "semantic_version"
+-                ),
+-                "resource_version": translation._get(
+-                    endpoint_view_3_md, "resource_version"
+-                ),
+-            })
+-            endpoint_view_3_legacy_status = {
+-                "state": endpoint_view_3_state,
+-                "phase": endpoint_view_3_phase,
+-                "endpoint": {
+-                    "internal_endpoint": "",
+-                    "external_endpoint": endpoint_view_3_external_url or "",
+-                },
+-                "autoscaler_status": translation._get(
+-                    endpoint_view_3_status, "auto_scaler_status"
+-                ),
+-                "ready_replicas": translation._get(
+-                    endpoint_view_3_status, "ready_replicas"
+-                ),
+-            }
+-            endpoint_view_3_result = {
+-                "metadata": endpoint_view_3_metadata,
+-                "spec": endpoint_view_3_spec,
+-                "status": translation._prune_none(endpoint_view_3_legacy_status),
+-            }
+-            model = LeptonDeployment(**endpoint_view_3_result)
+             if model.metadata is None or not (
+                 model.metadata.name or model.metadata.id_
+             ):
+@@ -295,173 +117,7 @@ class EndpointAPI(APIResourse):
+             self._client.pod.validate_create(spec)
+             return
+         legacy_payload = normalize_endpoint_authentication_payload(self.safe_json(spec))
++        translation.legacy_to_http_endpoint(legacy_payload)
+-        endpoint_create_1_legacy = legacy_payload
+-        endpoint_create_1_spec = translation._get(endpoint_create_1_legacy, "spec", {})
+-        endpoint_create_1_metadata = translation._get(
+-            endpoint_create_1_legacy, "metadata", {}
+-        )
+-        if translation._get(endpoint_create_1_spec, "is_pod") is True:
+-            raise ValueError(
+-                "A pod-flavoured deployment must be created through the DevPod API."
+-            )
+-        component_15_spec = endpoint_create_1_spec
+-        component_15_rr = translation._get(
+-            component_15_spec, "resource_requirement", {}
+-        )
+-        resource_check_16_rr = component_15_rr
+-        resource_check_16_resource_kind = "Endpoint"
+-        resource_check_16_unsupported_fields = (
+-            "cpu",
+-            "memory",
+-            "ephemeral_storage_in_gb",
+-            "accelerator_type",
+-            "accelerator_num",
+-            "resourse_affinity",
+-        )
+-        resource_check_16_unsupported = [
+-            resource_check_16_field
+-            for resource_check_16_field in resource_check_16_unsupported_fields
+-            if translation._get(resource_check_16_rr, resource_check_16_field)
+-            is not None
+-        ]
+-        if resource_check_16_unsupported:
+-            raise ValueError(
+-                f"The new {resource_check_16_resource_kind} API accepts resource_shape"
+-                " rather than legacy direct resource field(s):"
+-                f" {', '.join(resource_check_16_unsupported)}."
+-            )
+-        component_15_container = translation._get(component_15_spec, "container", {})
+-        wire_3_container = component_15_container
+-        wire_3_ports = (
+-            wire_3_container.get("ports")
+-            if isinstance(wire_3_container, dict)
+-            else None
+-        )
+-        if wire_3_ports is None:
+-            wire_3_result = [
+-                {"container_port": translation.LEGACY_DEFAULT_ENDPOINT_PORT}
+-            ]
+-        elif not wire_3_ports:
+-            wire_3_result = [
+-                {"container_port": translation.LEGACY_DEFAULT_ENDPOINT_PORT}
+-            ]
+-        else:
+-            wire_3_result = []
+-            for wire_3_index, wire_3_port in enumerate(wire_3_ports):
+-                wire_3_unsupported = [
+-                    wire_3_field
+-                    for wire_3_field in (
+-                        "name",
+-                        "expose_strategies",
+-                        "host_port",
+-                        "enable_load_balancer",
+-                    )
+-                    if wire_3_field in wire_3_port
+-                    and wire_3_port[wire_3_field] is not None
+-                ]
+-                if wire_3_unsupported:
+-                    raise ValueError(
+-                        "The new Endpoint API cannot represent legacy container port"
+-                        + f" field(s) {', '.join(wire_3_unsupported)} on port index"
+-                        f" {wire_3_index}."
+-                    )
+-                wire_3_result.append(
+-                    translation._prune_none({
+-                        "container_port": translation._get(
+-                            wire_3_port, "container_port", 0
+-                        ),
+-                        "protocol": translation._get(wire_3_port, "protocol"),
+-                        "app_protocol": translation._get(wire_3_port, "app_protocol"),
+-                    })
+-                )
+-        component_15_component = {
+-            "name": translation.CANONICAL_COMPONENT_NAME,
+-            "image": translation._get(component_15_container, "image"),
+-            "command": translation._get(component_15_container, "command"),
+-            "ports": wire_3_result,
+-            "envs": translation._get(component_15_spec, "envs"),
+-            "mounts": translation._get(component_15_spec, "mounts"),
+-            "storage_attachments": translation._get(
+-                component_15_spec, "storage_attachments"
+-            ),
+-            "resource_shape": translation._get(component_15_rr, "resource_shape"),
+-            "min_replicas": translation._get(component_15_rr, "min_replicas", 1),
+-            "max_replicas": translation._get(component_15_rr, "max_replicas"),
+-            "shared_memory_size": translation._get(
+-                component_15_rr, "shared_memory_size"
+-            ),
+-            "autoscaling": translation._get(component_15_spec, "auto_scaler"),
+-            "affinity": translation._get(component_15_rr, "affinity"),
+-            "host_network": translation._get(component_15_rr, "host_network"),
+-            "scheduling_policy": translation._get(
+-                component_15_spec, "scheduling_policy"
+-            ),
+-            "queue_config": translation._get(component_15_spec, "queue_config"),
+-            "reservation_config": translation._get(
+-                component_15_spec, "reservation_config"
+-            ),
+-            "health": translation._get(component_15_spec, "health"),
+-            "user_security_context": translation._get(
+-                component_15_spec, "user_security_context"
+-            ),
+-        }
+-        component_15_result = translation._prune_none(component_15_component)
+-        endpoint_create_1_endpoint_spec = {"components": [component_15_result]}
+-        endpoint_fields_5_spec = endpoint_create_1_spec
+-        endpoint_fields_5_result = translation._prune_none({
+-            "ingress_enabled": translation._get(
+-                endpoint_fields_5_spec, "ingress_enabled"
+-            ),
+-            "ingress_timeout_seconds": translation._get(
+-                endpoint_fields_5_spec, "ingress_timeout_seconds"
+-            ),
+-            "allow_unauthenticated_access": translation._get(
+-                endpoint_fields_5_spec, "allow_unauthenticated_access"
+-            ),
+-            "access_config": translation._get(endpoint_fields_5_spec, "auth_config"),
+-            "api_tokens": translation._get(endpoint_fields_5_spec, "api_tokens"),
+-            "routing_policy": translation._get(
+-                endpoint_fields_5_spec, "routing_policy"
+-            ),
+-            "load_balancing": translation._get(
+-                endpoint_fields_5_spec, "load_balance_config"
+-            ),
+-            "log": translation._get(endpoint_fields_5_spec, "log"),
+-            "metrics": translation._get(endpoint_fields_5_spec, "metrics"),
+-            "image_pull_secrets": translation._get(
+-                endpoint_fields_5_spec, "image_pull_secrets"
+-            ),
+-        })
+-        endpoint_create_1_endpoint_spec.update(endpoint_fields_5_result)
+-        metadata_fields_6_metadata = endpoint_create_1_metadata
+-        label_check_7_metadata = metadata_fields_6_metadata
+-        label_check_7_resource_kind = "Endpoint"
+-        if isinstance(label_check_7_metadata, dict) and label_check_7_metadata.get(
+-            "labels"
+-        ):
+-            raise ValueError(
+-                f"The new {label_check_7_resource_kind} API does not expose metadata"
+-                " labels; remove metadata.labels before creating or updating this"
+-                " resource."
+-            )
+-        metadata_fields_6_md = {}
+-        metadata_fields_6_name = translation._get(
+-            metadata_fields_6_metadata, "name"
+-        ) or translation._get(metadata_fields_6_metadata, "id")
+-        if metadata_fields_6_name:
+-            metadata_fields_6_md["name"] = metadata_fields_6_name
+-        metadata_fields_6_lepton_metadata = translation._prune_none({
+-            "owner": translation._get(metadata_fields_6_metadata, "owner"),
+-            "visibility": translation._get(metadata_fields_6_metadata, "visibility"),
+-        })
+-        if metadata_fields_6_lepton_metadata:
+-            metadata_fields_6_md["lepton_metadata"] = metadata_fields_6_lepton_metadata
+-        metadata_fields_6_result = metadata_fields_6_md
+-        endpoint_create_1_result = {
+-            "metadata": metadata_fields_6_result,
+-            "spec": endpoint_create_1_endpoint_spec,
+-        }
+-        endpoint_create_1_result
+ 
+     def create(self, spec: LeptonDeployment) -> bool:
+         """Create an endpoint and preserve the historical boolean result.
+@@ -473,173 +129,7 @@ class EndpointAPI(APIResourse):
+         if spec.spec is not None and spec.spec.is_pod is True:
+             return self._client.pod.create(spec)
+         legacy_payload = normalize_endpoint_authentication_payload(self.safe_json(spec))
++        payload = translation.legacy_to_http_endpoint(legacy_payload)
+-        endpoint_create_2_legacy = legacy_payload
+-        endpoint_create_2_spec = translation._get(endpoint_create_2_legacy, "spec", {})
+-        endpoint_create_2_metadata = translation._get(
+-            endpoint_create_2_legacy, "metadata", {}
+-        )
+-        if translation._get(endpoint_create_2_spec, "is_pod") is True:
+-            raise ValueError(
+-                "A pod-flavoured deployment must be created through the DevPod API."
+-            )
+-        component_17_spec = endpoint_create_2_spec
+-        component_17_rr = translation._get(
+-            component_17_spec, "resource_requirement", {}
+-        )
+-        resource_check_18_rr = component_17_rr
+-        resource_check_18_resource_kind = "Endpoint"
+-        resource_check_18_unsupported_fields = (
+-            "cpu",
+-            "memory",
+-            "ephemeral_storage_in_gb",
+-            "accelerator_type",
+-            "accelerator_num",
+-            "resourse_affinity",
+-        )
+-        resource_check_18_unsupported = [
+-            resource_check_18_field
+-            for resource_check_18_field in resource_check_18_unsupported_fields
+-            if translation._get(resource_check_18_rr, resource_check_18_field)
+-            is not None
+-        ]
+-        if resource_check_18_unsupported:
+-            raise ValueError(
+-                f"The new {resource_check_18_resource_kind} API accepts resource_shape"
+-                " rather than legacy direct resource field(s):"
+-                f" {', '.join(resource_check_18_unsupported)}."
+-            )
+-        component_17_container = translation._get(component_17_spec, "container", {})
+-        wire_4_container = component_17_container
+-        wire_4_ports = (
+-            wire_4_container.get("ports")
+-            if isinstance(wire_4_container, dict)
+-            else None
+-        )
+-        if wire_4_ports is None:
+-            wire_4_result = [
+-                {"container_port": translation.LEGACY_DEFAULT_ENDPOINT_PORT}
+-            ]
+-        elif not wire_4_ports:
+-            wire_4_result = [
+-                {"container_port": translation.LEGACY_DEFAULT_ENDPOINT_PORT}
+-            ]
+-        else:
+-            wire_4_result = []
+-            for wire_4_index, wire_4_port in enumerate(wire_4_ports):
+-                wire_4_unsupported = [
+-                    wire_4_field
+-                    for wire_4_field in (
+-                        "name",
+-                        "expose_strategies",
+-                        "host_port",
+-                        "enable_load_balancer",
+-                    )
+-                    if wire_4_field in wire_4_port
+-                    and wire_4_port[wire_4_field] is not None
+-                ]
+-                if wire_4_unsupported:
+-                    raise ValueError(
+-                        "The new Endpoint API cannot represent legacy container port"
+-                        + f" field(s) {', '.join(wire_4_unsupported)} on port index"
+-                        f" {wire_4_index}."
+-                    )
+-                wire_4_result.append(
+-                    translation._prune_none({
+-                        "container_port": translation._get(
+-                            wire_4_port, "container_port", 0
+-                        ),
+-                        "protocol": translation._get(wire_4_port, "protocol"),
+-                        "app_protocol": translation._get(wire_4_port, "app_protocol"),
+-                    })
+-                )
+-        component_17_component = {
+-            "name": translation.CANONICAL_COMPONENT_NAME,
+-            "image": translation._get(component_17_container, "image"),
+-            "command": translation._get(component_17_container, "command"),
+-            "ports": wire_4_result,
+-            "envs": translation._get(component_17_spec, "envs"),
+-            "mounts": translation._get(component_17_spec, "mounts"),
+-            "storage_attachments": translation._get(
+-                component_17_spec, "storage_attachments"
+-            ),
+-            "resource_shape": translation._get(component_17_rr, "resource_shape"),
+-            "min_replicas": translation._get(component_17_rr, "min_replicas", 1),
+-            "max_replicas": translation._get(component_17_rr, "max_replicas"),
+-            "shared_memory_size": translation._get(
+-                component_17_rr, "shared_memory_size"
+-            ),
+-            "autoscaling": translation._get(component_17_spec, "auto_scaler"),
+-            "affinity": translation._get(component_17_rr, "affinity"),
+-            "host_network": translation._get(component_17_rr, "host_network"),
+-            "scheduling_policy": translation._get(
+-                component_17_spec, "scheduling_policy"
+-            ),
+-            "queue_config": translation._get(component_17_spec, "queue_config"),
+-            "reservation_config": translation._get(
+-                component_17_spec, "reservation_config"
+-            ),
+-            "health": translation._get(component_17_spec, "health"),
+-            "user_security_context": translation._get(
+-                component_17_spec, "user_security_context"
+-            ),
+-        }
+-        component_17_result = translation._prune_none(component_17_component)
+-        endpoint_create_2_endpoint_spec = {"components": [component_17_result]}
+-        endpoint_fields_8_spec = endpoint_create_2_spec
+-        endpoint_fields_8_result = translation._prune_none({
+-            "ingress_enabled": translation._get(
+-                endpoint_fields_8_spec, "ingress_enabled"
+-            ),
+-            "ingress_timeout_seconds": translation._get(
+-                endpoint_fields_8_spec, "ingress_timeout_seconds"
+-            ),
+-            "allow_unauthenticated_access": translation._get(
+-                endpoint_fields_8_spec, "allow_unauthenticated_access"
+-            ),
+-            "access_config": translation._get(endpoint_fields_8_spec, "auth_config"),
+-            "api_tokens": translation._get(endpoint_fields_8_spec, "api_tokens"),
+-            "routing_policy": translation._get(
+-                endpoint_fields_8_spec, "routing_policy"
+-            ),
+-            "load_balancing": translation._get(
+-                endpoint_fields_8_spec, "load_balance_config"
+-            ),
+-            "log": translation._get(endpoint_fields_8_spec, "log"),
+-            "metrics": translation._get(endpoint_fields_8_spec, "metrics"),
+-            "image_pull_secrets": translation._get(
+-                endpoint_fields_8_spec, "image_pull_secrets"
+-            ),
+-        })
+-        endpoint_create_2_endpoint_spec.update(endpoint_fields_8_result)
+-        metadata_fields_9_metadata = endpoint_create_2_metadata
+-        label_check_10_metadata = metadata_fields_9_metadata
+-        label_check_10_resource_kind = "Endpoint"
+-        if isinstance(label_check_10_metadata, dict) and label_check_10_metadata.get(
+-            "labels"
+-        ):
+-            raise ValueError(
+-                f"The new {label_check_10_resource_kind} API does not expose metadata"
+-                " labels; remove metadata.labels before creating or updating this"
+-                " resource."
+-            )
+-        metadata_fields_9_md = {}
+-        metadata_fields_9_name = translation._get(
+-            metadata_fields_9_metadata, "name"
+-        ) or translation._get(metadata_fields_9_metadata, "id")
+-        if metadata_fields_9_name:
+-            metadata_fields_9_md["name"] = metadata_fields_9_name
+-        metadata_fields_9_lepton_metadata = translation._prune_none({
+-            "owner": translation._get(metadata_fields_9_metadata, "owner"),
+-            "visibility": translation._get(metadata_fields_9_metadata, "visibility"),
+-        })
+-        if metadata_fields_9_lepton_metadata:
+-            metadata_fields_9_md["lepton_metadata"] = metadata_fields_9_lepton_metadata
+-        metadata_fields_9_result = metadata_fields_9_md
+-        endpoint_create_2_result = {
+-            "metadata": metadata_fields_9_result,
+-            "spec": endpoint_create_2_endpoint_spec,
+-        }
+-        payload = endpoint_create_2_result
+         warn_if_create_may_hide_generated_token(legacy_payload)
+         response = self._post("/endpoints", json=payload)
+         status_code = getattr(response, "status_code", 0)
+@@ -675,175 +165,7 @@ class EndpointAPI(APIResourse):
+         if spec.spec is not None and spec.spec.is_pod is True:
+             return self._client.pod.create(spec)
+         legacy_payload = normalize_endpoint_authentication_payload(self.safe_json(spec))
++        payload = translation.legacy_to_http_endpoint(legacy_payload)
+-        endpoint_create_3_legacy = legacy_payload
+-        endpoint_create_3_spec = translation._get(endpoint_create_3_legacy, "spec", {})
+-        endpoint_create_3_metadata = translation._get(
+-            endpoint_create_3_legacy, "metadata", {}
+-        )
+-        if translation._get(endpoint_create_3_spec, "is_pod") is True:
+-            raise ValueError(
+-                "A pod-flavoured deployment must be created through the DevPod API."
+-            )
+-        component_19_spec = endpoint_create_3_spec
+-        component_19_rr = translation._get(
+-            component_19_spec, "resource_requirement", {}
+-        )
+-        resource_check_20_rr = component_19_rr
+-        resource_check_20_resource_kind = "Endpoint"
+-        resource_check_20_unsupported_fields = (
+-            "cpu",
+-            "memory",
+-            "ephemeral_storage_in_gb",
+-            "accelerator_type",
+-            "accelerator_num",
+-            "resourse_affinity",
+-        )
+-        resource_check_20_unsupported = [
+-            resource_check_20_field
+-            for resource_check_20_field in resource_check_20_unsupported_fields
+-            if translation._get(resource_check_20_rr, resource_check_20_field)
+-            is not None
+-        ]
+-        if resource_check_20_unsupported:
+-            raise ValueError(
+-                f"The new {resource_check_20_resource_kind} API accepts resource_shape"
+-                " rather than legacy direct resource field(s):"
+-                f" {', '.join(resource_check_20_unsupported)}."
+-            )
+-        component_19_container = translation._get(component_19_spec, "container", {})
+-        wire_5_container = component_19_container
+-        wire_5_ports = (
+-            wire_5_container.get("ports")
+-            if isinstance(wire_5_container, dict)
+-            else None
+-        )
+-        if wire_5_ports is None:
+-            wire_5_result = [
+-                {"container_port": translation.LEGACY_DEFAULT_ENDPOINT_PORT}
+-            ]
+-        elif not wire_5_ports:
+-            wire_5_result = [
+-                {"container_port": translation.LEGACY_DEFAULT_ENDPOINT_PORT}
+-            ]
+-        else:
+-            wire_5_result = []
+-            for wire_5_index, wire_5_port in enumerate(wire_5_ports):
+-                wire_5_unsupported = [
+-                    wire_5_field
+-                    for wire_5_field in (
+-                        "name",
+-                        "expose_strategies",
+-                        "host_port",
+-                        "enable_load_balancer",
+-                    )
+-                    if wire_5_field in wire_5_port
+-                    and wire_5_port[wire_5_field] is not None
+-                ]
+-                if wire_5_unsupported:
+-                    raise ValueError(
+-                        "The new Endpoint API cannot represent legacy container port"
+-                        + f" field(s) {', '.join(wire_5_unsupported)} on port index"
+-                        f" {wire_5_index}."
+-                    )
+-                wire_5_result.append(
+-                    translation._prune_none({
+-                        "container_port": translation._get(
+-                            wire_5_port, "container_port", 0
+-                        ),
+-                        "protocol": translation._get(wire_5_port, "protocol"),
+-                        "app_protocol": translation._get(wire_5_port, "app_protocol"),
+-                    })
+-                )
+-        component_19_component = {
+-            "name": translation.CANONICAL_COMPONENT_NAME,
+-            "image": translation._get(component_19_container, "image"),
+-            "command": translation._get(component_19_container, "command"),
+-            "ports": wire_5_result,
+-            "envs": translation._get(component_19_spec, "envs"),
+-            "mounts": translation._get(component_19_spec, "mounts"),
+-            "storage_attachments": translation._get(
+-                component_19_spec, "storage_attachments"
+-            ),
+-            "resource_shape": translation._get(component_19_rr, "resource_shape"),
+-            "min_replicas": translation._get(component_19_rr, "min_replicas", 1),
+-            "max_replicas": translation._get(component_19_rr, "max_replicas"),
+-            "shared_memory_size": translation._get(
+-                component_19_rr, "shared_memory_size"
+-            ),
+-            "autoscaling": translation._get(component_19_spec, "auto_scaler"),
+-            "affinity": translation._get(component_19_rr, "affinity"),
+-            "host_network": translation._get(component_19_rr, "host_network"),
+-            "scheduling_policy": translation._get(
+-                component_19_spec, "scheduling_policy"
+-            ),
+-            "queue_config": translation._get(component_19_spec, "queue_config"),
+-            "reservation_config": translation._get(
+-                component_19_spec, "reservation_config"
+-            ),
+-            "health": translation._get(component_19_spec, "health"),
+-            "user_security_context": translation._get(
+-                component_19_spec, "user_security_context"
+-            ),
+-        }
+-        component_19_result = translation._prune_none(component_19_component)
+-        endpoint_create_3_endpoint_spec = {"components": [component_19_result]}
+-        endpoint_fields_11_spec = endpoint_create_3_spec
+-        endpoint_fields_11_result = translation._prune_none({
+-            "ingress_enabled": translation._get(
+-                endpoint_fields_11_spec, "ingress_enabled"
+-            ),
+-            "ingress_timeout_seconds": translation._get(
+-                endpoint_fields_11_spec, "ingress_timeout_seconds"
+-            ),
+-            "allow_unauthenticated_access": translation._get(
+-                endpoint_fields_11_spec, "allow_unauthenticated_access"
+-            ),
+-            "access_config": translation._get(endpoint_fields_11_spec, "auth_config"),
+-            "api_tokens": translation._get(endpoint_fields_11_spec, "api_tokens"),
+-            "routing_policy": translation._get(
+-                endpoint_fields_11_spec, "routing_policy"
+-            ),
+-            "load_balancing": translation._get(
+-                endpoint_fields_11_spec, "load_balance_config"
+-            ),
+-            "log": translation._get(endpoint_fields_11_spec, "log"),
+-            "metrics": translation._get(endpoint_fields_11_spec, "metrics"),
+-            "image_pull_secrets": translation._get(
+-                endpoint_fields_11_spec, "image_pull_secrets"
+-            ),
+-        })
+-        endpoint_create_3_endpoint_spec.update(endpoint_fields_11_result)
+-        metadata_fields_12_metadata = endpoint_create_3_metadata
+-        label_check_13_metadata = metadata_fields_12_metadata
+-        label_check_13_resource_kind = "Endpoint"
+-        if isinstance(label_check_13_metadata, dict) and label_check_13_metadata.get(
+-            "labels"
+-        ):
+-            raise ValueError(
+-                f"The new {label_check_13_resource_kind} API does not expose metadata"
+-                " labels; remove metadata.labels before creating or updating this"
+-                " resource."
+-            )
+-        metadata_fields_12_md = {}
+-        metadata_fields_12_name = translation._get(
+-            metadata_fields_12_metadata, "name"
+-        ) or translation._get(metadata_fields_12_metadata, "id")
+-        if metadata_fields_12_name:
+-            metadata_fields_12_md["name"] = metadata_fields_12_name
+-        metadata_fields_12_lepton_metadata = translation._prune_none({
+-            "owner": translation._get(metadata_fields_12_metadata, "owner"),
+-            "visibility": translation._get(metadata_fields_12_metadata, "visibility"),
+-        })
+-        if metadata_fields_12_lepton_metadata:
+-            metadata_fields_12_md["lepton_metadata"] = (
+-                metadata_fields_12_lepton_metadata
+-            )
+-        metadata_fields_12_result = metadata_fields_12_md
+-        endpoint_create_3_result = {
+-            "metadata": metadata_fields_12_result,
+-            "spec": endpoint_create_3_endpoint_spec,
+-        }
+-        payload = endpoint_create_3_result
+         response = self._post("/endpoints", json=payload)
+         status_code = getattr(response, "status_code", 0)
+         if isinstance(status_code, int) and status_code >= 400:
+@@ -914,216 +236,7 @@ class EndpointAPI(APIResourse):
+             self.safe_json(spec),
+             for_update=True,
+         )
++        payload = translation.legacy_to_http_endpoint_patch(raw, legacy_payload)
+-        endpoint_patch_1_raw = raw
+-        endpoint_patch_1_legacy = legacy_payload
+-        endpoint_patch_1_spec = translation._get(endpoint_patch_1_legacy, "spec", {})
+-        endpoint_patch_1_rr = translation._get(
+-            endpoint_patch_1_spec, "resource_requirement", {}
+-        )
+-        resource_check_1_rr = endpoint_patch_1_rr
+-        resource_check_1_resource_kind = "Endpoint"
+-        resource_check_1_unsupported_fields = (
+-            "cpu",
+-            "memory",
+-            "ephemeral_storage_in_gb",
+-            "accelerator_type",
+-            "accelerator_num",
+-            "resourse_affinity",
+-        )
+-        resource_check_1_unsupported = [
+-            resource_check_1_field
+-            for resource_check_1_field in resource_check_1_unsupported_fields
+-            if translation._get(resource_check_1_rr, resource_check_1_field) is not None
+-        ]
+-        if resource_check_1_unsupported:
+-            raise ValueError(
+-                f"The new {resource_check_1_resource_kind} API accepts resource_shape"
+-                " rather than legacy direct resource field(s):"
+-                f" {', '.join(resource_check_1_unsupported)}."
+-            )
+-        endpoint_patch_1_container = translation._get(
+-            endpoint_patch_1_spec, "container", {}
+-        )
+-        wire_7_container = endpoint_patch_1_container
+-        wire_7_ports = (
+-            wire_7_container.get("ports")
+-            if isinstance(wire_7_container, dict)
+-            else None
+-        )
+-        if wire_7_ports is None:
+-            wire_7_result = None
+-        elif not wire_7_ports:
+-            wire_7_result = []
+-        else:
+-            wire_7_result = []
+-            for wire_7_index, wire_7_port in enumerate(wire_7_ports):
+-                wire_7_unsupported = [
+-                    wire_7_field
+-                    for wire_7_field in (
+-                        "name",
+-                        "expose_strategies",
+-                        "host_port",
+-                        "enable_load_balancer",
+-                    )
+-                    if wire_7_field in wire_7_port
+-                    and wire_7_port[wire_7_field] is not None
+-                ]
+-                if wire_7_unsupported:
+-                    raise ValueError(
+-                        "The new Endpoint API cannot represent legacy container port"
+-                        + f" field(s) {', '.join(wire_7_unsupported)} on port index"
+-                        f" {wire_7_index}."
+-                    )
+-                wire_7_result.append(
+-                    translation._prune_none({
+-                        "container_port": translation._get(
+-                            wire_7_port, "container_port", 0
+-                        ),
+-                        "protocol": translation._get(wire_7_port, "protocol"),
+-                        "app_protocol": translation._get(wire_7_port, "app_protocol"),
+-                    })
+-                )
+-        endpoint_patch_1_component_changes = translation._prune_none({
+-            "image": translation._get(endpoint_patch_1_container, "image"),
+-            "command": translation._get(endpoint_patch_1_container, "command"),
+-            "ports": wire_7_result,
+-            "envs": translation._get(endpoint_patch_1_spec, "envs"),
+-            "mounts": translation._get(endpoint_patch_1_spec, "mounts"),
+-            "storage_attachments": translation._get(
+-                endpoint_patch_1_spec, "storage_attachments"
+-            ),
+-            "resource_shape": translation._get(endpoint_patch_1_rr, "resource_shape"),
+-            "min_replicas": translation._get(endpoint_patch_1_rr, "min_replicas"),
+-            "max_replicas": translation._get(endpoint_patch_1_rr, "max_replicas"),
+-            "shared_memory_size": translation._get(
+-                endpoint_patch_1_rr, "shared_memory_size"
+-            ),
+-            "autoscaling": translation._get(endpoint_patch_1_spec, "auto_scaler"),
+-            "affinity": translation._get(endpoint_patch_1_rr, "affinity"),
+-            "host_network": translation._get(endpoint_patch_1_rr, "host_network"),
+-            "scheduling_policy": translation._get(
+-                endpoint_patch_1_spec, "scheduling_policy"
+-            ),
+-            "queue_config": translation._get(endpoint_patch_1_spec, "queue_config"),
+-            "reservation_config": translation._get(
+-                endpoint_patch_1_spec, "reservation_config"
+-            ),
+-            "health": translation._get(endpoint_patch_1_spec, "health"),
+-            "user_security_context": translation._get(
+-                endpoint_patch_1_spec, "user_security_context"
+-            ),
+-        })
+-        snapshot_check_2_raw = endpoint_patch_1_raw
+-        if not isinstance(snapshot_check_2_raw, dict):
+-            raise ValueError("Endpoint preflight response must be an object.")
+-        snapshot_check_2_raw_spec = snapshot_check_2_raw.get("spec")
+-        if not isinstance(snapshot_check_2_raw_spec, dict):
+-            raise ValueError("Endpoint preflight response is missing spec.components.")
+-        snapshot_check_2_components = snapshot_check_2_raw_spec.get("components")
+-        if (
+-            not isinstance(snapshot_check_2_components, list)
+-            or not snapshot_check_2_components
+-        ):
+-            raise ValueError(
+-                "Endpoint preflight response spec.components must be a non-empty list."
+-            )
+-        snapshot_check_2_names = set()
+-        snapshot_check_2_frontend_count = 0
+-        next_components = []
+-        frontend_index = 0
+-        for snapshot_check_2_index, snapshot_check_2_component in enumerate(
+-            snapshot_check_2_components
+-        ):
+-            if not isinstance(snapshot_check_2_component, dict):
+-                raise ValueError(
+-                    "Endpoint preflight component at index"
+-                    f" {snapshot_check_2_index} must be an object."
+-                )
+-            snapshot_check_2_name = snapshot_check_2_component.get("name")
+-            if not isinstance(snapshot_check_2_name, str) or not snapshot_check_2_name:
+-                raise ValueError(
+-                    f"Endpoint preflight component at index {snapshot_check_2_index} is"
+-                    " missing name."
+-                )
+-            if snapshot_check_2_name in snapshot_check_2_names:
+-                raise ValueError(
+-                    "Endpoint preflight response contains duplicate component"
+-                    f" {snapshot_check_2_name!r}."
+-                )
+-            snapshot_check_2_names.add(snapshot_check_2_name)
+-            next_components.append(snapshot_check_2_component)
+-            if snapshot_check_2_component.get("frontend") is True:
+-                frontend_index = snapshot_check_2_index
+-                snapshot_check_2_frontend_count += 1
+-        if (
+-            len(snapshot_check_2_components) > 1
+-            and snapshot_check_2_frontend_count != 1
+-        ):
+-            raise ValueError(
+-                "Endpoint preflight response must contain exactly one frontend"
+-                " component when multiple components are present."
+-            )
+-        next_components[frontend_index] = translation._merge_rfc7386(
+-            next_components[frontend_index], endpoint_patch_1_component_changes
+-        )
+-        endpoint_patch_1_endpoint_spec = {
+-            "components": next_components
+-        }
+-        endpoint_fields_14_spec = endpoint_patch_1_spec
+-        endpoint_fields_14_result = translation._prune_none({
+-            "ingress_enabled": translation._get(
+-                endpoint_fields_14_spec, "ingress_enabled"
+-            ),
+-            "ingress_timeout_seconds": translation._get(
+-                endpoint_fields_14_spec, "ingress_timeout_seconds"
+-            ),
+-            "allow_unauthenticated_access": translation._get(
+-                endpoint_fields_14_spec, "allow_unauthenticated_access"
+-            ),
+-            "access_config": translation._get(endpoint_fields_14_spec, "auth_config"),
+-            "api_tokens": translation._get(endpoint_fields_14_spec, "api_tokens"),
+-            "routing_policy": translation._get(
+-                endpoint_fields_14_spec, "routing_policy"
+-            ),
+-            "load_balancing": translation._get(
+-                endpoint_fields_14_spec, "load_balance_config"
+-            ),
+-            "log": translation._get(endpoint_fields_14_spec, "log"),
+-            "metrics": translation._get(endpoint_fields_14_spec, "metrics"),
+-            "image_pull_secrets": translation._get(
+-                endpoint_fields_14_spec, "image_pull_secrets"
+-            ),
+-        })
+-        endpoint_patch_1_endpoint_spec.update(endpoint_fields_14_result)
+-        endpoint_patch_1_legacy_metadata = translation._get(
+-            endpoint_patch_1_legacy, "metadata", {}
+-        )
+-        label_check_3_metadata = endpoint_patch_1_legacy_metadata
+-        label_check_3_resource_kind = "Endpoint"
+-        if isinstance(label_check_3_metadata, dict) and label_check_3_metadata.get(
+-            "labels"
+-        ):
+-            raise ValueError(
+-                f"The new {label_check_3_resource_kind} API does not expose metadata"
+-                " labels; remove metadata.labels before creating or updating this"
+-                " resource."
+-            )
+-        endpoint_patch_1_lepton_metadata = translation._prune_none({
+-            "owner": translation._get(endpoint_patch_1_legacy_metadata, "owner"),
+-            "visibility": translation._get(
+-                endpoint_patch_1_legacy_metadata, "visibility"
+-            ),
+-        })
+-        endpoint_patch_1_metadata = {}
+-        if endpoint_patch_1_lepton_metadata:
+-            endpoint_patch_1_metadata["lepton_metadata"] = (
+-                endpoint_patch_1_lepton_metadata
+-            )
+-        endpoint_patch_1_result = {
+-            "metadata": endpoint_patch_1_metadata,
+-            "spec": endpoint_patch_1_endpoint_spec,
+-        }
+-        payload = endpoint_patch_1_result
+         dryrun_param = "?dryrun=true" if dryrun else ""
+         response = self._patch(f"/endpoints/{name}{dryrun_param}", json=payload)
+         status_code = getattr(response, "status_code", 0)
+@@ -1147,110 +260,7 @@ class EndpointAPI(APIResourse):
+             return self._client.pod.stop(name_or_deployment)
+         name = self._to_name(name_or_deployment)
+         raw = self._get_raw(name)
++        payload = translation.build_endpoint_stop_patch(raw)
+-        endpoint_stop_2_raw = raw
+-        snapshot_check_4_raw = endpoint_stop_2_raw
+-        if not isinstance(snapshot_check_4_raw, dict):
+-            raise ValueError("Endpoint preflight response must be an object.")
+-        snapshot_check_4_raw_spec = snapshot_check_4_raw.get("spec")
+-        if not isinstance(snapshot_check_4_raw_spec, dict):
+-            raise ValueError("Endpoint preflight response is missing spec.components.")
+-        snapshot_check_4_components = snapshot_check_4_raw_spec.get("components")
+-        if (
+-            not isinstance(snapshot_check_4_components, list)
+-            or not snapshot_check_4_components
+-        ):
+-            raise ValueError(
+-                "Endpoint preflight response spec.components must be a non-empty list."
+-            )
+-        snapshot_check_4_names = set()
+-        snapshot_check_4_frontend_count = 0
+-        endpoint_stop_2_next_components = []
+-        for snapshot_check_4_index, snapshot_check_4_component in enumerate(
+-            snapshot_check_4_components
+-        ):
+-            if not isinstance(snapshot_check_4_component, dict):
+-                raise ValueError(
+-                    "Endpoint preflight component at index"
+-                    f" {snapshot_check_4_index} must be an object."
+-                )
+-            snapshot_check_4_name = snapshot_check_4_component.get("name")
+-            if not isinstance(snapshot_check_4_name, str) or not snapshot_check_4_name:
+-                raise ValueError(
+-                    f"Endpoint preflight component at index {snapshot_check_4_index} is"
+-                    " missing name."
+-                )
+-            if snapshot_check_4_name in snapshot_check_4_names:
+-                raise ValueError(
+-                    "Endpoint preflight response contains duplicate component"
+-                    f" {snapshot_check_4_name!r}."
+-                )
+-            snapshot_check_4_names.add(snapshot_check_4_name)
+-            if snapshot_check_4_component.get("frontend") is True:
+-                snapshot_check_4_frontend_count += 1
+-            updated = dict(snapshot_check_4_component)
+-            updated["min_replicas"] = 0
+-            endpoint_stop_2_next_components.append(updated)
+-        if (
+-            len(snapshot_check_4_components) > 1
+-            and snapshot_check_4_frontend_count != 1
+-        ):
+-            raise ValueError(
+-                "Endpoint preflight response must contain exactly one frontend"
+-                " component when multiple components are present."
+-            )
+-        for endpoint_stop_2_updated in endpoint_stop_2_next_components:
+-            endpoint_stop_2_autoscaling = endpoint_stop_2_updated.get("autoscaling")
+-            if isinstance(endpoint_stop_2_autoscaling, dict):
+-                endpoint_stop_2_throughput = endpoint_stop_2_autoscaling.get(
+-                    "target_throughput"
+-                )
+-                endpoint_stop_2_qpm = (
+-                    endpoint_stop_2_throughput.get("qpm")
+-                    if isinstance(endpoint_stop_2_throughput, dict)
+-                    else None
+-                )
+-                endpoint_stop_2_gpu_target = endpoint_stop_2_autoscaling.get(
+-                    "target_gpu_utilization_percentage"
+-                )
+-                if endpoint_stop_2_gpu_target not in (
+-                    None,
+-                    0,
+-                ) or endpoint_stop_2_qpm not in (None, 0):
+-                    endpoint_stop_2_next_autoscaling = dict(endpoint_stop_2_autoscaling)
+-                    endpoint_stop_2_next_autoscaling[
+-                        "target_gpu_utilization_percentage"
+-                    ] = 0
+-                    endpoint_stop_2_next_throughput = (
+-                        dict(endpoint_stop_2_throughput)
+-                        if isinstance(endpoint_stop_2_throughput, dict)
+-                        else {}
+-                    )
+-                    endpoint_stop_2_next_throughput.update(
+-                        {"qpm": 0, "paths": [], "methods": []}
+-                    )
+-                    endpoint_stop_2_next_autoscaling["target_throughput"] = (
+-                        endpoint_stop_2_next_throughput
+-                    )
+-                    endpoint_stop_2_scale_down = endpoint_stop_2_autoscaling.get(
+-                        "scale_down"
+-                    )
+-                    endpoint_stop_2_next_scale_down = (
+-                        dict(endpoint_stop_2_scale_down)
+-                        if isinstance(endpoint_stop_2_scale_down, dict)
+-                        else {}
+-                    )
+-                    endpoint_stop_2_next_scale_down["no_traffic_timeout"] = 0
+-                    endpoint_stop_2_next_autoscaling["scale_down"] = (
+-                        endpoint_stop_2_next_scale_down
+-                    )
+-                    endpoint_stop_2_updated["autoscaling"] = (
+-                        endpoint_stop_2_next_autoscaling
+-                    )
+-        endpoint_stop_2_result = {
+-            "metadata": {},
+-            "spec": {"components": endpoint_stop_2_next_components},
+-        }
+-        payload = endpoint_stop_2_result
+         response = self._patch(f"/endpoints/{name}", json=payload)
+         return self._http_endpoint_to_model(self.ensure_json(response))
+ 
+diff --git a/leptonai/cli/deployment.py b/leptonai/cli/deployment.py
+index c59d117..0873390 100644
+--- a/leptonai/cli/deployment.py
++++ b/leptonai/cli/deployment.py
+@@ -1,4 +1,3 @@
+-from leptonai.api.v2 import spec_utils
+ import json
+ from datetime import datetime
+ import re
+@@ -1426,111 +1425,13 @@ def create(
+ 
+         if env_list or secret_list or not file:
+             # CLI args provided or no file loaded - use CLI args
++            spec.envs = make_env_vars_from_strings(env_list, secret_list)
+-            plain_definitions = env_list
+-            secret_definitions = secret_list
+-            pending_envs = []
+-            for definitions, secret_name in ((plain_definitions, False), (secret_definitions, True)):
+-                for definition in definitions or []:
+-                    if secret_name:
+-                        environment_name, separator, value = definition.partition("=")
+-                        if not separator:
+-                            value = environment_name
+-                    else:
+-                        try:
+-                            environment_name, value = definition.split("=", 1)
+-                        except ValueError:
+-                            raise ValueError(f"Invalid environment definition: [red]{definition}[/]")
+-                    if not isinstance(environment_name, str) or not environment_name:
+-                        raise ValueError("Environment variable name cannot be empty.")
+-                    if "0" <= environment_name[0] <= "9":
+-                        raise ValueError("Environment variable name cannot start with a digit.")
+-                    if spec_utils._ENVIRONMENT_VARIABLE_NAME_PATTERN.fullmatch(environment_name) is None:
+-                        raise ValueError(
+-                            "Environment variable name can contain only letters, digits,"
+-                            " hyphens, underscores, and periods."
+-                        )
+-                    fields = {"name": environment_name}
+-                    if secret_name:
+-                        name_type = "secret"
+-                    else:
+-                        fields["value"] = value
+-                        name_type = "environment variable"
+-                    if environment_name in spec_utils.LEPTON_RESERVED_ENV_NAMES:
+-                        raise ValueError(
+-                            f"You have used a reserved {name_type} name that is"
+-                            f" used by Lepton internally: {environment_name}. Please use a"
+-                            " different name. Here is a list of all reserved environment"
+-                            f" variable names:\n{spec_utils.LEPTON_RESERVED_ENV_NAMES}"
+-                        )
+-                    if secret_name:
+-                        fields["value_from"] = spec_utils.EnvValue(secret_name_ref=value)
+-                    pending_envs.append(spec_utils.EnvVar(**fields))
+-            spec.envs = pending_envs if plain_definitions or secret_definitions else None
+         # else: preserve existing spec.envs from loaded file
+ 
+         if mount_list or not file:
+             # CLI args provided or no file loaded - use CLI args
+             try:
++                spec.mounts = make_mounts_from_strings(mount_list)
+-                mount_parse_2_mounts = mount_list
+-                if not mount_parse_2_mounts:
+-                    mount_parse_2_result = None
+-                else:
+-                    mount_parse_2_mount_list = []
+-                    for mount_parse_2_mount_str in mount_parse_2_mounts:
+-                        mount_parse_2_parts = mount_parse_2_mount_str.split(":", 2)
+-                        if len(mount_parse_2_parts) == 3:
+-                            wire_1_mount_str = mount_parse_2_mount_str
+-                            wire_1_mount_from = mount_parse_2_parts[2].strip()
+-                            if not wire_1_mount_from:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str, "VOLUME cannot be empty"
+-                                )
+-                            if (
+-                                wire_1_mount_from != "node-local"
+-                                and wire_1_mount_from.startswith("node-")
+-                            ):
+-                                wire_1_volume_parts = wire_1_mount_from.split(":")
+-                                if len(wire_1_volume_parts) == 1:
+-                                    raise spec_utils._mount_definition_error(
+-                                        wire_1_mount_str,
+-                                        "missing storage_name in VOLUME"
+-                                        f" `{wire_1_mount_from}`",
+-                                    )
+-                                if len(wire_1_volume_parts) != 2:
+-                                    raise spec_utils._mount_definition_error(
+-                                        wire_1_mount_str,
+-                                        f"VOLUME `{wire_1_mount_from}` must contain"
+-                                        " exactly one colon after `node-<type>`",
+-                                    )
+-                                if not wire_1_volume_parts[0][len("node-") :].strip():
+-                                    raise spec_utils._mount_definition_error(
+-                                        wire_1_mount_str,
+-                                        "missing storage type in VOLUME"
+-                                        f" `{wire_1_mount_from}`",
+-                                    )
+-                                if not wire_1_volume_parts[1].strip():
+-                                    raise spec_utils._mount_definition_error(
+-                                        wire_1_mount_str,
+-                                        "missing storage_name in VOLUME"
+-                                        f" `{wire_1_mount_from}`",
+-                                    )
+-                            wire_1_result = wire_1_mount_from
+-                            mount_parse_2_mount_from = wire_1_result
+-                            mount_parse_2_mount_list.append(
+-                                spec_utils.Mount(
+-                                    path=mount_parse_2_parts[0].strip(),
+-                                    mount_path=mount_parse_2_parts[1].strip(),
+-                                    **{"from": mount_parse_2_mount_from},
+-                                )
+-                            )
+-                        else:
+-                            raise spec_utils._mount_definition_error(
+-                                mount_parse_2_mount_str,
+-                                "expected FROM_PATH:MOUNT_PATH:VOLUME split on the"
+-                                " first two colons",
+-                            )
+-                    mount_parse_2_result = mount_parse_2_mount_list
+-                spec.mounts = mount_parse_2_result
+             except ValueError as e:
+                 console.print(f"[red]Error parsing --mount[/]: {e}")
+                 sys.exit(1)
+@@ -1540,86 +1441,9 @@ def create(
+         if storage_attachment_list or not file:
+             # CLI args provided or no file loaded - use CLI args
+             try:
++                spec.storage_attachments = make_storage_attachments_from_strings(
++                    storage_attachment_list
++                )
+-                storage_parse_2_storage_attachments = storage_attachment_list
+-                if not storage_parse_2_storage_attachments:
+-                    storage_parse_2_result = None
+-                else:
+-                    storage_parse_2_attachments_by_data_source = {}
+-                    for storage_parse_2_spec_str in storage_parse_2_storage_attachments:
+-                        storage_parse_2_parts = storage_parse_2_spec_str.split(":", 3)
+-                        if len(storage_parse_2_parts) < 2:
+-                            raise spec_utils._storage_attachment_definition_error(
+-                                storage_parse_2_spec_str,
+-                                "expected at least DATA_SOURCE_NAME:MODE",
+-                            )
+-                        storage_parse_2_data_source_name = storage_parse_2_parts[
+-                            0
+-                        ].strip()
+-                        storage_parse_2_mode = storage_parse_2_parts[1].strip()
+-                        storage_parse_2_attach_with = (
+-                            storage_parse_2_parts[2].strip()
+-                            if len(storage_parse_2_parts) > 2
+-                            else ""
+-                        )
+-                        storage_parse_2_profile_name = (
+-                            storage_parse_2_parts[3].strip()
+-                            if len(storage_parse_2_parts) > 3
+-                            else ""
+-                        )
+-                        if storage_parse_2_profile_name and (
+-                            not storage_parse_2_attach_with
+-                        ):
+-                            raise spec_utils._storage_attachment_definition_error(
+-                                storage_parse_2_spec_str,
+-                                "PROFILE_NAME requires ATTACH_WITH (expected"
+-                                " DATA_SOURCE_NAME:MODE:ATTACH_WITH:PROFILE_NAME)",
+-                            )
+-                        if not storage_parse_2_data_source_name:
+-                            raise spec_utils._storage_attachment_definition_error(
+-                                storage_parse_2_spec_str,
+-                                "DATA_SOURCE_NAME cannot be empty",
+-                            )
+-                        if (
+-                            storage_parse_2_mode
+-                            not in spec_utils._STORAGE_ATTACHMENT_MODES
+-                        ):
+-                            raise spec_utils._storage_attachment_definition_error(
+-                                storage_parse_2_spec_str,
+-                                "MODE must be one of"
+-                                f" {', '.join(spec_utils._STORAGE_ATTACHMENT_MODES)},"
+-                                f" found `{storage_parse_2_mode}`",
+-                            )
+-                        if (
+-                            storage_parse_2_attach_with
+-                            and storage_parse_2_attach_with
+-                            not in spec_utils._STORAGE_ATTACHMENT_ATTACH_WITH_VALUES
+-                        ):
+-                            raise spec_utils._storage_attachment_definition_error(
+-                                storage_parse_2_spec_str,
+-                                "ATTACH_WITH must be one of"
+-                                f" {', '.join(spec_utils._STORAGE_ATTACHMENT_ATTACH_WITH_VALUES)},"
+-                                f" found `{storage_parse_2_attach_with}`",
+-                            )
+-                        storage_parse_2_attachments_by_data_source.setdefault(
+-                            storage_parse_2_data_source_name, []
+-                        ).append(
+-                            spec_utils.DataSourceAttachment(
+-                                mode=storage_parse_2_mode,
+-                                attach_with=storage_parse_2_attach_with or None,
+-                                profile_name=storage_parse_2_profile_name or None,
+-                            )
+-                        )
+-                    storage_parse_2_result = [
+-                        spec_utils.StorageAttachment(
+-                            data_source_name=storage_parse_2_name,
+-                            attachments=storage_parse_2_attachments,
+-                        )
+-                        for (
+-                            storage_parse_2_name,
+-                            storage_parse_2_attachments,
+-                        ) in storage_parse_2_attachments_by_data_source.items()
+-                    ]
+-                spec.storage_attachments = storage_parse_2_result
+             except ValueError as e:
+                 console.print(f"[red]Error parsing --storage-attachment[/]: {e}")
+                 sys.exit(1)
+@@ -2674,80 +2498,9 @@ def update(
+ 
+     if storage_attachment:
+         try:
++            lepton_deployment_spec.storage_attachments = (
++                make_storage_attachments_from_strings(list(storage_attachment))
++            )
+-            storage_parse_1_storage_attachments = list(storage_attachment)
+-            if not storage_parse_1_storage_attachments:
+-                storage_parse_1_result = None
+-            else:
+-                storage_parse_1_attachments_by_data_source = {}
+-                for storage_parse_1_spec_str in storage_parse_1_storage_attachments:
+-                    storage_parse_1_parts = storage_parse_1_spec_str.split(":", 3)
+-                    if len(storage_parse_1_parts) < 2:
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "expected at least DATA_SOURCE_NAME:MODE",
+-                        )
+-                    storage_parse_1_data_source_name = storage_parse_1_parts[0].strip()
+-                    storage_parse_1_mode = storage_parse_1_parts[1].strip()
+-                    storage_parse_1_attach_with = (
+-                        storage_parse_1_parts[2].strip()
+-                        if len(storage_parse_1_parts) > 2
+-                        else ""
+-                    )
+-                    storage_parse_1_profile_name = (
+-                        storage_parse_1_parts[3].strip()
+-                        if len(storage_parse_1_parts) > 3
+-                        else ""
+-                    )
+-                    if storage_parse_1_profile_name and (
+-                        not storage_parse_1_attach_with
+-                    ):
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "PROFILE_NAME requires ATTACH_WITH (expected"
+-                            " DATA_SOURCE_NAME:MODE:ATTACH_WITH:PROFILE_NAME)",
+-                        )
+-                    if not storage_parse_1_data_source_name:
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str, "DATA_SOURCE_NAME cannot be empty"
+-                        )
+-                    if storage_parse_1_mode not in spec_utils._STORAGE_ATTACHMENT_MODES:
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "MODE must be one of"
+-                            f" {', '.join(spec_utils._STORAGE_ATTACHMENT_MODES)}, found"
+-                            f" `{storage_parse_1_mode}`",
+-                        )
+-                    if (
+-                        storage_parse_1_attach_with
+-                        and storage_parse_1_attach_with
+-                        not in spec_utils._STORAGE_ATTACHMENT_ATTACH_WITH_VALUES
+-                    ):
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "ATTACH_WITH must be one of"
+-                            f" {', '.join(spec_utils._STORAGE_ATTACHMENT_ATTACH_WITH_VALUES)},"
+-                            f" found `{storage_parse_1_attach_with}`",
+-                        )
+-                    storage_parse_1_attachments_by_data_source.setdefault(
+-                        storage_parse_1_data_source_name, []
+-                    ).append(
+-                        spec_utils.DataSourceAttachment(
+-                            mode=storage_parse_1_mode,
+-                            attach_with=storage_parse_1_attach_with or None,
+-                            profile_name=storage_parse_1_profile_name or None,
+-                        )
+-                    )
+-                storage_parse_1_result = [
+-                    spec_utils.StorageAttachment(
+-                        data_source_name=storage_parse_1_name,
+-                        attachments=storage_parse_1_attachments,
+-                    )
+-                    for (
+-                        storage_parse_1_name,
+-                        storage_parse_1_attachments,
+-                    ) in storage_parse_1_attachments_by_data_source.items()
+-                ]
+-            lepton_deployment_spec.storage_attachments = storage_parse_1_result
+         except ValueError as e:
+             console.print(f"[red]Error parsing --storage-attachment[/]: {e}")
+             sys.exit(1)
+diff --git a/leptonai/cli/finetune.py b/leptonai/cli/finetune.py
+index dcf426d..0ee61ad 100644
+--- a/leptonai/cli/finetune.py
++++ b/leptonai/cli/finetune.py
+@@ -1,4 +1,3 @@
+-from leptonai.api.v2 import spec_utils
+ import json
+ import sys
+ from typing import Any, Dict, List, Optional
+@@ -764,66 +763,7 @@ def create_command(
+         spec.shared_memory_size = shared_memory_size
+     if mount:
+         try:
++            spec.mounts = make_mounts_from_strings(mount)  # type: ignore
+-            mount_parse_2_mounts = mount
+-            if not mount_parse_2_mounts:
+-                mount_parse_2_result = None
+-            else:
+-                mount_parse_2_mount_list = []
+-                for mount_parse_2_mount_str in mount_parse_2_mounts:
+-                    mount_parse_2_parts = mount_parse_2_mount_str.split(":", 2)
+-                    if len(mount_parse_2_parts) == 3:
+-                        wire_1_mount_str = mount_parse_2_mount_str
+-                        wire_1_mount_from = mount_parse_2_parts[2].strip()
+-                        if not wire_1_mount_from:
+-                            raise spec_utils._mount_definition_error(
+-                                wire_1_mount_str, "VOLUME cannot be empty"
+-                            )
+-                        if (
+-                            wire_1_mount_from != "node-local"
+-                            and wire_1_mount_from.startswith("node-")
+-                        ):
+-                            wire_1_volume_parts = wire_1_mount_from.split(":")
+-                            if len(wire_1_volume_parts) == 1:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                            if len(wire_1_volume_parts) != 2:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    f"VOLUME `{wire_1_mount_from}` must contain exactly"
+-                                    " one colon after `node-<type>`",
+-                                )
+-                            if not wire_1_volume_parts[0][len("node-") :].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage type in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                            if not wire_1_volume_parts[1].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                        wire_1_result = wire_1_mount_from
+-                        mount_parse_2_mount_from = wire_1_result
+-                        mount_parse_2_mount_list.append(
+-                            spec_utils.Mount(
+-                                path=mount_parse_2_parts[0].strip(),
+-                                mount_path=mount_parse_2_parts[1].strip(),
+-                                **{"from": mount_parse_2_mount_from},
+-                            )
+-                        )
+-                    else:
+-                        raise spec_utils._mount_definition_error(
+-                            mount_parse_2_mount_str,
+-                            "expected FROM_PATH:MOUNT_PATH:VOLUME split on the first"
+-                            " two colons",
+-                        )
+-                mount_parse_2_result = mount_parse_2_mount_list
+-            spec.mounts = mount_parse_2_result
+         except ValueError as e:
+             console.print(f"[red]Error parsing --mount[/]: {e}")
+             sys.exit(1)
+@@ -833,38 +773,9 @@ def create_command(
+     if wandb_api_key:
+         fixed_secrets.append(f"WANDB_API_KEY={wandb_api_key}")
+     if fixed_secrets:
++        injected = make_env_vars_from_strings(env=None, secret=fixed_secrets)
++        if injected:
++            spec.envs = (spec.envs or []) + injected
+-        pending_envs = list(spec.envs or [])
+-        for definition in fixed_secrets:
+-            environment_name, separator, value = definition.partition("=")
+-            if not separator:
+-                value = environment_name
+-            secret_name = True
+-            if not isinstance(environment_name, str) or not environment_name:
+-                raise ValueError("Environment variable name cannot be empty.")
+-            if "0" <= environment_name[0] <= "9":
+-                raise ValueError("Environment variable name cannot start with a digit.")
+-            if spec_utils._ENVIRONMENT_VARIABLE_NAME_PATTERN.fullmatch(environment_name) is None:
+-                raise ValueError(
+-                    "Environment variable name can contain only letters, digits,"
+-                    " hyphens, underscores, and periods."
+-                )
+-            fields = {"name": environment_name}
+-            if secret_name:
+-                name_type = "secret"
+-            else:
+-                fields["value"] = value
+-                name_type = "environment variable"
+-            if environment_name in spec_utils.LEPTON_RESERVED_ENV_NAMES:
+-                raise ValueError(
+-                    f"You have used a reserved {name_type} name that is"
+-                    f" used by Lepton internally: {environment_name}. Please use a"
+-                    " different name. Here is a list of all reserved environment"
+-                    f" variable names:\n{spec_utils.LEPTON_RESERVED_ENV_NAMES}"
+-                )
+-            if secret_name:
+-                fields["value_from"] = spec_utils.EnvValue(secret_name_ref=value)
+-            pending_envs.append(spec_utils.EnvVar(**fields))
+-        spec.envs = pending_envs
+     try:
+         apply_nodegroup_and_queue_config(
+             spec=spec,
+diff --git a/leptonai/cli/job.py b/leptonai/cli/job.py
+index f5a5920..dc571d6 100644
+--- a/leptonai/cli/job.py
++++ b/leptonai/cli/job.py
+@@ -1,4 +1,3 @@
+-from leptonai.api.v2 import spec_utils
+ from typing import List, Optional, Any
+ import click
+ from datetime import datetime, timezone
+@@ -732,110 +731,12 @@ def create(
+ 
+     # Set environment variables and secrets
+     if env or secret:
++        job_spec.envs = make_env_vars_from_strings(env, secret)  # type: ignore
+-        plain_definitions = env
+-        secret_definitions = secret
+-        pending_envs = []
+-        for definitions, secret_name in ((plain_definitions, False), (secret_definitions, True)):
+-            for definition in definitions or []:
+-                if secret_name:
+-                    environment_name, separator, value = definition.partition("=")
+-                    if not separator:
+-                        value = environment_name
+-                else:
+-                    try:
+-                        environment_name, value = definition.split("=", 1)
+-                    except ValueError:
+-                        raise ValueError(f"Invalid environment definition: [red]{definition}[/]")
+-                if not isinstance(environment_name, str) or not environment_name:
+-                    raise ValueError("Environment variable name cannot be empty.")
+-                if "0" <= environment_name[0] <= "9":
+-                    raise ValueError("Environment variable name cannot start with a digit.")
+-                if spec_utils._ENVIRONMENT_VARIABLE_NAME_PATTERN.fullmatch(environment_name) is None:
+-                    raise ValueError(
+-                        "Environment variable name can contain only letters, digits,"
+-                        " hyphens, underscores, and periods."
+-                    )
+-                fields = {"name": environment_name}
+-                if secret_name:
+-                    name_type = "secret"
+-                else:
+-                    fields["value"] = value
+-                    name_type = "environment variable"
+-                if environment_name in spec_utils.LEPTON_RESERVED_ENV_NAMES:
+-                    raise ValueError(
+-                        f"You have used a reserved {name_type} name that is"
+-                        f" used by Lepton internally: {environment_name}. Please use a"
+-                        " different name. Here is a list of all reserved environment"
+-                        f" variable names:\n{spec_utils.LEPTON_RESERVED_ENV_NAMES}"
+-                    )
+-                if secret_name:
+-                    fields["value_from"] = spec_utils.EnvValue(secret_name_ref=value)
+-                pending_envs.append(spec_utils.EnvVar(**fields))
+-        job_spec.envs = pending_envs if plain_definitions or secret_definitions else None
+ 
+     # Configure mounts
+     if mount:
+         try:
++            job_spec.mounts = make_mounts_from_strings(mount)  # type: ignore
+-            mount_parse_2_mounts = mount
+-            if not mount_parse_2_mounts:
+-                mount_parse_2_result = None
+-            else:
+-                mount_parse_2_mount_list = []
+-                for mount_parse_2_mount_str in mount_parse_2_mounts:
+-                    mount_parse_2_parts = mount_parse_2_mount_str.split(":", 2)
+-                    if len(mount_parse_2_parts) == 3:
+-                        wire_1_mount_str = mount_parse_2_mount_str
+-                        wire_1_mount_from = mount_parse_2_parts[2].strip()
+-                        if not wire_1_mount_from:
+-                            raise spec_utils._mount_definition_error(
+-                                wire_1_mount_str, "VOLUME cannot be empty"
+-                            )
+-                        if (
+-                            wire_1_mount_from != "node-local"
+-                            and wire_1_mount_from.startswith("node-")
+-                        ):
+-                            wire_1_volume_parts = wire_1_mount_from.split(":")
+-                            if len(wire_1_volume_parts) == 1:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                            if len(wire_1_volume_parts) != 2:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    f"VOLUME `{wire_1_mount_from}` must contain exactly"
+-                                    " one colon after `node-<type>`",
+-                                )
+-                            if not wire_1_volume_parts[0][len("node-") :].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage type in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                            if not wire_1_volume_parts[1].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                        wire_1_result = wire_1_mount_from
+-                        mount_parse_2_mount_from = wire_1_result
+-                        mount_parse_2_mount_list.append(
+-                            spec_utils.Mount(
+-                                path=mount_parse_2_parts[0].strip(),
+-                                mount_path=mount_parse_2_parts[1].strip(),
+-                                **{"from": mount_parse_2_mount_from},
+-                            )
+-                        )
+-                    else:
+-                        raise spec_utils._mount_definition_error(
+-                            mount_parse_2_mount_str,
+-                            "expected FROM_PATH:MOUNT_PATH:VOLUME split on the first"
+-                            " two colons",
+-                        )
+-                mount_parse_2_result = mount_parse_2_mount_list
+-            job_spec.mounts = mount_parse_2_result
+         except ValueError as e:
+             console.print(f"[red]Error parsing --mount[/]: {e}")
+             sys.exit(1)
+@@ -843,80 +744,9 @@ def create(
+     # Configure storage attachments
+     if storage_attachment:
+         try:
++            job_spec.storage_attachments = make_storage_attachments_from_strings(
++                list(storage_attachment)
++            )
+-            storage_parse_1_storage_attachments = list(storage_attachment)
+-            if not storage_parse_1_storage_attachments:
+-                storage_parse_1_result = None
+-            else:
+-                storage_parse_1_attachments_by_data_source = {}
+-                for storage_parse_1_spec_str in storage_parse_1_storage_attachments:
+-                    storage_parse_1_parts = storage_parse_1_spec_str.split(":", 3)
+-                    if len(storage_parse_1_parts) < 2:
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "expected at least DATA_SOURCE_NAME:MODE",
+-                        )
+-                    storage_parse_1_data_source_name = storage_parse_1_parts[0].strip()
+-                    storage_parse_1_mode = storage_parse_1_parts[1].strip()
+-                    storage_parse_1_attach_with = (
+-                        storage_parse_1_parts[2].strip()
+-                        if len(storage_parse_1_parts) > 2
+-                        else ""
+-                    )
+-                    storage_parse_1_profile_name = (
+-                        storage_parse_1_parts[3].strip()
+-                        if len(storage_parse_1_parts) > 3
+-                        else ""
+-                    )
+-                    if storage_parse_1_profile_name and (
+-                        not storage_parse_1_attach_with
+-                    ):
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "PROFILE_NAME requires ATTACH_WITH (expected"
+-                            " DATA_SOURCE_NAME:MODE:ATTACH_WITH:PROFILE_NAME)",
+-                        )
+-                    if not storage_parse_1_data_source_name:
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str, "DATA_SOURCE_NAME cannot be empty"
+-                        )
+-                    if storage_parse_1_mode not in spec_utils._STORAGE_ATTACHMENT_MODES:
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "MODE must be one of"
+-                            f" {', '.join(spec_utils._STORAGE_ATTACHMENT_MODES)}, found"
+-                            f" `{storage_parse_1_mode}`",
+-                        )
+-                    if (
+-                        storage_parse_1_attach_with
+-                        and storage_parse_1_attach_with
+-                        not in spec_utils._STORAGE_ATTACHMENT_ATTACH_WITH_VALUES
+-                    ):
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "ATTACH_WITH must be one of"
+-                            f" {', '.join(spec_utils._STORAGE_ATTACHMENT_ATTACH_WITH_VALUES)},"
+-                            f" found `{storage_parse_1_attach_with}`",
+-                        )
+-                    storage_parse_1_attachments_by_data_source.setdefault(
+-                        storage_parse_1_data_source_name, []
+-                    ).append(
+-                        spec_utils.DataSourceAttachment(
+-                            mode=storage_parse_1_mode,
+-                            attach_with=storage_parse_1_attach_with or None,
+-                            profile_name=storage_parse_1_profile_name or None,
+-                        )
+-                    )
+-                storage_parse_1_result = [
+-                    spec_utils.StorageAttachment(
+-                        data_source_name=storage_parse_1_name,
+-                        attachments=storage_parse_1_attachments,
+-                    )
+-                    for (
+-                        storage_parse_1_name,
+-                        storage_parse_1_attachments,
+-                    ) in storage_parse_1_attachments_by_data_source.items()
+-                ]
+-            job_spec.storage_attachments = storage_parse_1_result
+         except ValueError as e:
+             console.print(f"[red]Error parsing --storage-attachment[/]: {e}")
+             sys.exit(1)
+diff --git a/leptonai/cli/pod.py b/leptonai/cli/pod.py
+index 29c655e..a9bce11 100644
+--- a/leptonai/cli/pod.py
++++ b/leptonai/cli/pod.py
+@@ -1,5 +1,3 @@
+-from leptonai.api.v2 import spec_utils
+-
+ """
+ Pod is a module that provides a way to create and manage DGX Cloud Lepton Pods.
+ 
+@@ -424,146 +422,16 @@ def create(
+ 
+     if mount:
+         try:
++            deployment_user_spec.mounts = make_mounts_from_strings(mount)
+-            mount_parse_2_mounts = mount
+-            if not mount_parse_2_mounts:
+-                mount_parse_2_result = None
+-            else:
+-                mount_parse_2_mount_list = []
+-                for mount_parse_2_mount_str in mount_parse_2_mounts:
+-                    mount_parse_2_parts = mount_parse_2_mount_str.split(":", 2)
+-                    if len(mount_parse_2_parts) == 3:
+-                        wire_1_mount_str = mount_parse_2_mount_str
+-                        wire_1_mount_from = mount_parse_2_parts[2].strip()
+-                        if not wire_1_mount_from:
+-                            raise spec_utils._mount_definition_error(
+-                                wire_1_mount_str, "VOLUME cannot be empty"
+-                            )
+-                        if (
+-                            wire_1_mount_from != "node-local"
+-                            and wire_1_mount_from.startswith("node-")
+-                        ):
+-                            wire_1_volume_parts = wire_1_mount_from.split(":")
+-                            if len(wire_1_volume_parts) == 1:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                            if len(wire_1_volume_parts) != 2:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    f"VOLUME `{wire_1_mount_from}` must contain exactly"
+-                                    " one colon after `node-<type>`",
+-                                )
+-                            if not wire_1_volume_parts[0][len("node-") :].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage type in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                            if not wire_1_volume_parts[1].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                        wire_1_result = wire_1_mount_from
+-                        mount_parse_2_mount_from = wire_1_result
+-                        mount_parse_2_mount_list.append(
+-                            spec_utils.Mount(
+-                                path=mount_parse_2_parts[0].strip(),
+-                                mount_path=mount_parse_2_parts[1].strip(),
+-                                **{"from": mount_parse_2_mount_from},
+-                            )
+-                        )
+-                    else:
+-                        raise spec_utils._mount_definition_error(
+-                            mount_parse_2_mount_str,
+-                            "expected FROM_PATH:MOUNT_PATH:VOLUME split on the first"
+-                            " two colons",
+-                        )
+-                mount_parse_2_result = mount_parse_2_mount_list
+-            deployment_user_spec.mounts = mount_parse_2_result
+         except ValueError as e:
+             console.print(f"[red]Error parsing --mount[/]: {e}")
+             sys.exit(1)
+ 
+     if storage_attachment:
+         try:
++            deployment_user_spec.storage_attachments = (
++                make_storage_attachments_from_strings(list(storage_attachment))
++            )
+-            storage_parse_1_storage_attachments = list(storage_attachment)
+-            if not storage_parse_1_storage_attachments:
+-                storage_parse_1_result = None
+-            else:
+-                storage_parse_1_attachments_by_data_source = {}
+-                for storage_parse_1_spec_str in storage_parse_1_storage_attachments:
+-                    storage_parse_1_parts = storage_parse_1_spec_str.split(":", 3)
+-                    if len(storage_parse_1_parts) < 2:
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "expected at least DATA_SOURCE_NAME:MODE",
+-                        )
+-                    storage_parse_1_data_source_name = storage_parse_1_parts[0].strip()
+-                    storage_parse_1_mode = storage_parse_1_parts[1].strip()
+-                    storage_parse_1_attach_with = (
+-                        storage_parse_1_parts[2].strip()
+-                        if len(storage_parse_1_parts) > 2
+-                        else ""
+-                    )
+-                    storage_parse_1_profile_name = (
+-                        storage_parse_1_parts[3].strip()
+-                        if len(storage_parse_1_parts) > 3
+-                        else ""
+-                    )
+-                    if storage_parse_1_profile_name and (
+-                        not storage_parse_1_attach_with
+-                    ):
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "PROFILE_NAME requires ATTACH_WITH (expected"
+-                            " DATA_SOURCE_NAME:MODE:ATTACH_WITH:PROFILE_NAME)",
+-                        )
+-                    if not storage_parse_1_data_source_name:
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str, "DATA_SOURCE_NAME cannot be empty"
+-                        )
+-                    if storage_parse_1_mode not in spec_utils._STORAGE_ATTACHMENT_MODES:
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "MODE must be one of"
+-                            f" {', '.join(spec_utils._STORAGE_ATTACHMENT_MODES)}, found"
+-                            f" `{storage_parse_1_mode}`",
+-                        )
+-                    if (
+-                        storage_parse_1_attach_with
+-                        and storage_parse_1_attach_with
+-                        not in spec_utils._STORAGE_ATTACHMENT_ATTACH_WITH_VALUES
+-                    ):
+-                        raise spec_utils._storage_attachment_definition_error(
+-                            storage_parse_1_spec_str,
+-                            "ATTACH_WITH must be one of"
+-                            f" {', '.join(spec_utils._STORAGE_ATTACHMENT_ATTACH_WITH_VALUES)},"
+-                            f" found `{storage_parse_1_attach_with}`",
+-                        )
+-                    storage_parse_1_attachments_by_data_source.setdefault(
+-                        storage_parse_1_data_source_name, []
+-                    ).append(
+-                        spec_utils.DataSourceAttachment(
+-                            mode=storage_parse_1_mode,
+-                            attach_with=storage_parse_1_attach_with or None,
+-                            profile_name=storage_parse_1_profile_name or None,
+-                        )
+-                    )
+-                storage_parse_1_result = [
+-                    spec_utils.StorageAttachment(
+-                        data_source_name=storage_parse_1_name,
+-                        attachments=storage_parse_1_attachments,
+-                    )
+-                    for (
+-                        storage_parse_1_name,
+-                        storage_parse_1_attachments,
+-                    ) in storage_parse_1_attachments_by_data_source.items()
+-                ]
+-            deployment_user_spec.storage_attachments = storage_parse_1_result
+         except ValueError as e:
+             console.print(f"[red]Error parsing --storage-attachment[/]: {e}")
+             sys.exit(1)
+@@ -572,46 +440,7 @@ def create(
+         deployment_user_spec.image_pull_secrets = image_pull_secrets
+ 
+     if env or secret:
++        deployment_user_spec.envs = make_env_vars_from_strings(list(env), list(secret))
+-        plain_definitions = list(env)
+-        secret_definitions = list(secret)
+-        pending_envs = []
+-        for definitions, secret_name in ((plain_definitions, False), (secret_definitions, True)):
+-            for definition in definitions or []:
+-                if secret_name:
+-                    environment_name, separator, value = definition.partition("=")
+-                    if not separator:
+-                        value = environment_name
+-                else:
+-                    try:
+-                        environment_name, value = definition.split("=", 1)
+-                    except ValueError:
+-                        raise ValueError(f"Invalid environment definition: [red]{definition}[/]")
+-                if not isinstance(environment_name, str) or not environment_name:
+-                    raise ValueError("Environment variable name cannot be empty.")
+-                if "0" <= environment_name[0] <= "9":
+-                    raise ValueError("Environment variable name cannot start with a digit.")
+-                if spec_utils._ENVIRONMENT_VARIABLE_NAME_PATTERN.fullmatch(environment_name) is None:
+-                    raise ValueError(
+-                        "Environment variable name can contain only letters, digits,"
+-                        " hyphens, underscores, and periods."
+-                    )
+-                fields = {"name": environment_name}
+-                if secret_name:
+-                    name_type = "secret"
+-                else:
+-                    fields["value"] = value
+-                    name_type = "environment variable"
+-                if environment_name in spec_utils.LEPTON_RESERVED_ENV_NAMES:
+-                    raise ValueError(
+-                        f"You have used a reserved {name_type} name that is"
+-                        f" used by Lepton internally: {environment_name}. Please use a"
+-                        " different name. Here is a list of all reserved environment"
+-                        f" variable names:\n{spec_utils.LEPTON_RESERVED_ENV_NAMES}"
+-                    )
+-                if secret_name:
+-                    fields["value_from"] = spec_utils.EnvValue(secret_name_ref=value)
+-                pending_envs.append(spec_utils.EnvVar(**fields))
+-        deployment_user_spec.envs = pending_envs if plain_definitions or secret_definitions else None
+ 
+     deployment_user_spec.is_pod = True
+ 
+diff --git a/leptonai/cli/raycluster.py b/leptonai/cli/raycluster.py
+index 266a9d6..316f1b3 100644
+--- a/leptonai/cli/raycluster.py
++++ b/leptonai/cli/raycluster.py
+@@ -1,4 +1,3 @@
+-from leptonai.api.v2 import spec_utils
+ import json
+ import shlex
+ from datetime import datetime
+@@ -466,108 +465,12 @@ def _build_group_spec(
+ 
+     # Optional envs/mounts (only set when provided to avoid overwriting file-loaded spec)
+     if (env_kvs or secret_kvs) is not None and (env_kvs or secret_kvs):
++        spec.envs = make_env_vars_from_strings(
++            list(env_kvs or []), list(secret_kvs or [])
++        )
+-        plain_definitions = list(env_kvs or [])
+-        secret_definitions = list(secret_kvs or [])
+-        pending_envs = []
+-        for definitions, secret_name in ((plain_definitions, False), (secret_definitions, True)):
+-            for definition in definitions or []:
+-                if secret_name:
+-                    environment_name, separator, value = definition.partition("=")
+-                    if not separator:
+-                        value = environment_name
+-                else:
+-                    try:
+-                        environment_name, value = definition.split("=", 1)
+-                    except ValueError:
+-                        raise ValueError(f"Invalid environment definition: [red]{definition}[/]")
+-                if not isinstance(environment_name, str) or not environment_name:
+-                    raise ValueError("Environment variable name cannot be empty.")
+-                if "0" <= environment_name[0] <= "9":
+-                    raise ValueError("Environment variable name cannot start with a digit.")
+-                if spec_utils._ENVIRONMENT_VARIABLE_NAME_PATTERN.fullmatch(environment_name) is None:
+-                    raise ValueError(
+-                        "Environment variable name can contain only letters, digits,"
+-                        " hyphens, underscores, and periods."
+-                    )
+-                fields = {"name": environment_name}
+-                if secret_name:
+-                    name_type = "secret"
+-                else:
+-                    fields["value"] = value
+-                    name_type = "environment variable"
+-                if environment_name in spec_utils.LEPTON_RESERVED_ENV_NAMES:
+-                    raise ValueError(
+-                        f"You have used a reserved {name_type} name that is"
+-                        f" used by Lepton internally: {environment_name}. Please use a"
+-                        " different name. Here is a list of all reserved environment"
+-                        f" variable names:\n{spec_utils.LEPTON_RESERVED_ENV_NAMES}"
+-                    )
+-                if secret_name:
+-                    fields["value_from"] = spec_utils.EnvValue(secret_name_ref=value)
+-                pending_envs.append(spec_utils.EnvVar(**fields))
+-        spec.envs = pending_envs if plain_definitions or secret_definitions else None
+     if mounts:
+         try:
++            spec.mounts = make_mounts_from_strings(list(mounts))
+-            mount_parse_4_mounts = list(mounts)
+-            if not mount_parse_4_mounts:
+-                mount_parse_4_result = None
+-            else:
+-                mount_parse_4_mount_list = []
+-                for mount_parse_4_mount_str in mount_parse_4_mounts:
+-                    mount_parse_4_parts = mount_parse_4_mount_str.split(":", 2)
+-                    if len(mount_parse_4_parts) == 3:
+-                        wire_1_mount_str = mount_parse_4_mount_str
+-                        wire_1_mount_from = mount_parse_4_parts[2].strip()
+-                        if not wire_1_mount_from:
+-                            raise spec_utils._mount_definition_error(
+-                                wire_1_mount_str, "VOLUME cannot be empty"
+-                            )
+-                        if (
+-                            wire_1_mount_from != "node-local"
+-                            and wire_1_mount_from.startswith("node-")
+-                        ):
+-                            wire_1_volume_parts = wire_1_mount_from.split(":")
+-                            if len(wire_1_volume_parts) == 1:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                            if len(wire_1_volume_parts) != 2:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    f"VOLUME `{wire_1_mount_from}` must contain exactly"
+-                                    " one colon after `node-<type>`",
+-                                )
+-                            if not wire_1_volume_parts[0][len("node-") :].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage type in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                            if not wire_1_volume_parts[1].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_1_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_1_mount_from}`",
+-                                )
+-                        wire_1_result = wire_1_mount_from
+-                        mount_parse_4_mount_from = wire_1_result
+-                        mount_parse_4_mount_list.append(
+-                            spec_utils.Mount(
+-                                path=mount_parse_4_parts[0].strip(),
+-                                mount_path=mount_parse_4_parts[1].strip(),
+-                                **{"from": mount_parse_4_mount_from},
+-                            )
+-                        )
+-                    else:
+-                        raise spec_utils._mount_definition_error(
+-                            mount_parse_4_mount_str,
+-                            "expected FROM_PATH:MOUNT_PATH:VOLUME split on the first"
+-                            " two colons",
+-                        )
+-                mount_parse_4_result = mount_parse_4_mount_list
+-            spec.mounts = mount_parse_4_result
+         except ValueError as e:
+             console.print(f"[red]{label}: Error parsing {mount_option_name}[/]: {e}")
+             sys.exit(1)
+@@ -730,110 +633,12 @@ def _merge_cli_into_worker_spec(
+     env_list = _flatten_csv_list(cli_overrides.get("env"))
+     secret_list = _flatten_csv_list(cli_overrides.get("secret"))
+     if env_list or secret_list:
++        spec.envs = make_env_vars_from_strings(env_list or [], secret_list or [])
+-        plain_definitions = env_list or []
+-        secret_definitions = secret_list or []
+-        pending_envs = []
+-        for definitions, secret_name in ((plain_definitions, False), (secret_definitions, True)):
+-            for definition in definitions or []:
+-                if secret_name:
+-                    environment_name, separator, value = definition.partition("=")
+-                    if not separator:
+-                        value = environment_name
+-                else:
+-                    try:
+-                        environment_name, value = definition.split("=", 1)
+-                    except ValueError:
+-                        raise ValueError(f"Invalid environment definition: [red]{definition}[/]")
+-                if not isinstance(environment_name, str) or not environment_name:
+-                    raise ValueError("Environment variable name cannot be empty.")
+-                if "0" <= environment_name[0] <= "9":
+-                    raise ValueError("Environment variable name cannot start with a digit.")
+-                if spec_utils._ENVIRONMENT_VARIABLE_NAME_PATTERN.fullmatch(environment_name) is None:
+-                    raise ValueError(
+-                        "Environment variable name can contain only letters, digits,"
+-                        " hyphens, underscores, and periods."
+-                    )
+-                fields = {"name": environment_name}
+-                if secret_name:
+-                    name_type = "secret"
+-                else:
+-                    fields["value"] = value
+-                    name_type = "environment variable"
+-                if environment_name in spec_utils.LEPTON_RESERVED_ENV_NAMES:
+-                    raise ValueError(
+-                        f"You have used a reserved {name_type} name that is"
+-                        f" used by Lepton internally: {environment_name}. Please use a"
+-                        " different name. Here is a list of all reserved environment"
+-                        f" variable names:\n{spec_utils.LEPTON_RESERVED_ENV_NAMES}"
+-                    )
+-                if secret_name:
+-                    fields["value_from"] = spec_utils.EnvValue(secret_name_ref=value)
+-                pending_envs.append(spec_utils.EnvVar(**fields))
+-        spec.envs = pending_envs if plain_definitions or secret_definitions else None
+ 
+     mount_list = _flatten_csv_list(cli_overrides.get("mount"))
+     if mount_list:
+         try:
++            spec.mounts = make_mounts_from_strings(mount_list)
+-            mount_parse_5_mounts = mount_list
+-            if not mount_parse_5_mounts:
+-                mount_parse_5_result = None
+-            else:
+-                mount_parse_5_mount_list = []
+-                for mount_parse_5_mount_str in mount_parse_5_mounts:
+-                    mount_parse_5_parts = mount_parse_5_mount_str.split(":", 2)
+-                    if len(mount_parse_5_parts) == 3:
+-                        wire_2_mount_str = mount_parse_5_mount_str
+-                        wire_2_mount_from = mount_parse_5_parts[2].strip()
+-                        if not wire_2_mount_from:
+-                            raise spec_utils._mount_definition_error(
+-                                wire_2_mount_str, "VOLUME cannot be empty"
+-                            )
+-                        if (
+-                            wire_2_mount_from != "node-local"
+-                            and wire_2_mount_from.startswith("node-")
+-                        ):
+-                            wire_2_volume_parts = wire_2_mount_from.split(":")
+-                            if len(wire_2_volume_parts) == 1:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_2_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_2_mount_from}`",
+-                                )
+-                            if len(wire_2_volume_parts) != 2:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_2_mount_str,
+-                                    f"VOLUME `{wire_2_mount_from}` must contain exactly"
+-                                    " one colon after `node-<type>`",
+-                                )
+-                            if not wire_2_volume_parts[0][len("node-") :].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_2_mount_str,
+-                                    "missing storage type in VOLUME"
+-                                    f" `{wire_2_mount_from}`",
+-                                )
+-                            if not wire_2_volume_parts[1].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_2_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_2_mount_from}`",
+-                                )
+-                        wire_2_result = wire_2_mount_from
+-                        mount_parse_5_mount_from = wire_2_result
+-                        mount_parse_5_mount_list.append(
+-                            spec_utils.Mount(
+-                                path=mount_parse_5_parts[0].strip(),
+-                                mount_path=mount_parse_5_parts[1].strip(),
+-                                **{"from": mount_parse_5_mount_from},
+-                            )
+-                        )
+-                    else:
+-                        raise spec_utils._mount_definition_error(
+-                            mount_parse_5_mount_str,
+-                            "expected FROM_PATH:MOUNT_PATH:VOLUME split on the first"
+-                            " two colons",
+-                        )
+-                mount_parse_5_result = mount_parse_5_mount_list
+-            spec.mounts = mount_parse_5_result
+         except ValueError as e:
+             console.print(f"[red]{cli_wg_context}: Error parsing --mount[/]: {e}")
+             sys.exit(1)
+@@ -1091,110 +896,12 @@ def _build_worker_spec_from_cli(
+     envs_list = _flatten_csv_list(g.get("env"))
+     secrets_list = _flatten_csv_list(g.get("secret"))
+     if envs_list or secrets_list:
++        ws.envs = make_env_vars_from_strings(envs_list or [], secrets_list or [])
+-        plain_definitions = envs_list or []
+-        secret_definitions = secrets_list or []
+-        pending_envs = []
+-        for definitions, secret_name in ((plain_definitions, False), (secret_definitions, True)):
+-            for definition in definitions or []:
+-                if secret_name:
+-                    environment_name, separator, value = definition.partition("=")
+-                    if not separator:
+-                        value = environment_name
+-                else:
+-                    try:
+-                        environment_name, value = definition.split("=", 1)
+-                    except ValueError:
+-                        raise ValueError(f"Invalid environment definition: [red]{definition}[/]")
+-                if not isinstance(environment_name, str) or not environment_name:
+-                    raise ValueError("Environment variable name cannot be empty.")
+-                if "0" <= environment_name[0] <= "9":
+-                    raise ValueError("Environment variable name cannot start with a digit.")
+-                if spec_utils._ENVIRONMENT_VARIABLE_NAME_PATTERN.fullmatch(environment_name) is None:
+-                    raise ValueError(
+-                        "Environment variable name can contain only letters, digits,"
+-                        " hyphens, underscores, and periods."
+-                    )
+-                fields = {"name": environment_name}
+-                if secret_name:
+-                    name_type = "secret"
+-                else:
+-                    fields["value"] = value
+-                    name_type = "environment variable"
+-                if environment_name in spec_utils.LEPTON_RESERVED_ENV_NAMES:
+-                    raise ValueError(
+-                        f"You have used a reserved {name_type} name that is"
+-                        f" used by Lepton internally: {environment_name}. Please use a"
+-                        " different name. Here is a list of all reserved environment"
+-                        f" variable names:\n{spec_utils.LEPTON_RESERVED_ENV_NAMES}"
+-                    )
+-                if secret_name:
+-                    fields["value_from"] = spec_utils.EnvValue(secret_name_ref=value)
+-                pending_envs.append(spec_utils.EnvVar(**fields))
+-        ws.envs = pending_envs if plain_definitions or secret_definitions else None
+ 
+     mounts_list = _flatten_csv_list(g.get("mount"))
+     if mounts_list:
+         try:
++            ws.mounts = make_mounts_from_strings(mounts_list)
+-            mount_parse_6_mounts = mounts_list
+-            if not mount_parse_6_mounts:
+-                mount_parse_6_result = None
+-            else:
+-                mount_parse_6_mount_list = []
+-                for mount_parse_6_mount_str in mount_parse_6_mounts:
+-                    mount_parse_6_parts = mount_parse_6_mount_str.split(":", 2)
+-                    if len(mount_parse_6_parts) == 3:
+-                        wire_3_mount_str = mount_parse_6_mount_str
+-                        wire_3_mount_from = mount_parse_6_parts[2].strip()
+-                        if not wire_3_mount_from:
+-                            raise spec_utils._mount_definition_error(
+-                                wire_3_mount_str, "VOLUME cannot be empty"
+-                            )
+-                        if (
+-                            wire_3_mount_from != "node-local"
+-                            and wire_3_mount_from.startswith("node-")
+-                        ):
+-                            wire_3_volume_parts = wire_3_mount_from.split(":")
+-                            if len(wire_3_volume_parts) == 1:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_3_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_3_mount_from}`",
+-                                )
+-                            if len(wire_3_volume_parts) != 2:
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_3_mount_str,
+-                                    f"VOLUME `{wire_3_mount_from}` must contain exactly"
+-                                    " one colon after `node-<type>`",
+-                                )
+-                            if not wire_3_volume_parts[0][len("node-") :].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_3_mount_str,
+-                                    "missing storage type in VOLUME"
+-                                    f" `{wire_3_mount_from}`",
+-                                )
+-                            if not wire_3_volume_parts[1].strip():
+-                                raise spec_utils._mount_definition_error(
+-                                    wire_3_mount_str,
+-                                    "missing storage_name in VOLUME"
+-                                    f" `{wire_3_mount_from}`",
+-                                )
+-                        wire_3_result = wire_3_mount_from
+-                        mount_parse_6_mount_from = wire_3_result
+-                        mount_parse_6_mount_list.append(
+-                            spec_utils.Mount(
+-                                path=mount_parse_6_parts[0].strip(),
+-                                mount_path=mount_parse_6_parts[1].strip(),
+-                                **{"from": mount_parse_6_mount_from},
+-                            )
+-                        )
+-                    else:
+-                        raise spec_utils._mount_definition_error(
+-                            mount_parse_6_mount_str,
+-                            "expected FROM_PATH:MOUNT_PATH:VOLUME split on the first"
+-                            " two colons",
+-                        )
+-                mount_parse_6_result = mount_parse_6_mount_list
+-            ws.mounts = mount_parse_6_result
+         except ValueError as e:
+             console.print(f"[red]{cli_wg_context}: Error parsing --mount[/]: {e}")
+             sys.exit(1)

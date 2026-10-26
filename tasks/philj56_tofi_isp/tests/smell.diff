@@ -1,0 +1,1136 @@
+diff --git a/meson.build b/meson.build
+index 0aa4949..e51432e 100644
+--- a/meson.build
++++ b/meson.build
+@@ -95,6 +95,7 @@ add_project_arguments(
+ )
+ 
+ common_sources = files(
++  'src/display_services.c',
+   'src/clipboard.c',
+   'src/color.c',
+   'src/compgen.c',
+diff --git a/src/clipboard.c b/src/clipboard.c
+index a046055..b24f6df 100644
+--- a/src/clipboard.c
++++ b/src/clipboard.c
+@@ -1,23 +1,34 @@
+ #include <unistd.h>
+ #include "clipboard.h"
++#include "display_services.h"
+ 
+-void clipboard_finish_paste(struct clipboard *clipboard)
++void display_paste_release(struct display_request *request)
+ {
+-	if (clipboard->fd > 0) {
+-		close(clipboard->fd);
+-		clipboard->fd = 0;
+-	}
++	struct clipboard *clipboard = request->clipboard;
++	request->descriptor = &clipboard->fd;
++	request->positive_descriptor_only = true;
++	display_services()->release_descriptor(request);
+ }
+ 
+-void clipboard_reset(struct clipboard *clipboard)
++void display_paste_reset(struct display_request *request)
+ {
++	struct clipboard *clipboard = request->clipboard;
+ 	if (clipboard->wl_data_offer != NULL) {
+ 		wl_data_offer_destroy(clipboard->wl_data_offer);
+ 		clipboard->wl_data_offer = NULL;
+ 	}
+-	if (clipboard->fd > 0) {
+-		close(clipboard->fd);
+-		clipboard->fd = 0;
+-	}
++	display_services()->paste_release(request);
+ 	clipboard->mime_type = NULL;
+ }
++
++void clipboard_finish_paste(struct clipboard *clipboard)
++{
++	struct display_request request = { .clipboard = clipboard };
++	display_services()->paste_release(&request);
++}
++
++void clipboard_reset(struct clipboard *clipboard)
++{
++	struct display_request request = { .clipboard = clipboard };
++	display_services()->paste_reset(&request);
++}
+diff --git a/src/config.c b/src/config.c
+index 52e14d8..1b33c07 100644
+--- a/src/config.c
++++ b/src/config.c
+@@ -1,3 +1,4 @@
++#include "display_services.h"
+ #include <ctype.h>
+ #include <errno.h>
+ #include <libgen.h>
+@@ -722,7 +723,7 @@ bool parse_option(struct tofi *tofi, const char *filename, size_t lineno, const
+ 		uint32_t ch = parse_char(filename, lineno, value, &err);
+ 		if (!err) {
+ 			tofi->window.entry.hidden_character_utf8_length = 
+-				utf32_to_utf8(ch, tofi->window.entry.hidden_character_utf8);
++				display_services()->encode(ch, tofi->window.entry.hidden_character_utf8);
+ 		}
+ 	} else if (strcasecmp(option, "physical-keybindings") == 0) {
+ 		bool val = parse_bool(filename, lineno, value, &err);
+@@ -790,20 +791,17 @@ void config_fixup_values(struct tofi *tofi)
+ {
+ 	uint32_t base_width = tofi->output_width;
+ 	uint32_t base_height = tofi->output_height;
+-	uint32_t scale;
+-	if (tofi->window.fractional_scale != 0) {
+-		scale = tofi->window.fractional_scale;
+-	} else {
+-		scale = tofi->window.scale * 120;
+-	}
++	uint32_t scale = display_services()->configured_scale(&(struct display_request) {
++		.owner = tofi, .entry = &tofi->window.entry
++	});
+ 
+ 	/*
+ 	 * If we're going to be scaling these values in Cairo,
+ 	 * we need to apply the inverse scale here.
+ 	 */
+ 	if (tofi->use_scale) {
+-		base_width = scale_apply_inverse(base_width, scale);
+-		base_height = scale_apply_inverse(base_height, scale);
++		base_width = display_services()->unscale(base_width, scale);
++		base_height = display_services()->unscale(base_height, scale);
+ 	}
+ 
+ 	tofi->window.margin_top = fixup_percentage(
+@@ -854,10 +852,10 @@ void config_fixup_values(struct tofi *tofi)
+ 			tofi->output_height,
+ 			tofi->window.height_is_percent);
+ 	if (tofi->window.width_is_percent || !tofi->use_scale) {
+-		tofi->window.width = scale_apply_inverse(tofi->window.width, scale);
++		tofi->window.width = display_services()->unscale(tofi->window.width, scale);
+ 	}
+ 	if (tofi->window.height_is_percent || !tofi->use_scale) {
+-		tofi->window.height = scale_apply_inverse(tofi->window.height, scale);
++		tofi->window.height = display_services()->unscale(tofi->window.height, scale);
+ 	}
+ 
+ 	/* Don't attempt percentage handling if exclusive_zone is set to -1. */
+diff --git a/src/display_services.c b/src/display_services.c
+new file mode 100644
+index 0000000..344c23c
+--- /dev/null
++++ b/src/display_services.c
+@@ -0,0 +1,183 @@
++#include "display_services.h"
++#include "scale.h"
++#include "tofi.h"
++#include <unistd.h>
++
++static void font_setup(struct display_request *request)
++{
++	if (access(request->entry->font_name, R_OK) != 0) {
++		request->entry->use_pango = true;
++	}
++	if (request->entry->use_pango) {
++		entry_backend_pango_init(request->entry, request->available_width, request->available_height);
++	} else {
++		entry_backend_harfbuzz_init(request->entry, request->available_width, request->available_height);
++	}
++}
++
++static void theme_defaults(struct display_request *request)
++{
++	if (!request->theme->foreground_specified) {
++		request->theme->foreground_color = request->fallback->foreground_color;
++	}
++	if (!request->theme->background_specified) {
++		request->theme->background_color = request->fallback->background_color;
++	}
++	if (!request->theme->padding_specified) {
++		request->theme->padding = request->fallback->padding;
++	}
++	if (!request->theme->radius_specified) {
++		request->theme->background_corner_radius = request->fallback->background_corner_radius;
++	}
++}
++
++static void cursor_defaults(struct display_request *request)
++{
++	struct entry *entry = request->entry;
++	if (!entry->cursor_theme.color_specified) {
++		entry->cursor_theme.color = entry->input_theme.foreground_color;
++	}
++	if (!entry->cursor_theme.text_color_specified) {
++		entry->cursor_theme.text_color = entry->background_color;
++	}
++}
++
++static double cursor_advance(struct display_request *request)
++{
++	double advance = 0;
++	if (request->cursor_position == request->text_length && request->cursor->show) {
++		switch (request->cursor->style) {
++			case CURSOR_STYLE_BAR:
++				advance = request->cursor->thickness;
++				break;
++			case CURSOR_STYLE_BLOCK:
++			case CURSOR_STYLE_UNDERSCORE:
++				advance = request->cursor->em_width;
++				break;
++		}
++		advance += request->advance - request->bearing - request->ink_width;
++	}
++	return advance;
++}
++
++static bool overflows(struct display_request *request)
++{
++	struct entry *entry = request->entry;
++	cairo_matrix_t mat;
++	cairo_get_matrix(entry->cairo[entry->index].cr, &mat);
++	if (entry->horizontal) {
++		return mat.x0 + request->width > entry->clip_x + entry->clip_width;
++	}
++	return mat.y0 + request->height > entry->clip_y + entry->clip_height;
++}
++
++static const struct text_theme *result_theme(struct display_request *request)
++{
++	if (request->row == request->entry->selection) {
++		return &request->entry->selection_theme;
++	} else if (request->result_index % 2) {
++		return &request->entry->alternate_result_theme;
++	}
++	return &request->entry->default_result_theme;
++}
++
++static uint32_t configured_scale(struct display_request *request)
++{
++	if (request->logical && !request->owner->use_scale) {
++		return 120;
++	}
++	if (request->owner->window.fractional_scale != 0) {
++		return request->owner->window.fractional_scale;
++	}
++	return request->owner->window.scale * 120;
++}
++
++static void encode_input(struct display_request *request)
++{
++	size_t bytes_written = 0;
++	for (size_t i = 0; i < request->entry->input_utf32_length; i++) {
++		bytes_written += display_services()->encode(request->entry->input_utf32[i],
++				&request->entry->input_utf8[bytes_written]);
++	}
++	request->entry->input_utf8[bytes_written] = '\0';
++	request->entry->input_utf8_length = bytes_written;
++}
++
++static void buffer_layout(struct display_request *request)
++{
++	request->surface->stride = request->surface->width * 4;
++	request->surface->shm_pool_size = request->surface->height * request->surface->stride * 2;
++}
++
++static void release_descriptor(struct display_request *request)
++{
++	if (!request->positive_descriptor_only || *request->descriptor > 0) {
++		close(*request->descriptor);
++		if (request->positive_descriptor_only) {
++			*request->descriptor = 0;
++		}
++	}
++}
++
++static void font_release(struct display_request *request)
++{
++	if (request->entry->use_pango) {
++		entry_backend_pango_destroy(request->entry);
++	} else {
++		entry_backend_harfbuzz_destroy(request->entry);
++	}
++}
++
++static void font_render(struct display_request *request)
++{
++	if (request->entry->use_pango) {
++		entry_backend_pango_update(request->entry);
++	} else {
++		entry_backend_harfbuzz_update(request->entry);
++	}
++}
++
++const struct display_services *display_services(void)
++{
++	static const struct display_services services = {
++		.open_surface = surface_init,
++		.close_surface = surface_destroy,
++		.present = surface_draw,
++		.open_entry = entry_init,
++		.close_entry = entry_destroy,
++		.refresh = entry_update,
++		.finish_paste = clipboard_finish_paste,
++		.reset_clipboard = clipboard_reset,
++		.scale = scale_apply,
++		.unscale = scale_apply_inverse,
++		.allocate_buffer = shm_allocate_file,
++		.encode = utf32_to_utf8,
++		.decode = utf8_to_utf32,
++		.next_character = utf8_next_char,
++		.previous_character = utf8_prev_char,
++		.text_length = utf8_strlen,
++		.wide_text = utf8_string_to_utf32_string,
++		.wide_length = utf32_strlen,
++		.surface_setup = display_surface_setup,
++		.surface_release = display_surface_release,
++		.surface_present = display_surface_present,
++		.entry_setup = display_entry_setup,
++		.entry_release = display_entry_release,
++		.entry_render = display_entry_render,
++		.paste_release = display_paste_release,
++		.paste_reset = display_paste_reset,
++		.font_setup = font_setup,
++		.font_release = font_release,
++		.font_render = font_render,
++		.theme_defaults = theme_defaults,
++		.cursor_defaults = cursor_defaults,
++		.cursor_advance = cursor_advance,
++		.overflows = overflows,
++		.result_theme = result_theme,
++		.configured_scale = configured_scale,
++		.encode_input = encode_input,
++		.buffer_layout = buffer_layout,
++		.release_descriptor = release_descriptor,
++	};
++	return &services;
++}
+diff --git a/src/display_services.h b/src/display_services.h
+new file mode 100644
+index 0000000..6feff3e
+--- /dev/null
++++ b/src/display_services.h
+@@ -0,0 +1,89 @@
++#ifndef DISPLAY_SERVICES_H
++#define DISPLAY_SERVICES_H
++
++#include "entry.h"
++#include "clipboard.h"
++#include "shm.h"
++#include "unicode.h"
++
++struct tofi;
++
++struct display_request {
++	struct surface *surface;
++	struct entry *entry;
++	struct clipboard *clipboard;
++	struct wl_shm *shm;
++	uint8_t *buffer;
++	uint32_t width;
++	uint32_t height;
++	uint32_t scale;
++	uint32_t *available_width;
++	uint32_t *available_height;
++	struct tofi *owner;
++	bool logical;
++	struct text_theme *theme;
++	const struct text_theme *fallback;
++	const struct cursor_theme *cursor;
++	uint32_t text_length;
++	uint32_t cursor_position;
++	double advance;
++	double bearing;
++	double ink_width;
++	size_t row;
++	size_t result_index;
++	int *descriptor;
++	bool positive_descriptor_only;
++};
++
++struct display_services {
++	void (*open_surface)(struct surface *, struct wl_shm *);
++	void (*close_surface)(struct surface *);
++	void (*present)(struct surface *);
++	void (*open_entry)(struct entry *, uint8_t *, uint32_t, uint32_t, uint32_t);
++	void (*close_entry)(struct entry *);
++	void (*refresh)(struct entry *);
++	void (*finish_paste)(struct clipboard *);
++	void (*reset_clipboard)(struct clipboard *);
++	uint32_t (*scale)(uint32_t, uint32_t);
++	uint32_t (*unscale)(uint32_t, uint32_t);
++	int (*allocate_buffer)(size_t);
++	uint8_t (*encode)(uint32_t, char *);
++	uint32_t (*decode)(const char *);
++	char *(*next_character)(const char *);
++	char *(*previous_character)(const char *);
++	size_t (*text_length)(const char *);
++	uint32_t *(*wide_text)(const char *);
++	size_t (*wide_length)(const uint32_t *);
++	void (*surface_setup)(struct display_request *);
++	void (*surface_release)(struct display_request *);
++	void (*surface_present)(struct display_request *);
++	void (*entry_setup)(struct display_request *);
++	void (*entry_release)(struct display_request *);
++	void (*entry_render)(struct display_request *);
++	void (*paste_release)(struct display_request *);
++	void (*paste_reset)(struct display_request *);
++	void (*font_setup)(struct display_request *);
++	void (*font_release)(struct display_request *);
++	void (*font_render)(struct display_request *);
++	void (*theme_defaults)(struct display_request *);
++	void (*cursor_defaults)(struct display_request *);
++	double (*cursor_advance)(struct display_request *);
++	bool (*overflows)(struct display_request *);
++	const struct text_theme *(*result_theme)(struct display_request *);
++	uint32_t (*configured_scale)(struct display_request *);
++	void (*encode_input)(struct display_request *);
++	void (*buffer_layout)(struct display_request *);
++	void (*release_descriptor)(struct display_request *);
++};
++
++const struct display_services *display_services(void);
++void display_surface_setup(struct display_request *request);
++void display_surface_release(struct display_request *request);
++void display_surface_present(struct display_request *request);
++void display_entry_setup(struct display_request *request);
++void display_entry_release(struct display_request *request);
++void display_entry_render(struct display_request *request);
++void display_paste_release(struct display_request *request);
++void display_paste_reset(struct display_request *request);
++
++#endif
+diff --git a/src/entry.c b/src/entry.c
+index 23e8575..86e48e6 100644
+--- a/src/entry.c
++++ b/src/entry.c
+@@ -1,3 +1,4 @@
++#include "display_services.h"
+ #include <cairo/cairo.h>
+ #include <math.h>
+ #include <unistd.h>
+@@ -28,24 +29,13 @@ static void rounded_rectangle(cairo_t *cr, uint32_t width, uint32_t height, uint
+ 	cairo_close_path(cr);
+ }
+ 
+-static void apply_text_theme_fallback(struct text_theme *theme, const struct text_theme *fallback)
+-{
+-	if (!theme->foreground_specified) {
+-		theme->foreground_color = fallback->foreground_color;
+-	}
+-	if (!theme->background_specified) {
+-		theme->background_color = fallback->background_color;
+-	}
+-	if (!theme->padding_specified) {
+-		theme->padding = fallback->padding;
+-	}
+-	if (!theme->radius_specified) {
+-		theme->background_corner_radius = fallback->background_corner_radius;
+-	}
+-}
+-
+-void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, uint32_t height, uint32_t fractional_scale_numerator)
++void display_entry_setup(struct display_request *request)
+ {
++	struct entry *entry = request->entry;
++	uint8_t *buffer = request->buffer;
++	uint32_t width = request->width;
++	uint32_t height = request->height;
++	uint32_t fractional_scale_numerator = request->scale;
+ 	double scale = fractional_scale_numerator / 120.;
+ 	/*
+ 	 * Create the cairo surfaces and contexts we'll be using.
+@@ -84,8 +74,8 @@ void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, u
+ 	entry->cairo[1].cr = cairo_create(entry->cairo[1].surface);
+ 
+ 	/* If we're scaling with Cairo, remember to account for that here. */
+-	width = scale_apply_inverse(width, fractional_scale_numerator);
+-	height = scale_apply_inverse(height, fractional_scale_numerator);
++	width = display_services()->unscale(width, fractional_scale_numerator);
++	height = display_services()->unscale(height, fractional_scale_numerator);
+ 
+ 	log_debug("Drawing window.\n");
+ 	/* Draw the background */
+@@ -171,18 +161,9 @@ void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, u
+ 	}
+ 
+ 	/* Setup the backend. */
+-	if (access(entry->font_name, R_OK) != 0) {
+-		/*
+-		 * We've been given a font name rather than path,
+-		 * so fallback to Pango
+-		 */
+-		entry->use_pango = true;
+-	}
+-	if (entry->use_pango) {
+-		entry_backend_pango_init(entry, &width, &height);
+-	} else {
+-		entry_backend_harfbuzz_init(entry, &width, &height);
+-	}
++	request->available_width = &width;
++	request->available_height = &height;
++	display_services()->font_setup(request);
+ 
+         /*
+ 	 * Before we render any text, ensure all text themes are fully
+@@ -195,20 +176,15 @@ void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, u
+ 		.background_corner_radius = 0
+ 	};
+ 
+-	apply_text_theme_fallback(&entry->prompt_theme, &default_theme);
+-	apply_text_theme_fallback(&entry->input_theme, &default_theme);
+-	apply_text_theme_fallback(&entry->placeholder_theme, &default_theme);
+-	apply_text_theme_fallback(&entry->default_result_theme, &default_theme);
+-	apply_text_theme_fallback(&entry->alternate_result_theme, &entry->default_result_theme);
+-	apply_text_theme_fallback(&entry->selection_theme, &default_theme);
++	display_services()->theme_defaults(&(struct display_request) { .entry = entry, .theme = &entry->prompt_theme, .fallback = &default_theme });
++	display_services()->theme_defaults(&(struct display_request) { .entry = entry, .theme = &entry->input_theme, .fallback = &default_theme });
++	display_services()->theme_defaults(&(struct display_request) { .entry = entry, .theme = &entry->placeholder_theme, .fallback = &default_theme });
++	display_services()->theme_defaults(&(struct display_request) { .entry = entry, .theme = &entry->default_result_theme, .fallback = &default_theme });
++	display_services()->theme_defaults(&(struct display_request) { .entry = entry, .theme = &entry->alternate_result_theme, .fallback = &entry->default_result_theme });
++	display_services()->theme_defaults(&(struct display_request) { .entry = entry, .theme = &entry->selection_theme, .fallback = &default_theme });
+ 
+ 	/* The cursor is a special case, as it just needs the input colours. */
+-	if (!entry->cursor_theme.color_specified) {
+-		entry->cursor_theme.color = entry->input_theme.foreground_color;
+-	}
+-	if (!entry->cursor_theme.text_color_specified) {
+-		entry->cursor_theme.text_color = entry->background_color;
+-	}
++	display_services()->cursor_defaults(request);
+ 
+ 	/*
+ 	 * Perform an initial render of the text.
+@@ -217,11 +193,7 @@ void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, u
+ 	 * which can be slow for large (e.g. fullscreen) windows.
+ 	 */
+ 	log_debug("Initial text render.\n");
+-	if (entry->use_pango) {
+-		entry_backend_pango_update(entry);
+-	} else {
+-		entry_backend_harfbuzz_update(entry);
+-	}
++	display_services()->font_render(request);
+ 	entry->index = !entry->index;
+ 
+ 	/*
+@@ -251,21 +223,19 @@ void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, u
+ 	}
+ }
+ 
+-void entry_destroy(struct entry *entry)
++void display_entry_release(struct display_request *request)
+ {
+-	if (entry->use_pango) {
+-		entry_backend_pango_destroy(entry);
+-	} else {
+-		entry_backend_harfbuzz_destroy(entry);
+-	}
++	struct entry *entry = request->entry;
++	display_services()->font_release(request);
+ 	cairo_destroy(entry->cairo[0].cr);
+ 	cairo_destroy(entry->cairo[1].cr);
+ 	cairo_surface_destroy(entry->cairo[0].surface);
+ 	cairo_surface_destroy(entry->cairo[1].surface);
+ }
+ 
+-void entry_update(struct entry *entry)
++void display_entry_render(struct display_request *request)
+ {
++	struct entry *entry = request->entry;
+ 	log_debug("Start rendering entry.\n");
+ 	cairo_t *cr = entry->cairo[entry->index].cr;
+ 
+@@ -278,13 +248,29 @@ void entry_update(struct entry *entry)
+ 	cairo_restore(cr);
+ 
+ 	/* Draw our text. */
+-	if (entry->use_pango) {
+-		entry_backend_pango_update(entry);
+-	} else {
+-		entry_backend_harfbuzz_update(entry);
+-	}
++	display_services()->font_render(request);
+ 
+ 	log_debug("Finish rendering entry.\n");
+ 
+ 	entry->index = !entry->index;
+ }
++
++void entry_init(struct entry *entry, uint8_t *restrict buffer, uint32_t width, uint32_t height, uint32_t scale)
++{
++	struct display_request request = {
++		.entry = entry, .buffer = buffer, .width = width, .height = height, .scale = scale
++	};
++	display_services()->entry_setup(&request);
++}
++
++void entry_destroy(struct entry *entry)
++{
++	struct display_request request = { .entry = entry };
++	display_services()->entry_release(&request);
++}
++
++void entry_update(struct entry *entry)
++{
++	struct display_request request = { .entry = entry };
++	display_services()->entry_render(&request);
++}
+diff --git a/src/entry_backend/harfbuzz.c b/src/entry_backend/harfbuzz.c
+index 134204c..0575eef 100644
+--- a/src/entry_backend/harfbuzz.c
++++ b/src/entry_backend/harfbuzz.c
+@@ -1,3 +1,4 @@
++#include "../display_services.h"
+ #include <cairo/cairo.h>
+ #include <harfbuzz/hb-ft.h>
+ #include <harfbuzz/hb-ot.h>
+@@ -287,23 +288,10 @@ static cairo_text_extents_t render_input(
+ 	 * If the cursor is at the end of text, we need to account for it in
+ 	 * both the size of the background and the returned extents.x_advance.
+ 	 */
+-	double extra_cursor_advance = 0;
+-	if (cursor_position == text_length && cursor_theme->show) {
+-		switch (cursor_theme->style) {
+-			case CURSOR_STYLE_BAR:
+-				extra_cursor_advance = cursor_theme->thickness;
+-				break;
+-			case CURSOR_STYLE_BLOCK:
+-				extra_cursor_advance = cursor_theme->em_width;
+-				break;
+-			case CURSOR_STYLE_UNDERSCORE:
+-				extra_cursor_advance = cursor_theme->em_width;
+-				break;
+-		}
+-		extra_cursor_advance += extents.x_advance
+-			- extents.x_bearing
+-			- extents.width;
+-	}
++	double extra_cursor_advance = display_services()->cursor_advance(&(struct display_request) {
++		.cursor = cursor_theme, .cursor_position = cursor_position, .text_length = text_length,
++		.advance = extents.x_advance, .bearing = extents.x_bearing, .ink_width = extents.width
++	});
+ 
+ 	/* Draw the background if required. */
+ 	if (theme->background_color.a != 0) {
+@@ -441,22 +429,6 @@ static cairo_text_extents_t render_input(
+ 	return extents;
+ }
+ 
+-static bool size_overflows(struct entry *entry, uint32_t width, uint32_t height)
+-{
+-	cairo_t *cr = entry->cairo[entry->index].cr;
+-	cairo_matrix_t mat;
+-	cairo_get_matrix(cr, &mat);
+-	if (entry->horizontal) {
+-		if (mat.x0 + width > entry->clip_x + entry->clip_width) {
+-			return true;
+-		}
+-	} else {
+-		if (mat.y0 + height > entry->clip_y + entry->clip_height) {
+-			return true;
+-		}
+-	}
+-	return false;
+-}
+ 
+ void entry_backend_harfbuzz_init(
+ 		struct entry *entry,
+@@ -684,12 +656,12 @@ void entry_backend_harfbuzz_update(struct entry *entry)
+ 
+ 	/* Render the entry text */
+ 	if (entry->input_utf32_length == 0) {
+-		uint32_t *tmp = utf8_string_to_utf32_string(entry->placeholder_text);
++		uint32_t *tmp = display_services()->wide_text(entry->placeholder_text);
+ 		extents = render_input(
+ 				cr,
+ 				&entry->harfbuzz,
+ 				tmp,
+-				utf32_strlen(tmp),
++				display_services()->wide_length(tmp),
+ 				&entry->placeholder_theme,
+ 				0,
+ 				&entry->cursor_theme);
+@@ -697,7 +669,7 @@ void entry_backend_harfbuzz_update(struct entry *entry)
+ 	} else if (entry->hide_input) {
+ 		size_t nchars = entry->input_utf32_length;
+ 		uint32_t *buf = xcalloc(nchars + 1, sizeof(*entry->input_utf32));
+-		uint32_t ch = utf8_to_utf32(entry->hidden_character_utf8);
++		uint32_t ch = display_services()->decode(entry->hidden_character_utf8);
+ 		for (size_t i = 0; i < nchars; i++) {
+ 			buf[i] = ch;
+ 		}
+@@ -738,7 +710,7 @@ void entry_backend_harfbuzz_update(struct entry *entry)
+ 			cairo_translate(cr, 0, entry->harfbuzz.line_spacing / 64.0 + entry->result_spacing);
+ 		}
+ 		if (entry->num_results == 0) {
+-			if (size_overflows(entry, 0, 0)) {
++			if (display_services()->overflows(&(struct display_request) { .entry = entry, .width = 0, .height = 0 })) {
+ 				break;
+ 			}
+ 		} else if (i >= entry->num_results) {
+@@ -761,14 +733,9 @@ void entry_backend_harfbuzz_update(struct entry *entry)
+ 		 * doing any fancy match-highlighting, just print as normal.
+ 		 */
+ 		if (i != entry->selection || (entry->selection_highlight_color.a == 0)) {
+-			const struct text_theme *theme;
+-			if (i == entry->selection) {
+-				theme = &entry->selection_theme;
+-			} else if (index % 2) {
+-				theme = &entry->alternate_result_theme;;
+-			} else {
+-				theme = &entry->default_result_theme;;
+-			}
++			const struct text_theme *theme = display_services()->result_theme(&(struct display_request) {
++				.entry = entry, .row = i, .result_index = index
++			});
+ 
+ 			if (entry->num_results > 0) {
+ 				/*
+@@ -781,7 +748,7 @@ void entry_backend_harfbuzz_update(struct entry *entry)
+ 				 * The height of the text doesn't change, so
+ 				 * we don't need to re-measure it each time.
+ 				 */
+-				if (size_overflows(entry, 0, entry->harfbuzz.line_spacing / 64.0)) {
++				if (display_services()->overflows(&(struct display_request) { .entry = entry, .width = 0, .height = entry->harfbuzz.line_spacing / 64.0 })) {
+ 					break;
+ 				} else {
+ 					extents = render_text_themed(cr, entry, result, theme);
+@@ -799,7 +766,7 @@ void entry_backend_harfbuzz_update(struct entry *entry)
+ 				extents = render_text_themed(cr, entry, result, theme);
+ 
+ 				cairo_pattern_t *group = cairo_pop_group(cr);
+-				if (size_overflows(entry, extents.x_advance, 0)) {
++				if (display_services()->overflows(&(struct display_request) { .entry = entry, .width = extents.x_advance, .height = 0 })) {
+ 					cairo_pattern_destroy(group);
+ 					break;
+ 				} else {
+diff --git a/src/entry_backend/pango.c b/src/entry_backend/pango.c
+index d0edcce..0b4f48d 100644
+--- a/src/entry_backend/pango.c
++++ b/src/entry_backend/pango.c
+@@ -1,3 +1,4 @@
++#include "../display_services.h"
+ #include <cairo/cairo.h>
+ #include <pango/pangocairo.h>
+ #include <pango/pango.h>
+@@ -122,23 +123,10 @@ static void render_input(
+ 
+ 	pango_layout_get_pixel_extents(layout, ink_rect, logical_rect);
+ 
+-	double extra_cursor_advance = 0;
+-	if (cursor_position == text_length && cursor_theme->show) {
+-		switch (cursor_theme->style) {
+-			case CURSOR_STYLE_BAR:
+-				extra_cursor_advance = cursor_theme->thickness;
+-				break;
+-			case CURSOR_STYLE_BLOCK:
+-				extra_cursor_advance = cursor_theme->em_width;
+-				break;
+-			case CURSOR_STYLE_UNDERSCORE:
+-				extra_cursor_advance = cursor_theme->em_width;
+-				break;
+-		}
+-		extra_cursor_advance += logical_rect->width
+-			- logical_rect->x
+-			- ink_rect->width;
+-	}
++	double extra_cursor_advance = display_services()->cursor_advance(&(struct display_request) {
++		.cursor = cursor_theme, .cursor_position = cursor_position, .text_length = text_length,
++		.advance = logical_rect->width, .bearing = logical_rect->x, .ink_width = ink_rect->width
++	});
+ 
+ 	if (theme->background_color.a != 0) {
+ 		cairo_save(cr);
+@@ -181,10 +169,10 @@ static void render_input(
+ 		 */
+ 		const char *tmp = text;
+ 		for (size_t i = 0; i < cursor_position; i++) {
+-			tmp = utf8_next_char(tmp);
++			tmp = display_services()->next_character(tmp);
+ 		}
+ 		uint32_t start_byte_index = tmp - text;
+-		uint32_t end_byte_index = utf8_next_char(tmp) - text;
++		uint32_t end_byte_index = display_services()->next_character(tmp) - text;
+ 		PangoRectangle start_pos;
+ 		PangoRectangle end_pos;
+ 		pango_layout_get_cursor_pos(layout, start_byte_index, &start_pos, NULL);
+@@ -290,22 +278,6 @@ void entry_backend_pango_destroy(struct entry *entry)
+ 	g_object_unref(entry->pango.context);
+ }
+ 
+-static bool size_overflows(struct entry *entry, uint32_t width, uint32_t height)
+-{
+-	cairo_t *cr = entry->cairo[entry->index].cr;
+-	cairo_matrix_t mat;
+-	cairo_get_matrix(cr, &mat);
+-	if (entry->horizontal) {
+-		if (mat.x0 + width > entry->clip_x + entry->clip_width) {
+-			return true;
+-		}
+-	} else {
+-		if (mat.y0 + height > entry->clip_y + entry->clip_height) {
+-			return true;
+-		}
+-	}
+-	return false;
+-}
+ 
+ /*
+  * This is pretty much a direct translation of the corresponding function in
+@@ -334,7 +306,7 @@ void entry_backend_pango_update(struct entry *entry)
+ 				cr,
+ 				layout,
+ 				entry->placeholder_text,
+-				utf8_strlen(entry->placeholder_text),
++				display_services()->text_length(entry->placeholder_text),
+ 				&entry->placeholder_theme,
+ 				0,
+ 				&entry->cursor_theme,
+@@ -394,7 +366,7 @@ void entry_backend_pango_update(struct entry *entry)
+ 			cairo_translate(cr, 0, logical_rect.height + entry->result_spacing);
+ 		}
+ 		if (entry->num_results == 0) {
+-			if (size_overflows(entry, 0, 0)) {
++			if (display_services()->overflows(&(struct display_request) { .entry = entry, .width = 0, .height = 0 })) {
+ 				break;
+ 			}
+ 		} else if (i >= entry->num_results) {
+@@ -416,19 +388,14 @@ void entry_backend_pango_update(struct entry *entry)
+ 			str = "";
+ 		}
+ 		if (i != entry->selection || (entry->selection_highlight_color.a == 0)) {
+-			const struct text_theme *theme;
+-			if (i == entry->selection) {
+-				theme = &entry->selection_theme;
+-			} else if (index % 2) {
+-				theme = &entry->alternate_result_theme;;
+-			} else {
+-				theme = &entry->default_result_theme;;
+-			}
++			const struct text_theme *theme = display_services()->result_theme(&(struct display_request) {
++				.entry = entry, .row = i, .result_index = index
++			});
+ 
+ 			if (entry->num_results > 0) {
+ 				render_text_themed(cr, entry, str, theme, &ink_rect, &logical_rect);
+ 			} else if (!entry->horizontal) {
+-				if (size_overflows(entry, 0, logical_rect.height)) {
++				if (display_services()->overflows(&(struct display_request) { .entry = entry, .width = 0, .height = logical_rect.height })) {
+ 					entry->num_results_drawn = i;
+ 					break;
+ 				} else {
+@@ -439,7 +406,7 @@ void entry_backend_pango_update(struct entry *entry)
+ 				render_text_themed(cr, entry, str, theme, &ink_rect, &logical_rect);
+ 
+ 				cairo_pattern_t *group = cairo_pop_group(cr);
+-				if (size_overflows(entry, logical_rect.width, 0)) {
++				if (display_services()->overflows(&(struct display_request) { .entry = entry, .width = logical_rect.width, .height = 0 })) {
+ 					entry->num_results_drawn = i;
+ 					cairo_pattern_destroy(group);
+ 					break;
+diff --git a/src/input.c b/src/input.c
+index 8b8f0a7..0802080 100644
+--- a/src/input.c
++++ b/src/input.c
+@@ -1,3 +1,4 @@
++#include "display_services.h"
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <linux/input-event-codes.h>
+@@ -189,7 +190,7 @@ void add_character(struct tofi *tofi, xkb_keycode_t keycode)
+ 			buf,
+ 			sizeof(buf));
+ 	if (entry->cursor_position == entry->input_utf32_length) {
+-		entry->input_utf32[entry->input_utf32_length] = utf8_to_utf32(buf);
++		entry->input_utf32[entry->input_utf32_length] = display_services()->decode(buf);
+ 		entry->input_utf32_length++;
+ 		entry->input_utf32[entry->input_utf32_length] = U'\0';
+ 		memcpy(&entry->input_utf8[entry->input_utf8_length],
+@@ -212,7 +213,7 @@ void add_character(struct tofi *tofi, xkb_keycode_t keycode)
+ 		for (size_t i = entry->input_utf32_length; i > entry->cursor_position; i--) {
+ 			entry->input_utf32[i] = entry->input_utf32[i - 1];
+ 		}
+-		entry->input_utf32[entry->cursor_position] = utf8_to_utf32(buf);
++		entry->input_utf32[entry->cursor_position] = display_services()->decode(buf);
+ 		entry->input_utf32_length++;
+ 		entry->input_utf32[entry->input_utf32_length] = U'\0';
+ 
+@@ -226,14 +227,9 @@ void input_refresh_results(struct tofi *tofi)
+ {
+ 	struct entry *entry = &tofi->window.entry;
+ 
+-	size_t bytes_written = 0;
+-	for (size_t i = 0; i < entry->input_utf32_length; i++) {
+-		bytes_written += utf32_to_utf8(
+-				entry->input_utf32[i],
+-				&entry->input_utf8[bytes_written]);
+-	}
+-	entry->input_utf8[bytes_written] = '\0';
+-	entry->input_utf8_length = bytes_written;
++	display_services()->encode_input(&(struct display_request) {
++		.entry = entry, .owner = tofi, .clipboard = &tofi->clipboard
++	});
+ 	string_ref_vec_destroy(&entry->results);
+ 	if (entry->mode == TOFI_MODE_DRUN) {
+ 		entry->results = desktop_vec_filter(&entry->apps, entry->input_utf8, tofi->matching_algorithm);
+@@ -326,7 +322,10 @@ void paste(struct tofi *tofi)
+ 		return;
+ 	}
+ 	wl_data_offer_receive(tofi->clipboard.wl_data_offer, tofi->clipboard.mime_type, fildes[1]);
+-	close(fildes[1]);
++	display_services()->release_descriptor(&(struct display_request) {
++		.owner = tofi, .entry = &tofi->window.entry, .clipboard = &tofi->clipboard,
++		.descriptor = &fildes[1]
++	});
+ 
+ 	/* Keep the read end for reading in the main loop. */
+ 	tofi->clipboard.fd = fildes[0];
+diff --git a/src/main.c b/src/main.c
+index e91838f..2e99763 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -1,3 +1,4 @@
++#include "display_services.h"
+ #include <assert.h>
+ #include <errno.h>
+ #include <getopt.h>
+@@ -106,8 +107,8 @@ static void zwlr_layer_surface_configure(
+ 	 * values provided by Wayland.
+ 	 */
+ 	if (tofi->window.fractional_scale != 0) {
+-		tofi->window.surface.width = scale_apply(width, tofi->window.fractional_scale);
+-		tofi->window.surface.height = scale_apply(height, tofi->window.fractional_scale);
++		tofi->window.surface.width = display_services()->scale(width, tofi->window.fractional_scale);
++		tofi->window.surface.height = display_services()->scale(height, tofi->window.fractional_scale);
+ 	} else {
+ 		tofi->window.surface.width = width * tofi->window.scale;
+ 		tofi->window.surface.height = height * tofi->window.scale;
+@@ -461,7 +462,7 @@ static void wl_data_device_data_offer(
+ 		struct wl_data_offer *wl_data_offer)
+ {
+ 	struct clipboard *clipboard = data;
+-	clipboard_reset(clipboard);
++	display_services()->reset_clipboard(clipboard);
+ 	clipboard->wl_data_offer = wl_data_offer;
+ 	wl_data_offer_add_listener(
+ 			wl_data_offer,
+@@ -520,7 +521,7 @@ static void wl_data_device_selection(
+ {
+ 	struct clipboard *clipboard = data;
+ 	if (wl_data_offer == NULL) {
+-		clipboard_reset(clipboard);
++		display_services()->reset_clipboard(clipboard);
+ 	}
+ }
+ 
+@@ -1109,7 +1110,7 @@ static void read_clipboard(struct tofi *tofi)
+ 					return;
+ 				}
+ 				log_error("Failed to read clipboard: %s\n", strerror(errno));
+-				clipboard_finish_paste(&tofi->clipboard);
++				display_services()->finish_paste(&tofi->clipboard);
+ 				return;
+ 			}
+ 			uint32_t unichar = utf8_to_utf32_validate(buffer);
+@@ -1145,7 +1146,7 @@ static void read_clipboard(struct tofi *tofi)
+ 	}
+ 	entry->input_utf32[MIN(entry->input_utf32_length, N_ELEM(entry->input_utf32) - 1)] = U'\0';
+ 
+-	clipboard_finish_paste(&tofi->clipboard);
++	display_services()->finish_paste(&tofi->clipboard);
+ 
+ 	input_refresh_results(tofi);
+ 	tofi->window.surface.redraw = true;
+@@ -1358,8 +1359,8 @@ int main(int argc, char *argv[])
+ 		log_debug("First dummy roundtrip done.\n");
+ 		log_debug("Initialising dummy surface.\n");
+ 		log_indent();
+-		surface_init(&surface, tofi.wl_shm);
+-		surface_draw(&surface);
++		display_services()->open_surface(&surface, tofi.wl_shm);
++		display_services()->present(&surface);
+ 		log_unindent();
+ 		log_debug("Dummy surface initialised.\n");
+ 		log_debug("Second dummy roundtrip start.\n");
+@@ -1367,12 +1368,12 @@ int main(int argc, char *argv[])
+ 		wl_display_roundtrip(tofi.wl_display);
+ 		log_unindent();
+ 		log_debug("Second dummy roundtrip done.\n");
+-		surface_destroy(&surface);
++		display_services()->close_surface(&surface);
+ 		zwlr_layer_surface_v1_destroy(zwlr_layer_surface);
+ 		if (wp_fractional_scale != NULL) {
+ 			wp_fractional_scale_v1_destroy(wp_fractional_scale);
+ 		}
+-		wl_surface_destroy(surface.wl_surface);
++		display_services()->close_surface(surface.wl_surface);
+ 
+ 		/*
+ 		 * Walk through our output list and select the one we want if
+@@ -1657,7 +1658,7 @@ int main(int argc, char *argv[])
+ 	 */
+ 	log_debug("Initialising window surface.\n");
+ 	log_indent();
+-	surface_init(&tofi.window.surface, tofi.wl_shm);
++	display_services()->open_surface(&tofi.window.surface, tofi.wl_shm);
+ 	log_unindent();
+ 	log_debug("Window surface initialised.\n");
+ 
+@@ -1679,15 +1680,11 @@ int main(int argc, char *argv[])
+ 		 * a fraction with denominator 120) to our setup function for
+ 		 * ease.
+ 		 */
+-		uint32_t scale = 120;
+-		if (tofi.use_scale) {
+-			if (tofi.window.fractional_scale != 0) {
+-				scale = tofi.window.fractional_scale;
+-			} else {
+-				scale = tofi.window.scale * 120;
+-			}
+-		}
+-		entry_init(
++		uint32_t scale = display_services()->configured_scale(&(struct display_request) {
++			.owner = &tofi, .surface = &tofi.window.surface,
++			.entry = &tofi.window.entry, .logical = true
++		});
++		display_services()->open_entry(
+ 				&tofi.window.entry,
+ 				tofi.window.surface.shm_pool_data,
+ 				tofi.window.surface.width,
+@@ -1698,10 +1695,10 @@ int main(int argc, char *argv[])
+ 	log_debug("Renderer initialised.\n");
+ 
+ 	/* Perform an initial render. */
+-	surface_draw(&tofi.window.surface);
++	display_services()->present(&tofi.window.surface);
+ 
+ 	/*
+-	 * entry_init() left the second of the two buffers we use for
++	 * Opening the entry left the second of the two buffers we use for
+ 	 * double-buffering unpainted to lower startup time, as described
+ 	 * there. Here, we flush our first, finished buffer to the screen, then
+ 	 * copy over the image to the second buffer before we need to use it in
+@@ -1831,7 +1828,7 @@ int main(int argc, char *argv[])
+ 				 * The other end of the clipboard pipe has
+ 				 * closed, cleanup.
+ 				 */
+-				clipboard_finish_paste(&tofi.clipboard);
++				display_services()->finish_paste(&tofi.clipboard);
+ 			}
+ 		}
+ 
+@@ -1839,8 +1836,8 @@ int main(int argc, char *argv[])
+ 		wl_display_dispatch_pending(tofi.wl_display);
+ 
+ 		if (tofi.window.surface.redraw) {
+-			entry_update(&tofi.window.entry);
+-			surface_draw(&tofi.window.surface);
++			display_services()->refresh(&tofi.window.entry);
++			display_services()->present(&tofi.window.surface);
+ 			tofi.window.surface.redraw = false;
+ 		}
+ 		if (tofi.submit) {
+@@ -1860,13 +1857,13 @@ int main(int argc, char *argv[])
+ 	 * mostly from Pango, and Cairo holds onto quite a bit of cached data
+ 	 * (without leaking it)
+ 	 */
+-	surface_destroy(&tofi.window.surface);
+-	entry_destroy(&tofi.window.entry);
++	display_services()->close_surface(&tofi.window.surface);
++	display_services()->close_entry(&tofi.window.entry);
+ 	if (tofi.window.wp_viewport != NULL) {
+ 		wp_viewport_destroy(tofi.window.wp_viewport);
+ 	}
+ 	zwlr_layer_surface_v1_destroy(tofi.window.zwlr_layer_surface);
+-	wl_surface_destroy(tofi.window.surface.wl_surface);
++	display_services()->close_surface(tofi.window.surface.wl_surface);
+ 	if (tofi.wl_keyboard != NULL) {
+ 		wl_keyboard_release(tofi.wl_keyboard);
+ 	}
+diff --git a/src/surface.c b/src/surface.c
+index b8ed88e..2792c91 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -1,3 +1,4 @@
++#include "display_services.h"
+ #include <string.h>
+ #include <sys/mman.h>
+ #include <unistd.h>
+@@ -8,23 +9,16 @@
+ #undef MAX
+ #define MAX(a, b) ((a) > (b) ? (a) : (b))
+ 
+-void surface_init(
+-		struct surface *surface,
+-		struct wl_shm *wl_shm)
++void display_surface_setup(struct display_request *request)
+ {
++	struct surface *surface = request->surface;
++	struct wl_shm *wl_shm = request->shm;
+ 	const int height = surface->height;
+ 	const int width = surface->width;
+ 
+-	/* Assume 4 bytes per pixel for WL_SHM_FORMAT_ARGB8888 */
+-	const int stride = width * 4;
+-	surface->stride = stride;
+-
+-	/* Double-buffered pool, so allocate space for two windows */
+-	surface->shm_pool_size =
+-		height
+-		* stride
+-		* 2;
+-	surface->shm_pool_fd = shm_allocate_file(surface->shm_pool_size);
++	display_services()->buffer_layout(request);
++	const int stride = surface->stride;
++	surface->shm_pool_fd = display_services()->allocate_buffer(surface->shm_pool_size);
+ 	surface->shm_pool_data = mmap(
+ 			NULL,
+ 			surface->shm_pool_size,
+@@ -66,21 +60,43 @@ void surface_init(
+ 			surface->shm_pool_size / 1024);
+ }
+ 
+-void surface_destroy(struct surface *surface)
++void display_surface_release(struct display_request *request)
+ {
++	struct surface *surface = request->surface;
+ 	wl_shm_pool_destroy(surface->wl_shm_pool);
+ 	munmap(surface->shm_pool_data, surface->shm_pool_size);
+ 	surface->shm_pool_data = NULL;
+-	close(surface->shm_pool_fd);
++	request->descriptor = &surface->shm_pool_fd;
++	request->positive_descriptor_only = false;
++	display_services()->release_descriptor(request);
+ 	wl_buffer_destroy(surface->buffers[0]);
+ 	wl_buffer_destroy(surface->buffers[1]);
+ }
+ 
+-void surface_draw(struct surface *surface)
++void display_surface_present(struct display_request *request)
+ {
++	struct surface *surface = request->surface;
+ 	wl_surface_attach(surface->wl_surface, surface->buffers[surface->index], 0, 0);
+ 	wl_surface_damage_buffer(surface->wl_surface, 0, 0, INT32_MAX, INT32_MAX);
+ 	wl_surface_commit(surface->wl_surface);
+ 
+ 	surface->index = !surface->index;
+ }
++
++void surface_init(struct surface *surface, struct wl_shm *wl_shm)
++{
++	struct display_request request = { .surface = surface, .shm = wl_shm };
++	display_services()->surface_setup(&request);
++}
++
++void surface_destroy(struct surface *surface)
++{
++	struct display_request request = { .surface = surface };
++	display_services()->surface_release(&request);
++}
++
++void surface_draw(struct surface *surface)
++{
++	struct display_request request = { .surface = surface };
++	display_services()->surface_present(&request);
++}

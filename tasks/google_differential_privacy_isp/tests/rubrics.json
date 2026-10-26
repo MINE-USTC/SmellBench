@@ -1,0 +1,693 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "google_differential_privacy_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "scalar_sampling",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 scalar noise operations.",
+      "baseline_defect": "Integer/float result clients acquire a backend combining noise, codecs, bounds, factories and partition operations.",
+      "criterion": "Let scalar sampling clients depend on appropriate numeric release capabilities without unrelated union obligations.",
+      "acceptance": "Preserve current public Noise dispatch, original numeric arguments, result state consumption before custom noise calls and return values/errors. Public Noise API may remain unchanged; splitting its preexisting five methods is not mandatory. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/count.go",
+          "symbol": "Result,SampleInt64,SampleFloat64",
+          "detail": "Integer/float result clients acquire a backend combining noise, codecs, bounds, factories and partition operations.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/sum.go",
+          "symbol": "Result,SampleInt64,SampleFloat64",
+          "detail": "Integer/float result clients acquire a backend combining noise, codecs, bounds, factories and partition operations.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Integer/float result clients acquire a backend combining noise, codecs, bounds, factories and partition operations.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "scalar_threshold",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 threshold operations.",
+      "baseline_defect": "Threshold-only paths acquire the same global backend union.",
+      "criterion": "Narrow the capability dependency of scalar threshold computation and its release composition.",
+      "acceptance": "Preserve threshold-before-Result ordering and failure behavior, Count prethreshold path, integer ceiling comparison and float comparison. A combined focused thresholded-release operation is valid, not necessarily a Threshold-only interface. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/count.go",
+          "symbol": "ThresholdedResult,PreThresholdedResult",
+          "detail": "Threshold-only paths acquire the same global backend union.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/sum.go",
+          "symbol": "ThresholdedResult,PreThresholdedResult",
+          "detail": "Threshold-only paths acquire the same global backend union.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Threshold-only paths acquire the same global backend union.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "scalar_interval",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 numeric confidence operations.",
+      "baseline_defect": "Confidence clients require backend factories/serialization/partition methods they never use.",
+      "criterion": "Decouple confidence interval calculation from unrelated aggregation capabilities.",
+      "acceptance": "Require resultReturned, use cached noised value and the current Noise, preserve int64 versus float64 methods, alpha/parameters and existing interval postprocessing. Reuse public Noise through a focused operation without redesigning its external API. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/count.go",
+          "symbol": "ComputeConfidenceInterval",
+          "detail": "Confidence clients require backend factories/serialization/partition methods they never use.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/sum.go",
+          "symbol": "ComputeConfidenceInterval",
+          "detail": "Confidence clients require backend factories/serialization/partition methods they never use.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Confidence clients require backend factories/serialization/partition methods they never use.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "scalar_commit",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry result consume/commit split.",
+      "baseline_defect": "CountValue/SumValue consume state and return flags while callers conditionally publish caches; integer sum uses a separate sampling path.",
+      "criterion": "Make result eligibility, attempted sampling and cache publication a coherent focused contract.",
+      "acceptance": "Rejected repeats preserve prior cache; attempted Noise calls publish returned value even when error is nonnil and retain consumed state. All three scalar families must preserve this. A returned consumed/value/error protocol is valid if encapsulated/cohesive; no requirement that cache writes physically move into child methods. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/count.go",
+          "symbol": "Result,CountValue,SumValue",
+          "detail": "CountValue/SumValue consume state and return flags while callers conditionally publish caches; integer sum uses a separate sampling path.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/sum.go",
+          "symbol": "Result,CountValue,SumValue",
+          "detail": "CountValue/SumValue consume state and return flags while callers conditionally publish caches; integer sum uses a separate sampling path.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "CountValue/SumValue consume state and return flags while callers conditionally publish caches; integer sum uses a separate sampling path.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mean_release",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry mean child release.",
+      "baseline_defect": "Mean acquires broad operations for CountValue/SumValue and clipping, committing child caches between errors.",
+      "criterion": "Give mean focused child-release and clipping dependencies with explicit partial-progress semantics.",
+      "acceptance": "Outer state consumed first; count then sum, current Noise read per child; count cache survives later sum failure, attempted child-error values are committed and rejected child repeats do not overwrite. Preserve count clamp, output clamp and wrapped errors. Direct child Result calls or a cohesive composition protocol qualify. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/mean.go",
+          "symbol": "ResultWithCount",
+          "detail": "Mean acquires broad operations for CountValue/SumValue and clipping, committing child caches between errors.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Mean acquires broad operations for CountValue/SumValue and clipping, committing child caches between errors.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "variance_release",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry variance child release.",
+      "baseline_defect": "Variance uses union operations across count, normalized sum, squared sum and output clipping.",
+      "criterion": "Narrow variance release composition while preserving ordered child progress.",
+      "acceptance": "Count then sum then squared sum, each current child Noise, commit attempted value even on its error; stop at first error without rolling back earlier children. Preserve parent state, division/count clamp, mean then variance clamp and error wrapping. No forced atomic transaction or eager capture of all child providers. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/variance.go",
+          "symbol": "ResultWithCountAndMean",
+          "detail": "Variance uses union operations across count, normalized sum, squared sum and output clipping.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Variance uses union operations across count, normalized sum, squared sum and output clipping.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "quantile_cache",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R2 cache and retry split publication.",
+      "baseline_defect": "Backend selects cache or samples, while two callers publish sampled results separately.",
+      "criterion": "Give both quantile traversal and direct lookup a focused coherent cache/sampling contract.",
+      "acceptance": "Hits do not sample; successful misses cache raw noisy value, not max(0,value); errors do not publish. Both total-count pass and getNoisedCount must publish when appropriate, preserving filtering/descent reuse. Resolve current Noise each call; custom callback may replace it or cache fields, so a traversal-wide bound backend or blindly retained map snapshot may change behavior. Caller publication via an explicit focused result remains legal. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/quantiles.go",
+          "symbol": "Result,getNoisedCount",
+          "detail": "Backend selects cache or samples, while two callers publish sampled results separately.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Backend selects cache or samples, while two callers publish sampled results separately.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "input_clipping",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1/R2/R3 clamping consumers.",
+      "baseline_defect": "Pure input clipping calls depend on backend noise/factory/cache/codec union, sometimes via nil Noise.",
+      "criterion": "Let integer and float input clipping depend on numeric bounds operations alone.",
+      "acceptance": "Preserve lifecycle guard before clipping, NaN skipping in float clients, lower/upper and error messages/order, then existing accumulation. No artificial Noise requirement for deterministic clipping; direct existing Clamp functions qualify. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/sum.go",
+          "symbol": "Add",
+          "detail": "Pure input clipping calls depend on backend noise/factory/cache/codec union, sometimes via nil Noise.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/quantiles.go",
+          "symbol": "Add",
+          "detail": "Pure input clipping calls depend on backend noise/factory/cache/codec union, sometimes via nil Noise.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/mean.go",
+          "symbol": "Add",
+          "detail": "Pure input clipping calls depend on backend noise/factory/cache/codec union, sometimes via nil Noise.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/variance.go",
+          "symbol": "Add",
+          "detail": "Pure input clipping calls depend on backend noise/factory/cache/codec union, sometimes via nil Noise.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Pure input clipping calls depend on backend noise/factory/cache/codec union, sometimes via nil Noise.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "result_clipping",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 result/confidence clamping.",
+      "baseline_defect": "Mean/variance result and mean interval clamps acquire a backend with unrelated lifecycle operations.",
+      "criterion": "Provide focused deterministic clipping dependencies for composite output and interval calculations.",
+      "acceptance": "Preserve mean lower then upper interval clamping after midpoint shift, result clipping order, variance [0,max] bound and per-site error wrapping. Shared input/output Clamp functions may satisfy both items; no separate result service required. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/mean.go",
+          "symbol": "ResultWithCount,ResultWithCountAndMean,computeConfidenceIntervalForExplicitAlphaNum",
+          "detail": "Mean/variance result and mean interval clamps acquire a backend with unrelated lifecycle operations.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/variance.go",
+          "symbol": "ResultWithCount,ResultWithCountAndMean,computeConfidenceIntervalForExplicitAlphaNum",
+          "detail": "Mean/variance result and mean interval clamps acquire a backend with unrelated lifecycle operations.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Mean/variance result and mean interval clamps acquire a backend with unrelated lifecycle operations.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "constructor_noise",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R4 defaults, probes and kind identification.",
+      "baseline_defect": "Constructor default/probe/kind clients all obtain full backend.",
+      "criterion": "Restrict constructor noise resolution, compatibility probes and classification to required capabilities.",
+      "acceptance": "Nil defaults to Laplace for actual sampling; preserve probe calls/order/arguments including intentionally ignored composite probe errors, stored initialization kind and custom Noise identity. Default resolution must not substitute for raw-option bounds classification. Direct constructors/noise functions are valid. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/count.go",
+          "symbol": "NewCount,NewBoundedSumInt64,NewBoundedSumFloat64,NewBoundedQuantiles,NewBoundedMean,NewBoundedVariance",
+          "detail": "Constructor default/probe/kind clients all obtain full backend.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/sum.go",
+          "symbol": "NewCount,NewBoundedSumInt64,NewBoundedSumFloat64,NewBoundedQuantiles,NewBoundedMean,NewBoundedVariance",
+          "detail": "Constructor default/probe/kind clients all obtain full backend.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/quantiles.go",
+          "symbol": "NewCount,NewBoundedSumInt64,NewBoundedSumFloat64,NewBoundedQuantiles,NewBoundedMean,NewBoundedVariance",
+          "detail": "Constructor default/probe/kind clients all obtain full backend.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/mean.go",
+          "symbol": "NewCount,NewBoundedSumInt64,NewBoundedSumFloat64,NewBoundedQuantiles,NewBoundedMean,NewBoundedVariance",
+          "detail": "Constructor default/probe/kind clients all obtain full backend.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/variance.go",
+          "symbol": "NewCount,NewBoundedSumInt64,NewBoundedSumFloat64,NewBoundedQuantiles,NewBoundedMean,NewBoundedVariance",
+          "detail": "Constructor default/probe/kind clients all obtain full backend.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Constructor default/probe/kind clients all obtain full backend.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "raw_bounds",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage-two raw-versus-resolved bounds selection.",
+      "baseline_defect": "Bounds and overflow policy routes through backend Kind and boolean strictness output amid unrelated capabilities.",
+      "criterion": "Keep raw-noise bounds policy independently usable by bounded constructors.",
+      "acceptance": "Raw nil/custom classification selects overflow-tolerant checks, recognized built-ins strict checks; preserve sensitivity overflow fallback and variance distinct error context. A policy result, error tagging, direct conditional or focused helper is valid; no mandated strictBounds boolean or bounds interface. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/sum.go",
+          "symbol": "IntBounds,FloatBounds",
+          "detail": "Bounds and overflow policy routes through backend Kind and boolean strictness output amid unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/mean.go",
+          "symbol": "IntBounds,FloatBounds",
+          "detail": "Bounds and overflow policy routes through backend Kind and boolean strictness output amid unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/variance.go",
+          "symbol": "IntBounds,FloatBounds",
+          "detail": "Bounds and overflow policy routes through backend Kind and boolean strictness output amid unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Bounds and overflow policy routes through backend Kind and boolean strictness output amid unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mean_factory",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 child factory and stage-two inherited Noise.",
+      "baseline_defect": "Count/sum factories take options with omitted Noise and obtain it from broad backend.",
+      "criterion": "Construct mean children through focused construction dependencies with coherent selected noise and budgets.",
+      "acceptance": "Preserve selected Noise for both children, half-epsilon/half-delta, contribution limits and normalized bounds, count-before-sum construction and wrapped first failure. Explicit Noise options or dedicated factory both qualify; do not overwrite options in caller-owned storage. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/mean.go",
+          "symbol": "NewBoundedMean",
+          "detail": "Count/sum factories take options with omitted Noise and obtain it from broad backend.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Count/sum factories take options with omitted Noise and obtain it from broad backend.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "variance_factory",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 three-child factory.",
+      "baseline_defect": "Variance child count/sum/squares construction inherits provider from backend union.",
+      "criterion": "Narrow variance child-construction dependencies without losing independent budget and bounds handoffs.",
+      "acceptance": "Preserve all three epsilon/delta shares, selected Noise, count/sum/squares order, normalized sum bounds versus nonnegative squared bounds and early-error wrapping. Reusing a factory shared with mean is valid; no forced separate class. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/variance.go",
+          "symbol": "NewBoundedVariance",
+          "detail": "Variance child count/sum/squares construction inherits provider from backend union.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Variance child count/sum/squares construction inherits provider from backend union.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "scalar_encoding",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1/R2 codec and stage-two live kind dispatch.",
+      "baseline_defect": "Broad Encode switches on scalar/tree record types to inject current NoiseKind and consume state.",
+      "criterion": "Allow scalar and quantile encoders to depend on focused serialization/classification capabilities.",
+      "acceptance": "Use current public Noise kind for serialized records while stored initialization kind still governs merges; set state serialized before actual encoder call and keep it on failure. Existing record fields/gob compatibility and repeat serialization remain. A shared codec type switch is valid behind a focused contract; it need not be removed. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/count.go",
+          "symbol": "GobEncode",
+          "detail": "Broad Encode switches on scalar/tree record types to inject current NoiseKind and consume state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/sum.go",
+          "symbol": "GobEncode",
+          "detail": "Broad Encode switches on scalar/tree record types to inject current NoiseKind and consume state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/quantiles.go",
+          "symbol": "GobEncode",
+          "detail": "Broad Encode switches on scalar/tree record types to inject current NoiseKind and consume state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Broad Encode switches on scalar/tree record types to inject current NoiseKind and consume state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "composite_encoding",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 nested codecs and no-noise records.",
+      "baseline_defect": "Nil-backed composite/selection encoders require union and share classification dispatch with noisy records.",
+      "criterion": "Give composite and selection encoding a focused lifecycle/codec contract without unrelated noise obligations.",
+      "acceptance": "Never classify nil backend as a selected noise for these records; parent serialization precedes recursive child GobEncode, preserving partial child state on error. Selection encodable State is captured before outer transition. No required codec per type or change to existing record layouts. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/mean.go",
+          "symbol": "GobEncode",
+          "detail": "Nil-backed composite/selection encoders require union and share classification dispatch with noisy records.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/variance.go",
+          "symbol": "GobEncode",
+          "detail": "Nil-backed composite/selection encoders require union and share classification dispatch with noisy records.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/standard_deviation.go",
+          "symbol": "GobEncode",
+          "detail": "Nil-backed composite/selection encoders require union and share classification dispatch with noisy records.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/select_partition.go",
+          "symbol": "GobEncode",
+          "detail": "Nil-backed composite/selection encoders require union and share classification dispatch with noisy records.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Nil-backed composite/selection encoders require union and share classification dispatch with noisy records.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "decode_restore",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1/R2/R3 decoding/restoration breadth.",
+      "baseline_defect": "Decode and Restore clients use backend(nil) despite no sampling/factory requirement.",
+      "criterion": "Narrow decoding and kind-restoration dependencies across all affected aggregates.",
+      "acceptance": "Preserve per-type decode error behavior, stored kind to actual Noise restoration, default-state reconstruction and nested decoder state. Composite decoding need not classify a nil noise; public supported serialized bytes remain compatible. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/count.go",
+          "symbol": "GobDecode",
+          "detail": "Decode and Restore clients use backend(nil) despite no sampling/factory requirement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/sum.go",
+          "symbol": "GobDecode",
+          "detail": "Decode and Restore clients use backend(nil) despite no sampling/factory requirement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/quantiles.go",
+          "symbol": "GobDecode",
+          "detail": "Decode and Restore clients use backend(nil) despite no sampling/factory requirement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/mean.go",
+          "symbol": "GobDecode",
+          "detail": "Decode and Restore clients use backend(nil) despite no sampling/factory requirement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/variance.go",
+          "symbol": "GobDecode",
+          "detail": "Decode and Restore clients use backend(nil) despite no sampling/factory requirement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/standard_deviation.go",
+          "symbol": "GobDecode",
+          "detail": "Decode and Restore clients use backend(nil) despite no sampling/factory requirement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/select_partition.go",
+          "symbol": "GobDecode",
+          "detail": "Decode and Restore clients use backend(nil) despite no sampling/factory requirement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Decode and Restore clients use backend(nil) despite no sampling/factory requirement.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "gaussian_selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage-two half-budget factory and retry threshold/release.",
+      "baseline_defect": "Gaussian selection uses broad PartitionCount, Threshold, CountValue and caller cache commit.",
+      "criterion": "Make Gaussian thresholded selection available through focused construction/release capabilities.",
+      "acceptance": "Preserve outer consumption/prethreshold/idCount adjustment, delta/2 for count and returned threshold budget, Gaussian provider, increment then threshold then sample, cache commit only for attempted release including errors, ceiling integer comparison and branch-specific errors. A concise existing ThresholdedResult call is valid. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/select_partition.go",
+          "symbol": "ShouldKeepPartition",
+          "detail": "Gaussian selection uses broad PartitionCount, Threshold, CountValue and caller cache commit.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Gaussian selection uses broad PartitionCount, Threshold, CountValue and caller cache commit.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "probability_selection",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 probability/uniform and stage-two hard-threshold client.",
+      "baseline_defect": "Closed-form probability and random draw require full aggregation backend.",
+      "criterion": "Separate probability-based selection and hard-threshold scanning from unrelated aggregation capabilities.",
+      "acceptance": "Preserve probability errors before Uniform draw, one draw and strict < comparison, hard threshold repeated probability calls without random draw. Shared deterministic probability function and separate RNG function or a focused combined selector both qualify. Narrow interfaces, direct functions, callbacks, composition, result protocols or existing public methods qualify. A shared concrete implementation may retain multiple capabilities; only actual consumer obligations must be focused. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely defining small interfaces while consumers still obtain or require the full backend union does not fix the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/select_partition.go",
+          "symbol": "ShouldKeepPartition,GetHardThreshold",
+          "detail": "Closed-form probability and random draw require full aggregation backend.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "go/dpagg/backend.go",
+          "symbol": "aggregationBackend,nativeAggregationBackend",
+          "detail": "Closed-form probability and random draw require full aggregation backend.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded.v5",
+    "task_id": "google_differential_privacy_isp",
+    "case_id": "google--differential-privacy--interface_segregation",
+    "aggregation": "equal_weight_per_item"
+  }
+}

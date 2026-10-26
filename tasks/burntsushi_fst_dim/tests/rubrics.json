@@ -1,0 +1,517 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "burntsushi_fst_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "R01_MEMBERSHIP",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Map::contains_key, Set::contains and Fst::contains_key each embed node walks.",
+      "baseline_defect": "Map::contains_key, Set::contains and Fst::contains_key each embed node walks.",
+      "criterion": "Remove repeated membership traversal from the container adapters through a coherent query boundary.",
+      "acceptance": "All three entries share the membership decision or an equivalent implementation without copied node-walk logic; value lookup need not use the same algorithm. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/map.rs",
+          "symbol": "Map::contains_key",
+          "detail": "Map::contains_key, Set::contains and Fst::contains_key each embed node walks.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/set.rs",
+          "symbol": "Set::contains",
+          "detail": "Map::contains_key, Set::contains and Fst::contains_key each embed node walks.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Fst::contains_key",
+          "detail": "Map::contains_key, Set::contains and Fst::contains_key each embed node walks.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R01_VALUE",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Map::get and Fst::get both traverse nodes and accumulate transition plus terminal output.",
+      "baseline_defect": "Map::get and Fst::get both traverse nodes and accumulate transition plus terminal output.",
+      "criterion": "Give value lookup traversal and output accumulation a coherent boundary consumed by both APIs.",
+      "acceptance": "Map adapts the value result without maintaining a second traversal; no mandate to merge membership and value lookup. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/map.rs",
+          "symbol": "Map::get",
+          "detail": "Map::get and Fst::get both traverse nodes and accumulate transition plus terminal output.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Fst::get",
+          "detail": "Map::get and Fst::get both traverse nodes and accumulate transition plus terminal output.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. get_key and get_key_into repeat remaining-value descent and transition selection.",
+      "baseline_defect": "get_key and get_key_into repeat remaining-value descent and transition selection.",
+      "criterion": "Separate reverse traversal from allocating versus caller-buffer result handling.",
+      "acceptance": "Both supported forms reuse the reverse traversal responsibility; allocation style and helper names are unrestricted. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Fst::get_key/Fst::get_key_into",
+          "detail": "get_key and get_key_into repeat remaining-value descent and transition selection.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R03",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. MapBuilder/SetBuilder iterator and stream ingestion repeat last-key comparisons, errors and mutation before raw insertion.",
+      "baseline_defect": "MapBuilder/SetBuilder iterator and stream ingestion repeat last-key comparisons, errors and mutation before raw insertion.",
+      "criterion": "Make ordered-key admission a coherent builder operation across the copied batch paths.",
+      "acceptance": "Respect that Set iterator permits duplicates while Set stream and Map paths reject them; both ordering and last-key mutation cease being independently maintained by wrappers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/map.rs",
+          "symbol": "MapBuilder::extend_iter/extend_stream",
+          "detail": "MapBuilder/SetBuilder iterator and stream ingestion repeat last-key comparisons, errors and mutation before raw insertion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/set.rs",
+          "symbol": "SetBuilder::extend_iter/extend_stream",
+          "detail": "MapBuilder/SetBuilder iterator and stream ingestion repeat last-key comparisons, errors and mutation before raw insertion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::insert_output",
+          "detail": "MapBuilder/SetBuilder iterator and stream ingestion repeat last-key comparisons, errors and mutation before raw insertion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R04",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. insert_output embeds weighted common-prefix discovery and redistribution across final, completed and pending outputs.",
+      "baseline_defect": "insert_output embeds weighted common-prefix discovery and redistribution across final, completed and pending outputs.",
+      "criterion": "Separate common-prefix factoring and output redistribution from the broad insertion workflow.",
+      "acceptance": "A coherent operation owns residual output and affected pending path updates, or an equivalent redesigned insertion avoids this mixed algorithm. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::insert_output",
+          "detail": "insert_output embeds weighted common-prefix discovery and redistribution across final, completed and pending outputs.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R05_FREEZE",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. insert_output and into_inner independently pop unfinished nodes, consume pending edges and backfill compiled addresses.",
+      "baseline_defect": "insert_output and into_inner independently pop unfinished nodes, consume pending edges and backfill compiled addresses.",
+      "criterion": "Give pending-path freezing a coherent lifecycle used by insertion and finalization.",
+      "acceptance": "Both paths avoid separate edge completion/pop protocols while preserving the compiled-address handoff; root completion can retain its special preconditions. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::insert_output/Builder::into_inner",
+          "detail": "insert_output and into_inner independently pop unfinished nodes, consume pending edges and backfill compiled addresses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R05_SUFFIX",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. insert_output embeds new LastTransition and unfinished-node chain creation in the termination branch of its compilation loop.",
+      "baseline_defect": "insert_output embeds new LastTransition and unfinished-node chain creation in the termination branch of its compilation loop.",
+      "criterion": "Separate new-suffix construction from the old-suffix compilation loop.",
+      "acceptance": "Suffix creation owns the first output-bearing edge, zero-output interior edges and terminal node without requiring the outer compile loop to construct each internal state. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::insert_output",
+          "detail": "insert_output embeds new LastTransition and unfinished-node chain creation in the termination branch of its compilation loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R06_COMPILE",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. into_inner duplicates Builder::compile decisions for empty nodes, registry hits/misses, encoding and address publication.",
+      "baseline_defect": "into_inner duplicates Builder::compile decisions for empty nodes, registry hits/misses, encoding and address publication.",
+      "criterion": "Remove duplicated compilation and registry-publication mechanics from writer finalization.",
+      "acceptance": "Finalization calls a coherent compilation operation or equivalent shared flow; cache insertion occurs at its supported point after successful encoding. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/build.rs",
+          "symbol": "Builder::into_inner/Builder::compile",
+          "detail": "into_inner duplicates Builder::compile decisions for empty nodes, registry hits/misses, encoding and address publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R07",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Two into_stream implementations inline lower-bound decoding, path search, fallback and exact-bound stack adjustment.",
+      "baseline_defect": "Two into_stream implementations inline lower-bound decoding, path search, fallback and exact-bound stack adjustment.",
+      "criterion": "Localize supported included, excluded and unbounded lower-bound positioning to a coherent stream operation.",
+      "acceptance": "Both plain and state-bearing constructors use the repaired positioning boundary, including missing paths and exact matches; no prescribed state carrier. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "StreamBuilder::into_stream/StreamWithStateBuilder::into_stream",
+          "detail": "Two into_stream implementations inline lower-bound decoding, path search, fallback and exact-bound stack adjustment.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R08",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Stream::next and StreamWithState::next duplicate DFS stack, automaton, EOF, bounds and output progression.",
+      "baseline_defect": "Stream::next and StreamWithState::next duplicate DFS stack, automaton, EOF, bounds and output progression.",
+      "criterion": "Unify traversal advancement responsibility across plain and state-bearing stream APIs.",
+      "acceptance": "Both result projections use coherent advancement without imposing Clone on the plain stream or altering stateful projection timing. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Stream::next/StreamWithState::next",
+          "detail": "Stream::next and StreamWithState::next duplicate DFS stack, automaton, EOF, bounds and output progression.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R09",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Raw into_str_vec and into_str_keys embed full DFS engines in collection/conversion routines.",
+      "baseline_defect": "Raw into_str_vec and into_str_keys embed full DFS engines in collection/conversion routines.",
+      "criterion": "Remove traversal-engine ownership from raw string collectors.",
+      "acceptance": "Both collectors consume a coherent advancement boundary and perform conversion/aggregation; error and state-drop timing remain compatible. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Stream::into_str_vec/Stream::into_str_keys",
+          "detail": "Raw into_str_vec and into_str_keys embed full DFS engines in collection/conversion routines.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R09_BYTES",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Map byte-pair/byte-key collectors and Set byte collector copy stream iteration and owned-key materialization instead of adapting existing collection behavior.",
+      "baseline_defect": "Map byte-pair/byte-key collectors and Set byte collector copy stream iteration and owned-key materialization instead of adapting existing collection behavior.",
+      "criterion": "Remove duplicated owned-byte-key collection mechanics from the container stream wrappers.",
+      "acceptance": "Map pair/key and Set key results share coherent materialization or equivalent iterator composition while preserving projections; a one-line adapter is enough if it removes the duplication. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/map.rs",
+          "symbol": "Stream::into_byte_vec/Stream::into_byte_keys",
+          "detail": "Map byte-pair/byte-key collectors and Set byte collector copy stream iteration and owned-key materialization instead of adapting existing collection behavior.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/set.rs",
+          "symbol": "Stream::into_bytes",
+          "detail": "Map byte-pair/byte-key collectors and Set byte collector copy stream iteration and owned-key materialization instead of adapting existing collection behavior.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Stream",
+          "detail": "Map byte-pair/byte-key collectors and Set byte collector copy stream iteration and owned-key materialization instead of adapting existing collection behavior.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R09_UTF8",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Map into_str_vec/into_str_keys and Set into_strs each duplicate key copying, UTF8 decoding and error conversion in their collection loops.",
+      "baseline_defect": "Map into_str_vec/into_str_keys and Set into_strs each duplicate key copying, UTF8 decoding and error conversion in their collection loops.",
+      "criterion": "Give fallible string materialization a coherent boundary across container collectors.",
+      "acceptance": "Container wrappers no longer maintain separate UTF8/error algorithms; pair versus key-only outputs remain supported. This does not require the raw collectors to be repaired for this independent point. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/map.rs",
+          "symbol": "Stream::into_str_vec/Stream::into_str_keys",
+          "detail": "Map into_str_vec/into_str_keys and Set into_strs each duplicate key copying, UTF8 decoding and error conversion in their collection loops.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/set.rs",
+          "symbol": "Stream::into_strs",
+          "detail": "Map into_str_vec/into_str_keys and Set into_strs each duplicate key copying, UTF8 decoding and error conversion in their collection loops.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/mod.rs",
+          "symbol": "Stream::into_str_vec/Stream::into_str_keys",
+          "detail": "Map into_str_vec/into_str_keys and Set into_strs each duplicate key copying, UTF8 decoding and error conversion in their collection loops.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Union, Intersection, Difference and SymmetricDifference repeat reader next, slot mutation and heap reinsertion.",
+      "baseline_defect": "Union, Intersection, Difference and SymmetricDifference repeat reader next, slot mutation and heap reinsertion.",
+      "criterion": "Remove repeated slot refill and heap publication mechanics from set-operation selection loops.",
+      "acceptance": "All four operations delegate or otherwise share slot advancement, retaining their selection policies and returned-key lifetimes. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/ops.rs",
+          "symbol": "Union::next/Intersection::next/Difference::next/SymmetricDifference::next",
+          "detail": "Union, Intersection, Difference and SymmetricDifference repeat reader next, slot mutation and heap reinsertion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R10_BOUNDED",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Difference::next directly peeks and pops heap storage while comparing the original slot key, refilling and deciding uniqueness.",
+      "baseline_defect": "Difference::next directly peeks and pops heap storage while comparing the original slot key, refilling and deciding uniqueness.",
+      "criterion": "Separate bounded heap consumption from difference-specific membership selection.",
+      "acceptance": "The heap boundary owns availability and ordered removal while uniqueness uses the consumed original key; refill alone is insufficient for this item. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/ops.rs",
+          "symbol": "Difference::next/StreamHeap",
+          "detail": "Difference::next directly peeks and pops heap storage while comparing the original slot key, refilling and deciding uniqueness.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R11_LAYOUT",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. compile_to spreads single/next/general decisions and shared width variables across output, address, input and footer phases.",
+      "baseline_defect": "compile_to spreads single/next/general decisions and shared width variables across output, address, input and footer phases.",
+      "criterion": "Make supported node-layout encoding variation coherent without repeated layout interpretation across unrelated emission phases.",
+      "acceptance": "A representation-specific implementation, a layout plan with a shared emitter or other equivalent design qualifies; no requirement for a helper/class per format. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "BuilderNode::compile_to",
+          "detail": "compile_to spreads single/next/general decisions and shared width variables across output, address, input and footer phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R11_PACK",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Single-node output and address-delta branches each hand-pack little-endian bytes using repeated shift/buffer loops.",
+      "baseline_defect": "Single-node output and address-delta branches each hand-pack little-endian bytes using repeated shift/buffer loops.",
+      "criterion": "Move primitive integer packing out of layout orchestration into a coherent packing operation.",
+      "acceptance": "Both repeated loops use a shared packing responsibility or equivalent byte encoding facility; address delta and zero-output semantics stay correct. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "BuilderNode::compile_to",
+          "detail": "Single-node output and address-delta branches each hand-pack little-endian bytes using repeated shift/buffer loops.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R11_HEADER",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. compile_to directly builds the size nibble, common-input/tag bits and count sentinel bytes after payload emission.",
+      "baseline_defect": "compile_to directly builds the size nibble, common-input/tag bits and count sentinel bytes after payload emission.",
+      "criterion": "Give binary header formation a coherent format responsibility apart from payload emission.",
+      "acceptance": "Width bounds, existing common-input tags and 256-transition sentinel are expressed through a focused encoding boundary or declarative format representation; no exact original PackSizes class required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "BuilderNode::compile_to",
+          "detail": "compile_to directly builds the size nibble, common-input/tag bits and count sentinel bytes after payload emission.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R12_LAYOUT",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Node::new embeds tag dispatch and representation-specific size/extent arithmetic in object construction.",
+      "baseline_defect": "Node::new embeds tag dispatch and representation-specific size/extent arithmetic in object construction.",
+      "criterion": "Separate node layout decoding from broad Node construction.",
+      "acceptance": "Supported empty, next, single and general layouts yield coherent decoded metadata through focused operations or equivalent format-driven construction; encoder architecture is independent. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "Node::new",
+          "detail": "Node::new embeds tag dispatch and representation-specific size/extent arithmetic in object construction.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R12_TERMINAL",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. Node::new adds terminal absence/width decisions and unpack_uint at the computed general-node extent.",
+      "baseline_defect": "Node::new adds terminal absence/width decisions and unpack_uint at the computed general-node extent.",
+      "criterion": "Give general-node terminal-output decoding a coherent responsibility outside object assembly.",
+      "acceptance": "The boundary handles absent and zero-width terminal values plus the valid value location, and may share the layout decoder without requiring one component per rubric. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/node.rs",
+          "symbol": "Node::new",
+          "detail": "Node::new adds terminal absence/width decisions and unpack_uint at the computed general-node extent.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R13",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Source-derived obligation; matching author intent MD unavailable. CountingWriter::write embeds TABLE16/TABLE CRC updates while new/masked_checksum manage complemented CRC representation and mask.",
+      "baseline_defect": "CountingWriter::write embeds TABLE16/TABLE CRC updates while new/masked_checksum manage complemented CRC representation and mask.",
+      "criterion": "Separate checksum algorithm and representation lifecycle from writer publication and byte counting.",
+      "acceptance": "A checksum boundary owns block/tail update, initial representation and masking. Preserve existing full-input checksum update before underlying write, including short writes/errors; do not force checksum over only returned byte count. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only renaming or relocating an intact broad routine while its stated mixed responsibilities or duplicated policy remain does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/raw/counting_writer.rs",
+          "symbol": "CountingWriter::new/write/masked_checksum",
+          "detail": "CountingWriter::write embeds TABLE16/TABLE CRC updates while new/masked_checksum manage complemented CRC representation and mask.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded.v1",
+    "task_id": "burntsushi_fst_dim",
+    "aggregation": "equal_weight_per_item"
+  }
+}

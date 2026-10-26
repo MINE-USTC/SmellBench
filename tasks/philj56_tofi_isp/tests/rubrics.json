@@ -1,0 +1,415 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "philj56_tofi_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "surface_lifecycle",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R3 surface producer and main dummy/live frame consumers.",
+      "baseline_defect": "The surface_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let surface lifecycle depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Keep shared-memory setup, attach/damage/commit then buffer index toggle, and teardown ordering. Main may coordinate entry and surface but surface-only clients need no Unicode, fonts or clipboard. Distinguish struct surface teardown from wl_surface object destruction; the injected main close_surface(wl_surface) mismatch is not a required behavior. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/surface.c",
+          "symbol": "display_surface_setup,display_surface_present,display_surface_release",
+          "detail": "The surface_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The surface_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "entry_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R3 canvas provider and render consumers.",
+      "baseline_defect": "The entry_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let entry lifecycle depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Keep both Cairo buffers, inverse-scaled dimensions, initial text rendering before index toggle and later background restoration/render/toggle. Backend release precedes Cairo object release; initialization and refresh need no clipboard or compositor request fields. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/entry.c",
+          "symbol": "display_entry_setup,display_entry_render,display_entry_release",
+          "detail": "The entry_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The entry_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "clipboard_lifecycle",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R3 paste callbacks, read completion and offer ownership.",
+      "baseline_defect": "The clipboard_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let clipboard lifecycle depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Reset destroys nonnull offer and clears it before paste release, then clears MIME; finishing paste does not reset offer/MIME. Main completion/error/hangup and input receive paths retain their distinct lifecycle timing; no rendering fields required. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/clipboard.c",
+          "symbol": "display_paste_reset,display_paste_release",
+          "detail": "The clipboard_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The clipboard_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "font_backend_lifecycle",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 font path/name fallback and backend lifecycle.",
+      "baseline_defect": "The font_backend_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let font backend lifecycle depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Unreadable font path sets use_pango true, already selected Pango remains selected; init receives mutable available dimensions. Render/release follow selected backend consistently without changing unrelated surface/clipboard interfaces. One renderer may own all three phases; merge former ISP03/08 duplicate. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.c",
+          "symbol": "font_setup,font_render,font_release",
+          "detail": "The font_backend_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The font_backend_lifecycle consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "theme_defaults",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 explicit flags and fallback chain.",
+      "baseline_defect": "The theme_defaults consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let theme defaults depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Only unspecified foreground/background/padding/radius inherit; explicit zero/transparent values survive. Alternate result inherits already resolved default result; other themes inherit base theme. Focused theme policy can serve cursor defaults too. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/entry.c",
+          "symbol": "display_entry_setup",
+          "detail": "The theme_defaults consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The theme_defaults consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cursor_defaults",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 cursor differs from ordinary text theme fallback.",
+      "baseline_defect": "The cursor_defaults consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let cursor defaults depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Unspecified cursor color comes from resolved input foreground, unspecified cursor text color from entry background, not input background. Preserve explicit color flags; do not impose a separate cursor service. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.c",
+          "symbol": "cursor_defaults",
+          "detail": "The cursor_defaults consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The cursor_defaults consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cursor_geometry",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 both backends cursor-end metric policy.",
+      "baseline_defect": "The cursor_geometry consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let cursor geometry depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Only visible cursor at text end contributes: bar thickness or block/underscore em width plus advance minus bearing minus ink width. Pango supplies logical width/x and ink width; HarfBuzz supplies floating x_advance/x_bearing/width. Preserve backend metric precision and avoid unrelated lifecycle obligations. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/entry_backend/pango.c",
+          "symbol": "render_input",
+          "detail": "The cursor_geometry consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The cursor_geometry consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "active_buffer_clipping",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 both renderers current-buffer clipping.",
+      "baseline_defect": "The active_buffer_clipping consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let active buffer clipping depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Read matrix from current entry index. Horizontal compares translated width to clip_x+clip_width; vertical translated height to clip_y+clip_height, strict greater. Keep zero-size checks and vertical precheck versus horizontal render/group/discard order; do not freeze inactive buffer or introduce extra scaling. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.c",
+          "symbol": "overflows",
+          "detail": "The active_buffer_clipping consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The active_buffer_clipping consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "result_theme_selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 row selection versus absolute-result parity.",
+      "baseline_defect": "The result_theme_selection consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let result theme selection depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Selection uses visible row equality first, alternating theme uses absolute result index parity otherwise, default last. Both backends keep their highlighting branch and normal selection-theme behavior; one shared renderer policy may also handle clipping. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.c",
+          "symbol": "result_theme",
+          "detail": "The result_theme_selection consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The result_theme_selection consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "unicode_capabilities",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 configuration/input and R3 both backends use text utilities.",
+      "baseline_defect": "The unicode_capabilities consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let unicode capabilities depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Encoding, decoding, UTF-8 traversal/length and wide text conversion need no surface/clipboard/font lifecycle contract. Retain Pango byte-index traversal and HarfBuzz allocated placeholder ownership/masked codepoint handling, plus configuration hidden-character encoding. Ordinary utility functions qualify. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/input.c",
+          "symbol": "add_character",
+          "detail": "The unicode_capabilities consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The unicode_capabilities consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "input_reencoding",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 full refresh encoding through broad request.",
+      "baseline_defect": "The input_reencoding consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let input reencoding depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Encode current UTF-32 sequence in order, terminate UTF-8 and publish byte length before destroying old results/filtering. Only entry text state is needed; supplied owner/clipboard fields are not necessary dependencies. Incremental append and full refresh remain distinct paths. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/input.c",
+          "symbol": "input_refresh_results",
+          "detail": "The input_reencoding consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The input_reencoding consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "scale_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 scalar conversion and stage2 physical/logical distinction.",
+      "baseline_defect": "The scale_policy consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let scale policy depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Physical configuration always uses nonzero fractional scale else integer scale*120; logical rendering uses 120 when use_scale false. Preserve inverse conversion at existing percentage/no-scale sites and width/height rounding behavior. Main and config can share policy without requiring complete tofi/render/paste context in conversion clients. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/config.c",
+          "symbol": "config_fixup_values",
+          "detail": "The scale_policy consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The scale_policy consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "buffer_layout",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 stride/pool geometry dependency.",
+      "baseline_defect": "The buffer_layout consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let buffer layout depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Stride width*4 and pool height*stride*2 are established before allocation/mmap and buffer creation, keeping existing types/order. Surface sizing needs no font/theme/paste capability; same surface lifecycle owner may satisfy both layout and setup. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/surface.c",
+          "symbol": "display_surface_setup",
+          "detail": "The buffer_layout consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The buffer_layout consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "descriptor_release_policy",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 shared callback hides distinct descriptor contracts.",
+      "baseline_defect": "The descriptor_release_policy consumer/provider obtains unrelated display capabilities or universal request fields.",
+      "criterion": "Let descriptor release policy depend on its relevant operations and state without the universal display contract.",
+      "acceptance": "Clipboard closes only fd>0 and resets to zero even when not closed; surface and paste writer close unconditionally without this reset. Keep offer-before-clipboard-fd and pool/munmap-before-surface-close ordering. A focused shared close utility with explicit policy is allowed; do not require separate implementations or treat fd0 uniformly. Original narrow public entry points remain usable. A coherent shared owner or direct domain calls qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or forwarding the same full service table/request does not remove the dependency; no separate interface or class per item is required."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.c",
+          "symbol": "release_descriptor",
+          "detail": "The descriptor_release_policy consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/display_services.h",
+          "symbol": "display_request",
+          "detail": "The descriptor_release_policy consumer/provider obtains unrelated display capabilities or universal request fields.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "philj56_tofi_isp",
+    "aggregation": "equal_weight",
+    "excluded_from_scoring": [
+      "The post.diff comment/call-spelling cleanup creates no independent structural defect.",
+      "Pre-existing rendering behavior, compilation, tests, and no-regression constraints alone earn no structural point.",
+      "The invalid close_surface calls in main.c are a correctness issue, not an independent interface-segregation credit."
+    ],
+    "source_hashes": {
+      "expanded.diff": "795fd287fdec6d26b27491b2c0e7316a086e5ea3c1035a4d66d721f12db574c8",
+      "interaction_delta.diff": "8509898f6decae7095d3493795c2fedf99392f3629d9794ad07cde9fdd011b76",
+      "post.diff": "68c680f2eea330a4ae017a301c74492556e73347053e1b9c550aa43e5b88283b",
+      "environment/smell.diff": "f0943dea22935e7eb87721382580098a80d09459f5ec7f041cfbf0042eb8a08e"
+    }
+  }
+}

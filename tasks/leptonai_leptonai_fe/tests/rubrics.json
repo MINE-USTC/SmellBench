@@ -1,0 +1,460 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "leptonai_leptonai_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "direct_resource_admission",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 expands direct-resource validator for Endpoint and DevPod.",
+      "baseline_defect": "Transport consumers inspect six unsupported resource fields.",
+      "criterion": "Give direct resource admission coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Reject any non-None cpu/memory/ephemeral_storage_in_gb/accelerator_type/accelerator_num/resourse_affinity, including zero/false, in original order with resource-kind wording; cover both DevPod paths too. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "validate_create,create,create_with_response,update",
+          "detail": "Transport consumers inspect six unsupported resource fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metadata_label_admission",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 label rejection across both APIs.",
+      "baseline_defect": "Each transport projection decides whether metadata labels are representable.",
+      "criterion": "Give metadata label admission coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Reject truthy labels only for dict metadata, preserve kind-specific message and validation order; empty/None accepted. Cover Endpoint create trio/update and both DevPod paths. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/devpod.py",
+          "symbol": "validate_create,create",
+          "detail": "Each transport projection decides whether metadata labels are representable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_component_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 outbound and R3 update; stage2 component internals.",
+      "baseline_defect": "API methods encode resource/container/component field placement.",
+      "criterion": "Give endpoint component projection coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Canonical component name only on create; default min_replicas1 only create, patch absence preserved. Keep container/resources/env/mount/storage/health/scheduling/autoscaling field mappings, prune None not false/zero/empty. Preserve auth normalization/pod delegation before conversion and distinct request/response modes. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "validate_create,create,create_with_response,update",
+          "detail": "API methods encode resource/container/component field placement.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_level_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 endpoint-level schema helper expanded.",
+      "baseline_defect": "Transport assembly owns endpoint fields distinct from component fields.",
+      "criterion": "Give endpoint level projection coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Keep ingress/auth/access_config/api_tokens/routing/load_balancing/log/metrics/image_pull_secrets at endpoint level, not frontend component; retain false/empty and prune None. Metadata/auth warnings and redacted error boundary remain unchanged. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "create,update",
+          "detail": "Transport assembly owns endpoint fields distinct from component fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_metadata_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 metadata and R3 patch.",
+      "baseline_defect": "API methods encode legacy name/id and nested lepton_metadata.",
+      "criterion": "Give endpoint metadata projection coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Create name prefers truthy name then id; owner/visibility nested, prune None but retain false/empty; omit empty nested object. Update metadata contains only applicable owner/visibility, no renaming from legacy name. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "create,update",
+          "detail": "API methods encode legacy name/id and nested lepton_metadata.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_port_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 create/default versus update omission.",
+      "baseline_defect": "API methods repeat port validation/projection with operation-specific defaults.",
+      "criterion": "Give endpoint port policy coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Create missing/empty\u219240000 default; update missing\u2192omitted, explicit[]\u2192clear. Reject non-None name/expose_strategies/host_port/enable_load_balancer in stated order with index; default missing container_port0, protocol/app_protocol retained as allowed. One generic operation with mode is valid. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "validate_create,create,create_with_response,update",
+          "detail": "API methods repeat port validation/projection with operation-specific defaults.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_response_component",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 inbound mapping; stage2 frontend selection.",
+      "baseline_defect": "Decoder selects frontend and maps foreign component/endpoint fields to legacy spec.",
+      "criterion": "Give endpoint response component coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "First frontend is True, else first, else empty. Preserve container port field subset and absent/empty pruning, resource/spec field mappings, endpoints auth and ownership layout. Keep outer token-shape checks, model validation and diagnostic redaction. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "_http_endpoint_to_model",
+          "detail": "Decoder selects frontend and maps foreign component/endpoint fields to legacy spec.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_response_state",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 state map and deletion precedence.",
+      "baseline_defect": "Decoder owns endpoint lifecycle-to-legacy state/phase rules.",
+      "criterion": "Give endpoint response state coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Truthy deleted_at\u2192Deleting both; otherwise mapped phase with unknown passthrough/empty fallback; Stopping/Stopped state Not Ready. Preserve endpoint URL empty fallback, ready replicas and autoscaler status. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "_http_endpoint_to_model",
+          "detail": "Decoder owns endpoint lifecycle-to-legacy state/phase rules.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_response_metadata",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 inbound metadata projection.",
+      "baseline_defect": "Decoder decodes endpoint metadata versus lepton_metadata fields.",
+      "criterion": "Give endpoint response metadata coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Name truthy name\u2192id\u2192empty, id/name same; created_at/version/semantic_version/resource_version outer; owner/created_by/modification/visibility nested. Preserve None pruning and required name/id check after model construction. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "_http_endpoint_to_model",
+          "detail": "Decoder decodes endpoint metadata versus lepton_metadata fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "snapshot_admission",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 snapshot validation; retry outgoing-array preparation integrated.",
+      "baseline_defect": "Both lifecycle consumers validate raw component collection/name/frontend invariants.",
+      "criterion": "Give snapshot admission coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Require dict raw/spec and nonempty list; dict components, nonempty string unique names in order; multi-component exactly one frontend is True, single permits none. Preserve error precedence and no PATCH on invalid snapshot. Prepared index/array may be returned or rebuilt coherently, not forced. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "update,stop",
+          "detail": "Both lifecycle consumers validate raw component collection/name/frontend invariants.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_patch_merge",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 frontend patch; retry index from preflight.",
+      "baseline_defect": "API reconstructs whole component array and applies RFC merge to selected frontend.",
+      "criterion": "Give endpoint patch merge coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Select actual frontend index else0 for single; preserve sibling order/content/unknown fields and original raw snapshot. Use RFC7386 semantics, not replacement of entire frontend or first component unconditionally; honor port clear/omission and dryrun transport. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "update",
+          "detail": "API reconstructs whole component array and applies RFC merge to selected frontend.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_stop_transition",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 all-component scale recovery; retry preflight copy then reset.",
+      "baseline_defect": "Transport method copies every component and manipulates nested autoscaling.",
+      "criterion": "Give endpoint stop transition coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Every min_replicas0. Reset targets only if GPU or throughput qpm not in(None,0); then set both targets0, paths/methods[], scale_down timeout0, retaining unrelated nested keys via copies. Inactive config unchanged; no raw snapshot mutation; all-component order/cardinality gate preserved. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/endpoint.py",
+          "symbol": "stop",
+          "detail": "Transport method copies every component and manipulates nested autoscaling.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "devpod_admission",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 pod translation; stage2 incompatible fields.",
+      "baseline_defect": "Pod API owns unsupported legacy feature/protocol checks.",
+      "criterion": "Give devpod admission coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Health present nonNone, scheduling.replica_spread nonNone when dict, truthy routing/auth/load_balance in ordered error list. Reject truthy protocol outside TCP/UDP, permit falsy. Keep existing sanity mutation and forbidden endpoint auth checks; validate performs conversion even discarded result. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/devpod.py",
+          "symbol": "validate_create,create",
+          "detail": "Pod API owns unsupported legacy feature/protocol checks.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "devpod_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 outbound DevPod payload.",
+      "baseline_defect": "Pod transport maps flattened resource/spec and metadata schema itself.",
+      "criterion": "Give devpod projection coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Keep container/env/mount/storage/reservation/security/queue/log/metrics/timeout plus resource_shape/shared_memory/affinity/host_network mapping. Metadata name||id, owner/visibility included only truthy unlike Endpoint nested metadata. Prune None and preserve existing validate/create behavior. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/devpod.py",
+          "symbol": "validate_create,create",
+          "detail": "Pod transport maps flattened resource/spec and metadata schema itself.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "devpod_response_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 inbound DevPod schema.",
+      "baseline_defect": "Decoder constructs legacy metadata/spec/status.",
+      "criterion": "Give devpod response projection coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Metadata name default empty used for both id/name; is_pod true; stopped is True\u2192min0 else1; known state map/unknown passthrough then UNK when empty. Preserve endpoint/public_ip/resource/container/spec fields and model name validation. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/devpod.py",
+          "symbol": "_http_devpod_to_model",
+          "detail": "Decoder constructs legacy metadata/spec/status.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "devpod_port_correspondence",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 HostPortMapping occurrence match.",
+      "baseline_defect": "Decoder joins port status with declared exposure/protocol/name.",
+      "criterion": "Give devpod port correspondence coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Only declared HostPortMapping ports participate, keyed by container_port with FIFO occurrence matching; each status consumes next candidate, no match\u2192protocol TCP/default name absent. Preserve status order, host_port/external_url mapping, no source list mutation; falsy statuses omit container_port_status. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/devpod.py",
+          "symbol": "_http_devpod_to_model",
+          "detail": "Decoder joins port status with declared exposure/protocol/name.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "environment_grammar",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 all five CLI families/seven sites; retry per-entry preparation.",
+      "baseline_defect": "Commands parse plain env/secret syntax and construct foreign models.",
+      "criterion": "Give environment grammar coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Plain requires first = split, secret first = or self-name reference; no trimming/value splitting beyond first. Plain entries before secrets, duplicates/order preserved, EnvVar value versus EnvValue(secret_name_ref). Fine-tune appends to copied existing envs; other sites preserve guarded replacement and deployment no-file None behavior. Commit only after all entries succeed; Ray three paths all covered. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/cli/deployment.py",
+          "symbol": "create",
+          "detail": "Commands parse plain env/secret syntax and construct foreign models.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "environment_name_policy",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 name/reserved validation now in CLI loops.",
+      "baseline_defect": "Seven CLI sites inspect foreign regex/reserved-name policy.",
+      "criterion": "Give environment name policy coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Empty\u2192initial-digit\u2192fullmatch\u2192reserved checks in order; preserve allowed letters/digits/hyphen/underscore/period and distinct secret/environment wording. Reserved check before EnvValue construction; preserve existing error content/redaction rather than expose secret values in new diagnostics. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/cli/job.py",
+          "symbol": "create",
+          "detail": "Seven CLI sites inspect foreign regex/reserved-name policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mount_grammar",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 mounts across five families.",
+      "baseline_defect": "Each consumer splits fields/constructs Mounts itself.",
+      "criterion": "Give mount grammar coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Split first two colons, exactly3 fields, strip outer fields, preserve order and from alias. Falsy input\u2192None when parser invoked; caller guards/file-preservation and local error prefixes/sys.exit remain. All seven mount sites covered. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/cli/raycluster.py",
+          "symbol": "_build_group_spec,_merge_cli_into_worker_spec,_build_worker_spec_from_cli",
+          "detail": "Each consumer splits fields/constructs Mounts itself.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mount_volume_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 _validate_mount_from expanded.",
+      "baseline_defect": "Each mount loop validates node-local/typed node source.",
+      "criterion": "Give mount volume policy coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Empty volume fails; node-local accepted; other node- requires exactly one internal colon with nonempty stripped type/storage_name, preserving original outer-trimmed value. Non-node volumes left intact. No new path validation or blanket colon rejection. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/cli/finetune.py",
+          "symbol": "create_command",
+          "detail": "Each mount loop validates node-local/typed node source.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "storage_attachment_policy",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 grouped storage in deployment create/update, pod/job create.",
+      "baseline_defect": "Consumers own attachment grammar, admission and grouping.",
+      "criterion": "Give storage attachment policy coherent schema/spec ownership rather than independently interpreting it in transport or CLI consumers.",
+      "acceptance": "Split at most3 colons then strip, require data source/mode, profile requires attach_with before later name/mode checks; preserve allowed values/error order. Group first-seen data source order with repeated attachments preserved, None for empty optional fields, construct models before atomic assignment. Caller guards and local diagnostics retained. Retained translation/spec_utils APIs may be called directly; shared declarative policy or a different cohesive owner is equally valid. No one-helper-per-item or fixed module placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Consumer-local wrappers retaining independent foreign schema rules are insufficient; do not alter unrelated HTTP/CLI policy to obtain structural credit."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/cli/deployment.py",
+          "symbol": "create,update",
+          "detail": "Consumers own attachment grammar, admission and grouping.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "leptonai_leptonai_fe",
+    "rubric_status": "ready",
+    "aggregation": "equal_weight",
+    "item_weight": 1,
+    "excluded_from_scoring": [
+      "The empty post.diff has no separate repair obligation.",
+      "Native test passage, behavior restoration, cosmetic local renaming, and the unchanged transport/model checks are controls rather than structural credits.",
+      "The retry review's proposed further design is not scored where it is absent from the final patch."
+    ]
+  }
+}

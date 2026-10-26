@@ -1,0 +1,537 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "alexxit_xiaomigateway3_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "DCE01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The BLE receive path gained a helper that repeats the existing frame-counter rejection.",
+      "baseline_defect": "BLEGateway checks accept_frame and immediately repeats the same frmCnt-versus-seq test, so one branch can never add a different decision.",
+      "criterion": "The BLE frame replay decision has one effective owner and the duplicate sequence rejection is removed from the active receive path.",
+      "acceptance": "A frame is rejected once for its existing counter, with no second equivalent guard in either the caller or a forwarding helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming accept_frame or moving both identical checks into another method leaves the duplicate decision."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gate/ble.py",
+          "symbol": "BLEGateway receive path",
+          "detail": null,
+          "raw": "expanded.diff:core/gate/ble.py:BLEGateway receive path"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/reports.py",
+          "symbol": "accept_frame",
+          "detail": null,
+          "raw": "expanded.diff:core/reports.py:accept_frame"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gate/ble.py",
+          "symbol": "frmCnt guard",
+          "detail": null,
+          "raw": "environment/smell.diff:core/gate/ble.py:frmCnt guard"
+        }
+      ]
+    },
+    {
+      "id": "DCE02",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The new MIoT property helper handles cached BLE/MESH eligibility while the gateway still performs the same check.",
+      "baseline_defect": "accept_miot_property rejects cached BLE/MESH reports missing gateway last_seen, then MIoTGateway repeats that cached-report rejection for the same item.",
+      "criterion": "Keep cached MIoT property eligibility in one effective decision path and remove its duplicate guard between the helper and gateway.",
+      "acceptance": "The cached BLE/MESH last_seen policy remains effective, but a report is not checked twice for the same condition. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting the live cache policy or retaining both equivalent last_seen checks."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gate/miot.py",
+          "symbol": "MIoTGateway property handler",
+          "detail": null,
+          "raw": "expanded.diff:core/gate/miot.py:MIoTGateway property handler"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/reports.py",
+          "symbol": "accept_miot_property",
+          "detail": null,
+          "raw": "expanded.diff:core/reports.py:accept_miot_property"
+        }
+      ]
+    },
+    {
+      "id": "DCE03",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The event helper and existing handler compare the same transaction id.",
+      "baseline_defect": "MIoTGateway calls accept_event with tid and then tests item.tid against device.extra.seq again.",
+      "criterion": "The MIoT event replay check is represented once in the effective event path.",
+      "acceptance": "The event path has one tid-versus-seq decision while keeping the existing sequence update lifecycle. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper around the old tid comparison that leaves both comparisons active is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gate/miot.py",
+          "symbol": "MIoTGateway event handler",
+          "detail": null,
+          "raw": "expanded.diff:core/gate/miot.py:MIoTGateway event handler"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/reports.py",
+          "symbol": "accept_event",
+          "detail": null,
+          "raw": "expanded.diff:core/reports.py:accept_event"
+        }
+      ]
+    },
+    {
+      "id": "DCE04",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Lumi heartbeat normalization moved into a report helper but the original heartbeat branch remained downstream.",
+      "baseline_defect": "lumi_report changes a heartbeat to command report and extracts res_list, making _lumi_process_report's heartbeat branch unreachable while the two methods share report-selection responsibility.",
+      "criterion": "Lumi command selection and heartbeat normalization have a coherent owner, with no downstream heartbeat branch unreachable from the actual caller.",
+      "acceptance": "Heartbeat reports are handled without a normalized-away heartbeat branch. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the old heartbeat branch intact to another method while still normalizing it earlier is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/reports.py",
+          "symbol": "lumi_report",
+          "detail": null,
+          "raw": "expanded.diff:core/reports.py:lumi_report"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gate/lumi.py",
+          "symbol": "lumi_process_lumi/_lumi_process_report",
+          "detail": null,
+          "raw": "expanded.diff:core/gate/lumi.py:lumi_process_lumi/_lumi_process_report"
+        }
+      ]
+    },
+    {
+      "id": "DCE07",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "MQTT payload conversion was extracted but the original conversion guards stayed after it.",
+      "baseline_defect": "encode_payload converts strings before _publish_encoded repeats its isinstance(payload, str) conversion.",
+      "criterion": "Eliminate the unreachable string conversion in the MQTT publishing pipeline.",
+      "acceptance": "String payload conversion is not retained after a guaranteed conversion to bytes. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the old isinstance branches into a new helper after encode_payload leaves them dead and is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/mini_mqtt.py",
+          "symbol": "publish/_publish_encoded",
+          "detail": null,
+          "raw": "expanded.diff:core/mini_mqtt.py:publish/_publish_encoded"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/mqtt_payload.py",
+          "symbol": "encode_payload",
+          "detail": null,
+          "raw": "expanded.diff:core/mqtt_payload.py:encode_payload"
+        }
+      ]
+    },
+    {
+      "id": "DCE09",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "MIoT values are newly converted by a generator before reaching the existing event decoder.",
+      "baseline_defect": "miot_values converts an eiid event into a synthetic piid value and yields its arguments as property values, so _decode_miot_value's retained eiid event branch is unreachable through decode_miot.",
+      "criterion": "The MIoT decode path has one reachable event-to-converter flow, without a retained event branch bypassed by upstream value transformation.",
+      "acceptance": "Event decoding and recursive argument handling have no unreachable duplicate event subtree. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming MIoTValue or moving the old eiid block while the generator still converts every event to piid is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "custom_components/xiaomi_gateway3/core/reports.py",
+          "symbol": "miot_values",
+          "detail": null,
+          "raw": "interaction_delta.diff:core/reports.py:miot_values"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "custom_components/xiaomi_gateway3/core/device.py",
+          "symbol": "XDevice.decode_miot/_decode_miot_value",
+          "detail": null,
+          "raw": "interaction_delta.diff:core/device.py:XDevice.decode_miot/_decode_miot_value"
+        }
+      ]
+    },
+    {
+      "id": "DCE10",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Action encoding was added before the old BaseConv action branch.",
+      "baseline_defect": "BaseConv.encode routes .a. identifiers to encode_action and returns, while _encode_value retains the old .a. branch for an action route it can never receive.",
+      "criterion": "Action encoding has one reachable implementation and no dead .a. branch in the delegated write encoder.",
+      "acceptance": "Action payload handling has no unreachable duplicate implementation. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Keeping encode_action and the old action block under a different name is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "custom_components/xiaomi_gateway3/core/converters/base.py",
+          "symbol": "BaseConv.encode/_encode_value",
+          "detail": null,
+          "raw": "interaction_delta.diff:core/converters/base.py:BaseConv.encode/_encode_value"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "custom_components/xiaomi_gateway3/core/converters/route.py",
+          "symbol": "encode_action/write_route",
+          "detail": null,
+          "raw": "interaction_delta.diff:core/converters/route.py:encode_action/write_route"
+        }
+      ]
+    },
+    {
+      "id": "DCE11",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Write routing now classifies identifiers and device type before the delegated encoder, but the delegated encoder repeats validity and protocol decisions.",
+      "baseline_defect": "write_route rejects absent/BLE/event identifiers and selects Zigbee property, MIoT property, Matter, or Lumi; _encode_value repeats the absent/BLE/event guard and retains overlapping identifier/device-type branching.",
+      "criterion": "Eliminate the redundant write eligibility rejection made impossible by upstream route selection.",
+      "acceptance": "The absent/BLE/event rejection is effective without an unreachable repeated guard. Reachable route dispatch is not itself dead code. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Adding another route parameter while leaving the same identifier/device checks in both route selection and encoding is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "custom_components/xiaomi_gateway3/core/converters/route.py",
+          "symbol": "write_route",
+          "detail": null,
+          "raw": "interaction_delta.diff:core/converters/route.py:write_route"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "custom_components/xiaomi_gateway3/core/converters/base.py",
+          "symbol": "BaseConv.encode/_encode_value",
+          "detail": null,
+          "raw": "interaction_delta.diff:core/converters/base.py:BaseConv.encode/_encode_value"
+        }
+      ]
+    },
+    {
+      "id": "DCE12",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Read routing prefilters identifiers and selects protocol before BaseConv repeats the old checks.",
+      "baseline_defect": "read_route filters absent/BLE/event/action identifiers and selects Zigbee, MIoT, Matter, or Lumi; _encode_read_value repeats those filters and overlapping route cases.",
+      "criterion": "Eliminate the redundant read eligibility rejection made impossible by upstream route selection.",
+      "acceptance": "The absent/BLE/event/action rejection is effective without an unreachable repeated guard. Reachable route dispatch is not itself dead code. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Keeping read_route and the old no-mi/BLE/event/action guard together merely hides the dead checks."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "custom_components/xiaomi_gateway3/core/converters/route.py",
+          "symbol": "read_route",
+          "detail": null,
+          "raw": "interaction_delta.diff:core/converters/route.py:read_route"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "custom_components/xiaomi_gateway3/core/converters/base.py",
+          "symbol": "BaseConv.encode_read/_encode_read_value",
+          "detail": null,
+          "raw": "interaction_delta.diff:core/converters/base.py:BaseConv.encode_read/_encode_read_value"
+        }
+      ]
+    },
+    {
+      "id": "DCE13",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The new MIoT property helper also handles tid replay filtering while the gateway retains a duplicate tid comparison.",
+      "baseline_defect": "accept_miot_property rejects an item whose tid equals device.extra.seq, then the MIoTGateway property handler repeats that sequence-replay comparison.",
+      "criterion": "Keep property tid replay filtering in one effective decision path and remove the unreachable duplicate comparison between helper and caller.",
+      "acceptance": "New property tids still pass and repeated tids still stop, with no second equivalent sequence guard after acceptance. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting replay protection entirely or changing only the event handler's separate tid check."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/reports.py",
+          "symbol": "accept_miot_property; tid",
+          "detail": "Helper rejects repeated property tid.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gate/miot.py",
+          "symbol": "MIoTGateway property handler; seq",
+          "detail": "Caller retains its own repeated-tid guard.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gate/miot.py",
+          "symbol": "accept_miot_property; seq",
+          "detail": "Final injection retains the duplicate property replay decision.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE05",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Source-derived stage obligation; matching author intent MD is unavailable and not claimed reviewed.",
+      "baseline_defect": "send_packets separates gateway mixed cmd+method payloads before _send_packet retains their combined branch.",
+      "criterion": "Eliminate the unreachable gateway combined-packet split.",
+      "acceptance": " Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the impossible branch or adding an always-false condition while retaining its obsolete body does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gateway.py",
+          "symbol": "_send_packet",
+          "detail": "send_packets separates gateway mixed cmd+method payloads before _send_packet retains their combined branch.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/transport.py",
+          "symbol": "_send_packets",
+          "detail": "send_packets separates gateway mixed cmd+method payloads before _send_packet retains their combined branch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE05_Z",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Source-derived stage obligation; matching author intent MD is unavailable and not claimed reviewed.",
+      "baseline_defect": "send_packets separates Zigbee mixed cmd+commands payloads before _send_packet retains their combined branch.",
+      "criterion": "Eliminate the unreachable Zigbee combined-packet split.",
+      "acceptance": " Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the impossible branch or adding an always-false condition while retaining its obsolete body does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gateway.py",
+          "symbol": "_send_packet",
+          "detail": "send_packets separates Zigbee mixed cmd+commands payloads before _send_packet retains their combined branch.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/transport.py",
+          "symbol": "_send_packets",
+          "detail": "send_packets separates Zigbee mixed cmd+commands payloads before _send_packet retains their combined branch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE07_D",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived stage obligation; matching author intent MD is unavailable and not claimed reviewed.",
+      "baseline_defect": "encode_payload converts dicts to compact JSON bytes before _publish_encoded retains the dict conversion.",
+      "criterion": "Eliminate unreachable dictionary serialization after MQTT payload normalization.",
+      "acceptance": " Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the impossible branch or adding an always-false condition while retaining its obsolete body does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/mini_mqtt.py",
+          "symbol": "_publish_encoded",
+          "detail": "encode_payload converts dicts to compact JSON bytes before _publish_encoded retains the dict conversion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/mqtt_payload.py",
+          "symbol": "encode_payload",
+          "detail": "encode_payload converts dicts to compact JSON bytes before _publish_encoded retains the dict conversion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE08",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived stage obligation; matching author intent MD is unavailable and not claimed reviewed.",
+      "baseline_defect": "single_device_entry handles zero entries and returns None; _fix_device_entries retains the same branch.",
+      "criterion": "Eliminate the unreachable registry handling for zero entries.",
+      "acceptance": "Preserve applicable device removal, VIA registration and foreign-entry migration behavior, without prescribing which method owns them. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the impossible branch or adding an always-false condition while retaining its obsolete body does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/hass/add_entitites.py",
+          "symbol": "_fix_device_entries",
+          "detail": "single_device_entry handles zero entries and returns None; _fix_device_entries retains the same branch.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/hass/registry.py",
+          "symbol": "single_device_entry",
+          "detail": "single_device_entry handles zero entries and returns None; _fix_device_entries retains the same branch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE08_M",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived stage obligation; matching author intent MD is unavailable and not claimed reviewed.",
+      "baseline_defect": "single_device_entry handles multiple entries and returns None; _fix_device_entries retains the same branch.",
+      "criterion": "Eliminate the unreachable registry handling for multiple entries.",
+      "acceptance": "Preserve applicable device removal, VIA registration and foreign-entry migration behavior, without prescribing which method owns them. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the impossible branch or adding an always-false condition while retaining its obsolete body does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/hass/add_entitites.py",
+          "symbol": "_fix_device_entries",
+          "detail": "single_device_entry handles multiple entries and returns None; _fix_device_entries retains the same branch.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/hass/registry.py",
+          "symbol": "single_device_entry",
+          "detail": "single_device_entry handles multiple entries and returns None; _fix_device_entries retains the same branch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE08_O",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Source-derived stage obligation; matching author intent MD is unavailable and not claimed reviewed.",
+      "baseline_defect": "single_device_entry handles a single entry already owned by this config and returns None; _fix_device_entries retains the same branch.",
+      "criterion": "Eliminate the unreachable registry handling for a single entry already owned by this config.",
+      "acceptance": "Preserve applicable device removal, VIA registration and foreign-entry migration behavior, without prescribing which method owns them. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the impossible branch or adding an always-false condition while retaining its obsolete body does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/hass/add_entitites.py",
+          "symbol": "_fix_device_entries",
+          "detail": "single_device_entry handles a single entry already owned by this config and returns None; _fix_device_entries retains the same branch.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/hass/registry.py",
+          "symbol": "single_device_entry",
+          "detail": "single_device_entry handles a single entry already owned by this config and returns None; _fix_device_entries retains the same branch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE14",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Source-derived stage obligation; matching author intent MD is unavailable and not claimed reviewed.",
+      "baseline_defect": "miot_values excludes nonzero-code values and emits event markers without an error code; _decode_miot_value retains the same error return.",
+      "criterion": "Remove the redundant error-code rejection after MIoT value admission.",
+      "acceptance": " Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the impossible branch or adding an always-false condition while retaining its obsolete body does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/device.py",
+          "symbol": "_decode_miot_value",
+          "detail": "miot_values excludes nonzero-code values and emits event markers without an error code; _decode_miot_value retains the same error return.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/reports.py",
+          "symbol": "miot_values",
+          "detail": "miot_values excludes nonzero-code values and emits event markers without an error code; _decode_miot_value retains the same error return.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE15",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Source-derived stage obligation; matching author intent MD is unavailable and not claimed reviewed.",
+      "baseline_defect": "lumi_report admits report/read_rsp and only gateway write_rsp; the downstream command-selection else rejection cannot be reached.",
+      "criterion": "Remove the redundant downstream unsupported-command rejection in Lumi report handling.",
+      "acceptance": "The live empty-items check is excluded; admitted report payloads can still have no items. Either remove the obsolete downstream branch or coherently redesign the producer/consumer flow so the required behavior is implemented without unreachable duplicate code. No normalization record, helper name or producer-side placement is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating the impossible branch or adding an always-false condition while retaining its obsolete body does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/gate/lumi.py",
+          "symbol": "_lumi_process_report",
+          "detail": "lumi_report admits report/read_rsp and only gateway write_rsp; the downstream command-selection else rejection cannot be reached.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "custom_components/xiaomi_gateway3/core/reports.py",
+          "symbol": "lumi_report",
+          "detail": "lumi_report admits report/read_rsp and only gateway write_rsp; the downstream command-selection else rejection cannot be reached.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "alexxit_xiaomigateway3_dce",
+    "rubric_status": "ready",
+    "weighting": "Each item has equal weight; score only independent structural repairs.",
+    "excluded_from_scoring": [
+      "Preservation of the pre-existing decode, send, MQTT, and registry behaviors by itself.",
+      "The post.diff deletion of an old-HA explanatory comment, because it changes no execution path.",
+      "Any historical synthesis intention not present in the matching final patch, including nonmatching runtime_unreachable_clean_20261020 variants.",
+      "Compilation and test passage, cosmetic renames, and a whole-block relocation with the duplicate or unreachable path intact."
+    ]
+  }
+}

@@ -1,0 +1,446 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "gamelinux_passivedns_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "record_observation",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1/R4 name-cache observation across ordinary, JSON, CNAME and error paths.",
+      "baseline_defect": "Producers split packet clocks, endpoints, MAC and protocol into record_values scalar lists.",
+      "criterion": "Keep the related name-record observation coherent across all actual producers and lookup/update.",
+      "acceptance": "Preserve domain/hash identity, latest clock and rec_time_touch, current endpoint/TTL and optional MAC refresh; first_seen and protocol remain creation values. CNAME continuation must use its newly copied domain/hash; record-only error paths remain covered. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "record_values",
+          "detail": "Producers split packet clocks, endpoints, MAC and protocol into record_values scalar lists.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "log_json_answer",
+          "detail": "Producers split packet clocks, endpoints, MAC and protocol into record_values scalar lists.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "cache_dns_objects",
+          "detail": "Producers split packet clocks, endpoints, MAC and protocol into record_values scalar lists.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "get_pdns_record",
+          "detail": "Producers split packet clocks, endpoints, MAC and protocol into record_values scalar lists.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "asset_observation",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1/R4 answer-cache observation transport.",
+      "baseline_defect": "Three producers separately extract address family, endpoints, server TTL, VLAN, transport and ports into an oversized update signature.",
+      "criterion": "Remove repeated parallel packet-to-asset metadata plumbing across all three producer variants.",
+      "acceptance": "Preserve current endpoint/TTL/protocol/VLAN refresh on matched assets, client/server orientation and host-order ports. A shared policy change should reach all existing producers; producer-specific answer construction may remain separate. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "update_asset_values",
+          "detail": "Three producers separately extract address family, endpoints, server TTL, VLAN, transport and ports into an oversized update signature.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "log_json_answer",
+          "detail": "Three producers separately extract address family, endpoints, server TTL, VLAN, transport and ports into an oversized update signature.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "cache_dns_objects",
+          "detail": "Three producers separately extract address family, endpoints, server TTL, VLAN, transport and ports into an oversized update signature.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "update_pdns_record_asset",
+          "detail": "Three producers separately extract address family, endpoints, server TTL, VLAN, transport and ports into an oversized update signature.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "answer_identity",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 answer values and R4 ordinary versus packed producer coverage.",
+      "baseline_defect": "RR type/class/TTL, answer pointer/length and query type/id/rcode cross the update boundary as unrelated scalars.",
+      "criterion": "Keep answer identity and its bytes/length coherent through lookup and creation.",
+      "acceptance": "Preserve existing matching criteria and byte-length behavior, ordinary versus synthetic JSON RR metadata, maximum observed RR TTL and counter updates. New cached RR has no owner or rdata fields; do not introduce borrowed RR lifetimes or change allocation/refund/expiration behavior. Existing RR plus answer view is valid. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "update_asset_values",
+          "detail": "RR type/class/TTL, answer pointer/length and query type/id/rcode cross the update boundary as unrelated scalars.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "log_json_answer",
+          "detail": "RR type/class/TTL, answer pointer/length and query type/id/rcode cross the update boundary as unrelated scalars.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "cache_dns_objects",
+          "detail": "RR type/class/TTL, answer pointer/length and query type/id/rcode cross the update boundary as unrelated scalars.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "query_clock",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening query fallback and query/response timing.",
+      "baseline_defect": "Each producer repeats query_time versus start_time selection, paired microseconds and elapsed-second subtraction.",
+      "criterion": "Own the effective query-clock decision coherently for all asset producers.",
+      "acceptance": "Fallback depends on query_time seconds being nonzero; corresponding microseconds must come from the same source. First qts is retained until both stored components are zero, while latency updates for each reply. Do not substitute JSON output fallback semantics for producer fallback. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "log_json_answer",
+          "detail": "Each producer repeats query_time versus start_time selection, paired microseconds and elapsed-second subtraction.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "cache_dns_objects",
+          "detail": "Each producer repeats query_time versus start_time selection, paired microseconds and elapsed-second subtraction.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "update_pdns_record_asset",
+          "detail": "Each producer repeats query_time versus start_time selection, paired microseconds and elapsed-second subtraction.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "update_asset_values",
+          "detail": "Each producer repeats query_time versus start_time selection, paired microseconds and elapsed-second subtraction.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "latency_commit",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Deepening latency ownership; packaged delta separates clamp/store from helper.",
+      "baseline_defect": "asset_latency returns signed raw duration and both matched/new branches repeat negative clamp and unsigned storage.",
+      "criterion": "Keep duration calculation, nonnegative normalization and asset latency assignment under one maintained policy.",
+      "acceptance": "Preserve elapsed seconds times one million plus reply_usec minus query_usec, clamp negative values to zero, and update qtm for both matched and new assets. Computing elsewhere or incorporating it into a broader update is valid; no required asset_latency function. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "asset_latency",
+          "detail": "asset_latency returns signed raw duration and both matched/new branches repeat negative clamp and unsigned storage.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "update_asset_values",
+          "detail": "asset_latency returns signed raw duration and both matched/new branches repeat negative clamp and unsigned storage.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "first_mac_publication",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening producer/cache new-asset completion split.",
+      "baseline_defect": "Fresh assets return to three producers for duplicate MAC capture and initial print while matched-asset printing remains inside update.",
+      "criterion": "Make new-asset completion and publication a coherent reusable contract across producers.",
+      "acceptance": "Only newly created assets capture Ethernet destination as client MAC and source as server MAC, before initial printing; absent Ethernet leaves initialized zero MAC. Matched assets retain first MAC while refreshing network values and following existing interval-based output. A returned fresh-asset result with one shared completion operation is valid; all publication need not move into one function. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "update_asset_values",
+          "detail": "Fresh assets return to three producers for duplicate MAC capture and initial print while matched-asset printing remains inside update.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "log_json_answer",
+          "detail": "Fresh assets return to three producers for duplicate MAC capture and initial print while matched-asset printing remains inside update.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "cache_dns_objects",
+          "detail": "Fresh assets return to three producers for duplicate MAC capture and initial print while matched-asset printing remains inside update.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "update_pdns_record_asset",
+          "detail": "Fresh assets return to three producers for duplicate MAC capture and initial print while matched-asset printing remains inside update.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "output_context",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 legacy text/Jansson, record-only errors and indirect expiry/flush.",
+      "baseline_defect": "print_values receives live record/asset pointers alongside copied clocks, endpoints, MAC, name and protocol.",
+      "criterion": "Remove redundant parallel output context plumbing while keeping record-only and asset projections explicit.",
+      "acceptance": "Record-only output uses record endpoints/TTL and no asset MAC; asset output uses asset endpoints/TTL/MAC and record query identity. Preserve live counters/last-print mutations and existing expiry/global flush callers through the public entry point. A view or direct original records is valid; no required common flattened output schema. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "print_passet",
+          "detail": "print_values receives live record/asset pointers alongside copied clocks, endpoints, MAC, name and protocol.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "print_values",
+          "detail": "print_values receives live record/asset pointers alongside copied clocks, endpoints, MAC, name and protocol.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "legacy_clock_policy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 and deepening record-versus-asset clocks.",
+      "baseline_defect": "Two timestamp pairs are assembled outside printing and repeatedly selected by legacy format branches.",
+      "criterion": "Keep legacy timestamp source selection coherent without conflating the clocks.",
+      "acceptance": "Jansson timestamps use record last_seen. Human YMD uses record seconds but normal asset microseconds, or record microseconds for errors. Numeric normal output uses asset seconds/usec; errors use record values. Preserve these existing mixed semantics, formatting flags and order; do not normalize them to a single timestamp. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "print_passet",
+          "detail": "Two timestamp pairs are assembled outside printing and repeatedly selected by legacy format branches.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "print_values",
+          "detail": "Two timestamp pairs are assembled outside printing and repeatedly selected by legacy format branches.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "json_answer_context",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 V2 JSON answer/query/identity/network field expansion.",
+      "baseline_defect": "Serializer accepts a positional list of query identity, answer metadata, clocks, endpoints and transport fields.",
+      "criterion": "Keep the JSON answer data cohesive through serialization rather than exploding it into parallel scalar plumbing.",
+      "acceptance": "Preserve qtype versus answer type, qid/rcode, TTL/count, endpoint direction, ports/VLAN and qtm rendering. The serializer may consume record/asset directly, a view or projected data. No imposed serialization object or buffer redesign. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "print_values",
+          "detail": "Serializer accepts a positional list of query identity, answer metadata, clocks, endpoints and transport fields.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "build_v2_json",
+          "detail": "Serializer accepts a positional list of query identity, answer metadata, clocks, endpoints and transport fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "json_clock_selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening query snapshot, last seen and print clocks.",
+      "baseline_defect": "print_values preselects first timestamp with duplicate component ternaries before serializer constructs local timevals.",
+      "criterion": "Own JSON timestamp selection and paired components coherently.",
+      "acceptance": "Use stored qts when either component is nonzero, otherwise asset first_seen; last timestamp remains asset last_seen and print time is sampled inside the output operation. Do not reuse producer seconds-only fallback or make print time an ingestion snapshot. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "print_values",
+          "detail": "print_values preselects first timestamp with duplicate component ternaries before serializer constructs local timevals.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "build_v2_json",
+          "detail": "print_values preselects first timestamp with duplicate component ternaries before serializer constructs local timevals.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "json_protocol_selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening V2 protocol fallback versus legacy protocol.",
+      "baseline_defect": "Generic printer precomputes asset protocol fallback into a scalar serializer call.",
+      "criterion": "Keep V2 protocol selection attached to its output semantics rather than scattered scalar preparation.",
+      "acceptance": "V2 uses nonzero asset aproto else record proto; legacy protocol remains record proto. A policy projection or serializer-local selection is valid and can satisfy the timestamp item jointly; do not force all formats to use latest asset protocol. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "print_values",
+          "detail": "Generic printer precomputes asset protocol fallback into a scalar serializer call.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "build_v2_json",
+          "detail": "Generic printer precomputes asset protocol fallback into a scalar serializer call.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "packed_answer_traversal",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 deliberately expands both packed-answer serialization passes.",
+      "baseline_defect": "Answer bytes and length are detached scalar inputs reused independently by answer and mixed-type passes.",
+      "criterion": "Keep packed answer storage, bounds and traversal contract coherent for both JSON projections.",
+      "acceptance": "Preserve bounded pack_next behavior and existing failure handling; emit atypes only for mixed answers and keep its entries parallel to answers. No required single pass, replacement decoder, new collection or alteration of packed format. This scores bytes/bounds ownership independently from metadata selection. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "build_v2_json",
+          "detail": "Answer bytes and length are detached scalar inputs reused independently by answer and mixed-type passes.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "entry_guards",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 producer adapters and R2/R3 output guards during regrouping.",
+      "baseline_defect": "Split wrappers and scalar preparation create dereference obligations before update/serialization can validate context.",
+      "criterion": "Preserve coherent validation-before-projection contracts while reconnecting update and output consumers.",
+      "acceptance": "Public update rejects null answer or length exceeding UINT32_MAX before dereferencing packetinfo. V2 asset output rejects null record, RR or answer before deriving fields; record-only output remains supported. Do not move checks after eager view construction that dereferences invalid data; broader operations or lazy adapters are both valid. Existing packetinfo, record and asset structures, borrowed views, adapters or direct cohesive operations are acceptable; no mandatory new observation type or universal snapshot. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing names or adding a wrapper while retaining independently assembled positional field bundles and their policy duplication does not resolve the defect."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "update_pdns_record_asset",
+          "detail": "Split wrappers and scalar preparation create dereference obligations before update/serialization can validate context.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "print_passet",
+          "detail": "Split wrappers and scalar preparation create dereference obligations before update/serialization can validate context.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/dns.c",
+          "symbol": "build_v2_json",
+          "detail": "Split wrappers and scalar preparation create dereference obligations before update/serialization can validate context.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "gamelinux_passivedns_dc",
+    "source_diff_sha256": "f2806974e6c7016b9103b38a97b01bf6c93d38dc82c40fa9a78d970347ba9702",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "aggregation": "equal_weight_per_item"
+  }
+}

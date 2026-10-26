@@ -1,0 +1,507 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "charmbracelet_lipgloss_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "DC01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Border glyphs were extracted from Style.borderStyle into many sibling fields.",
+      "baseline_defect": "Style stores each Border glyph separately while setters and getters manually spread and reassemble the same value.",
+      "criterion": "Keep the configured border glyphs as a coherent value across Style storage, mutation, and retrieval.",
+      "acceptance": "Changing a Border member has one coherent ownership path through set and get, with the existing public Border behavior intact. Equivalent invariant-owning operations or encapsulated indexed storage are valid; a specific record layout, removal of every scalar, or a class per group is not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "style.go",
+          "symbol": "Style.borderGlyphTop",
+          "detail": null,
+          "raw": "expanded.diff:style.go:Style.borderGlyphTop"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "set.go",
+          "symbol": "Style.set",
+          "detail": null,
+          "raw": "expanded.diff:set.go:Style.set"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "get.go",
+          "symbol": "Style.getBorderStyle",
+          "detail": null,
+          "raw": "expanded.diff:get.go:Style.getBorderStyle"
+        }
+      ]
+    },
+    {
+      "id": "DC02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The second stage added raw-empty flags and a direct copy path around the split glyph fields.",
+      "baseline_defect": "set substitutes spaces into glyph fields, records four raw-empty flags, and get and setFrom each independently interpret or copy that dual representation.",
+      "criterion": "Give raw configured border values and any effective rendering defaults one consistent owner across setting, inheritance, and querying.",
+      "acceptance": "Explicit empty values, explicit spaces, and property presence retain their distinct meanings without independent flags or copy rules drifting across methods. Equivalent invariant-owning operations or encapsulated indexed storage are valid; a specific record layout, removal of every scalar, or a class per group is not required. Raw storage with defaults computed on demand is valid; neither empty flags nor normalized storage is mandatory. Keep empty, literal-space and unset meanings distinct, including raw getters and implicit border-side decisions. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "set.go",
+          "symbol": "Style.set",
+          "detail": null,
+          "raw": "interaction_delta.diff:set.go:Style.set"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "set.go",
+          "symbol": "Style.setFrom",
+          "detail": null,
+          "raw": "interaction_delta.diff:set.go:Style.setFrom"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "get.go",
+          "symbol": "Style.getBorderStyle",
+          "detail": null,
+          "raw": "interaction_delta.diff:get.go:Style.getBorderStyle"
+        }
+      ]
+    },
+    {
+      "id": "DC03",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Table.border was replaced with a set of matching glyph fields.",
+      "baseline_defect": "Table.New and Table.Border copy all Border members separately, and rendering methods read matching fields one by one.",
+      "criterion": "Keep table border glyph configuration cohesive through construction, Border updates, and all border rendering consumers.",
+      "acceptance": "One border update feeds top, bottom, header, row, and side rendering through an associated configuration rather than parallel table fields. Equivalent invariant-owning operations or encapsulated indexed storage are valid; a specific record layout, removal of every scalar, or a class per group is not required. Table glyphs retain literal raw strings; they need not use Style empty-side normalization. Reusing the public Border value is sufficient. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "table/table.go",
+          "symbol": "Table",
+          "detail": null,
+          "raw": "expanded.diff:table/table.go:Table"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "table/table.go",
+          "symbol": "New",
+          "detail": null,
+          "raw": "expanded.diff:table/table.go:New"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "table/table.go",
+          "symbol": "Table.Border",
+          "detail": null,
+          "raw": "expanded.diff:table/table.go:Table.Border"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "table/table.go",
+          "symbol": "Table.constructRow",
+          "detail": null,
+          "raw": "expanded.diff:table/table.go:Table.constructRow"
+        }
+      ]
+    },
+    {
+      "id": "DC04",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The perimeter blend value became four positional return slices.",
+      "baseline_defect": "borderBlend returns four same-typed slices and applyBorder carries them in matching positional variables.",
+      "criterion": "Keep the four perimeter gradient segments associated with their directions across calculation and rendering.",
+      "acceptance": "The handoff preserves top, right, bottom, and left identity without relying on four positional return values and parallel locals. Equivalent invariant-owning operations or encapsulated indexed storage are valid; a specific record layout, removal of every scalar, or a class per group is not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "borders.go",
+          "symbol": "Style.borderBlend",
+          "detail": null,
+          "raw": "expanded.diff:borders.go:Style.borderBlend"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "borders.go",
+          "symbol": "Style.applyBorder",
+          "detail": null,
+          "raw": "expanded.diff:borders.go:Style.applyBorder"
+        }
+      ]
+    },
+    {
+      "id": "DC05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Gradient reversal moved from generation to separate render branches.",
+      "baseline_defect": "Left gradient is reversed before side drawing while bottom gradient is reversed only inside the bottom-render branch, so orientation ownership is dispersed across consumption points.",
+      "criterion": "Give gradient direction and reversal one coherent responsibility before each segment is consumed.",
+      "acceptance": "Left and bottom colors are mapped to drawn order through a consistent boundary that works when border sides are conditionally present. Equivalent invariant-owning operations or encapsulated indexed storage are valid; a specific record layout, removal of every scalar, or a class per group is not required. Direction-aware indexing, pre-oriented segments or coordinated rendering can replace reversal; no mandatory call order or mutating Reverse operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "borders.go",
+          "symbol": "Style.borderBlend",
+          "detail": null,
+          "raw": "expanded.diff:borders.go:Style.borderBlend"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "borders.go",
+          "symbol": "Style.applyBorder",
+          "detail": null,
+          "raw": "interaction_delta.diff:borders.go:Style.applyBorder"
+        }
+      ]
+    },
+    {
+      "id": "DC06",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Corner normalization moved into two render branches after border fields were split.",
+      "baseline_defect": "Top and bottom rendering independently decide missing-side corners, empty corner placeholders, and one-rune clipping after edge glyphs have already been scattered.",
+      "criterion": "Own corner selection and normalization coherently for top and bottom edge rendering.",
+      "acceptance": "The same corner policy serves top and bottom with the appropriate side-presence inputs; consumers receive selected corner glyphs without duplicating the rules. Equivalent invariant-owning operations or encapsulated indexed storage are valid; a specific record layout, removal of every scalar, or a class per group is not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "borders.go",
+          "symbol": "Style.applyBorder:top",
+          "detail": null,
+          "raw": "interaction_delta.diff:borders.go:Style.applyBorder:top"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "borders.go",
+          "symbol": "Style.applyBorder:bottom",
+          "detail": null,
+          "raw": "interaction_delta.diff:borders.go:Style.applyBorder:bottom"
+        }
+      ]
+    },
+    {
+      "id": "DC07",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "compositeLayer was broken into separate layer and geometry arrays.",
+      "baseline_defect": "Compositor keeps layers, parent origins, and four rectangle coordinates in seven parallel slices that must stay index-aligned.",
+      "criterion": "Associate each flattened layer with its captured placement and bounds throughout Compositor state.",
+      "acceptance": "A layer and its captured geometry move together as a coherent entry, or an equivalent invariant-preserving representation, across flattening and later consumers. Equivalent invariant-owning operations or encapsulated indexed storage are valid; a specific record layout, removal of every scalar, or a class per group is not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "layer.go",
+          "symbol": "Compositor",
+          "detail": null,
+          "raw": "expanded.diff:layer.go:Compositor"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "layer.go",
+          "symbol": "Compositor.flattenRecursive",
+          "detail": null,
+          "raw": "expanded.diff:layer.go:Compositor.flattenRecursive"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "layer.go",
+          "symbol": "Compositor",
+          "detail": null,
+          "raw": "interaction_delta.diff:layer.go:Compositor"
+        }
+      ]
+    },
+    {
+      "id": "DC08",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The sort now operates on a separate index order and manually permutes all geometry arrays.",
+      "baseline_defect": "flatten sorts order indices, snapshots each array, and copies every field back by index, making sort correctness depend on manually updating every new geometry field.",
+      "criterion": "Make z ordering preserve the association between each layer and all captured geometry without an exposed field-by-field permutation protocol.",
+      "acceptance": "Sort coherent entries, retain a single order permutation over stable geometry, or encapsulate the full reorder invariant. Lower-z drawing and reverse hit traversal retain their ordering semantics. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "layer.go",
+          "symbol": "Compositor.flatten",
+          "detail": null,
+          "raw": "expanded.diff:layer.go:Compositor.flatten"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "layer.go",
+          "symbol": "Compositor.flatten",
+          "detail": null,
+          "raw": "interaction_delta.diff:layer.go:Compositor.flatten"
+        }
+      ]
+    },
+    {
+      "id": "DC09",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Captured compositor geometry flows from recursive flattening into Bounds, Draw, and Hit.",
+      "baseline_defect": "flattenRecursive stores parent-relative coordinates plus parent origins; Bounds, Draw, and Hit each reconstruct absolute rectangles or translate hit coordinates independently.",
+      "criterion": "Coordinate captured layer geometry through the producer and all bounds, drawing, and hit consumers using one consistent placement meaning.",
+      "acceptance": "After AddLayers or Refresh, Bounds, Draw overlap checks, Layer.Draw placement, and Hit results consume the same captured absolute geometry for nested offsets. Equivalent invariant-owning operations or encapsulated indexed storage are valid; a specific record layout, removal of every scalar, or a class per group is not required. Cached absolute rectangles or local geometry with an owned transform both qualify; do not recompute positions from mutable layers before Refresh. This is within layer.go, not a cross-file boundary. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "layer.go",
+          "symbol": "Compositor.flattenRecursive",
+          "detail": null,
+          "raw": "interaction_delta.diff:layer.go:Compositor.flattenRecursive"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "layer.go",
+          "symbol": "Compositor.Bounds",
+          "detail": null,
+          "raw": "interaction_delta.diff:layer.go:Compositor.Bounds"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "layer.go",
+          "symbol": "Compositor.Draw",
+          "detail": null,
+          "raw": "interaction_delta.diff:layer.go:Compositor.Draw"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "layer.go",
+          "symbol": "Compositor.Hit",
+          "detail": null,
+          "raw": "interaction_delta.diff:layer.go:Compositor.Hit"
+        }
+      ]
+    },
+    {
+      "id": "DC10",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "resizerColumn was replaced by arrays of per-column measurements.",
+      "baseline_defect": "resizer holds separate index, minimum, maximum, median, row, padding, and fixed-width arrays addressed by the same column index.",
+      "criterion": "Keep each table column's measurements and limits associated throughout measurement and width allocation.",
+      "acceptance": "Per-column identity, measurements and limits are consistently associated across construction and allocation. A cohesive column collection may internally use parallel slices; client code should not maintain their alignment independently. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "table/resizing.go",
+          "symbol": "resizer",
+          "detail": null,
+          "raw": "expanded.diff:table/resizing.go:resizer"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "table/resizing.go",
+          "symbol": "newResizer",
+          "detail": null,
+          "raw": "expanded.diff:table/resizing.go:newResizer"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "table/resizing.go",
+          "symbol": "resizer.maxColumnWidths",
+          "detail": null,
+          "raw": "expanded.diff:table/resizing.go:resizer.maxColumnWidths"
+        }
+      ]
+    },
+    {
+      "id": "DC11",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The second stage changed width calculations to shuttle between content and frame-inclusive units.",
+      "baseline_defect": "Content-width allocation repeatedly reconstructs full width for fixed checks, floor/median selection, termination and budget totals in expansion and both shrinking passes.",
+      "criterion": "Own the width-unit relationship used by allocation decisions coherently across expansion and shrinking.",
+      "acceptance": "Content or full-width storage is valid if fixed-width equality, minimum floors, median comparison, zero termination and table budgets interpret it consistently. Preserve negative content budgets when full width is smaller than the frame; no early clamping requirement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/resizing.go",
+          "symbol": "Table.resize",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/resizing.go:Table.resize"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/resizing.go",
+          "symbol": "resizer.expandTableWidth",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/resizing.go:resizer.expandTableWidth"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/resizing.go",
+          "symbol": "resizer.shrinkTableWidth",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/resizing.go:resizer.shrinkTableWidth"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/resizing.go",
+          "symbol": "resizer.maxColumnWidths",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/resizing.go:resizer.maxColumnWidths"
+        }
+      ]
+    },
+    {
+      "id": "DC12",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The resizer now hands separate content widths and columnFrames to Table rendering.",
+      "baseline_defect": "resizing.go exports columnXPaddings to Table.columnFrames, and table.go re-adds them independently for borders, headers, cells, row separators, and truncation.",
+      "criterion": "Coordinate the column width result between the resizer and every table renderer through one consistent width contract.",
+      "acceptance": "The producer supplies width information that all Table border, header, row, and truncation consumers interpret consistently, including styled frame sizes. Equivalent invariant-owning operations or encapsulated indexed storage are valid; a specific record layout, removal of every scalar, or a class per group is not required. Borders use full extent, styled cells reconcile their own margins, and truncation keeps its full-width-times-height rule. Publishing full widths directly or providing an invariant-owning width operation are both valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/resizing.go",
+          "symbol": "Table.resize",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/resizing.go:Table.resize"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/table.go",
+          "symbol": "Table.constructTopBorder",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/table.go:Table.constructTopBorder"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/table.go",
+          "symbol": "Table.constructHeaders",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/table.go:Table.constructHeaders"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/table.go",
+          "symbol": "Table.constructRow",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/table.go:Table.constructRow"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/table.go",
+          "symbol": "Table.truncateCell",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/table.go:Table.truncateCell"
+        }
+      ]
+    },
+    {
+      "id": "DC14",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Current tables vary cell style by row and column, including horizontal frame and fixed-width settings.",
+      "baseline_defect": "resize accumulates the maximum cell frame by changing columnMaxes by a frame delta and then separately updating columnXPaddings; maxCharCount subtracts that frame while maxTotal treats columnMaxes as already framed.",
+      "criterion": "Localize per-cell frame accumulation and the associated measured maximum so raw content demand and framed extent cannot drift.",
+      "acceptance": "Measure raw content and frame independently with one derived extent, or update a coherent measured-column state. Existing per-cell frame and fixed-width variations feed maxColumnWidths, maxCharCount and maxTotal consistently without clients reproducing frame-delta bookkeeping. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the same independently maintained association without centralizing its invariant is insufficient. Encapsulated parallel storage with cohesive construction, transformation and access can qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/resizing.go",
+          "symbol": "Table.resize",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/resizing.go:Table.resize"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/table.go",
+          "symbol": "Table.constructRow",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/table.go:Table.constructRow"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "table/table.go",
+          "symbol": "Table.constructTopBorder",
+          "detail": null,
+          "raw": "interaction_delta.diff:table/table.go:Table.constructTopBorder"
+        }
+      ]
+    },
+    {
+      "id": "DC15",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The retry explicitly changes expandRowHeights to consume content widths directly while allocation and render consumers use other width meanings.",
+      "baseline_defect": "expandRowHeights receives a bare width slice whose newly changed unit is external to the wrapping/row-height consumer; its vertical-padding lookup is combined with that implicit horizontal budget.",
+      "criterion": "Make the width-to-row-height handoff express the content budget coherently with the column allocation that produced it.",
+      "acceptance": "Wrapping and nonwrapping/manual-height behavior use the appropriate content budget and existing vertical frame. A focused content-width projection, full-width input with one conversion, or integrated layout computation qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only grouping column storage while leaving the row-height consumer to guess the width unit is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "table/resizing.go",
+          "symbol": "expandRowHeights",
+          "detail": "expandRowHeights receives a bare width slice whose newly changed unit is external to the wrapping/row-height consumer; its vertical-padding lookup is combined with that implicit horizontal budget.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "table/resizing.go",
+          "symbol": "maxColumnWidths",
+          "detail": "expandRowHeights receives a bare width slice whose newly changed unit is external to the wrapping/row-height consumer; its vertical-padding lookup is combined with that implicit horizontal budget.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded_four_dimensions.v1",
+    "task_id": "charmbracelet_lipgloss_dc",
+    "aggregation": "equal_weight_per_item",
+    "excluded_from_scoring": [
+      "Empty post.diff has no additional repair obligation.",
+      "Passing tests, compilation, preservation of pre-existing behavior, and cosmetic renames are constraints rather than structural repair points."
+    ]
+  }
+}

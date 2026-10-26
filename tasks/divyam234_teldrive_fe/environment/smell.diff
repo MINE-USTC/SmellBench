@@ -1,0 +1,598 @@
+diff --git a/internal/api/handler_access.go b/internal/api/handler_access.go
+index 6caf295..52aec44 100644
+--- a/internal/api/handler_access.go
++++ b/internal/api/handler_access.go
+@@ -262,10 +262,31 @@ func (h *Handler) CreatePublicShareFolder(ctx context.Context, req *gen.FolderCr
+ 		id := googleUUID(value)
+ 		requestedParent = &id
+ 	}
+-	resolved, parentID, err := h.Shares.ResolvePublicEditableParent(ctx, params.Token, params.XSharePassword.Or(""), requestedParent)
++	resolved, err := h.Shares.Resolve(ctx, params.Token, params.XSharePassword.Or(""))
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
++	if resolved.Share.Permission != sqlcgen.SharePermissionEdit || resolved.File.Kind != sqlcgen.FileKindFolder {
++		return nil, mapServiceError(shares.ErrForbidden)
++	}
++	rootID, ok := dbtypes.GoogleUUID(resolved.File.ID)
++	if !ok {
++		return nil, mapServiceError(shares.ErrNotFound)
++	}
++	parentID := rootID
++	if requestedParent != nil && *requestedParent != uuid.Nil && *requestedParent != rootID {
++		child, resolveErr := h.Shares.ResolveFile(ctx, params.Token, params.XSharePassword.Or(""), *requestedParent)
++		if resolveErr != nil {
++			return nil, mapServiceError(resolveErr)
++		}
++		if child.Share.Permission != sqlcgen.SharePermissionEdit {
++			return nil, mapServiceError(shares.ErrForbidden)
++		}
++		if child.File.Kind != sqlcgen.FileKindFolder {
++			return nil, mapServiceError(shares.ErrInvalidInput)
++		}
++		resolved, parentID = child, *requestedParent
++	}
+ 	if policy, ok := req.ConflictPolicy.Get(); ok && string(policy) != "fail" {
+ 		return nil, mapServiceError(uploads.ErrUnsupportedConflictPolicy)
+ 	}
+@@ -288,10 +309,13 @@ func (h *Handler) UpdatePublicShareFile(ctx context.Context, req *gen.FileUpdate
+ 	if h.Shares == nil || h.Catalog == nil || req == nil {
+ 		return nil, mapServiceError(ErrOperationUnavailable)
+ 	}
+-	resolved, err := h.Shares.ResolvePublicEditableFile(ctx, params.Token, params.XSharePassword.Or(""), googleUUID(params.FileId))
++	resolved, err := h.Shares.ResolveFile(ctx, params.Token, params.XSharePassword.Or(""), googleUUID(params.FileId))
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
++	if resolved.Share.Permission != sqlcgen.SharePermissionEdit {
++		return nil, mapServiceError(shares.ErrForbidden)
++	}
+ 	generation, err := parseGenerationETag(gen.NewOptETag(params.IfMatch))
+ 	if err != nil {
+ 		return nil, mapServiceError(uploads.ErrInvalidInput)
+@@ -320,10 +344,13 @@ func (h *Handler) TrashPublicShareFile(ctx context.Context, params gen.TrashPubl
+ 		return nil, mapServiceError(ErrOperationUnavailable)
+ 	}
+ 	fileID := googleUUID(params.FileId)
+-	resolved, err := h.Shares.ResolvePublicEditableFile(ctx, params.Token, params.XSharePassword.Or(""), fileID)
++	resolved, err := h.Shares.ResolveFile(ctx, params.Token, params.XSharePassword.Or(""), fileID)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
++	if resolved.Share.Permission != sqlcgen.SharePermissionEdit {
++		return nil, mapServiceError(shares.ErrForbidden)
++	}
+ 	rootID, _ := dbtypes.GoogleUUID(resolved.Share.FileID)
+ 	if rootID == fileID {
+ 		return nil, mapServiceError(shares.ErrForbidden)
+@@ -343,10 +370,31 @@ func (h *Handler) CreatePublicShareUpload(ctx context.Context, req *gen.UploadCr
+ 		id := googleUUID(value)
+ 		requestedParent = &id
+ 	}
+-	resolved, parentID, err := h.Shares.ResolvePublicEditableParent(ctx, params.Token, params.XSharePassword.Or(""), requestedParent)
++	resolved, err := h.Shares.Resolve(ctx, params.Token, params.XSharePassword.Or(""))
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
++	if resolved.Share.Permission != sqlcgen.SharePermissionEdit || resolved.File.Kind != sqlcgen.FileKindFolder {
++		return nil, mapServiceError(shares.ErrForbidden)
++	}
++	rootID, ok := dbtypes.GoogleUUID(resolved.File.ID)
++	if !ok {
++		return nil, mapServiceError(shares.ErrNotFound)
++	}
++	parentID := rootID
++	if requestedParent != nil && *requestedParent != uuid.Nil && *requestedParent != rootID {
++		child, resolveErr := h.Shares.ResolveFile(ctx, params.Token, params.XSharePassword.Or(""), *requestedParent)
++		if resolveErr != nil {
++			return nil, mapServiceError(resolveErr)
++		}
++		if child.Share.Permission != sqlcgen.SharePermissionEdit {
++			return nil, mapServiceError(shares.ErrForbidden)
++		}
++		if child.File.Kind != sqlcgen.FileKindFolder {
++			return nil, mapServiceError(shares.ErrInvalidInput)
++		}
++		resolved, parentID = child, *requestedParent
++	}
+ 	session, err := h.createUploadForOwner(ctx, resolved.Share.OwnerID, &parentID, req)
+ 	if err != nil {
+ 		return nil, err
+@@ -497,11 +545,32 @@ func (h *Handler) resolvePublicUploadOwner(ctx context.Context, token, password
+ 	if !ok {
+ 		return 0, shares.ErrForbidden
+ 	}
+-	resolved, _, err := h.Shares.ResolvePublicEditableParent(ctx, token, password, &parentID)
++	resolved, err := h.Shares.Resolve(ctx, token, password)
+ 	if err != nil {
+ 		return 0, err
+ 	}
+-	if resolved.Share.OwnerID != session.UserID {
++	if resolved.Share.Permission != sqlcgen.SharePermissionEdit || resolved.File.Kind != sqlcgen.FileKindFolder {
++		return 0, shares.ErrForbidden
++	}
++	rootID, ok := dbtypes.GoogleUUID(resolved.File.ID)
++	if !ok {
++		return 0, shares.ErrNotFound
++	}
++	ownerID := resolved.Share.OwnerID
++	if parentID != uuid.Nil && parentID != rootID {
++		child, err := h.Shares.ResolveFile(ctx, token, password, parentID)
++		if err != nil {
++			return 0, err
++		}
++		if child.Share.Permission != sqlcgen.SharePermissionEdit {
++			return 0, shares.ErrForbidden
++		}
++		if child.File.Kind != sqlcgen.FileKindFolder {
++			return 0, shares.ErrInvalidInput
++		}
++		ownerID = child.Share.OwnerID
++	}
++	if ownerID != session.UserID {
+ 		return 0, shares.ErrForbidden
+ 	}
+ 	return session.UserID, nil
+diff --git a/internal/api/handler_core.go b/internal/api/handler_core.go
+index cea7128..3e1d2b2 100644
+--- a/internal/api/handler_core.go
++++ b/internal/api/handler_core.go
+@@ -6,6 +6,7 @@ import (
+ 	"encoding/hex"
+ 	"encoding/json"
+ 	"net/url"
++	"strconv"
+ 	"strings"
+ 	"time"
+ 
+@@ -216,6 +217,10 @@ func (h *Handler) ListFiles(ctx context.Context, params gen.ListFilesParams) (ge
+ 		}
+ 	}
+ 	items := make([]gen.FileEntry, 0, len(files))
++	next := fileCursor{Sort: sortBy, Order: order, Scope: scope, Fingerprint: cursor.Fingerprint}
++	if parentID != nil {
++		next.FolderID = parentID.String()
++	}
+ 	for _, file := range files {
+ 		entry, err := fileEntry(file)
+ 		if err != nil {
+@@ -227,22 +232,25 @@ func (h *Handler) ListFiles(ctx context.Context, params gen.ListFilesParams) (ge
+ 			}
+ 		}
+ 		items = append(items, entry)
++		if len(files) == int(limit) {
++			next.Name = entry.Name
++			next.ID = googleUUID(entry.ID)
++			next.Value = entry.Name
++			if sortBy == "updatedAt" {
++				next.Value = entry.UpdatedAt.UTC().Format(time.RFC3339Nano)
++			} else if sortBy == "size" {
++				next.Value = "-1"
++				if size, ok := entry.Size.Get(); ok {
++					next.Value = strconv.FormatInt(size, 10)
++				}
++			} else if sortBy == "id" {
++				next.Value = next.ID.String()
++			}
++		}
+ 	}
+ 	response := gen.ListFilesOK{Items: items}
+ 	if len(files) == int(limit) && len(files) > 0 {
+-		last := files[len(files)-1]
+-		lastID, _ := dbtypes.GoogleUUID(last.ID)
+-		response.NextCursor = encodeCursor(fileCursor{
+-			Name: last.Name, Sort: sortBy, Order: order,
+-			Value: catalog.FileCursorValue(last, sortBy), ID: lastID, Scope: scope,
+-			FolderID: func() string {
+-				if parentID != nil {
+-					return parentID.String()
+-				}
+-				return ""
+-			}(),
+-			Fingerprint: cursor.Fingerprint,
+-		})
++		response.NextCursor = encodeCursor(next)
+ 	}
+ 	return &response, nil
+ }
+diff --git a/internal/api/handler_parity.go b/internal/api/handler_parity.go
+index 2e20bc9..27fb9ae 100644
+--- a/internal/api/handler_parity.go
++++ b/internal/api/handler_parity.go
+@@ -2,6 +2,9 @@ package api
+ 
+ import (
+ 	"context"
++	"fmt"
++	"github.com/jackc/pgx/v5/pgtype"
++	"github.com/tgdrive/teldrive/v2/internal/catalog"
+ 
+ 	"github.com/google/uuid"
+ 
+@@ -90,10 +93,58 @@ func (h *Handler) resolveAuthenticatedFileAccessMany(ctx context.Context, fileID
+ 		return 0, nil, shares.ErrInvalidInput
+ 	}
+ 	var accesses []*shares.Access
++	ownerID := actorID
+ 	if h.Shares != nil {
+-		accesses, err = h.Shares.ResolveAccessMany(ctx, actorID, fileIDs, requireEdit)
++
++		if actorID <= 0 || len(fileIDs) == 0 {
++			return 0, nil, shares.ErrInvalidInput
++		}
++		accessIDs := make([]pgtype.UUID, 0, len(fileIDs))
++		seen := make(map[uuid.UUID]struct{}, len(fileIDs))
++		for _, fileID := range fileIDs {
++			if fileID == uuid.Nil {
++				return 0, nil, shares.ErrInvalidInput
++			}
++			if _, ok := seen[fileID]; ok {
++				continue
++			}
++			seen[fileID] = struct{}{}
++			accessIDs = append(accessIDs, dbtypes.UUID(fileID))
++		}
++		rows, err := h.Shares.QueryStore().ResolveFileAccessMany(ctx, sqlcgen.ResolveFileAccessManyParams{
++			FileIds: accessIDs, ActorID: actorID, RequireEdit: requireEdit,
++		})
+ 		if err != nil {
+-			return 0, nil, err
++			return 0, nil, fmt.Errorf("resolve file access: %w", err)
++		}
++		byID := make(map[uuid.UUID]*shares.Access, len(rows))
++		for _, row := range rows {
++			fileID, fileOK := dbtypes.GoogleUUID(row.TargetFileID)
++			rootID, rootOK := dbtypes.GoogleUUID(row.RootFileID)
++			if !fileOK || !rootOK {
++				return 0, nil, shares.ErrNotFound
++			}
++			byID[fileID] = &shares.Access{OwnerID: row.OwnerID, RootFileID: rootID, Permission: row.Permission, Owned: row.Owned}
++		}
++		if len(byID) != len(accessIDs) {
++			activeIDs, loadErr := h.Shares.QueryStore().ListActiveFileIDsAnyOwner(ctx, accessIDs)
++			if loadErr != nil {
++				return 0, nil, fmt.Errorf("resolve file access targets: %w", loadErr)
++			}
++			if len(activeIDs) != len(accessIDs) {
++				return 0, nil, shares.ErrNotFound
++			}
++			return 0, nil, shares.ErrForbidden
++		}
++		accesses = make([]*shares.Access, 0, len(fileIDs))
++		for index, fileID := range fileIDs {
++			access := byID[fileID]
++			if index == 0 {
++				ownerID = access.OwnerID
++			} else if access.OwnerID != ownerID {
++				return 0, nil, shares.ErrForbidden
++			}
++			accesses = append(accesses, access)
+ 		}
+ 	} else {
+ 		if h.Catalog == nil {
+@@ -109,12 +160,6 @@ func (h *Handler) resolveAuthenticatedFileAccessMany(ctx context.Context, fileID
+ 			})
+ 		}
+ 	}
+-	ownerID := accesses[0].OwnerID
+-	for _, access := range accesses[1:] {
+-		if access.OwnerID != ownerID {
+-			return 0, nil, shares.ErrForbidden
+-		}
+-	}
+ 	return ownerID, accesses, nil
+ }
+ 
+@@ -126,9 +171,12 @@ func (h *Handler) GetFileCategoryStatistics(ctx context.Context) (gen.GetFileCat
+ 	if h.Catalog == nil {
+ 		return nil, mapServiceError(ErrOperationUnavailable)
+ 	}
+-	rows, err := h.Catalog.CategoryStatistics(ctx, userID)
++	if userID <= 0 {
++		return nil, mapServiceError(catalog.ErrInvalidOwner)
++	}
++	rows, err := h.Catalog.QueryStore().ListFileCategoryStatistics(ctx, userID)
+ 	if err != nil {
+-		return nil, mapServiceError(err)
++		return nil, mapServiceError(fmt.Errorf("file category statistics: %w", err))
+ 	}
+ 	items := make([]gen.FileCategoryStatistics, 0, len(rows))
+ 	for _, row := range rows {
+@@ -148,9 +196,12 @@ func (h *Handler) GetDriveStatistics(ctx context.Context) (gen.GetDriveStatistic
+ 	if h.Catalog == nil {
+ 		return nil, mapServiceError(ErrOperationUnavailable)
+ 	}
+-	stats, err := h.Catalog.DriveStatistics(ctx, userID)
++	if userID <= 0 {
++		return nil, mapServiceError(catalog.ErrInvalidOwner)
++	}
++	stats, err := h.Catalog.QueryStore().GetDriveStatistics(ctx, userID)
+ 	if err != nil {
+-		return nil, mapServiceError(err)
++		return nil, mapServiceError(fmt.Errorf("drive statistics: %w", err))
+ 	}
+ 	return &gen.DriveStatistics{
+ 		TotalFiles: stats.TotalFiles, TotalFolders: stats.TotalFolders, TotalBytes: stats.TotalBytes,
+diff --git a/internal/api/handler_storage.go b/internal/api/handler_storage.go
+index 54ca17e..6245b92 100644
+--- a/internal/api/handler_storage.go
++++ b/internal/api/handler_storage.go
+@@ -2,6 +2,10 @@ package api
+ 
+ import (
+ 	"context"
++	"encoding/json"
++	"fmt"
++	"github.com/tgdrive/teldrive/v2/internal/catalog"
++	"github.com/tgdrive/teldrive/v2/internal/db/sqlcgen"
+ 
+ 	"github.com/tgdrive/teldrive/v2/internal/api/gen"
+ )
+@@ -14,43 +18,69 @@ func (h *Handler) GetStorageStats(ctx context.Context) (gen.GetStorageStatsRes,
+ 	if h.Catalog == nil {
+ 		return nil, mapServiceError(ErrOperationUnavailable)
+ 	}
+-	dashboard, err := h.Catalog.StorageDashboard(ctx, userID)
++
++	if userID <= 0 {
++		return nil, mapServiceError(catalog.ErrInvalidOwner)
++	}
++	totals, err := h.Catalog.QueryStore().GetStorageDashboardTotals(ctx, userID)
++	if err != nil {
++		return nil, mapServiceError(fmt.Errorf("get storage totals: %w", err))
++	}
++	cleanup, err := h.Catalog.QueryStore().GetStorageCleanupStatistics(ctx, userID)
++	if err != nil {
++		return nil, mapServiceError(fmt.Errorf("get storage cleanup statistics: %w", err))
++	}
++	growthRows, err := h.Catalog.QueryStore().ListStorageGrowth(ctx, userID)
++	if err != nil {
++		return nil, mapServiceError(fmt.Errorf("list storage growth: %w", err))
++	}
++	channelRows, err := h.Catalog.QueryStore().ListStorageChannelStatistics(ctx, userID)
++	if err != nil {
++		return nil, mapServiceError(fmt.Errorf("list storage channels: %w", err))
++	}
++	activityRows, err := h.Catalog.QueryStore().ListRecentStorageActivity(ctx, sqlcgen.ListRecentStorageActivityParams{
++		UserID: userID, ActivityLimit: 8,
++	})
++	if err != nil {
++		return nil, mapServiceError(fmt.Errorf("list storage activity: %w", err))
++	}
++	categories, err := h.Catalog.CategoryStatistics(ctx, userID)
+ 	if err != nil {
+ 		return nil, mapServiceError(err)
+ 	}
+ 
+ 	response := gen.StorageDashboard{
+ 		Summary: gen.StorageSummary{
+-			LogicalBytes:  dashboard.Summary.LogicalBytes,
+-			ActiveFiles:   dashboard.Summary.ActiveFiles,
+-			ActiveFolders: dashboard.Summary.ActiveFolders,
+-			TrashedFiles:  dashboard.Summary.TrashedFiles,
+-			TrashBytes:    dashboard.Summary.TrashBytes,
++			LogicalBytes:  totals.LogicalBytes,
++			ActiveFiles:   totals.ActiveFiles,
++			ActiveFolders: totals.ActiveFolders,
++			TrashedFiles:  totals.TrashedFiles,
++			TrashBytes:    totals.TrashBytes,
+ 		},
+-		Growth:     make([]gen.StorageGrowthPoint, 0, len(dashboard.Growth)),
+-		Categories: make([]gen.FileCategoryStatistics, 0, len(dashboard.Categories)),
+-		Channels:   make([]gen.StorageChannelStatistic, 0, len(dashboard.Channels)),
++		Growth:     make([]gen.StorageGrowthPoint, 0, len(growthRows)),
++		Categories: make([]gen.FileCategoryStatistics, 0, len(categories)),
++		Channels:   make([]gen.StorageChannelStatistic, 0, len(channelRows)),
+ 		Cleanup: gen.StorageCleanupStatistics{
+-			TrashBytes:            dashboard.Cleanup.TrashBytes,
+-			StaleUploadBytes:      dashboard.Cleanup.StaleUploadBytes,
+-			StaleUploads:          dashboard.Cleanup.StaleUploads,
+-			TotalReclaimableBytes: dashboard.Cleanup.TotalReclaimableBytes,
++			TrashBytes:            cleanup.TrashBytes,
++			StaleUploadBytes:      cleanup.StaleUploadBytes,
++			StaleUploads:          cleanup.StaleUploads,
++			TotalReclaimableBytes: cleanup.TrashBytes + cleanup.StaleUploadBytes,
+ 		},
+-		Activity: make([]gen.StorageActivity, 0, len(dashboard.Activity)),
++		Activity: make([]gen.StorageActivity, 0, len(activityRows)),
+ 	}
+-	for _, point := range dashboard.Growth {
++	for _, point := range growthRows {
+ 		response.Growth = append(response.Growth, gen.StorageGrowthPoint{
+-			Day: point.Day, AddedBytes: point.AddedBytes, LogicalBytes: point.LogicalBytes,
++			Day: point.Day.Time.UTC(), AddedBytes: point.AddedBytes, LogicalBytes: point.LogicalBytes,
+ 		})
+ 	}
+-	for _, category := range dashboard.Categories {
++	for _, category := range categories {
+ 		response.Categories = append(response.Categories, gen.FileCategoryStatistics{
+ 			Category:   gen.FileCategory(category.Category),
+ 			TotalFiles: category.TotalFiles,
+ 			TotalSize:  category.TotalSize,
+ 		})
+ 	}
+-	for _, channel := range dashboard.Channels {
++	for _, channel := range channelRows {
+ 		item := gen.StorageChannelStatistic{
+ 			ChannelId:   channel.ChannelID,
+ 			Name:        channel.Name,
+@@ -59,21 +89,27 @@ func (h *Handler) GetStorageStats(ctx context.Context) (gen.GetStorageStatsRes,
+ 			PartCount:   channel.PartCount,
+ 			StoredBytes: channel.StoredBytes,
+ 		}
+-		if channel.LastCheckedAt != nil {
+-			item.LastCheckedAt = gen.NewOptDateTime(*channel.LastCheckedAt)
++		if channel.LastCheckedAt.Valid {
++			item.LastCheckedAt = gen.NewOptDateTime(channel.LastCheckedAt.Time.UTC())
+ 		}
+ 		response.Channels = append(response.Channels, item)
+ 	}
+-	for _, activity := range dashboard.Activity {
++	for _, activity := range activityRows {
+ 		item := gen.StorageActivity{
+ 			ID:           activity.ID,
+-			Type:         activity.Type,
++			Type:         activity.EventType,
+ 			ResourceType: activity.ResourceType,
+-			Label:        activity.Label,
+-			OccurredAt:   activity.OccurredAt,
++			Label:        activity.EventType,
++			OccurredAt:   activity.OccurredAt.Time.UTC(),
++		}
++		var values map[string]any
++		if json.Unmarshal(activity.Payload, &values) == nil {
++			if name, ok := values["name"].(string); ok && name != "" {
++				item.Label = name
++			}
+ 		}
+-		if activity.ResourceID != "" {
+-			item.ResourceId = gen.NewOptString(activity.ResourceID)
++		if activity.ResourceID.Valid && activity.ResourceID.String != "" {
++			item.ResourceId = gen.NewOptString(activity.ResourceID.String)
+ 		}
+ 		response.Activity = append(response.Activity, item)
+ 	}
+diff --git a/internal/catalog/service.go b/internal/catalog/service.go
+index 2a051b2..27e8ce4 100644
+--- a/internal/catalog/service.go
++++ b/internal/catalog/service.go
+@@ -526,3 +526,5 @@ func classifyWriteError(action string, err error) error {
+ 	}
+ 	return fmt.Errorf("%s: %w", action, err)
+ }
++
++func (s *Service) QueryStore() *sqlcgen.Queries { return s.queries }
+diff --git a/internal/shares/service.go b/internal/shares/service.go
+index 6125748..f153b4c 100644
+--- a/internal/shares/service.go
++++ b/internal/shares/service.go
+@@ -283,14 +283,37 @@ func (s *Service) ListPublicFiles(ctx context.Context, in PublicListInput) ([]*s
+ 	if !ok {
+ 		return nil, ErrNotFound
+ 	}
+-	parentID, err := s.catalog.ResolveFolderPath(ctx, resolved.Share.OwnerID, &rootID, in.Path)
+-	if err != nil {
+-		return nil, err
++	if resolved.Share.OwnerID <= 0 {
++		return nil, catalog.ErrInvalidOwner
+ 	}
+-	return s.catalog.List(ctx, catalog.ListInput{
+-		UserID: resolved.Share.OwnerID, ParentID: parentID, Status: sqlcgen.FileStatusActive,
++	input := catalog.ListInput{
++		UserID: resolved.Share.OwnerID, ParentID: &rootID, Status: sqlcgen.FileStatusActive,
+ 		Search: in.Search, AfterName: in.AfterName, AfterID: in.AfterID, Limit: in.Limit,
+-	})
++	}
++	path := strings.Trim(strings.TrimSpace(in.Path), "/")
++	if strings.Contains(path, "\\") {
++		return nil, catalog.ErrInvalidParent
++	}
++	if path != "" {
++		for component := range strings.SplitSeq(path, "/") {
++			if component == "" || component == "." || component == ".." {
++				return nil, catalog.ErrInvalidParent
++			}
++			id, err := s.catalog.QueryStore().ResolveActiveChildFolder(ctx, sqlcgen.ResolveActiveChildFolderParams{UserID: input.UserID, ParentID: dbtypes.OptionalUUID(input.ParentID), Name: component})
++			if errors.Is(err, pgx.ErrNoRows) {
++				return nil, catalog.ErrInvalidParent
++			}
++			if err != nil {
++				return nil, fmt.Errorf("resolve folder path: %w", err)
++			}
++			if !id.Valid {
++				return nil, catalog.ErrInvalidParent
++			}
++			child := uuid.UUID(id.Bytes)
++			input.ParentID = &child
++		}
++	}
++	return s.catalog.List(ctx, input)
+ }
+ 
+ func (s *Service) Revoke(ctx context.Context, ownerID int64, shareID uuid.UUID) error {
+@@ -642,3 +665,5 @@ func tokenHash(token string) []byte {
+ 	digest := sha256.Sum256([]byte(token))
+ 	return digest[:]
+ }
++
++func (s *Service) QueryStore() *sqlcgen.Queries { return s.queries }
+diff --git a/internal/transfer/download.go b/internal/transfer/download.go
+index 99ad144..b8a9699 100644
+--- a/internal/transfer/download.go
++++ b/internal/transfer/download.go
+@@ -162,18 +162,31 @@ func (d *Downloader) resolveMissingPartSizes(ctx context.Context, session telegr
+ 			return fmt.Errorf("resolve Telegram part %d metadata: %w", part.PartNo, err)
+ 		}
+ 		plainSize := stored.Size
++		var tailBytes int64
+ 		if file.Encryption {
+-			plainSize, err = contentcrypto.DecryptedSize(stored.Size)
++			payload := stored.Size - 34
++			if payload < 0 {
++				err = contentcrypto.ErrorEncryptedFileTooShort
++			} else {
++				plainSize = (payload / (64*1024 + 16)) * (64 * 1024)
++				tailBytes = payload % (64*1024 + 16)
++				if tailBytes != 0 {
++					tailBytes -= 16
++					if tailBytes <= 0 {
++						err = contentcrypto.ErrorEncryptedFileBadHeader
++					}
++				}
++			}
+ 			if err != nil {
+ 				return fmt.Errorf("derive plaintext size for part %d: %w", part.PartNo, err)
+ 			}
+ 		}
+ 		part.StoredSize.Int64, part.StoredSize.Valid = stored.Size, true
+-		part.PlainSize.Int64, part.PlainSize.Valid = plainSize, true
++		part.PlainSize.Int64, part.PlainSize.Valid = plainSize+tailBytes, true
+ 		if batchBackfiller != nil {
+-			resolvedSizes[part.PartNo] = [2]int64{plainSize, stored.Size}
++			resolvedSizes[part.PartNo] = [2]int64{part.PlainSize.Int64, part.StoredSize.Int64}
+ 		} else if backfiller != nil {
+-			if err := backfiller.UpdatePartSizes(ctx, fileID, part.PartNo, plainSize, stored.Size); err != nil {
++			if err := backfiller.UpdatePartSizes(ctx, fileID, part.PartNo, part.PlainSize.Int64, part.StoredSize.Int64); err != nil {
+ 				return err
+ 			}
+ 		}
+diff --git a/internal/transfer/upload.go b/internal/transfer/upload.go
+index 983d83b..dc0fbb1 100644
+--- a/internal/transfer/upload.go
++++ b/internal/transfer/upload.go
+@@ -157,6 +157,8 @@ func (p *Pipeline) UploadPart(ctx context.Context, request UploadPartRequest) (*
+ 	}
+ 	storedReader := plainReader
+ 	storedSize := request.PlainSize
++	fullBlocks := request.PlainSize / (64 * 1024)
++	tailBytes := request.PlainSize % (64 * 1024)
+ 	var salt *string
+ 
+ 	if session.Encryption {
+@@ -180,18 +182,23 @@ func (p *Pipeline) UploadPart(ctx context.Context, request UploadPartRequest) (*
+ 			return nil, p.failPart(ctx, request, claim.LeaseToken, "cipher_initialization_failed", cipherErr)
+ 		}
+ 		storedReader = encrypted
+-		storedSize = contentcrypto.EncryptedSize(request.PlainSize)
++		storedSize = 34 + fullBlocks*(64*1024+16)
+ 		salt = &generatedSalt
+ 	}
+ 
+-	stored, err := p.storage.Upload(uploadCtx, telegramstore.UploadRequest{
++	storageRequest := telegramstore.UploadRequest{
+ 		UserID:    request.UserID,
+ 		ChannelID: channelID,
+ 		Name:      p.partName(session, request.PartNo),
+ 		Reader:    storedReader,
+ 		Size:      storedSize,
+ 		Threads:   p.config.UploadThreads,
+-	})
++	}
++	if session.Encryption && tailBytes != 0 {
++		storageRequest.Size += 16 + tailBytes
++	}
++	stored, err := p.storage.Upload(uploadCtx, storageRequest)
++	storedSize = storageRequest.Size
+ 	slog.DebugContext(ctx, "uploading part to telegram", "upload_id", request.UploadID, "part_no", request.PartNo, "channel_id", channelID, "stored_size", storedSize, "threads", p.config.UploadThreads)
+ 	if err != nil {
+ 		if renewErr := pendingRenewError(renewErrors); renewErr != nil {

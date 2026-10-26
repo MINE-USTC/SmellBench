@@ -1,0 +1,449 @@
+diff --git a/src/_driver-session.ts b/src/_driver-session.ts
+new file mode 100644
+index 0000000..b992f3b
+--- /dev/null
++++ b/src/_driver-session.ts
+@@ -0,0 +1,105 @@
++import type { Driver } from "./types.ts";
++import { asyncCall, deserializeRaw, serializeRaw } from "./_utils.ts";
++import { destr } from "destr";
++import type { StorageMeta, TransactionOptions, WatchCallback } from "./types.ts";
++
++type Mutation = { notify: WatchCallback; removeMeta?: boolean };
++
++export interface DriverSession {
++  source: Driver;
++  hasItem: Driver["hasItem"];
++  getItem: Driver["getItem"];
++  getItems: NonNullable<Driver["getItems"]>;
++  getItemRaw: NonNullable<Driver["getItemRaw"]>;
++  setItem: (key: string, value: string, opts?: TransactionOptions, mutation?: Mutation) => Promise<void>;
++  setItems: NonNullable<Driver["setItems"]>;
++  setItemRaw: (key: string, value: any, opts?: TransactionOptions, mutation?: Mutation) => Promise<void>;
++  removeItem: (key: string, opts?: TransactionOptions, mutation?: Mutation) => Promise<void>;
++  getMeta: NonNullable<Driver["getMeta"]>;
++  getKeys: Driver["getKeys"];
++  clear: NonNullable<Driver["clear"]>;
++  watch: NonNullable<Driver["watch"]>;
++  dispose: NonNullable<Driver["dispose"]>;
++  available: (operation: keyof Driver) => boolean;
++  metadata: (key: string, opts: TransactionOptions) => Promise<StorageMeta>;
++}
++
++export function driverSession(source: Driver, receiver = false): DriverSession {
++  const call = <F extends (...args: any[]) => any>(fn: F, ...args: any[]) =>
++    asyncCall(receiver ? (fn.bind(source) as F) : fn, ...args);
++  const session: DriverSession = {
++    source,
++    available: (operation) => !!source[operation],
++    hasItem: (key, opts) => call(source.hasItem, key, opts),
++    getItem: (key, opts) => call(source.getItem, key, opts),
++    getItems(items, commonOptions) {
++      if (source.getItems) return call(source.getItems, items, commonOptions);
++      return Promise.all(
++        items.map(async (item) => ({
++          key: item.key,
++          value: await call(source.getItem, item.key, item.options),
++        })),
++      );
++    },
++    getItemRaw(key, opts) {
++      return source.getItemRaw
++        ? call(source.getItemRaw, key, opts)
++        : call(source.getItem, key, opts).then(deserializeRaw);
++    },
++    async setItem(key, value, opts, mutation) {
++      if (!source.setItem) return;
++      await call(source.setItem, key, value, opts);
++      if (mutation && !session.available("watch")) mutation.notify("update", key);
++    },
++    setItems(items, commonOptions) {
++      if (source.setItems) return call(source.setItems, items, commonOptions);
++      if (!source.setItem) return;
++      return Promise.all(
++        items.map((item) => call(source.setItem!, item.key, item.value, item.options)),
++      ).then(() => {});
++    },
++    async setItemRaw(key, value, opts, mutation) {
++      if (source.setItemRaw) {
++        await call(source.setItemRaw, key, value, opts);
++        if (mutation && !session.available("watch")) mutation.notify("update", key);
++      } else if (source.setItem) {
++        await session.setItem(key, serializeRaw(value), opts, mutation);
++      }
++    },
++    async removeItem(key, opts, mutation) {
++      if (!source.removeItem) return;
++      await call(source.removeItem, key, opts);
++      if (mutation?.removeMeta) await session.removeItem(key + "$", opts);
++      if (mutation && !session.available("watch")) mutation.notify("remove", key);
++    },
++    getMeta: (key, opts) => (source.getMeta ? call(source.getMeta, key, opts) : null),
++    async metadata(key, opts) {
++      const meta = Object.create(null);
++      Object.assign(meta, await session.getMeta(key, opts));
++      if (!opts.nativeOnly) {
++        const value = destr<any>(await session.getItem(key + "$", opts));
++        if (value && typeof value === "object") {
++          if (typeof value.atime === "string") value.atime = new Date(value.atime);
++          if (typeof value.mtime === "string") value.mtime = new Date(value.mtime);
++          Object.assign(meta, value);
++        }
++      }
++      return meta;
++    },
++    getKeys: (base, opts) => call(source.getKeys, base, opts),
++    clear(base, opts) {
++      if (source.clear) return call(source.clear, base, opts);
++      if (!source.removeItem) return;
++      return Promise.resolve(source.getKeys(base || "", opts))
++        .then((keys) => Promise.all(keys.map((key) => source.removeItem!(key, opts))))
++        .then(() => {});
++    },
++    watch(callback) {
++      return source.watch ? source.watch(callback) : () => {};
++    },
++    dispose() {
++      if (typeof source.dispose === "function") return call(source.dispose);
++    },
++  };
++  return session;
++}
+diff --git a/src/drivers/overlay.ts b/src/drivers/overlay.ts
+index 40fb2bd..7fc5785 100644
+--- a/src/drivers/overlay.ts
++++ b/src/drivers/overlay.ts
+@@ -1,6 +1,7 @@
+ import { type DriverFactory } from "./utils/index.ts";
+ import type { Driver } from "unstorage";
+ import { normalizeKey } from "./utils/index.ts";
++import { driverSession } from "../_driver-session.ts";
+ 
+ export interface OverlayStorageOptions {
+   layers: Driver[];
+@@ -11,15 +12,17 @@ const OVERLAY_REMOVED = "__OVERLAY_REMOVED__";
+ const DRIVER_NAME = "overlay";
+ 
+ const driver: DriverFactory<OverlayStorageOptions> = (options) => {
++  const layers = () => options.layers.map((layer) => driverSession(layer, true));
++  const top = () => options.layers[0] && driverSession(options.layers[0], true);
+   return {
+     name: DRIVER_NAME,
+     options: options,
+     async hasItem(key, opts) {
+-      for (const layer of options.layers) {
++      for (const layer of layers()) {
+         if (await layer.hasItem(key, opts)) {
+           if (
+-            layer === options.layers[0] &&
+-            (await options.layers[0]?.getItem(key)) === OVERLAY_REMOVED
++            layer.source === options.layers[0] &&
++            (await top()?.getItem(key)) === OVERLAY_REMOVED
+           ) {
+             return false;
+           }
+@@ -29,7 +32,7 @@ const driver: DriverFactory<OverlayStorageOptions> = (options) => {
+       return false;
+     },
+     async getItem(key) {
+-      for (const layer of options.layers) {
++      for (const layer of layers()) {
+         const value = await layer.getItem(key);
+         if (value === OVERLAY_REMOVED) {
+           return null;
+@@ -43,14 +46,14 @@ const driver: DriverFactory<OverlayStorageOptions> = (options) => {
+     // TODO: Support native meta
+     // async getMeta (key) {},
+     async setItem(key, value, opts) {
+-      await options.layers[0]?.setItem?.(key, value, opts);
++      await top()?.setItem(key, value, opts);
+     },
+     async removeItem(key, opts) {
+-      await options.layers[0]?.setItem?.(key, OVERLAY_REMOVED, opts);
++      await top()?.setItem(key, OVERLAY_REMOVED, opts);
+     },
+     async getKeys(base, opts) {
+       const allKeys = await Promise.all(
+-        options.layers.map(async (layer) => {
++        layers().map(async (layer) => {
+           const keys = await layer.getKeys(base, opts);
+           return keys.map((key) => normalizeKey(key));
+         }),
+@@ -58,7 +61,7 @@ const driver: DriverFactory<OverlayStorageOptions> = (options) => {
+       const uniqueKeys = [...new Set(allKeys.flat())];
+       const existingKeys = await Promise.all(
+         uniqueKeys.map(async (key) => {
+-          if ((await options.layers[0]?.getItem(key)) === OVERLAY_REMOVED) {
++          if ((await top()?.getItem(key)) === OVERLAY_REMOVED) {
+             return false;
+           }
+           return key;
+@@ -69,10 +72,8 @@ const driver: DriverFactory<OverlayStorageOptions> = (options) => {
+     async dispose() {
+       // TODO: Graceful error handling
+       await Promise.all(
+-        options.layers.map(async (layer) => {
+-          if (layer.dispose) {
+-            await layer.dispose();
+-          }
++        layers().map(async (layer) => {
++          await layer.dispose();
+         }),
+       );
+     },
+diff --git a/src/storage.ts b/src/storage.ts
+index 0c25ad8..387a092 100644
+--- a/src/storage.ts
++++ b/src/storage.ts
+@@ -9,7 +9,8 @@ import type {
+   TransactionOptions,
+ } from "./types.ts";
+ import memory from "./drivers/memory.ts";
+-import { asyncCall, deserializeRaw, serializeRaw, stringify } from "./_utils.ts";
++import { driverSession, type DriverSession } from "./_driver-session.ts";
++import { asyncCall, deserializeRaw, stringify } from "./_utils.ts";
+ import {
+   normalizeKey,
+   normalizeBaseKey,
+@@ -33,6 +34,15 @@ export interface CreateStorageOptions {
+ export function createStorage<T extends StorageValue>(
+   options: CreateStorageOptions = {},
+ ): Storage<T> {
++  const sessions = new WeakMap<Driver, DriverSession>();
++  const sessionFor = (driver: Driver) => {
++    let session = sessions.get(driver);
++    if (!session) {
++      session = driverSession(driver);
++      sessions.set(driver, session);
++    }
++    return session;
++  };
+   const context: StorageCTX = {
+     mounts: { "": options.driver || memory() },
+     mountpoints: [""],
+@@ -47,14 +57,14 @@ export function createStorage<T extends StorageValue>(
+         return {
+           base,
+           relativeKey: key.slice(base.length),
+-          driver: context.mounts[base]!,
++          driver: sessionFor(context.mounts[base]!),
+         };
+       }
+     }
+     return {
+       base: "",
+       relativeKey: key,
+-      driver: context.mounts[""]!,
++      driver: sessionFor(context.mounts[""]!),
+     };
+   };
+ 
+@@ -67,7 +77,7 @@ export function createStorage<T extends StorageValue>(
+       .map((mountpoint) => ({
+         relativeBase: base.length > mountpoint.length ? base!.slice(mountpoint.length) : undefined,
+         mountpoint,
+-        driver: context.mounts[mountpoint]!,
++        driver: sessionFor(context.mounts[mountpoint]!),
+       }));
+   };
+ 
+@@ -87,7 +97,11 @@ export function createStorage<T extends StorageValue>(
+     }
+     context.watching = true;
+     for (const mountpoint in context.mounts) {
+-      context.unwatch[mountpoint] = await watch(context.mounts[mountpoint]!, onChange, mountpoint);
++      context.unwatch[mountpoint] = await watch(
++        sessionFor(context.mounts[mountpoint]!),
++        onChange,
++        mountpoint,
++      );
+     }
+   };
+ 
+@@ -103,7 +117,7 @@ export function createStorage<T extends StorageValue>(
+   };
+ 
+   type BatchItem = {
+-    driver: Driver;
++    driver: DriverSession;
+     base: string;
+     items: {
+       key: string;
+@@ -209,14 +223,11 @@ export function createStorage<T extends StorageValue>(
+         return storage.removeItem(key);
+       }
+       key = normalizeKey(key);
+-      const { relativeKey, driver } = getMount(key);
+-      if (!driver.setItem) {
+-        return; // Readonly
+-      }
+-      await asyncCall(driver.setItem, relativeKey, stringify(value), opts);
+-      if (!driver.watch) {
+-        onChange("update", key);
+-      }
++      const { relativeKey, driver, base } = getMount(key);
++      if (!driver.available("setItem")) return;
++      await driver.setItem(relativeKey, stringify(value), opts, {
++        notify: (event, relative) => onChange(event, base + relative),
++      });
+     },
+     async setItems(items, commonOptions) {
+       await runBatch(items, commonOptions, async (batch) => {
+@@ -251,17 +262,10 @@ export function createStorage<T extends StorageValue>(
+         return storage.removeItem(key, opts);
+       }
+       key = normalizeKey(key);
+-      const { relativeKey, driver } = getMount(key);
+-      if (driver.setItemRaw) {
+-        await asyncCall(driver.setItemRaw, relativeKey, value, opts);
+-      } else if (driver.setItem) {
+-        await asyncCall(driver.setItem, relativeKey, serializeRaw(value), opts);
+-      } else {
+-        return; // Readonly
+-      }
+-      if (!driver.watch) {
+-        onChange("update", key);
+-      }
++      const { relativeKey, driver, base } = getMount(key);
++      await driver.setItemRaw(relativeKey, value, opts, {
++        notify: (event, relative) => onChange(event, base + relative),
++      });
+     },
+     async removeItem(
+       key: string,
+@@ -272,17 +276,11 @@ export function createStorage<T extends StorageValue>(
+         opts = { removeMeta: opts };
+       }
+       key = normalizeKey(key);
+-      const { relativeKey, driver } = getMount(key);
+-      if (!driver.removeItem) {
+-        return; // Readonly
+-      }
+-      await asyncCall(driver.removeItem, relativeKey, opts);
+-      if (opts.removeMeta || opts.removeMata /* #281 */) {
+-        await asyncCall(driver.removeItem, relativeKey + "$", opts);
+-      }
+-      if (!driver.watch) {
+-        onChange("remove", key);
+-      }
++      const { relativeKey, driver, base } = getMount(key);
++      await driver.removeItem(relativeKey, opts, {
++        removeMeta: opts.removeMeta || opts.removeMata /* #281 */,
++        notify: (event, relative) => onChange(event, base + relative),
++      });
+     },
+     // Meta
+     async getMeta(key, opts = {}) {
+@@ -292,26 +290,7 @@ export function createStorage<T extends StorageValue>(
+       }
+       key = normalizeKey(key);
+       const { relativeKey, driver } = getMount(key);
+-      const meta = Object.create(null);
+-      if (driver.getMeta) {
+-        Object.assign(meta, await asyncCall(driver.getMeta, relativeKey, opts));
+-      }
+-      if (!opts.nativeOnly) {
+-        const value = await asyncCall(driver.getItem, relativeKey + "$", opts).then((value_) =>
+-          destr<any>(value_),
+-        );
+-        if (value && typeof value === "object") {
+-          // TODO: Support date by destr?
+-          if (typeof value.atime === "string") {
+-            value.atime = new Date(value.atime);
+-          }
+-          if (typeof value.mtime === "string") {
+-            value.mtime = new Date(value.mtime);
+-          }
+-          Object.assign(meta, value);
+-        }
+-      }
+-      return meta;
++      return driver.metadata(relativeKey, opts);
+     },
+     setMeta(key: string, value: any, opts = {}) {
+       return this.setItem(key + "$", value, opts);
+@@ -327,7 +306,7 @@ export function createStorage<T extends StorageValue>(
+       const allKeys: string[] = [];
+       let allMountsSupportMaxDepth = true;
+       for (const mount of mounts) {
+-        if (!mount.driver.flags?.maxDepth) {
++        if (!mount.driver.source.flags?.maxDepth) {
+           allMountsSupportMaxDepth = false;
+         }
+         const rawKeys = await asyncCall(mount.driver.getKeys, mount.relativeBase, opts);
+@@ -357,20 +336,12 @@ export function createStorage<T extends StorageValue>(
+       base = normalizeBaseKey(base);
+       await Promise.all(
+         getMounts(base, false).map(async (m) => {
+-          if (m.driver.clear) {
+-            return asyncCall(m.driver.clear, m.relativeBase, opts);
+-          }
+-          // Fallback to remove all keys if clear not implemented
+-          if (m.driver.removeItem) {
+-            const keys = await m.driver.getKeys(m.relativeBase || "", opts);
+-            return Promise.all(keys.map((key) => m.driver.removeItem!(key, opts)));
+-          }
+-          // Readonly
++          return asyncCall(m.driver.clear, m.relativeBase, opts);
+         }),
+       );
+     },
+     async dispose() {
+-      await Promise.all(Object.values(context.mounts).map((driver) => dispose(driver)));
++      await Promise.all(Object.values(context.mounts).map((driver) => dispose(sessionFor(driver))));
+     },
+     async watch(callback) {
+       await startWatch();
+@@ -398,7 +369,7 @@ export function createStorage<T extends StorageValue>(
+       }
+       context.mounts[base] = driver;
+       if (context.watching) {
+-        Promise.resolve(watch(driver, onChange, base))
++        Promise.resolve(watch(sessionFor(driver), onChange, base))
+           .then((unwatcher) => {
+             context.unwatch[base] = unwatcher;
+           })
+@@ -416,7 +387,7 @@ export function createStorage<T extends StorageValue>(
+         delete context.unwatch[base];
+       }
+       if (_dispose) {
+-        await dispose(context.mounts[base]!);
++        await dispose(sessionFor(context.mounts[base]!));
+       }
+       context.mountpoints = context.mountpoints.filter((key) => key !== base);
+       delete context.mounts[base];
+@@ -425,7 +396,7 @@ export function createStorage<T extends StorageValue>(
+       key = normalizeKey(key) + ":";
+       const m = getMount(key);
+       return {
+-        driver: m.driver,
++        driver: m.driver.source,
+         base: m.base,
+       };
+     },
+@@ -433,7 +404,7 @@ export function createStorage<T extends StorageValue>(
+       base = normalizeKey(base);
+       const mounts = getMounts(base, opts.parents);
+       return mounts.map((m) => ({
+-        driver: m.driver,
++        driver: m.driver.source,
+         base: m.mountpoint,
+       }));
+     },
+@@ -472,12 +443,10 @@ export async function restoreSnapshot(
+   await Promise.all(Object.entries(snapshot).map((e) => driver.setItem(base + e[0], e[1])));
+ }
+ 
+-function watch(driver: Driver, onChange: WatchCallback, base: string) {
+-  return driver.watch ? driver.watch((event, key) => onChange(event, base + key)) : () => {};
++function watch(driver: DriverSession, onChange: WatchCallback, base: string) {
++  return driver.watch((event, key) => onChange(event, base + key));
+ }
+ 
+-async function dispose(driver: Driver) {
+-  if (typeof driver.dispose === "function") {
+-    await asyncCall(driver.dispose);
+-  }
++async function dispose(driver: DriverSession) {
++  await asyncCall(driver.dispose);
+ }

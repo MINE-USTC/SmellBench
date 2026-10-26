@@ -1,0 +1,912 @@
+diff --git a/gspread/client.py b/gspread/client.py
+index 957088b..eb7b7b3 100644
+--- a/gspread/client.py
++++ b/gspread/client.py
+@@ -11,10 +11,11 @@ from http import HTTPStatus
+ from typing import Any, Dict, List, Optional, Tuple, Union
+ 
+ from google.auth.credentials import Credentials
++from google.auth.exceptions import RefreshError
+ from requests import Response, Session
+ 
+ from .exceptions import APIError, SpreadsheetNotFound
+-from .http_client import HTTPClient, HTTPClientType, ParamsType
++from .http_client import BackOffHTTPClient, HTTPClient, HTTPClientType, ParamsType, time
+ from .spreadsheet import Spreadsheet
+ from .urls import DRIVE_FILES_API_V3_COMMENTS_URL, DRIVE_FILES_API_V3_URL
+ from .utils import ExportFormat, MimeType, extract_id_from_url, finditem
+@@ -111,11 +112,49 @@ class Client:
+             "fields": "kind,nextPageToken,files(id,name,createdTime,modifiedTime)",
+         }
+ 
++        retried = False
+         while True:
+             if page_token:
+                 params["pageToken"] = page_token
+ 
+-            response = self.http_client.request("get", url, params=params)
++            request_implementation = getattr(self.http_client.request, "__func__", None)
++            if request_implementation is BackOffHTTPClient.request:
++                try:
++                    response = HTTPClient.request(self.http_client, "get", url, params=params)
++                except (APIError, RefreshError) as error:
++                    self.http_client._NR_BACKOFF += 1
++                    wait = min(2 ** self.http_client._NR_BACKOFF, self.http_client._MAX_BACKOFF)
++                    retry = 2 ** self.http_client._NR_BACKOFF <= self.http_client._MAX_BACKOFF
++                    if isinstance(error, APIError):
++                        if "errors" in error.error:
++                            drive_quota = (
++                                error.code == HTTPStatus.FORBIDDEN
++                                and error.error["errors"][0]["domain"] == "usageLimits"
++                            )
++                        else:
++                            drive_quota = False
++                        retry = retry and (
++                            drive_quota or error.code in self.http_client._HTTP_ERROR_CODES
++                            or error.code >= HTTPStatus.INTERNAL_SERVER_ERROR
++                        )
++                    if retry:
++                        time.sleep(wait)
++                        retried = True
++                        continue
++                    self.http_client._NR_BACKOFF = 0
++                    raise
++                if retried:
++                    self.http_client._NR_BACKOFF = 0
++                    retried = False
++            elif request_implementation is HTTPClient.request:
++                response = self.http_client.session.request(
++                    method="get", url=url, json=None, params=params, data=None,
++                    files=None, headers=None, timeout=self.http_client.timeout,
++                )
++                if not response.ok:
++                    raise APIError(response)
++            else:
++                response = self.http_client.request("get", url, params=params)
+             response_json = response.json()
+             files.extend(response_json["files"])
+ 
+@@ -231,9 +270,18 @@ class Client:
+         if folder_id is not None:
+             payload["parents"] = [folder_id]
+ 
+-        r = self.http_client.request(
+-            "post", DRIVE_FILES_API_V3_URL, json=payload, params=params
+-        )
++        if getattr(self.http_client.request, "__func__", None) is HTTPClient.request:
++            r = self.http_client.session.request(
++                method="post", url=DRIVE_FILES_API_V3_URL,
++                json=dict(payload) if payload else None, params=params, data=None,
++                files=None, headers=None, timeout=self.http_client.timeout,
++            )
++            if not r.ok:
++                raise APIError(r)
++        else:
++            r = self.http_client.request(
++                "post", DRIVE_FILES_API_V3_URL, json=payload, params=params
++            )
+         spreadsheet_id = r.json()["id"]
+         return self.open_by_key(spreadsheet_id)
+ 
+@@ -317,7 +365,16 @@ class Client:
+             payload["parents"] = [folder_id]
+ 
+         params: ParamsType = {"supportsAllDrives": True}
+-        r = self.http_client.request("post", url, json=payload, params=params)
++        if getattr(self.http_client.request, "__func__", None) is HTTPClient.request:
++            r = self.http_client.session.request(
++                method="post", url=url, json=dict(payload) if payload else None,
++                params=params, data=None, files=None, headers=None,
++                timeout=self.http_client.timeout,
++            )
++            if not r.ok:
++                raise APIError(r)
++        else:
++            r = self.http_client.request("post", url, json=payload, params=params)
+         spreadsheet_id = r.json()["id"]
+ 
+         new_spreadsheet = self.open_by_key(spreadsheet_id)
+@@ -335,17 +392,39 @@ class Client:
+                 # Otherwise use None for type 'Anyone'
+ 
+                 email_or_domain = ""
++                permission_recipient = {}
++                permission_params: ParamsType = {"supportsAllDrives": "true"}
+                 if str(p["type"]) == "domain":
+                     email_or_domain = str(p["domain"])
++                    permission_recipient["domain"] = email_or_domain
+                 elif str(p["type"]) in ("user", "group"):
+                     email_or_domain = str(p["emailAddress"])
+-
+-                new_spreadsheet.share(
+-                    email_address=email_or_domain,
+-                    perm_type=str(p["type"]),
+-                    role=str(p["role"]),
+-                    notify=False,
+-                )
++                    permission_recipient["emailAddress"] = email_or_domain
++                    permission_params.update(sendNotificationEmail=False, emailMessage=None)
++
++                if (
++                    getattr(new_spreadsheet.share, "__func__", None) is Spreadsheet.share
++                    and getattr(new_spreadsheet.client.insert_permission, "__func__", None)
++                    is HTTPClient.insert_permission
++                ):
++                    permission_type = str(p["type"])
++                    permission_payload = {
++                        "type": permission_type, "role": str(p["role"]), "withLink": False,
++                        **permission_recipient,
++                    }
++                    if permission_type not in {"domain", "user", "group", "anyone"}:
++                        raise ValueError("Invalid permission type: {}".format(permission_type))
++                    new_spreadsheet.client.request(
++                        "post", "{}/{}/permissions".format(DRIVE_FILES_API_V3_URL, new_spreadsheet.id),
++                        json=permission_payload, params=permission_params,
++                    )
++                else:
++                    new_spreadsheet.share(
++                        email_address=email_or_domain,
++                        perm_type=str(p["type"]),
++                        role=str(p["role"]),
++                        notify=False,
++                    )
+ 
+         if copy_comments is True:
+             source_url = DRIVE_FILES_API_V3_COMMENTS_URL % (file_id)
+@@ -357,9 +436,42 @@ class Client:
+                 "pageSize": 100,  # API limit to maximum 100
+             }
+ 
++            comment_retry = False
+             while page_token is not None:
+                 params["pageToken"] = page_token
+-                res = self.http_client.request("get", source_url, params=params).json()
++                if getattr(self.http_client.request, "__func__", None) is BackOffHTTPClient.request:
++                    try:
++                        comment_response = HTTPClient.request(
++                            self.http_client, "get", source_url, params=params
++                        )
++                    except (APIError, RefreshError) as error:
++                        self.http_client._NR_BACKOFF += 1
++                        wait = min(2 ** self.http_client._NR_BACKOFF, self.http_client._MAX_BACKOFF)
++                        if isinstance(error, RefreshError):
++                            retry_code = True
++                        elif (
++                            "errors" in error.error
++                            and error.code == HTTPStatus.FORBIDDEN
++                            and error.error["errors"][0]["domain"] == "usageLimits"
++                        ):
++                            retry_code = True
++                        else:
++                            retry_code = (
++                                error.code in self.http_client._HTTP_ERROR_CODES
++                                or error.code >= HTTPStatus.INTERNAL_SERVER_ERROR
++                            )
++                        if retry_code and 2 ** self.http_client._NR_BACKOFF <= self.http_client._MAX_BACKOFF:
++                            time.sleep(wait)
++                            comment_retry = True
++                            continue
++                        self.http_client._NR_BACKOFF = 0
++                        raise
++                    if comment_retry:
++                        self.http_client._NR_BACKOFF = 0
++                        comment_retry = False
++                    res = comment_response.json()
++                else:
++                    res = self.http_client.request("get", source_url, params=params).json()
+ 
+                 comments.extend(res["comments"])
+                 page_token = res.get("nextPageToken", None)
+@@ -369,9 +481,18 @@ class Client:
+             # choose 'id' randomly out of all the fields, but no need to use it for now.
+             params = {"fields": "id"}
+             for comment in comments:
+-                self.http_client.request(
+-                    "post", destination_url, json=comment, params=params
+-                )
++                if getattr(self.http_client.request, "__func__", None) is HTTPClient.request:
++                    copied_comment = self.http_client.session.request(
++                        method="post", url=destination_url,
++                        json=dict(comment) if comment else None, params=params,
++                        data=None, files=None, headers=None, timeout=self.http_client.timeout,
++                    )
++                    if not copied_comment.ok:
++                        raise APIError(copied_comment)
++                else:
++                    self.http_client.request(
++                        "post", destination_url, json=comment, params=params
++                    )
+ 
+         return new_spreadsheet
+ 
+diff --git a/gspread/http_client.py b/gspread/http_client.py
+index f5aa3a4..d6710f3 100644
+--- a/gspread/http_client.py
++++ b/gspread/http_client.py
+@@ -7,11 +7,13 @@ Google API.
+ 
+ """
+ 
++import builtins
+ import time
+ from http import HTTPStatus
+ from json import dumps as json_dumps
+ from typing import (
+     IO,
++    TYPE_CHECKING,
+     Any,
+     Callable,
+     Dict,
+@@ -43,7 +45,15 @@ from .urls import (
+     SPREADSHEET_VALUES_CLEAR_URL,
+     SPREADSHEET_VALUES_URL,
+ )
+-from .utils import ExportFormat, convert_credentials, quote
++from .utils import (
++    Dimension, ExportFormat, a1_range_to_grid_range, combined_merge_values,
++    convert_credentials, finditem, get_a1_from_absolute_range, quote,
++)
++
++if TYPE_CHECKING:
++    from .cell import Cell
++    from .spreadsheet import Spreadsheet
++    from .worksheet import Worksheet
+ 
+ ParamsType = MutableMapping[str, Optional[Union[str, int, bool, float, List[str]]]]
+ DefaultSerializerType = Optional[Callable[[Any], Any]]
+@@ -136,7 +146,10 @@ class HTTPClient:
+         else:
+             raise APIError(response)
+ 
+-    def batch_update(self, id: str, body: Optional[Mapping[str, Any]]) -> Any:
++    def batch_update(
++        self, id: str, body: Optional[Mapping[str, Any]], *,
++        _worksheet: Optional["Worksheet"] = None,
++    ) -> Any:
+         """Lower-level method that directly calls `spreadsheets/<ID>:batchUpdate <https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/batchUpdate>`_.
+ 
+         :param dict body: `Batch Update Request body <https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/batchUpdate#request-body>`_.
+@@ -147,7 +160,29 @@ class HTTPClient:
+         """
+         r = self.request("post", SPREADSHEET_BATCH_UPDATE_URL % id, json=body)
+ 
+-        return r.json()
++        result = r.json()
++        if _worksheet is not None:
++            for request in body["requests"]:
++                if "updateSheetProperties" in request:
++                    properties = request["updateSheetProperties"]["properties"]
++                    if "gridProperties" in properties:
++                        _worksheet._properties["gridProperties"].update(properties["gridProperties"])
++                    for name in ("title", "index", "hidden"):
++                        if name in properties:
++                            _worksheet._properties[name] = properties[name]
++                    if "tabColorStyle" in properties:
++                        if properties["tabColorStyle"]["rgbColor"] is None:
++                            _worksheet._properties.pop("tabColorStyle")
++                        else:
++                            _worksheet._properties["tabColorStyle"] = dict(properties["tabColorStyle"])
++                elif "deleteDimension" in request:
++                    bounds = request["deleteDimension"]["range"]
++                    removed = bounds["endIndex"] - bounds["startIndex"]
++                    if bounds["dimension"] == Dimension.rows:
++                        _worksheet._properties["gridProperties"]["rowCount"] -= removed
++                    elif bounds["dimension"] == Dimension.cols:
++                        _worksheet._properties["gridProperties"]["columnCount"] -= removed
++        return result
+ 
+     def values_update(
+         self,
+@@ -156,6 +191,8 @@ class HTTPClient:
+         params: Optional[ParamsType] = None,
+         body: Optional[Mapping[str, Any]] = None,
+         default_serializer: DefaultSerializerType = None,
++        *,
++        _cells: Optional[List["Cell"]] = None,
+     ) -> Any:
+         """Lower-level method that directly calls `PUT spreadsheets/<ID>/values/<range> <https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/update>`_.
+ 
+@@ -179,6 +216,23 @@ class HTTPClient:
+ 
+         .. versionadded:: 3.0
+         """
++        if _cells is not None:
++            extent = a1_range_to_grid_range(range.rsplit("!", 1)[-1])
++            first_row = extent["startRowIndex"] + 1
++            first_col = extent["startColumnIndex"] + 1
++            cell_rows: Dict[int, Dict[int, Optional[str]]] = {}
++            for cell in _cells:
++                row_index = int(cell.row) - first_row
++                if row_index not in cell_rows:
++                    cell_rows[row_index] = {}
++                cell_rows[row_index][cell.col - first_col] = cell.value
++            body = {
++                "values": [
++                    [cell_rows.get(row_index, {}).get(col_index)
++                     for col_index in builtins.range(extent["endColumnIndex"] - extent["startColumnIndex"])]
++                    for row_index in builtins.range(extent["endRowIndex"] - extent["startRowIndex"])
++                ]
++            }
+         url = SPREADSHEET_VALUES_URL % (id, quote(range))
+         r = self.request(
+             "put", url, params=params, json=body, default_serializer=default_serializer
+@@ -192,6 +246,8 @@ class HTTPClient:
+         params: ParamsType,
+         body: Optional[Mapping[str, Any]],
+         default_serializer: DefaultSerializerType = None,
++        *,
++        _worksheet: Optional["Worksheet"] = None,
+     ) -> Any:
+         """Lower-level method that directly calls `spreadsheets/<ID>/values:append <https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/append>`_.
+ 
+@@ -208,7 +264,13 @@ class HTTPClient:
+         r = self.request(
+             "post", url, params=params, json=body, default_serializer=default_serializer
+         )
+-        return r.json()
++        result = r.json()
++        if _worksheet is not None:
++            if body.get("majorDimension", Dimension.rows) == Dimension.cols:
++                _worksheet._properties["gridProperties"]["columnCount"] += len(body["values"])
++            else:
++                _worksheet._properties["gridProperties"]["rowCount"] += len(body["values"])
++        return result
+ 
+     def values_clear(self, id: str, range: str) -> Any:
+         """Lower-level method that directly calls `spreadsheets/<ID>/values:clear <https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/clear>`_.
+@@ -307,8 +369,11 @@ class HTTPClient:
+         return r.json()
+ 
+     def fetch_sheet_metadata(
+-        self, id: str, params: Optional[ParamsType] = None
+-    ) -> Mapping[str, Any]:
++        self, id: str, params: Optional[ParamsType] = None, *,
++        _worksheet: Optional["Worksheet"] = None,
++        _range_name: Optional[str] = None,
++        _values: Optional[List[List[Any]]] = None,
++    ) -> Any:
+         """Similar to :method spreadsheets_get:`gspread.http_client.spreadsheets_get`,
+         get the spreadsheet from the API but by default **does not get the cells data**.
+         It only retrieves the metadata from the spreadsheet.
+@@ -326,9 +391,30 @@ class HTTPClient:
+ 
+         r = self.request("get", url, params=params)
+ 
+-        return r.json()
++        metadata = r.json()
++        if _worksheet is not None:
++            sheet = finditem(
++                lambda candidate: candidate["properties"]["title"] == _worksheet.title,
++                metadata["sheets"],
++            )
++            named_ranges = metadata.get("namedRanges", [])
++            if any(_range_name == item["name"] for item in named_ranges if item.get("name")):
++                selected = finditem(lambda item: item["name"] == _range_name, named_ranges)
++                grid = selected.get("range", {})
++            elif _range_name is not None:
++                grid = a1_range_to_grid_range(get_a1_from_absolute_range(_range_name))
++            else:
++                grid = sheet.get("basicFilter", {}).get("range", {})
++            return combined_merge_values(
++                worksheet_metadata=sheet, values=_values,
++                start_row_index=grid.get("startRowIndex", 0),
++                start_col_index=grid.get("startColumnIndex", 0),
++            )
++        return metadata
+ 
+-    def get_file_drive_metadata(self, id: str) -> Any:
++    def get_file_drive_metadata(
++        self, id: str, *, _spreadsheet: Optional["Spreadsheet"] = None
++    ) -> Any:
+         """Get the metadata from the Drive API for a specific file
+         This method is mainly here to retrieve the create/update time
+         of a file (these metadata are only accessible from the Drive API).
+@@ -344,7 +430,10 @@ class HTTPClient:
+ 
+         res = self.request("get", url, params=params)
+ 
+-        return res.json()
++        metadata = res.json()
++        if _spreadsheet is not None:
++            _spreadsheet._properties.update(metadata)
++        return metadata
+ 
+     def export(self, file_id: str, format: str = ExportFormat.PDF) -> bytes:
+         """Export the spreadsheet in the given format.
+diff --git a/gspread/spreadsheet.py b/gspread/spreadsheet.py
+index 8d7fd9f..52be40d 100644
+--- a/gspread/spreadsheet.py
++++ b/gspread/spreadsheet.py
+@@ -7,13 +7,15 @@ This module contains common spreadsheets' models.
+ """
+ 
+ import warnings
++from http import HTTPStatus
+ from typing import Any, Dict, Generator, Iterable, List, Mapping, Optional, Union
+ 
+ from requests import Response
++from google.auth.exceptions import RefreshError
+ 
+ from .cell import Cell
+-from .exceptions import WorksheetNotFound
+-from .http_client import HTTPClient, ParamsType
++from .exceptions import APIError, WorksheetNotFound
++from .http_client import BackOffHTTPClient, HTTPClient, ParamsType, time
+ from .urls import DRIVE_FILES_API_V3_URL, SPREADSHEET_DRIVE_URL
+ from .utils import ExportFormat, absolute_range_name, extract_title_from_range, finditem
+ from .worksheet import Worksheet
+@@ -635,6 +637,14 @@ class Spreadsheet:
+             "pendingOwner": True,
+         }
+ 
++        if getattr(self.client.request, "__func__", None) is HTTPClient.request:
++            response = self.client.session.request(
++                method="patch", url=url, json=dict(payload), params=None,
++                data=None, files=None, headers=None, timeout=self.client.timeout,
++            )
++            if not response.ok:
++                raise APIError(response)
++            return response
+         return self.client.request("patch", url, json=payload)
+ 
+     def accept_ownership(self, permission_id: str) -> Response:
+@@ -661,6 +671,14 @@ class Spreadsheet:
+             "transferOwnership": True,
+         }
+ 
++        if getattr(self.client.request, "__func__", None) is HTTPClient.request:
++            response = self.client.session.request(
++                method="patch", url=url, json=dict(payload), params=params,
++                data=None, files=None, headers=None, timeout=self.client.timeout,
++            )
++            if response.ok:
++                return response
++            raise APIError(response)
+         return self.client.request("patch", url, json=payload, params=params)
+ 
+     def named_range(self, named_range: str) -> List[Cell]:
+@@ -772,5 +790,8 @@ class Spreadsheet:
+     def update_drive_metadata(self) -> None:
+         """Fetches the drive metadata from the Drive API
+         and updates the cached values in _properties dict."""
+-        drive_metadata = self.client.get_file_drive_metadata(self._properties["id"])
+-        self._properties.update(drive_metadata)
++        if getattr(self.client.get_file_drive_metadata, "__func__", None) is HTTPClient.get_file_drive_metadata:
++            self.client.get_file_drive_metadata(self._properties["id"], _spreadsheet=self)
++        else:
++            drive_metadata = self.client.get_file_drive_metadata(self._properties["id"])
++            self._properties.update(drive_metadata)
+diff --git a/gspread/worksheet.py b/gspread/worksheet.py
+index 9dbe668..f6156a1 100644
+--- a/gspread/worksheet.py
++++ b/gspread/worksheet.py
+@@ -9,6 +9,7 @@ This module contains common worksheets' models.
+ import re
+ import warnings
+ from collections import Counter
++from http import HTTPStatus
+ from typing import (
+     TYPE_CHECKING,
+     Any,
+@@ -30,9 +31,11 @@ from typing import (
+ )
+ 
+ from .cell import Cell
+-from .exceptions import GSpreadException
+-from .http_client import DefaultSerializerType, HTTPClient, ParamsType
+-from .urls import WORKSHEET_DRIVE_URL
++from google.auth.exceptions import RefreshError
++
++from .exceptions import APIError, GSpreadException
++from .http_client import BackOffHTTPClient, DefaultSerializerType, HTTPClient, ParamsType, time
++from .urls import SPREADSHEET_BATCH_UPDATE_URL, SPREADSHEET_VALUES_APPEND_URL, SPREADSHEET_VALUES_BATCH_UPDATE_URL, SPREADSHEET_VALUES_URL, WORKSHEET_DRIVE_URL
+ from .utils import (
+     DateTimeOption,
+     Dimension,
+@@ -50,7 +53,6 @@ from .utils import (
+     a1_to_rowcol,
+     absolute_range_name,
+     cast_to_a1_notation,
+-    cell_list_to_rect,
+     combined_merge_values,
+     convert_colors_to_hex_value,
+     convert_hex_to_colors_dict,
+@@ -60,6 +62,7 @@ from .utils import (
+     get_a1_from_absolute_range,
+     is_full_a1_notation,
+     numericise_all,
++    quote,
+     rowcol_to_a1,
+     to_records,
+ )
+@@ -805,12 +808,51 @@ class Worksheet:
+             # Update in batch
+             worksheet.update_cells(cell_list)
+         """
+-        values_rect = cell_list_to_rect(cell_list)
++        if getattr(self.client.values_update, "__func__", None) is HTTPClient.values_update:
++            start = rowcol_to_a1(
++                min(cell.row for cell in cell_list), min(cell.col for cell in cell_list)
++            )
++            end = rowcol_to_a1(
++                max(cell.row for cell in cell_list), max(cell.col for cell in cell_list)
++            )
++            range_name = absolute_range_name(self.title, "{}:{}".format(start, end))
++            return self.client.values_update(
++                self.spreadsheet_id, range_name,
++                params={"valueInputOption": value_input_option},
++                body=None, _cells=cell_list,
++            )
+ 
+-        start = rowcol_to_a1(
+-            min(c.row for c in cell_list), min(c.col for c in cell_list)
+-        )
+-        end = rowcol_to_a1(max(c.row for c in cell_list), max(c.col for c in cell_list))
++        values_rect = []
++        if cell_list:
++            row_offset = min(cell.row for cell in cell_list)
++            col_offset = min(cell.col for cell in cell_list)
++            bottom_row = cell_list[0].row
++            right_col = cell_list[0].col
++            rows: Dict[int, Dict[int, Optional[str]]] = {}
++            for cell in cell_list:
++                relative_row = int(cell.row) - row_offset
++                if relative_row not in rows:
++                    rows[relative_row] = {}
++                rows[relative_row][cell.col - col_offset] = cell.value
++                if cell.row > bottom_row:
++                    bottom_row = cell.row
++                if cell.col > right_col:
++                    right_col = cell.col
++            last_row = max(rows)
++            last_col = max(col for row in rows.values() for col in row)
++            for row_index in range(last_row + 1):
++                row_values = rows.get(row_index, {})
++                values_rect.append(
++                    [row_values.get(col_index) for col_index in range(last_col + 1)]
++                )
++
++            start = rowcol_to_a1(row_offset, col_offset)
++            end = rowcol_to_a1(bottom_row, right_col)
++        else:
++            start = rowcol_to_a1(
++                min(c.row for c in cell_list), min(c.col for c in cell_list)
++            )
++            end = rowcol_to_a1(max(c.row for c in cell_list), max(c.col for c in cell_list))
+ 
+         range_name = absolute_range_name(self.title, "{}:{}".format(start, end))
+ 
+@@ -955,9 +997,47 @@ class Worksheet:
+             "dateTimeRenderOption": date_time_render_option,
+         }
+ 
+-        response = self.client.values_get(
+-            self.spreadsheet_id, get_range_name, params=params
+-        )
++        if (
++            getattr(self.client.values_get, "__func__", None) is HTTPClient.values_get
++            and getattr(self.client.request, "__func__", None) is BackOffHTTPClient.request
++        ):
++            values_url = SPREADSHEET_VALUES_URL % (self.spreadsheet_id, quote(get_range_name))
++            retried = False
++            while True:
++                try:
++                    values_response = HTTPClient.request(
++                        self.client, "get", values_url, params=params
++                    )
++                except (APIError, RefreshError) as error:
++                    self.client._NR_BACKOFF += 1
++                    wait = min(2 ** self.client._NR_BACKOFF, self.client._MAX_BACKOFF)
++                    retry = 2 ** self.client._NR_BACKOFF <= self.client._MAX_BACKOFF
++                    if isinstance(error, APIError):
++                        if "errors" in error.error:
++                            quota = (
++                                error.code == HTTPStatus.FORBIDDEN
++                                and error.error["errors"][0]["domain"] == "usageLimits"
++                            )
++                        else:
++                            quota = False
++                        retry = retry and (
++                            quota or error.code in self.client._HTTP_ERROR_CODES
++                            or error.code >= HTTPStatus.INTERNAL_SERVER_ERROR
++                        )
++                    if retry:
++                        time.sleep(wait)
++                        retried = True
++                        continue
++                    self.client._NR_BACKOFF = 0
++                    raise
++                if retried:
++                    self.client._NR_BACKOFF = 0
++                response = values_response.json()
++                break
++        else:
++            response = self.client.values_get(
++                self.spreadsheet_id, get_range_name, params=params
++            )
+ 
+         values = response.get("values", [[]])
+ 
+@@ -1251,13 +1331,24 @@ class Worksheet:
+             "responseDateTimeRenderOption": response_date_time_render_option,
+         }
+ 
+-        response = self.client.values_update(
+-            self.spreadsheet_id,
+-            full_range_name,
+-            params=params,
+-            body={"values": values, "majorDimension": major_dimension},
+-            default_serializer=default_serializer,
+-        )
++        if (
++            getattr(self.client.values_update, "__func__", None) is HTTPClient.values_update
++            and getattr(self.client.request, "__func__", None)
++            in (HTTPClient.request, BackOffHTTPClient.request)
++        ):
++            payload = {"values": values, "majorDimension": major_dimension}
++            response = self.client.request(
++                "put", SPREADSHEET_VALUES_URL % (self.spreadsheet_id, quote(full_range_name)),
++                params=params, json=payload, default_serializer=default_serializer,
++            ).json()
++        else:
++            response = self.client.values_update(
++                self.spreadsheet_id,
++                full_range_name,
++                params=params,
++                body={"values": values, "majorDimension": major_dimension},
++                default_serializer=default_serializer,
++            )
+ 
+         return response
+ 
+@@ -1382,9 +1473,15 @@ class Worksheet:
+             "data": data,
+         }
+ 
+-        response = self.client.values_batch_update(
+-            self.spreadsheet_id, body=body, default_serializer=default_serializer
+-        )
++        if getattr(self.client.values_batch_update, "__func__", None) is HTTPClient.values_batch_update:
++            response = self.client.request(
++                "post", SPREADSHEET_VALUES_BATCH_UPDATE_URL % self.spreadsheet_id,
++                json=body, default_serializer=default_serializer,
++            ).json()
++        else:
++            response = self.client.values_batch_update(
++                self.spreadsheet_id, body=body, default_serializer=default_serializer
++            )
+ 
+         return response
+ 
+@@ -1539,11 +1636,14 @@ class Worksheet:
+             ]
+         }
+ 
+-        res = self.client.batch_update(self.spreadsheet_id, body)
+-        if rows is not None:
+-            self._properties["gridProperties"]["rowCount"] = rows
+-        if cols is not None:
+-            self._properties["gridProperties"]["columnCount"] = cols
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            res = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            res = self.client.batch_update(self.spreadsheet_id, body)
++            if rows is not None:
++                self._properties["gridProperties"]["rowCount"] = rows
++            if cols is not None:
++                self._properties["gridProperties"]["columnCount"] = cols
+         return res
+ 
+     def sort(
+@@ -1632,8 +1732,11 @@ class Worksheet:
+             ]
+         }
+ 
+-        response = self.client.batch_update(self.spreadsheet_id, body)
+-        self._properties["title"] = title
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            response = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            response = self.client.batch_update(self.spreadsheet_id, body)
++            self._properties["title"] = title
+         return response
+ 
+     def update_tab_color(self, color: str) -> JSONResponse:
+@@ -1661,9 +1764,11 @@ class Worksheet:
+             ]
+         }
+ 
+-        response = self.client.batch_update(self.spreadsheet_id, body)
+-
+-        self._properties["tabColorStyle"] = {"rgbColor": color_dict}
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            response = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            response = self.client.batch_update(self.spreadsheet_id, body)
++            self._properties["tabColorStyle"] = {"rgbColor": color_dict}
+         return response
+ 
+     def clear_tab_color(self) -> JSONResponse:
+@@ -1685,8 +1790,11 @@ class Worksheet:
+                 },
+             ],
+         }
+-        response = self.client.batch_update(self.spreadsheet_id, body)
+-        self._properties.pop("tabColorStyle")
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            response = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            response = self.client.batch_update(self.spreadsheet_id, body)
++            self._properties.pop("tabColorStyle")
+         return response
+ 
+     def update_index(self, index: int) -> JSONResponse:
+@@ -1712,8 +1820,11 @@ class Worksheet:
+             ]
+         }
+ 
+-        res = self.client.batch_update(self.spreadsheet_id, body)
+-        self._properties["index"] = index
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            res = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            res = self.client.batch_update(self.spreadsheet_id, body)
++            self._properties["index"] = index
+         return res
+ 
+     def _auto_resize(
+@@ -1893,11 +2004,17 @@ class Worksheet:
+ 
+         body = {"values": values}
+ 
+-        res = self.client.values_append(
+-            self.spreadsheet_id, range_label, params, body, default_serializer
+-        )
+-        num_new_rows = len(values)
+-        self._properties["gridProperties"]["rowCount"] += num_new_rows
++        if getattr(self.client.values_append, "__func__", None) is HTTPClient.values_append:
++            res = self.client.values_append(
++                self.spreadsheet_id, range_label, params, body, default_serializer,
++                _worksheet=self,
++            )
++        else:
++            res = self.client.values_append(
++                self.spreadsheet_id, range_label, params, body, default_serializer
++            )
++            num_new_rows = len(values)
++            self._properties["gridProperties"]["rowCount"] += num_new_rows
+         return res
+ 
+     def insert_row(
+@@ -2006,9 +2123,14 @@ class Worksheet:
+ 
+         body = {"majorDimension": Dimension.rows, "values": values}
+ 
+-        res = self.client.values_append(self.spreadsheet_id, range_label, params, body)
+-        num_new_rows = len(values)
+-        self._properties["gridProperties"]["rowCount"] += num_new_rows
++        if getattr(self.client.values_append, "__func__", None) is HTTPClient.values_append:
++            res = self.client.values_append(
++                self.spreadsheet_id, range_label, params, body, _worksheet=self,
++            )
++        else:
++            res = self.client.values_append(self.spreadsheet_id, range_label, params, body)
++            num_new_rows = len(values)
++            self._properties["gridProperties"]["rowCount"] += num_new_rows
+         return res
+ 
+     def insert_cols(
+@@ -2071,9 +2193,14 @@ class Worksheet:
+ 
+         body = {"majorDimension": Dimension.cols, "values": values}
+ 
+-        res = self.client.values_append(self.spreadsheet_id, range_label, params, body)
+-        num_new_cols = len(values)
+-        self._properties["gridProperties"]["columnCount"] += num_new_cols
++        if getattr(self.client.values_append, "__func__", None) is HTTPClient.values_append:
++            res = self.client.values_append(
++                self.spreadsheet_id, range_label, params, body, _worksheet=self,
++            )
++        else:
++            res = self.client.values_append(self.spreadsheet_id, range_label, params, body)
++            num_new_cols = len(values)
++            self._properties["gridProperties"]["columnCount"] += num_new_cols
+         return res
+ 
+     @cast_to_a1_notation
+@@ -2199,14 +2326,17 @@ class Worksheet:
+             ]
+         }
+ 
+-        res = self.client.batch_update(self.spreadsheet_id, body)
+-        if end_index is None:
+-            end_index = start_index
+-        num_deleted = end_index - start_index + 1
+-        if dimension == Dimension.rows:
+-            self._properties["gridProperties"]["rowCount"] -= num_deleted
+-        elif dimension == Dimension.cols:
+-            self._properties["gridProperties"]["columnCount"] -= num_deleted
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            res = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            res = self.client.batch_update(self.spreadsheet_id, body)
++            if end_index is None:
++                end_index = start_index
++            num_deleted = end_index - start_index + 1
++            if dimension == Dimension.rows:
++                self._properties["gridProperties"]["rowCount"] -= num_deleted
++            elif dimension == Dimension.cols:
++                self._properties["gridProperties"]["columnCount"] -= num_deleted
+         return res
+ 
+     def delete_rows(
+@@ -2299,12 +2429,15 @@ class Worksheet:
+             ]
+         }
+ 
+-        res = self.client.batch_update(self.spreadsheet_id, body)
+-        num_deleted = sum(end - start + 1 for start, end in sorted_blocks)
+-        if dimension == Dimension.rows:
+-            self._properties["gridProperties"]["rowCount"] -= num_deleted
+-        elif dimension == Dimension.cols:
+-            self._properties["gridProperties"]["columnCount"] -= num_deleted
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            res = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            res = self.client.batch_update(self.spreadsheet_id, body)
++            num_deleted = sum(end - start + 1 for start, end in sorted_blocks)
++            if dimension == Dimension.rows:
++                self._properties["gridProperties"]["rowCount"] -= num_deleted
++            elif dimension == Dimension.cols:
++                self._properties["gridProperties"]["columnCount"] -= num_deleted
+         return res
+ 
+     @staticmethod
+@@ -2584,11 +2717,14 @@ class Worksheet:
+             ]
+         }
+ 
+-        res = self.client.batch_update(self.spreadsheet_id, body)
+-        if rows is not None:
+-            self._properties["gridProperties"]["frozenRowCount"] = rows
+-        if cols is not None:
+-            self._properties["gridProperties"]["frozenColumnCount"] = cols
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            res = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            res = self.client.batch_update(self.spreadsheet_id, body)
++            if rows is not None:
++                self._properties["gridProperties"]["frozenRowCount"] = rows
++            if cols is not None:
++                self._properties["gridProperties"]["frozenColumnCount"] = cols
+         return res
+ 
+     @cast_to_a1_notation
+@@ -3415,8 +3551,11 @@ class Worksheet:
+             ]
+         }
+ 
+-        res = self.client.batch_update(self.spreadsheet_id, body)
+-        self._properties["hidden"] = hidden
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            res = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            res = self.client.batch_update(self.spreadsheet_id, body)
++            self._properties["hidden"] = hidden
+         return res
+ 
+     def hide(self) -> JSONResponse:
+@@ -3446,8 +3585,11 @@ class Worksheet:
+             ]
+         }
+ 
+-        res = self.client.batch_update(self.spreadsheet_id, body)
+-        self._properties["gridProperties"]["hideGridlines"] = hidden
++        if getattr(self.client.batch_update, "__func__", None) is HTTPClient.batch_update:
++            res = self.client.batch_update(self.spreadsheet_id, body, _worksheet=self)
++        else:
++            res = self.client.batch_update(self.spreadsheet_id, body)
++            self._properties["gridProperties"]["hideGridlines"] = hidden
+         return res
+ 
+     def hide_gridlines(self) -> JSONResponse:

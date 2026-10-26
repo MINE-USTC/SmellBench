@@ -1,0 +1,5 @@
+Refactor the import and subscription update workflows to address Interface Segregation. Clients that parse proxy text, import rules, read files, fetch subscriptions, persist subscription updates, or enrich country metadata currently depend on the same broad context contract. Give these clients appropriately scoped capabilities while retaining the behavior of the public importer and subscription updater entry points.
+
+The broad import context reaches file decoding, proxy-text and rule parsing, subscription fetching, persistence, notification and country enrichment. Give each client the operations it needs while retaining the distinct success/failure and authorization paths of local and remote inputs.
+
+Preserve format and encoding defaults, error and completion behavior, request authorization and proxy routing, persistence and notification ordering, and asynchronous country lookup behavior. Keep existing tests and configuration unchanged. Shared implementation is permitted where appropriate; no particular class layout or interface count is required.

@@ -1,0 +1,902 @@
+diff --git a/questionary/_prompt_service.py b/questionary/_prompt_service.py
+new file mode 100644
+index 0000000..4596381
+--- /dev/null
++++ b/questionary/_prompt_service.py
+@@ -0,0 +1,216 @@
++import inspect
++from contextlib import nullcontext
++
++import prompt_toolkit.patch_stdout
++import prompt_toolkit.styles
++from prompt_toolkit.document import Document
++from prompt_toolkit.validation import ValidationError, Validator
++
++from questionary import utils
++from questionary.constants import DEFAULT_STYLE, INVALID_INPUT
++
++
++class PromptService:
++    def __init__(self, application=None, session_factory=None):
++        self.application = application
++        self.session_factory = session_factory
++        self.input_defaults = None
++        self.control = None
++        self.validation = None
++        self.answer_target = None
++        self.answer_name = None
++        self.answer_filter = None
++
++    def prepare_input(self, styles):
++        self.input_defaults = {"style": self.style(styles)}
++
++    def prepare_validation(self, validate):
++        self.input_defaults["validator"] = self.validator(validate)
++
++    def prepare_selection(self, control, validate=None):
++        self.control = control
++        self.validation = validate
++
++    def question(self, application):
++        from questionary.question import Question
++
++        question = Question(application)
++        self.application = application
++        question._service = self
++        return question
++
++    def build_application(self, factory, layout, bindings, styles, options):
++        return factory(layout=layout, key_bindings=bindings, style=styles,
++                       **utils.used_kwargs(options, factory.__init__))
++
++    def selection_validation(self, selected_values):
++        from prompt_toolkit.formatted_text import FormattedText
++
++        control = self.control
++        verdict = self.validation(selected_values)
++        valid = verdict is True
++        if not valid:
++            error_text = self.error_text(verdict, stringify=True)
++            error_message = FormattedText([("class:validation-toolbar", error_text)])
++        control.error_message = (
++            error_message if not valid and control.submission_attempted else None
++        )
++        return valid
++
++    def move(self, direction, cycle=True):
++        control = self.control
++        if direction > 0:
++            control.select_next()
++            if not cycle and control.get_pointed_at() == control.choices[0]:
++                control.select_previous()
++                return
++            while not control.is_selection_valid():
++                control.select_next()
++        else:
++            control.select_previous()
++            if not cycle and control.get_pointed_at() == control.choices[-1]:
++                control.select_next()
++                return
++            while not control.is_selection_valid():
++                control.select_previous()
++
++    def configure(self, question_config, answers, true_color, defaults, error):
++        from prompt_toolkit.output import ColorDepth
++
++        question_config = dict(question_config)
++        if "type" not in question_config:
++            raise error("type")
++        if "name" not in question_config and question_config["type"] != "print":
++            raise error("name")
++        options = defaults.copy()
++        options.update(question_config)
++        kind = options.pop("type")
++        answer_filter = options.pop("filter", None)
++        name = options.pop("name", None) if kind == "print" else options.pop("name")
++        when = options.pop("when", None)
++        if true_color:
++            options["color_depth"] = ColorDepth.TRUE_COLOR
++        if when:
++            if callable(question_config["when"]):
++                try:
++                    if not question_config["when"](answers):
++                        return None
++                except Exception as exception:
++                    raise ValueError(
++                        f"Problem in 'when' check of {name} question: {exception}"
++                    ) from exception
++            else:
++                raise ValueError("'when' needs to be function that accepts a dict argument")
++        return question_config, options, kind, name, answer_filter
++
++    def choices(self, question_config, answers, options):
++        choices = question_config.get("choices")
++        if choices is not None and callable(choices):
++            calculated = choices(answers)
++            question_config["choices"] = calculated
++            options["choices"] = calculated
++
++    def default(self, question_config, answers, options):
++        if callable(question_config.get("default")):
++            options["default"] = question_config["default"](answers)
++
++    def answer(self, value, name=None, answer_filter=None, answers=None, allow_none=False):
++        if answers is None:
++            answers = self.answer_target
++            name = self.answer_name
++            answer_filter = self.answer_filter
++        if value is not None or allow_none:
++            if value is not None and answer_filter:
++                try:
++                    value = answer_filter(value)
++                except Exception as exception:
++                    raise ValueError(
++                        f"Problem processing 'filter' of {name} question: {exception}"
++                    ) from exception
++            answers[name] = value
++
++    def error_text(self, verdict, stringify=False):
++        if verdict is False:
++            return INVALID_INPUT
++        return str(verdict) if stringify else verdict
++
++    def style(self, styles):
++        filtered = [DEFAULT_STYLE]
++        filtered.extend(s for s in styles if s is not None)
++        return prompt_toolkit.styles.merge_styles(filtered)
++
++    def validator(self, validate):
++        if validate:
++            if inspect.isclass(validate) and issubclass(validate, Validator):
++                return validate()
++            if isinstance(validate, Validator):
++                return validate
++            if callable(validate):
++                service = self
++                class InputValidator(Validator):
++                    def validate(self, document):
++                        verdict = validate(document.text)
++                        if verdict is not True:
++                            raise ValidationError(
++                                message=service.error_text(verdict),
++                                cursor_position=len(document.text)
++                            )
++                return InputValidator()
++        return None
++
++    def session(self, *args, **kwargs):
++        defaults = self.input_defaults
++        if defaults is not None:
++            for key, value in defaults.items():
++                if key in kwargs:
++                    raise TypeError(f"got multiple values for keyword argument '{key}'")
++                kwargs[key] = value
++        session = self.session_factory(*args, **kwargs)
++        return session
++
++    def seed(self, session, value):
++        session.default_buffer.reset(Document(value))
++
++    def print_text(self, text, style, options):
++        from prompt_toolkit import print_formatted_text
++        from prompt_toolkit.formatted_text import FormattedText
++        from prompt_toolkit.styles import Style
++
++        text_style = Style([("text", style)]) if style is not None else DEFAULT_STYLE
++        print_formatted_text(FormattedText([("class:text", text)]),
++                             style=text_style, **options)
++
++    def run(self, question, patch_stdout):
++        if question.should_skip_question:
++            return question.default
++        context = (prompt_toolkit.patch_stdout.patch_stdout()
++                   if patch_stdout else nullcontext())
++        with context:
++            return question.application.run()
++
++    async def run_async(self, question, patch_stdout):
++        if question.should_skip_question:
++            return question.default
++        if not utils.ACTIVATED_ASYNC_MODE:
++            await utils.activate_prompt_toolkit_async_mode()
++        context = (prompt_toolkit.patch_stdout.patch_stdout()
++                   if patch_stdout else nullcontext())
++        with context:
++            result = question.application.run_async()
++        if utils.is_prompt_toolkit_3():
++            return await result
++        return await result.to_asyncio_future()
++
++    def fields(self, fields, patch_stdout):
++        answers = {}
++        for field in fields:
++            value = field.question.unsafe_ask(patch_stdout)
++            self.answer(value, field.key, None, answers, allow_none=True)
++        return answers
++
++    async def fields_async(self, fields, patch_stdout):
++        answers = {}
++        for field in fields:
++            value = await field.question.unsafe_ask_async(patch_stdout)
++            self.answer(value, field.key, None, answers, allow_none=True)
++        return answers
+diff --git a/questionary/form.py b/questionary/form.py
+index 17d1307..9b4d931 100644
+--- a/questionary/form.py
++++ b/questionary/form.py
+@@ -4,6 +4,7 @@ from typing import NamedTuple
+ from typing import Sequence
+ 
+ from questionary.constants import DEFAULT_KBI_MESSAGE
++from questionary._prompt_service import PromptService
+ from questionary.question import Question
+ 
+ 
+@@ -44,6 +45,7 @@ class Form:
+ 
+     def __init__(self, *form_fields: FormField) -> None:
+         self.form_fields = form_fields
++        self._service = PromptService()
+ 
+     def unsafe_ask(self, patch_stdout: bool = False) -> Dict[str, Any]:
+         """Ask the questions synchronously and return user response.
+@@ -57,7 +59,7 @@ class Form:
+         Returns:
+             The answers from the form.
+         """
+-        return {f.key: f.question.unsafe_ask(patch_stdout) for f in self.form_fields}
++        return self._service.fields(self.form_fields, patch_stdout)
+ 
+     async def unsafe_ask_async(self, patch_stdout: bool = False) -> Dict[str, Any]:
+         """Ask the questions using asyncio and return user response.
+@@ -71,10 +73,7 @@ class Form:
+         Returns:
+             The answers from the form.
+         """
+-        return {
+-            f.key: await f.question.unsafe_ask_async(patch_stdout)
+-            for f in self.form_fields
+-        }
++        return await self._service.fields_async(self.form_fields, patch_stdout)
+ 
+     def ask(
+         self, patch_stdout: bool = False, kbi_msg: str = DEFAULT_KBI_MESSAGE
+diff --git a/questionary/prompt.py b/questionary/prompt.py
+index 561ce7f..82a4c35 100644
+--- a/questionary/prompt.py
++++ b/questionary/prompt.py
+@@ -9,6 +9,7 @@ from typing import Union
+ from prompt_toolkit.output import ColorDepth
+ 
+ from questionary import utils
++from questionary._prompt_service import PromptService
+ from questionary.constants import DEFAULT_KBI_MESSAGE
+ from questionary.prompts import AVAILABLE_PROMPTS
+ from questionary.prompts import prompt_by_name
+@@ -41,37 +42,13 @@ def parse_question_config(
+     Returns:
+         A question to be asked and a callable to handle the answer
+     """
+-    question_config = dict(question_config)
+-    # import the question
+-    if "type" not in question_config:
+-        raise PromptParameterException("type")
+-    # every type except 'print' needs a name
+-    if "name" not in question_config and question_config["type"] != "print":
+-        raise PromptParameterException("name")
+-
+-    _kwargs = kwargs.copy()
+-    _kwargs.update(question_config)
+-
+-    _type = _kwargs.pop("type")
+-    _filter = _kwargs.pop("filter", None)
+-    name = _kwargs.pop("name", None) if _type == "print" else _kwargs.pop("name")
+-    when = _kwargs.pop("when", None)
+-
+-    if true_color:
+-        _kwargs["color_depth"] = ColorDepth.TRUE_COLOR
+-
+-    if when:
+-        # at least a little sanity check!
+-        if callable(question_config["when"]):
+-            try:
+-                if not question_config["when"](answers):
+-                    return None
+-            except Exception as exception:
+-                raise ValueError(
+-                    f"Problem in 'when' check of " f"{name} question: {exception}"
+-                ) from exception
+-        else:
+-            raise ValueError("'when' needs to be function that accepts a dict argument")
++    service = PromptService()
++    configured = service.configure(
++        question_config, answers, true_color, kwargs, PromptParameterException
++    )
++    if configured is None:
++        return None
++    question_config, _kwargs, _type, name, _filter = configured
+ 
+     # handle 'print' type
+     if _type == "print":
+@@ -89,19 +66,14 @@ def parse_question_config(
+             answers[name] = None
+         return None
+ 
+-    choices = question_config.get("choices")
+-    if choices is not None and callable(choices):
+-        calculated_choices = choices(answers)
+-        question_config["choices"] = calculated_choices
+-        _kwargs["choices"] = calculated_choices
++    service.choices(question_config, answers, _kwargs)
+ 
+     if _filter:
+         # at least a little sanity check!
+         if not callable(_filter):
+             raise ValueError("'filter' needs to be function that accepts an argument")
+ 
+-    if callable(question_config.get("default")):
+-        _kwargs["default"] = question_config["default"](answers)
++    service.default(question_config, answers, _kwargs)
+ 
+     create_question_func = prompt_by_name(_type)
+ 
+@@ -116,18 +88,12 @@ def parse_question_config(
+         raise PromptParameterException(missing_args[0])
+ 
+     question = create_question_func(**_kwargs)
++    service.answer_target = answers
++    service.answer_name = name
++    service.answer_filter = _filter
+ 
+     def on_answer(answer):
+-        if answer is not None:
+-            if _filter:
+-                try:
+-                    answer = _filter(answer)
+-                except Exception as exception:
+-                    raise ValueError(
+-                        f"Problem processing 'filter' of {name} "
+-                        f"question: {exception}"
+-                    ) from exception
+-            answers[name] = answer
++        service.answer(answer)
+ 
+     return question, on_answer
+ 
+diff --git a/questionary/prompts/autocomplete.py b/questionary/prompts/autocomplete.py
+index 9a29756..2f98646 100644
+--- a/questionary/prompts/autocomplete.py
++++ b/questionary/prompts/autocomplete.py
+@@ -21,6 +21,7 @@ from questionary.constants import DEFAULT_QUESTION_PREFIX
+ from questionary.prompts.common import build_validator
+ from questionary.question import Question
+ from questionary.styles import merge_styles_default
++from questionary._prompt_service import PromptService
+ 
+ 
+ class WordCompleter(Completer):
+@@ -175,7 +176,8 @@ def autocomplete(
+     Returns:
+         :class:`Question`: Question instance, ready to be prompted (using ``.ask()``).
+     """
+-    merged_style = merge_styles_default([style])
++    service = PromptService(session_factory=PromptSession)
++    service.prepare_input([style])
+ 
+     def get_prompt_tokens() -> List[Tuple[str, str]]:
+         return [("class:qmark", qmark), ("class:question", " {} ".format(message))]
+@@ -187,7 +189,7 @@ def autocomplete(
+ 
+         return meta
+ 
+-    validator = build_validator(validate)
++    service.prepare_validation(validate)
+ 
+     if completer is None:
+         if not choices:
+@@ -200,15 +202,12 @@ def autocomplete(
+             match_middle=match_middle,
+         )
+ 
+-    p: PromptSession = PromptSession(
++    p: PromptSession = service.session(
+         get_prompt_tokens,
+         lexer=SimpleLexer("class:answer"),
+-        style=merged_style,
+         completer=completer,
+-        validator=validator,
+         complete_style=complete_style,
+         **kwargs,
+     )
+-    p.default_buffer.reset(Document(default))
+-
+-    return Question(p.app)
++    service.seed(p, default)
++    return service.question(p.app)
+diff --git a/questionary/prompts/checkbox.py b/questionary/prompts/checkbox.py
+index ffb4996..1ef4683 100644
+--- a/questionary/prompts/checkbox.py
++++ b/questionary/prompts/checkbox.py
+@@ -24,6 +24,7 @@ from questionary.prompts.common import InquirerControl
+ from questionary.prompts.common import Separator
+ from questionary.question import Question
+ from questionary.styles import merge_styles_default
++from questionary._prompt_service import PromptService
+ 
+ 
+ def checkbox(
+@@ -145,7 +146,8 @@ def checkbox(
+             "Cannot use j/k keys with prefix filter search, since j/k can be part of the prefix."
+         )
+ 
+-    merged_style = merge_styles_default(
++    service = PromptService()
++    merged_style = service.style(
+         [
+             # Disable the default inverted colours bottom-toolbar behaviour (for
+             # the error message). However it can be re-enabled with a custom
+@@ -166,6 +168,7 @@ def checkbox(
+         show_description=show_description,
+         search_matcher=search_matcher,
+     )
++    service.prepare_selection(ic, validate)
+ 
+     def get_prompt_tokens() -> List[Tuple[str, str]]:
+         tokens = []
+@@ -217,24 +220,9 @@ def checkbox(
+         return [c.value for c in ic.get_selected_values()]
+ 
+     def perform_validation(selected_values: List[str]) -> bool:
+-        verdict = validate(selected_values)
+-        valid = verdict is True
++        return service.selection_validation(selected_values)
+ 
+-        if not valid:
+-            if verdict is False:
+-                error_text = INVALID_INPUT
+-            else:
+-                error_text = str(verdict)
+-
+-            error_message = FormattedText([("class:validation-toolbar", error_text)])
+-
+-        ic.error_message = (
+-            error_message if not valid and ic.submission_attempted else None  # type: ignore[assignment]
+-        )
+-
+-        return valid
+-
+-    layout = common.create_inquirer_layout(ic, get_prompt_tokens, **kwargs)
++    layout = common.create_inquirer_layout(ic, get_prompt_tokens, _service=service, **kwargs)
+ 
+     bindings = KeyBindings()
+ 
+@@ -284,30 +272,10 @@ def checkbox(
+         perform_validation(get_selected_values())
+ 
+     def move_cursor_down(event):
+-        # Stepping once
+-        ic.select_next()
+-
+-        # If wrap disabled and we wrapped back to the first element, undo it
+-        if not cycle_list and ic.get_pointed_at() == ic.choices[0]:
+-            ic.select_previous()
+-            return
+-
+-        # Skipping over any separators or disabled items
+-        while not ic.is_selection_valid():
+-            ic.select_next()
++        service.move(1, cycle_list)
+ 
+     def move_cursor_up(event):
+-        # Stepping once
+-        ic.select_previous()
+-
+-        # If wrap disabled and we wrapped back to the last element, undo it
+-        if not cycle_list and ic.get_pointed_at() == ic.choices[-1]:
+-            ic.select_next()
+-            return
+-
+-        # Skipping over any separators or disabled items
+-        while not ic.is_selection_valid():
+-            ic.select_previous()
++        service.move(-1, cycle_list)
+ 
+     if use_search_filter:
+ 
+@@ -345,11 +313,6 @@ def checkbox(
+     def other(_event):
+         """Disallow inserting other text."""
+ 
+-    return Question(
+-        Application(
+-            layout=layout,
+-            key_bindings=bindings,
+-            style=merged_style,
+-            **utils.used_kwargs(kwargs, Application.__init__),
+-        )
+-    )
++    return service.question(service.build_application(
++        Application, layout, bindings, merged_style, kwargs
++    ))
+diff --git a/questionary/prompts/common.py b/questionary/prompts/common.py
+index b564d80..cece9bd 100644
+--- a/questionary/prompts/common.py
++++ b/questionary/prompts/common.py
+@@ -29,6 +29,7 @@ from questionary.constants import DEFAULT_STYLE
+ from questionary.constants import INDICATOR_SELECTED
+ from questionary.constants import INDICATOR_UNSELECTED
+ from questionary.constants import INVALID_INPUT
++from questionary._prompt_service import PromptService
+ 
+ # This is a cut-down version of `prompt_toolkit.formatted_text.AnyFormattedText`
+ # which does not exist in v2 of prompt_toolkit
+@@ -583,25 +584,7 @@ class InquirerControl(FormattedTextControl):
+ 
+ 
+ def build_validator(validate: Any) -> Optional[Validator]:
+-    if validate:
+-        if inspect.isclass(validate) and issubclass(validate, Validator):
+-            return validate()
+-        elif isinstance(validate, Validator):
+-            return validate
+-        elif callable(validate):
+-
+-            class _InputValidator(Validator):
+-                def validate(self, document):
+-                    verdict = validate(document.text)
+-                    if verdict is not True:
+-                        if verdict is False:
+-                            verdict = INVALID_INPUT
+-                        raise ValidationError(
+-                            message=verdict, cursor_position=len(document.text)
+-                        )
+-
+-            return _InputValidator()
+-    return None
++    return PromptService().validator(validate)
+ 
+ 
+ def _fix_unecessary_blank_lines(ps: PromptSession) -> None:
+@@ -626,11 +609,14 @@ def _fix_unecessary_blank_lines(ps: PromptSession) -> None:
+ def create_inquirer_layout(
+     ic: InquirerControl,
+     get_prompt_tokens: Callable[[], List[Tuple[str, str]]],
++    _service=None,
+     **kwargs: Any,
+ ) -> Layout:
+     """Create a layout combining question and inquirer selection."""
+ 
+-    ps: PromptSession = PromptSession(
++    service = _service if _service is not None else PromptService()
++    service.session_factory = PromptSession
++    ps: PromptSession = service.session(
+         get_prompt_tokens, reserve_space_for_menu=0, **kwargs
+     )
+     _fix_unecessary_blank_lines(ps)
+@@ -639,7 +625,7 @@ def create_inquirer_layout(
+     def has_search_string():
+         return ic.get_search_string_tokens() is not None
+ 
+-    validation_prompt: PromptSession = PromptSession(
++    validation_prompt: PromptSession = service.session(
+         bottom_toolbar=lambda: ic.error_message, **kwargs
+     )
+ 
+@@ -683,12 +669,4 @@ def print_formatted_text(text: str, style: Optional[str] = None, **kwargs: Any)
+         style: Style used for printing. The style argument uses the
+             prompt :ref:`toolkit style strings <prompt_toolkit:styling>`.
+     """
+-    from prompt_toolkit import print_formatted_text as pt_print
+-    from prompt_toolkit.formatted_text import FormattedText as FText
+-
+-    if style is not None:
+-        text_style = Style([("text", style)])
+-    else:
+-        text_style = DEFAULT_STYLE
+-
+-    pt_print(FText([("class:text", text)]), style=text_style, **kwargs)
++    PromptService().print_text(text, style, kwargs)
+diff --git a/questionary/prompts/confirm.py b/questionary/prompts/confirm.py
+index cbb5347..4d75735 100644
+--- a/questionary/prompts/confirm.py
++++ b/questionary/prompts/confirm.py
+@@ -14,6 +14,7 @@ from questionary.constants import YES
+ from questionary.constants import YES_OR_NO
+ from questionary.question import Question
+ from questionary.styles import merge_styles_default
++from questionary._prompt_service import PromptService
+ 
+ 
+ def confirm(
+@@ -64,7 +65,8 @@ def confirm(
+     Returns:
+         :class:`Question`: Question instance, ready to be prompted (using `.ask()`).
+     """
+-    merged_style = merge_styles_default([style])
++    service = PromptService(session_factory=PromptSession)
++    merged_style = service.style([style])
+ 
+     status = {"answer": None, "complete": False}
+ 
+@@ -126,8 +128,8 @@ def confirm(
+     def other(event):
+         """Disallow inserting other text."""
+ 
+-    return Question(
+-        PromptSession(
++    return service.question(
++        service.session(
+             get_prompt_tokens, key_bindings=bindings, style=merged_style, **kwargs
+         ).app
+     )
+diff --git a/questionary/prompts/path.py b/questionary/prompts/path.py
+index c185423..305b1dd 100644
+--- a/questionary/prompts/path.py
++++ b/questionary/prompts/path.py
+@@ -24,6 +24,7 @@ from questionary.constants import DEFAULT_QUESTION_PREFIX
+ from questionary.prompts.common import build_validator
+ from questionary.question import Question
+ from questionary.styles import merge_styles_default
++from questionary._prompt_service import PromptService
+ 
+ 
+ class GreatUXPathCompleter(PathCompleter):
+@@ -192,12 +193,13 @@ def path(
+     Returns:
+         :class:`Question`: Question instance, ready to be prompted (using ``.ask()``).
+     """  # noqa: W505, E501
+-    merged_style = merge_styles_default([style])
++    service = PromptService(session_factory=PromptSession)
++    service.prepare_input([style])
+ 
+     def get_prompt_tokens() -> List[Tuple[str, str]]:
+         return [("class:qmark", qmark), ("class:question", " {} ".format(message))]
+ 
+-    validator = build_validator(validate)
++    service.prepare_validation(validate)
+ 
+     completer = completer or GreatUXPathCompleter(
+         get_paths=get_paths,
+@@ -235,16 +237,13 @@ def path(
+ 
+         b.start_completion(select_first=False)
+ 
+-    p: PromptSession = PromptSession(
++    p: PromptSession = service.session(
+         get_prompt_tokens,
+         lexer=SimpleLexer("class:answer"),
+-        style=merged_style,
+         completer=completer,
+-        validator=validator,
+         complete_style=complete_style,
+         key_bindings=bindings,
+         **kwargs,
+     )
+-    p.default_buffer.reset(Document(str(default)))
+-
+-    return Question(p.app)
++    service.seed(p, str(default))
++    return service.question(p.app)
+diff --git a/questionary/prompts/press_any_key_to_continue.py b/questionary/prompts/press_any_key_to_continue.py
+index 4735340..65c3231 100644
+--- a/questionary/prompts/press_any_key_to_continue.py
++++ b/questionary/prompts/press_any_key_to_continue.py
+@@ -9,6 +9,7 @@ from prompt_toolkit.styles import Style
+ 
+ from questionary.question import Question
+ from questionary.styles import merge_styles_default
++from questionary._prompt_service import PromptService
+ 
+ 
+ def press_any_key_to_continue(
+@@ -33,7 +34,8 @@ def press_any_key_to_continue(
+     Returns:
+         :class:`Question`: Question instance, ready to be prompted (using ``.ask()``).
+     """
+-    merged_style = merge_styles_default([style])
++    service = PromptService(session_factory=PromptSession)
++    merged_style = service.style([style])
+ 
+     if message is None:
+         message = "Press any key to continue..."
+@@ -54,8 +56,8 @@ def press_any_key_to_continue(
+     def any_key(event):
+         exit_with_result(event)
+ 
+-    return Question(
+-        PromptSession(
++    return service.question(
++        service.session(
+             get_prompt_tokens, key_bindings=bindings, style=merged_style, **kwargs
+         ).app
+     )
+diff --git a/questionary/prompts/select.py b/questionary/prompts/select.py
+index 4b6134b..7028869 100644
+--- a/questionary/prompts/select.py
++++ b/questionary/prompts/select.py
+@@ -22,6 +22,7 @@ from questionary.prompts.common import InquirerControl
+ from questionary.prompts.common import Separator
+ from questionary.question import Question
+ from questionary.styles import merge_styles_default
++from questionary._prompt_service import PromptService
+ 
+ 
+ def select(
+@@ -167,7 +168,8 @@ def select(
+                 "".format(len(InquirerControl.SHORTCUT_KEYS), real_len_of_choices)
+             )
+ 
+-    merged_style = merge_styles_default([style])
++    service = PromptService()
++    merged_style = service.style([style])
+ 
+     ic = InquirerControl(
+         choices,
+@@ -180,6 +182,7 @@ def select(
+         initial_choice=default,
+         search_matcher=search_matcher,
+     )
++    service.prepare_selection(ic)
+ 
+     def get_prompt_tokens():
+         # noinspection PyListCreation
+@@ -209,7 +212,7 @@ def select(
+ 
+         return tokens
+ 
+-    layout = common.create_inquirer_layout(ic, get_prompt_tokens, **kwargs)
++    layout = common.create_inquirer_layout(ic, get_prompt_tokens, _service=service, **kwargs)
+ 
+     bindings = KeyBindings()
+ 
+@@ -241,14 +244,10 @@ def select(
+             _reg_binding(i, c.shortcut_key)
+ 
+     def move_cursor_down(event):
+-        ic.select_next()
+-        while not ic.is_selection_valid():
+-            ic.select_next()
++        service.move(1)
+ 
+     def move_cursor_up(event):
+-        ic.select_previous()
+-        while not ic.is_selection_valid():
+-            ic.select_previous()
++        service.move(-1)
+ 
+     if use_search_filter:
+ 
+@@ -280,11 +279,6 @@ def select(
+     def other(event):
+         """Disallow inserting other text."""
+ 
+-    return Question(
+-        Application(
+-            layout=layout,
+-            key_bindings=bindings,
+-            style=merged_style,
+-            **utils.used_kwargs(kwargs, Application.__init__),
+-        )
+-    )
++    return service.question(service.build_application(
++        Application, layout, bindings, merged_style, kwargs
++    ))
+diff --git a/questionary/prompts/text.py b/questionary/prompts/text.py
+index 0345205..e4abaf3 100644
+--- a/questionary/prompts/text.py
++++ b/questionary/prompts/text.py
+@@ -14,6 +14,7 @@ from questionary.constants import INSTRUCTION_MULTILINE
+ from questionary.prompts.common import build_validator
+ from questionary.question import Question
+ from questionary.styles import merge_styles_default
++from questionary._prompt_service import PromptService
+ 
+ 
+ def text(
+@@ -75,9 +76,10 @@ def text(
+     Returns:
+         :class:`Question`: Question instance, ready to be prompted (using ``.ask()``).
+     """
+-    merged_style = merge_styles_default([style])
++    service = PromptService(session_factory=PromptSession)
++    service.prepare_input([style])
+     lexer = lexer or SimpleLexer("class:answer")
+-    validator = build_validator(validate)
++    service.prepare_validation(validate)
+ 
+     if instruction is None and multiline:
+         instruction = INSTRUCTION_MULTILINE
+@@ -88,14 +90,11 @@ def text(
+             result.append(("class:instruction", " {} ".format(instruction)))
+         return result
+ 
+-    p: PromptSession = PromptSession(
++    p: PromptSession = service.session(
+         get_prompt_tokens,
+-        style=merged_style,
+-        validator=validator,
+         lexer=lexer,
+         multiline=multiline,
+         **kwargs,
+     )
+-    p.default_buffer.reset(Document(default))
+-
+-    return Question(p.app)
++    service.seed(p, default)
++    return service.question(p.app)
+diff --git a/questionary/question.py b/questionary/question.py
+index 978ec8c..8dbb87c 100644
+--- a/questionary/question.py
++++ b/questionary/question.py
+@@ -5,6 +5,7 @@ import prompt_toolkit.patch_stdout
+ from prompt_toolkit import Application
+ 
+ from questionary import utils
++from questionary._prompt_service import PromptService
+ from questionary.constants import DEFAULT_KBI_MESSAGE
+ 
+ 
+@@ -22,6 +23,7 @@ class Question:
+         self.application = application
+         self.should_skip_question = False
+         self.default = None
++        self._service = PromptService(application=application)
+ 
+     async def ask_async(
+         self, patch_stdout: bool = False, kbi_msg: str = DEFAULT_KBI_MESSAGE
+@@ -79,14 +81,7 @@ class Question:
+             `Any`: The answer from the question.
+         """
+ 
+-        if self.should_skip_question:
+-            return self.default
+-
+-        if patch_stdout:
+-            with prompt_toolkit.patch_stdout.patch_stdout():
+-                return self.application.run()
+-        else:
+-            return self.application.run()
++        return self._service.run(self, patch_stdout)
+ 
+     def skip_if(self, condition: bool, default: Any = None) -> "Question":
+         """Skip the question if flag is set and return the default instead.
+@@ -116,19 +111,4 @@ class Question:
+             `Any`: The answer from the question.
+         """
+ 
+-        if self.should_skip_question:
+-            return self.default
+-
+-        if not utils.ACTIVATED_ASYNC_MODE:
+-            await utils.activate_prompt_toolkit_async_mode()
+-
+-        if patch_stdout:
+-            with prompt_toolkit.patch_stdout.patch_stdout():
+-                r = self.application.run_async()
+-        else:
+-            r = self.application.run_async()
+-
+-        if utils.is_prompt_toolkit_3():
+-            return await r
+-        else:
+-            return await r.to_asyncio_future()  # type: ignore[attr-defined]
++        return await self._service.run_async(self, patch_stdout)
+diff --git a/questionary/styles.py b/questionary/styles.py
+index 4e27569..721517a 100644
+--- a/questionary/styles.py
++++ b/questionary/styles.py
+@@ -4,12 +4,9 @@ from typing import Optional
+ import prompt_toolkit.styles
+ 
+ from questionary.constants import DEFAULT_STYLE
++from questionary._prompt_service import PromptService
+ 
+ 
+ def merge_styles_default(styles: List[Optional[prompt_toolkit.styles.Style]]):
+     """Merge a list of styles with the Questionary default style."""
+-    filtered_styles: list[prompt_toolkit.styles.BaseStyle] = [DEFAULT_STYLE]
+-    # prompt_toolkit's merge_styles works with ``None`` elements, but it's
+-    # type-hints says it doesn't.
+-    filtered_styles.extend([s for s in styles if s is not None])
+-    return prompt_toolkit.styles.merge_styles(filtered_styles)
++    return PromptService().style(styles)

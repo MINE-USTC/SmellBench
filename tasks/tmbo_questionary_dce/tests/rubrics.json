@@ -1,0 +1,224 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "tmbo_questionary_dce",
+  "rubric_status": "limited",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "dce_01",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The interaction stage adds an inherited choice builder while the only factory creates the overriding subclass.",
+      "baseline_defect": "ChoicePreparation.build duplicates choice conversion but build_choices always returns PromptChoices, whose build overrides it; iteration dispatch never reaches the base implementation.",
+      "criterion": "Remove the unreachable choice conversion implementation while keeping the live Choice.build conversion path and choice iteration coherent.",
+      "acceptance": "The supported choice inputs still flow through the effective builder and selection callback; no duplicate, undispatched conversion body remains in the preparation hierarchy. Final factory returns PromptChoices (retry report calls it CanonicalChoices); inherited __init__/__iter__ and pointer/selected callback storage stay live, only undispatched base build is obsolete. Keep Choice.build dispatch and callback-before-consumer commit timing. An equivalent redesign that removes the obsolete path and preserves behavior qualifies; the present producer arrangement need not be retained verbatim. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming the base method or moving its identical body to another unused class leaves the dead conversion in place."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "questionary/prompts/_choice_stream.py",
+          "symbol": "ChoicePreparation.build,PromptChoices.build,build_choices",
+          "detail": null,
+          "raw": "interaction_delta.diff:questionary/prompts/_choice_stream.py:ChoicePreparation.build,PromptChoices.build,build_choices"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/common.py",
+          "symbol": "InquirerControl._init_choices",
+          "detail": null,
+          "raw": "environment/smell.diff:questionary/prompts/common.py:InquirerControl._init_choices"
+        }
+      ]
+    },
+    {
+      "id": "dce_02",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The new matcher stream filters failures before handing matches to autocomplete.",
+      "baseline_defect": "matching_choices yields only indices other than -1, so WordCompleter's old index == -1 branch is unreachable after the handoff.",
+      "criterion": "Keep the autocomplete consumer aligned with the match stream by removing its unreachable no-match guard.",
+      "acceptance": "matching_choices performs the no-match filtering and WordCompleter processes each emitted match without a second impossible rejection. Custom matcher still runs once per choice and matching results retain index, metadata, display/highlight and ignore-case behavior. An equivalent redesign that removes the obsolete path and preserves behavior qualifies; the present producer arrangement need not be retained verbatim. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Keeping the index == -1 branch with a different spelling or a wrapper does not remove the dead consumer path."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "questionary/prompts/_completion.py",
+          "symbol": "matching_choices",
+          "detail": null,
+          "raw": "expanded.diff:questionary/prompts/_completion.py:matching_choices"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/autocomplete.py",
+          "symbol": "WordCompleter.get_completions",
+          "detail": null,
+          "raw": "environment/smell.diff:questionary/prompts/autocomplete.py:WordCompleter.get_completions"
+        }
+      ]
+    },
+    {
+      "id": "dce_03",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Input verdict normalization moves the literal-False conversion before the input validator receives it.",
+      "baseline_defect": "input_verdict converts False to INVALID_INPUT, making build_validator's remaining verdict is False fallback unreachable.",
+      "criterion": "Remove the unreachable False fallback in the input validator while retaining its live rejection and error-message path.",
+      "acceptance": "The input validator consumes the normalized verdict directly, raises for non-True results, and contains no second literal-False conversion. Only literal False is normalized: True alone succeeds, 0/None/strings retain existing invalid handling and error cursor/message. Custom Validator instances/classes remain live. An equivalent redesign that removes the obsolete path and preserves behavior qualifies; the present producer arrangement need not be retained verbatim. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting input_verdict and restoring the old fallback merely relocates the injected duplication without resolving the shared boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "questionary/prompts/_validation.py",
+          "symbol": "input_verdict",
+          "detail": null,
+          "raw": "expanded.diff:questionary/prompts/_validation.py:input_verdict"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/common.py",
+          "symbol": "build_validator._InputValidator.validate",
+          "detail": null,
+          "raw": "environment/smell.diff:questionary/prompts/common.py:build_validator._InputValidator.validate"
+        }
+      ]
+    },
+    {
+      "id": "dce_04",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Selection verdict normalization converts invalid values to display text before checkbox validation.",
+      "baseline_defect": "selection_verdict returns a string for every invalid verdict, so checkbox's verdict is False toolbar branch cannot run.",
+      "criterion": "Align checkbox's validation display with the normalized selection verdict by removing its unreachable False-specific branch.",
+      "acceptance": "The validator result flows through selection_verdict to the checkbox toolbar without a second impossible False test; submission-dependent display still uses the live invalid text. Keep callback once, True-only success and stringification before toolbar handling; submission_attempted still controls visibility, not validity. An equivalent redesign that removes the obsolete path and preserves behavior qualifies; the present producer arrangement need not be retained verbatim. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Leaving the False arm in a renamed conditional or bypassing selection_verdict without addressing the duplicate decision is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "questionary/prompts/_validation.py",
+          "symbol": "selection_verdict",
+          "detail": null,
+          "raw": "expanded.diff:questionary/prompts/_validation.py:selection_verdict"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "perform_validation",
+          "detail": null,
+          "raw": "environment/smell.diff:questionary/prompts/checkbox.py:perform_validation"
+        }
+      ]
+    },
+    {
+      "id": "dce_05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The new path submission helper consumes and clears completion state before the key handler runs.",
+      "baseline_defect": "When completion is active prepare_path_submission clears it and returns False, so the following set_answer branch checking complete_state is unreachable.",
+      "criterion": "Leave completion-state clearing at one effective submission boundary and remove the unreachable duplicate branch from the path key handler.",
+      "acceptance": "The handler returns after a completion dismissal and otherwise validates and submits through its live branch, without checking the already-cleared state again. Completion dismissal returns before validation; otherwise validate(set_cursor=True), remove one trailing separator, exit then append history. next_segment insertion/completion checks remain live. An equivalent redesign that removes the obsolete path and preserves behavior qualifies; the present producer arrangement need not be retained verbatim. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the old complete_state branch into another callback while retaining the helper's same early return preserves the dead path."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "questionary/prompts/_completion.py",
+          "symbol": "prepare_path_submission",
+          "detail": null,
+          "raw": "expanded.diff:questionary/prompts/_completion.py:prepare_path_submission"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/path.py",
+          "symbol": "set_answer",
+          "detail": null,
+          "raw": "environment/smell.diff:questionary/prompts/path.py:set_answer"
+        }
+      ]
+    },
+    {
+      "id": "dce_06",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The shortcut iterator now owns reachability checking for the existing use_arrow_keys variation.",
+      "baseline_defect": "shortcut_entries raises on a choice without a shortcut when arrow keys are disabled, so select's repeated missing-shortcut error branch never executes for an emitted entry.",
+      "criterion": "Keep the existing arrow-key versus shortcut-only reachability decision at one effective shortcut boundary and remove select's unreachable duplicate rejection.",
+      "acceptance": "Changing the existing use_arrow_keys mode is handled by one reachable choice check; select registers only emitted entries and has no repeated impossible error branch. Producer reachability error remains live when an enabled choice lacks a shortcut and arrows are disabled. No redundant downstream rejection after emission. An equivalent redesign that removes the obsolete path and preserves behavior qualifies; the present producer arrangement need not be retained verbatim. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A second guard in select with adjusted wording remains dead for every entry yielded by shortcut_entries."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "questionary/prompts/_choice_stream.py",
+          "symbol": "shortcut_entries",
+          "detail": null,
+          "raw": "expanded.diff:questionary/prompts/_choice_stream.py:shortcut_entries"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "select",
+          "detail": null,
+          "raw": "interaction_delta.diff:questionary/prompts/select.py:select"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "select",
+          "detail": null,
+          "raw": "environment/smell.diff:questionary/prompts/select.py:select"
+        }
+      ]
+    },
+    {
+      "id": "dce_07",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Index registration and shortcut iteration now filter separators, disabled choices, and missing keys before select receives entries.",
+      "baseline_defect": "index_shortcuts excludes separators, disabled choices, and absent keys; shortcut_entries yields only registered indices, making select's old skip branch unreachable.",
+      "criterion": "Have select consume the registered shortcut entries without a second impossible separator/disabled/missing-key skip branch.",
+      "acceptance": "The producer's index map and iterator supply only registrable choices, and select binds each emitted entry without repeating that filtering. Index built after shortcut allocation excludes Separator,disabled and None keys; emitted stored key is captured into per-index handler, not late-bound loop variables. No unsupported stateful-property or arbitrary monkeypatch assumption expands the proof. An equivalent redesign that removes the obsolete path and preserves behavior qualifies; the present producer arrangement need not be retained verbatim. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Retaining the skip predicate after a wrapper or renaming registered entries does not eliminate the dead selection path."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "questionary/prompts/_choice_stream.py",
+          "symbol": "index_shortcuts,shortcut_entries",
+          "detail": null,
+          "raw": "interaction_delta.diff:questionary/prompts/_choice_stream.py:index_shortcuts,shortcut_entries"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "questionary/prompts/common.py",
+          "symbol": "InquirerControl.__init__",
+          "detail": null,
+          "raw": "interaction_delta.diff:questionary/prompts/common.py:InquirerControl.__init__"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "select",
+          "detail": null,
+          "raw": "environment/smell.diff:questionary/prompts/select.py:select"
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "tmbo_questionary_dce",
+    "aggregation": "equal_weight_per_item",
+    "rubric_status": "limited",
+    "limited_reason": "The final injected patch supports seven distinct dead-code obligations. Further subdivisions would double-score the same dead predicate or reward generic cleanup."
+  }
+}

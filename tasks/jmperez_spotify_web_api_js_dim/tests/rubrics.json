@@ -1,0 +1,207 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "jmperez_spotify_web_api_js_dim",
+  "rubric_status": "limited",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "option_normalization",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "All three expansion rounds inline _checkParamsAndPerformRequest; stage2 removes its remaining nested scope.",
+      "baseline_defect": "Each endpoint repeats object/function callback-overload classification.",
+      "criterion": "Remove independent copies of the optional-argument classification policy.",
+      "acceptance": "Object options, including null, select requestCallback; function options become callback; other types leave callback null. Preserve public getUserPlaylists shifting and six dynamic this.search wrappers. Normalize before creating XHR; synchronous preparation errors must not become Promise rejections. Applies across all 80 actual request consumers, not merely one endpoint family. Public endpoint argument preparation may remain local; a generic executor with endpoint data is explicitly acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating endpoint-specific copies without removing independent maintenance is insufficient. No requirement to restore original private helpers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "getMe,getUserPlaylists",
+          "detail": "Each endpoint repeats object/function callback-overload classification.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "option_destination_merge",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 options flow crosses endpoint locals into body/query destination without requestData boundary.",
+      "baseline_defect": "Own-property copying, destination truthiness and writeback are repeated across request methods.",
+      "criterion": "Give existing body-versus-query merging a coherent implementation without endpoint-local copies.",
+      "acceptance": "Use body for nonGET truthy body except forced-query addTracksToPlaylist; otherwise params. Preserve target identity, mutation and writeback, own-property copy and before-XHR timing. transferMyPlayback mutates options with device_ids; play selects its four body fields and avoids general option pollution. Do not require a descriptor type. Applies across all 80 actual request consumers, not merely one endpoint family. Public endpoint argument preparation may remain local; a generic executor with endpoint data is explicitly acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating endpoint-specific copies without removing independent maintenance is insufficient. No requirement to restore original private helpers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "addTracksToPlaylist,transferMyPlayback,play",
+          "detail": "Own-property copying, destination truthiness and writeback are repeated across request methods.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "query_encoding",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 _buildUrl expansion enters request execution and preserves property-access order.",
+      "baseline_defect": "Each executor enumerates and encodes its query string.",
+      "criterion": "Remove independent copies of query serialization.",
+      "acceptance": "Own keys retain enumeration order, encode key then value, trailing separator removed and nonempty query appended with literal question mark. Capture req.open before encoding. getAudioFeaturesForTracks retains raw array until executor coercion, unlike joined catalog IDs; no eager serialization before custom defer. Applies across all 80 actual request consumers, not merely one endpoint family. Public endpoint argument preparation may remain local; a generic executor with endpoint data is explicitly acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating endpoint-specific copies without removing independent maintenance is insufficient. No requirement to restore original private helpers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "getGeneric,getAudioFeaturesForTracks,search",
+          "detail": "Each executor enumerates and encodes its query string.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "transport_setup",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 41, R2 25, R3 14 request consumers; stage2 specializes actual verbs.",
+      "baseline_defect": "Endpoint methods duplicate XHR allocation, open and bearer setup.",
+      "criterion": "Remove repeated transport setup while supporting existing GET/PUT/POST/DELETE calls.",
+      "acceptance": "Allocate XHR after preparation but before provider selection; open with correct verb/URL then current truthy token authorization then response handler. Keep endpoint URLs including slashes and encoded userId. Verbs may be data, dispatch or other equivalent flow, not necessarily a named request object. Applies across all 80 actual request consumers, not merely one endpoint family. Public endpoint argument preparation may remain local; a generic executor with endpoint data is explicitly acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating endpoint-specific copies without removing independent maintenance is insufficient. No requirement to restore original private helpers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "getGeneric,pause,removeFromMySavedAlbums",
+          "detail": "Endpoint methods duplicate XHR allocation, open and bearer setup.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "body_send_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 removes requestData and specializes GET, JPEG and deferred JSON sending.",
+      "baseline_defect": "Endpoint executors repeat payload encoding, Content-Type and send decisions.",
+      "criterion": "Consolidate maintenance of existing body/send policies across request consumers.",
+      "acceptance": "GET sends null; truthy nonGET body is serialized after open/auth/handler, with JSON header even if stringify returns undefined. Falsy body sends null without body header. JPEG strips only matching initial data prefix during endpoint preparation, then sends raw truthy payload with image/jpeg. Deferred provider can mutate body before serialization; do not freeze it eagerly. Applies across all 80 actual request consumers, not merely one endpoint family. Public endpoint argument preparation may remain local; a generic executor with endpoint data is explicitly acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating endpoint-specific copies without removing independent maintenance is insufficient. No requirement to restore original private helpers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "addToMySavedTracks,uploadCustomPlaylistCoverImage",
+          "detail": "Endpoint executors repeat payload encoding, Content-Type and send decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "response_decode",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion embeds ready-state and JSON parsing in every request handler.",
+      "baseline_defect": "Completion gating and parse/error-report logic have endpoint-local copies.",
+      "criterion": "Remove repeated response readiness and decoding policy.",
+      "acceptance": "Only readyState4 proceeds; truthy responseText is parsed, empty becomes empty string, parse error reports console.error and leaves null. Parsing/reporting happens before status classification; do not convert parse failure into rejection automatically or add a once-only completion guard. Applies across all 80 actual request consumers, not merely one endpoint family. Public endpoint argument preparation may remain local; a generic executor with endpoint data is explicitly acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating endpoint-specific copies without removing independent maintenance is insufficient. No requirement to restore original private helpers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "getGeneric,getAlbums",
+          "detail": "Completion gating and parse/error-report logic have endpoint-local copies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "response_delivery",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 folds success/error delivery directly into handlers.",
+      "baseline_defect": "Every endpoint repeats status classification and callback/resolve/reject dispatch.",
+      "criterion": "Remove independent copies of success and failure delivery.",
+      "acceptance": "Preserve >=200 and <300 evaluation and original XHR rejection identity; optional resolve/reject precede callback; success callback(null,data), failure callback(req,null). No requirement for a response envelope or separate accept/reject helpers. Applies across all 80 actual request consumers, not merely one endpoint family. Public endpoint argument preparation may remain local; a generic executor with endpoint data is explicitly acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating endpoint-specific copies without removing independent maintenance is insufficient. No requirement to restore original private helpers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "getGeneric,pause",
+          "detail": "Every endpoint repeats status classification and callback/resolve/reject dispatch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "provider_execution",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion and stage2 inline _promiseProvider and callback-versus-provider execution.",
+      "baseline_defect": "Every endpoint selects callback, custom deferred or native Promise and repeats adapter closures.",
+      "criterion": "Centralize maintenance of supported execution/provider modes.",
+      "acceptance": "Truthy callback executes synchronously and returns null. Custom nonnull provider defer precedes executor then deferred.promise read; native window.Promise constructs with executor. Missing native Promise still allocates XHR but does not execute request and returns null. Preserve native rejection vs synchronous callback/custom-deferred exception behavior and deferred method receiver binding. Applies across all 80 actual request consumers, not merely one endpoint family. Public endpoint argument preparation may remain local; a generic executor with endpoint data is explicitly acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating endpoint-specific copies without removing independent maintenance is insufficient. No requirement to restore original private helpers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "getGeneric,getAlbums",
+          "detail": "Every endpoint selects callback, custom deferred or native Promise and repeats adapter closures.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "abort_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 inlines WrapPromiseWithAbort into each endpoint.",
+      "baseline_defect": "Each endpoint repeats Promise truthiness, abort property attachment and original request capture.",
+      "criterion": "Remove independent copies of abortable result handling.",
+      "acceptance": "Attach abort to the actual truthy returned promise, return that same identity, and abort the same allocated XHR. Falsy returned provider value yields null; callback path has no promise attachment. No mandatory wrapper class. Applies across all 80 actual request consumers, not merely one endpoint family. Public endpoint argument preparation may remain local; a generic executor with endpoint data is explicitly acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating endpoint-specific copies without removing independent maintenance is insufficient. No requirement to restore original private helpers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/spotify-web-api.js",
+          "symbol": "getGeneric,pause",
+          "detail": "Each endpoint repeats Promise truthiness, abort property attachment and original request capture.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "jmperez_spotify_web_api_js_dim",
+    "rubric_status": "limited",
+    "aggregation": "equal_weight",
+    "excluded": [
+      "The empty post.diff introduces no additional repair obligation.",
+      "Maintaining existing endpoint results, callback shapes and passing tests is a constraint, not a separate score.",
+      "The large patch moves or reintroduces domain documentation; that is not an independent structural repair."
+    ]
+  }
+}

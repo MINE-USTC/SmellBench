@@ -1,0 +1,250 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "xwb1989_sql_parser_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "DCE01",
+      "dimension": "smell_elimination",
+      "source_stage": "Ordinary comment expansion and boundary factoring",
+      "intent_basis": "Ordinary comment expansion and boundary factoring",
+      "baseline_defect": "consumeOrdinaryComments leaves either no prefix or a terminal malformed/executable/newline-free comment; no later ordinary slicing/trim can execute.",
+      "criterion": "Retire the unreachable residual ordinary-comment consumption path.",
+      "acceptance": "Preserve initial Unicode trim, successive ordinary comments, executable MySQL comments, malformed block comments and line comments without newline. Terminal checks may execute but are redundant only if their results are preserved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "comments.go",
+          "symbol": "StripLeadingComments",
+          "detail": "consumeOrdinaryComments leaves either no prefix or a terminal malformed/executable/newline-free comment; no later ordinary slicing/trim can execute.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE02",
+      "dimension": "smell_elimination",
+      "source_stage": "Leading margin expansion",
+      "intent_basis": "Leading margin expansion",
+      "baseline_defect": "consumeLeadingMargins exhausts consumable comments; the following loop cannot set hasComment or advance by another comment length.",
+      "criterion": "Remove the obsolete leading-margin continuation without losing reachable boundary behavior.",
+      "acceptance": "Keep whitespace-position and hasComment semantics: no comment returns zero, all-whitespace tail does not invent an extra consumed offset; retain malformed-comment boundaries and SplitMarginComments slicing. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "comments.go",
+          "symbol": "leadingCommentEnd",
+          "detail": "consumeLeadingMargins exhausts consumable comments; the following loop cannot set hasComment or advance by another comment length.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE03",
+      "dimension": "smell_elimination",
+      "source_stage": "Trailing margin expansion",
+      "intent_basis": "Trailing margin expansion",
+      "baseline_defect": "consumeTrailingMargins leaves exhaustion or an unsupported suffix; a second successful margin removal is impossible.",
+      "criterion": "Retire the obsolete trailing-margin continuation.",
+      "acceptance": "Preserve last-opening-marker selection, Unicode whitespace treatment, malformed suffix behavior and no-comment result len(text); terminal checks are not themselves claimed unreachable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "comments.go",
+          "symbol": "trailingCommentStart",
+          "detail": "consumeTrailingMargins leaves exhaustion or an unsupported suffix; a second successful margin removal is impossible.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE04",
+      "dimension": "smell_elimination",
+      "source_stage": "Encoding expansion; retry run cursor",
+      "intent_basis": "Encoding expansion; retry run cursor",
+      "baseline_defect": "Every nonempty pending slice yields a nonempty next span and consumes bytes, so both per-byte else branches are unreachable; the enclosing loop remains live.",
+      "criterion": "Eliminate the dead byte-emission fallback while retaining effective run encoding.",
+      "acceptance": "Retain current escape-map lookups, raw spans and two-byte scratch spans, quotes including empty input, cursor progress and final BinWriter write. Removing the whole loop or making encoding a cached fixed escape table is insufficient. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "dependency/sqltypes/value.go",
+          "symbol": "encodeBytesSQL",
+          "detail": "Every nonempty pending slice yields a nonempty next span and consumes bytes, so both per-byte else branches are unreachable; the enclosing loop remains live.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE05",
+      "dimension": "smell_elimination",
+      "source_stage": "Binding expansion; retry per-binding preparation",
+      "intent_basis": "Binding expansion; retry per-binding preparation",
+      "baseline_defect": "Both successful prepareBinding routes return a nonnil callback; lookup failure exits before fallback.",
+      "criterion": "Remove the unreachable duplicate extras/FetchBindVar fallback.",
+      "acceptance": "Retain per-item prefix, preparation/error, callback, cursor advance and final suffix; extras retain priority and custom dispatch. Do not eagerly resolve all bindings: an earlier callback may affect later variables/extras or precede a later lookup error. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "parsed_query.go",
+          "symbol": "GenerateQuery",
+          "detail": "Both successful prepareBinding routes return a nonnil callback; lookup failure exits before fallback.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE06",
+      "dimension": "smell_elimination",
+      "source_stage": "Semantic token filtering expansion",
+      "intent_basis": "Semantic token filtering expansion",
+      "baseline_defect": "nextSemanticToken returns non-comment or allowed comment, making a second disallowed-comment Scan unreachable.",
+      "criterion": "Remove obsolete secondary comment skipping while preserving allowed comment tokens.",
+      "acceptance": "The allowed-comment break can execute; lval.bytes and lastToken updates remain live. Equivalent removal of the now-redundant enclosing control is accepted with the same token contract. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "token.go",
+          "symbol": "Lex",
+          "detail": "nextSemanticToken returns non-comment or allowed comment, making a second disallowed-comment Scan unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE07",
+      "dimension": "smell_elimination",
+      "source_stage": "Statement span expansion",
+      "intent_basis": "Statement span expansion",
+      "baseline_defect": "readStatementBoundary returns only at semicolon/EOF, falsifying the residual advance-loop predicate.",
+      "criterion": "Eliminate the exhausted statement-consumption loop.",
+      "acceptance": "Keep the actual next calls and stream/error/Position effects in the surviving scan; stop before consuming the statement boundary. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "token.go",
+          "symbol": "skipStatement",
+          "detail": "readStatementBoundary returns only at semicolon/EOF, falsifying the residual advance-loop predicate.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE08",
+      "dimension": "smell_elimination",
+      "source_stage": "Whitespace span expansion",
+      "intent_basis": "Whitespace span expansion",
+      "baseline_defect": "readWhitespace leaves a nonblank/EOF, so residual next calls cannot execute.",
+      "criterion": "Eliminate the exhausted whitespace continuation.",
+      "acceptance": "Preserve precisely space, newline, carriage return and tab admission, refill and position behavior; do not broaden to all Unicode whitespace. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "token.go",
+          "symbol": "skipBlank",
+          "detail": "readWhitespace leaves a nonblank/EOF, so residual next calls cannot execute.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE09",
+      "dimension": "smell_elimination",
+      "source_stage": "Identifier span expansion",
+      "intent_basis": "Identifier span expansion",
+      "baseline_defect": "readIdentifierTail consumes all characters admitted by the identical residual predicate.",
+      "criterion": "Remove the unreachable second identifier-tail append/advance path.",
+      "acceptance": "Retain firstByte, letters/digits and system-variable caret condition, keyword/identifier classification and tokenizer side effects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "token.go",
+          "symbol": "scanIdentifier",
+          "detail": "readIdentifierTail consumes all characters admitted by the identical residual predicate.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE10",
+      "dimension": "smell_elimination",
+      "source_stage": "Numeric span expansion",
+      "intent_basis": "Numeric span expansion",
+      "baseline_defect": "readDigits leaves digitVal(lastChar)>=base so residual consumeNext is unreachable.",
+      "criterion": "Remove the exhausted base-sensitive digit continuation.",
+      "acceptance": "Keep base-sensitive digit admission and its role in decimal/hex/exponent scanning; preserve token position and invalid-number handling in live callers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "token.go",
+          "symbol": "scanMantissa",
+          "detail": "readDigits leaves digitVal(lastChar)>=base so residual consumeNext is unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "DCE11",
+      "dimension": "smell_elimination",
+      "source_stage": "Buffered string-run expansion",
+      "intent_basis": "Buffered string-run expansion",
+      "baseline_defect": "stringRun leaves bufPos at delimiter/escape or buffer end: the old loop may assign ch and break, but never performs its increment.",
+      "criterion": "Retire the obsolete scan-ahead continuation using its exact boundary invariant.",
+      "acceptance": "Preserve returned ch, span append, Position changes, delimiter consumption, escape/doubled-delimiter handling, refill and unterminated-string errors. Whole-loop deletion is valid only because surviving stringRun supplies the same boundary value, not because all loop statements are unreachable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live producer work, disabling supported input or retaining the same dead branch under another wrapper does not qualify."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "token.go",
+          "symbol": "scanString",
+          "detail": "stringRun leaves bufPos at delimiter/escape or buffer end: the old loop may assign ch and break, but never performs its increment.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "xwb1989_sql_parser_dce",
+    "rubric_status": "ready",
+    "aggregation": "equal_weight",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "test passage and behavior restoration alone",
+      "cosmetic renames",
+      "unsupported historical intentions"
+    ]
+  }
+}

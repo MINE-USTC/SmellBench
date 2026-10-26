@@ -1,0 +1,930 @@
+diff --git a/pkg/config/checksum.go b/pkg/config/checksum.go
+index f07c9cc..397eea8 100644
+--- a/pkg/config/checksum.go
++++ b/pkg/config/checksum.go
+@@ -3,7 +3,6 @@ package config
+ import (
+ 	"errors"
+ 	"fmt"
+-	"github.com/aquaproj/aqua/v2/pkg/config/registry"
+ 	"net/url"
+ 	"path"
+ 
+@@ -109,42 +108,16 @@ func (p *Package) RenderChecksumFileName(rt *runtime.Runtime) (string, error) {
+ // It populates template variables and generates the final checksum URL for the given runtime.
+ func (p *Package) RenderChecksumURL(rt *runtime.Runtime) (string, error) {
+ 	pkgInfo := p.PackageInfo
+-	resolvedFormat := pkgInfo.Format
+-	if pkgInfo.Type == "github_archive" || pkgInfo.Type == "go_build" {
+-		resolvedFormat = "tar.gz"
+-	}
+-
+ 	pkg := p.Package
++	replacements := pkgInfo.GetChecksumReplacements()
+-	replacements := pkgInfo.Replacements
+-	checksumValues := pkgInfo.Checksum.GetReplacements()
+-	if checksumValues != nil {
+-		replacements = registry.Replacements{}
+-		if len(checksumValues) != 0 {
+-			for key, value := range pkgInfo.Replacements {
+-				replacements[key] = value
+-			}
+-		}
+-		for key, value := range checksumValues {
+-			replacements[key] = value
+-		}
+-	}
+ 	m := map[string]any{
+ 		tmplVersion: pkg.Version,
+ 		tmplSemVer:  p.semVer(),
+ 		tmplGOOS:    rt.GOOS,
+ 		tmplGOARCH:  rt.GOARCH,
+ 		"OS":        replace(rt.GOOS, replacements),
++		tmplArch:    getArch(pkgInfo.Rosetta2, pkgInfo.WindowsARMEmulation, replacements, rt),
++		tmplFormat:  pkgInfo.GetFormat(),
+-		tmplArch: func() string {
+-			arch := rt.GOARCH
+-			if arch == "arm64" && ((rt.GOOS == "darwin" && pkgInfo.Rosetta2) || (rt.GOOS == "windows" && pkgInfo.WindowsARMEmulation)) {
+-				arch = "amd64"
+-			}
+-			if v := replacements[arch]; v != "" {
+-				return v
+-			}
+-			return arch
+-		}(),
+-		tmplFormat: resolvedFormat,
+ 	}
+ 	if pkgInfo.Type == "http" {
+ 		u, err := p.RenderURL(rt)
+diff --git a/pkg/config/package.go b/pkg/config/package.go
+index 5e7cfab..7f8d6b6 100644
+--- a/pkg/config/package.go
++++ b/pkg/config/package.go
+@@ -56,7 +56,7 @@ func (p *Package) RenderAsset(rt *runtime.Runtime) (string, error) {
+ 		return "", nil
+ 	}
+ 
++	if p.PackageInfo.GetAppendExt() {
+-	if func() bool { q := p.PackageInfo; return q.AppendExt == nil || *q.AppendExt }() {
+ 		asset = appendExt(asset, p.PackageInfo.Format)
+ 	}
+ 
+@@ -71,26 +71,13 @@ func (p *Package) RenderAsset(rt *runtime.Runtime) (string, error) {
+ func (p *Package) TemplateArtifact(rt *runtime.Runtime, aset string) *template.Artifact {
+ 	pkg := p.Package
+ 	pkgInfo := p.PackageInfo
+-	resolvedFormat := pkgInfo.Format
+-	if pkgInfo.Type == "github_archive" || pkgInfo.Type == "go_build" {
+-		resolvedFormat = "tar.gz"
+-	}
+-
+-	resolvedArch := rt.GOARCH
+-	if rt.GOARCH == "arm64" && ((rt.GOOS == "darwin" && pkgInfo.Rosetta2) || (rt.GOOS == "windows" && pkgInfo.WindowsARMEmulation)) {
+-		resolvedArch = "amd64"
+-	}
+-	if v := pkgInfo.Replacements[resolvedArch]; v != "" {
+-		resolvedArch = v
+-	}
+-
+ 	assetWithoutExt, _ := asset.RemoveExtFromAsset(aset)
+ 	return &template.Artifact{
+ 		Version:         pkg.Version,
+ 		SemVer:          p.semVer(),
+ 		OS:              replace(rt.GOOS, pkgInfo.Replacements),
++		Arch:            getArch(pkgInfo.Rosetta2, pkgInfo.WindowsARMEmulation, pkgInfo.Replacements, rt),
++		Format:          pkgInfo.GetFormat(),
+-		Arch:            resolvedArch,
+-		Format:          resolvedFormat,
+ 		Asset:           aset,
+ 		AssetWithoutExt: assetWithoutExt,
+ 		Vars:            pkg.Vars,
+@@ -101,16 +88,7 @@ func (p *Package) TemplateArtifact(rt *runtime.Runtime, aset string) *template.A
+ // Used primarily for Go modules and other path-based package types.
+ func (p *Package) RenderPath() (string, error) {
+ 	pkgInfo := p.PackageInfo
++	return p.RenderTemplateString(pkgInfo.GetPath(), &runtime.Runtime{})
+-	return p.RenderTemplateString(func() string {
+-		q := pkgInfo
+-		if q.Path != "" {
+-			return q.Path
+-		}
+-		if q.Type == "go_install" && q.RepoOwner != "" && q.RepoName != "" {
+-			return "github.com/" + q.RepoOwner + "/" + q.RepoName
+-		}
+-		return ""
+-	}(), &runtime.Runtime{})
+ }
+ 
+ // PkgPath returns the relative path where the package should be installed.
+@@ -184,7 +162,7 @@ func (p *Package) RenderURL(rt *runtime.Runtime) (string, error) {
+ 		return "", err
+ 	}
+ 
++	if p.PackageInfo.GetAppendExt() {
+-	if func() bool { q := p.PackageInfo; return q.AppendExt == nil || *q.AppendExt }() {
+ 		s = appendExt(s, p.PackageInfo.Format)
+ 	}
+ 
+@@ -198,19 +176,6 @@ func (p *Package) RenderURL(rt *runtime.Runtime) (string, error) {
+ // It provides template variables for platform-specific directory generation.
+ func (p *Package) RenderDir(file *registry.File, rt *runtime.Runtime) (string, error) {
+ 	pkgInfo := p.PackageInfo
+-	resolvedFormat := pkgInfo.Format
+-	if pkgInfo.Type == "github_archive" || pkgInfo.Type == "go_build" {
+-		resolvedFormat = "tar.gz"
+-	}
+-
+-	resolvedArch := rt.GOARCH
+-	if rt.GOARCH == "arm64" && ((rt.GOOS == "darwin" && pkgInfo.Rosetta2) || (rt.GOOS == "windows" && pkgInfo.WindowsARMEmulation)) {
+-		resolvedArch = "amd64"
+-	}
+-	if v := pkgInfo.Replacements[resolvedArch]; v != "" {
+-		resolvedArch = v
+-	}
+-
+ 	pkg := p.Package
+ 	return template.Execute(file.Dir, map[string]any{ //nolint:wrapcheck
+ 		tmplVersion: pkg.Version,
+@@ -218,8 +183,8 @@ func (p *Package) RenderDir(file *registry.File, rt *runtime.Runtime) (string, e
+ 		tmplGOOS:    rt.GOOS,
+ 		tmplGOARCH:  rt.GOARCH,
+ 		"OS":        replace(rt.GOOS, pkgInfo.Replacements),
++		tmplArch:    getArch(pkgInfo.Rosetta2, pkgInfo.WindowsARMEmulation, pkgInfo.Replacements, rt),
++		tmplFormat:  pkgInfo.GetFormat(),
+-		tmplArch:    resolvedArch,
+-		tmplFormat:  resolvedFormat,
+ 		"FileName":  file.Name,
+ 		tmplVars:    pkg.Vars,
+ 	})
+@@ -263,20 +228,7 @@ func (e *FileNotFoundError) Unwrap() error {
+ func (p *Package) renderSrc(assetName string, file *registry.File, rt *runtime.Runtime) (string, error) {
+ 	pkg := p.Package
+ 	pkgInfo := p.PackageInfo
++	format := pkgInfo.GetFormat()
+-	resolvedFormat := pkgInfo.Format
+-	if pkgInfo.Type == "github_archive" || pkgInfo.Type == "go_build" {
+-		resolvedFormat = "tar.gz"
+-	}
+-
+-	resolvedArch := rt.GOARCH
+-	if rt.GOARCH == "arm64" && ((rt.GOOS == "darwin" && pkgInfo.Rosetta2) || (rt.GOOS == "windows" && pkgInfo.WindowsARMEmulation)) {
+-		resolvedArch = "amd64"
+-	}
+-	if v := pkgInfo.Replacements[resolvedArch]; v != "" {
+-		resolvedArch = v
+-	}
+-
+-	format := resolvedFormat
+ 	assetWithoutExt, _ := asset.RemoveExtFromAsset(assetName)
+ 	s, err := template.Execute(file.Src, map[string]any{
+ 		tmplVersion:       pkg.Version,
+@@ -284,7 +236,7 @@ func (p *Package) renderSrc(assetName string, file *registry.File, rt *runtime.R
+ 		tmplGOOS:          rt.GOOS,
+ 		tmplGOARCH:        rt.GOARCH,
+ 		"OS":              replace(rt.GOOS, pkgInfo.Replacements),
++		tmplArch:          getArch(pkgInfo.Rosetta2, pkgInfo.WindowsARMEmulation, pkgInfo.Replacements, rt),
+-		tmplArch:          resolvedArch,
+ 		tmplFormat:        format,
+ 		"FileName":        file.Name,
+ 		"Asset":           assetName,
+@@ -338,11 +290,6 @@ func (p *Package) fileSrc(file *registry.File, rt *runtime.Runtime) (string, err
+ // It handles different package types and archive formats to determine the correct file path.
+ func (p *Package) fileSrcWithoutWindowsExt(file *registry.File, rt *runtime.Runtime) (string, error) {
+ 	pkgInfo := p.PackageInfo
+-	resolvedFormat := pkgInfo.Format
+-	if pkgInfo.Type == "github_archive" || pkgInfo.Type == "go_build" {
+-		resolvedFormat = "tar.gz"
+-	}
+-
+ 	if pkgInfo.Type == "cargo" {
+ 		return filepath.Join("bin", file.Name), nil
+ 	}
+@@ -357,7 +304,7 @@ func (p *Package) fileSrcWithoutWindowsExt(file *registry.File, rt *runtime.Runt
+ 	if err != nil {
+ 		return "", fmt.Errorf("render the asset name: %w", err)
+ 	}
++	if unarchive.IsUnarchived(pkgInfo.GetFormat(), assetName) {
+-	if unarchive.IsUnarchived(resolvedFormat, assetName) {
+ 		return filepath.Base(assetName), nil
+ 	}
+ 	if file.Src == "" {
+@@ -470,35 +417,7 @@ func (p *Package) renderAsset(rt *runtime.Runtime) (string, error) {
+ 	case PkgInfoTypeGitHubArchive, PkgInfoTypeGoBuild:
+ 		return "", nil
+ 	case PkgInfoTypeGoInstall:
++		return path.Base(pkgInfo.GetFiles()[0].Name), nil
+-		return path.Base(func() []*registry.File {
+-			q := pkgInfo
+-			if len(q.Files) != 0 {
+-				return q.Files
+-			}
+-			name := q.Name
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				if name == "" {
+-					name = q.RepoName
+-				} else if i := strings.LastIndex(name, "/"); i != -1 {
+-					name = name[i+1:]
+-				}
+-			} else if q.Type == "go_install" {
+-				name = q.Path
+-				if name == "" && q.RepoOwner != "" && q.RepoName != "" {
+-					name = "github.com/" + q.RepoOwner + "/" + q.RepoName
+-				}
+-				name = path.Base(name)
+-			} else {
+-				if name == "" && q.Type == "go_install" && q.Path != "" {
+-					name = q.Path
+-				}
+-				name = path.Base(name)
+-			}
+-			if name != "" {
+-				return []*registry.File{{Name: name}}
+-			}
+-			return q.Files
+-		}()[0].Name), nil
+ 	case PkgInfoTypeGitHubContent:
+ 		s, err := p.RenderTemplateString(pkgInfo.Path, rt)
+ 		if err != nil {
+@@ -525,48 +444,22 @@ func (p *Package) renderAsset(rt *runtime.Runtime) (string, error) {
+ // It provides template variables for generating platform-specific checksum file names.
+ func (p *Package) renderChecksumFile(asset string, rt *runtime.Runtime) (string, error) {
+ 	pkgInfo := p.PackageInfo
+-	resolvedFormat := pkgInfo.Format
+-	if pkgInfo.Type == "github_archive" || pkgInfo.Type == "go_build" {
+-		resolvedFormat = "tar.gz"
+-	}
+-
+ 	pkg := p.Package
+ 	tpl, err := template.Compile(pkgInfo.Checksum.Asset)
+ 	if err != nil {
+ 		return "", fmt.Errorf("parse a template: %w", err)
+ 	}
++	replacements := pkgInfo.GetChecksumReplacements()
+-	replacements := pkgInfo.Replacements
+-	checksumValues := pkgInfo.Checksum.GetReplacements()
+-	if checksumValues != nil {
+-		replacements = registry.Replacements{}
+-		if len(checksumValues) != 0 {
+-			for key, value := range pkgInfo.Replacements {
+-				replacements[key] = value
+-			}
+-		}
+-		for key, value := range checksumValues {
+-			replacements[key] = value
+-		}
+-	}
+ 	uS, err := template.ExecuteTemplate(tpl, map[string]any{
+ 		tmplVersion: pkg.Version,
+ 		tmplSemVer:  p.semVer(),
+ 		tmplGOOS:    rt.GOOS,
+ 		tmplGOARCH:  rt.GOARCH,
+ 		"OS":        replace(rt.GOOS, replacements),
++		tmplArch:    getArch(pkgInfo.Rosetta2, pkgInfo.WindowsARMEmulation, replacements, rt),
++		tmplFormat:  pkgInfo.GetFormat(),
++		"Asset":     asset,
++		tmplVars:    pkg.Vars,
+-		tmplArch: func() string {
+-			arch := rt.GOARCH
+-			if arch == "arm64" && ((rt.GOOS == "darwin" && pkgInfo.Rosetta2) || (rt.GOOS == "windows" && pkgInfo.WindowsARMEmulation)) {
+-				arch = "amd64"
+-			}
+-			if v := replacements[arch]; v != "" {
+-				return v
+-			}
+-			return arch
+-		}(),
+-		tmplFormat: resolvedFormat,
+-		"Asset":    asset,
+-		tmplVars:   pkg.Vars,
+ 	})
+ 	if err != nil {
+ 		return "", fmt.Errorf("render a template: %w", err)
+@@ -578,19 +471,6 @@ func (p *Package) renderChecksumFile(asset string, rt *runtime.Runtime) (string,
+ // It provides all standard template variables for package rendering.
+ func (p *Package) renderTemplate(tpl *texttemplate.Template, rt *runtime.Runtime) (string, error) {
+ 	pkgInfo := p.PackageInfo
+-	resolvedFormat := pkgInfo.Format
+-	if pkgInfo.Type == "github_archive" || pkgInfo.Type == "go_build" {
+-		resolvedFormat = "tar.gz"
+-	}
+-
+-	resolvedArch := rt.GOARCH
+-	if rt.GOARCH == "arm64" && ((rt.GOOS == "darwin" && pkgInfo.Rosetta2) || (rt.GOOS == "windows" && pkgInfo.WindowsARMEmulation)) {
+-		resolvedArch = "amd64"
+-	}
+-	if v := pkgInfo.Replacements[resolvedArch]; v != "" {
+-		resolvedArch = v
+-	}
+-
+ 	pkg := p.Package
+ 	uS, err := template.ExecuteTemplate(tpl, map[string]any{
+ 		tmplVersion: pkg.Version,
+@@ -598,8 +478,8 @@ func (p *Package) renderTemplate(tpl *texttemplate.Template, rt *runtime.Runtime
+ 		tmplGOOS:    rt.GOOS,
+ 		tmplGOARCH:  rt.GOARCH,
+ 		"OS":        replace(rt.GOOS, pkgInfo.Replacements),
++		tmplArch:    getArch(pkgInfo.Rosetta2, pkgInfo.WindowsARMEmulation, pkgInfo.Replacements, rt),
++		tmplFormat:  pkgInfo.GetFormat(),
+-		tmplArch:    resolvedArch,
+-		tmplFormat:  resolvedFormat,
+ 		tmplVars:    pkg.Vars,
+ 	})
+ 	if err != nil {
+diff --git a/pkg/controller/generate/generate.go b/pkg/controller/generate/generate.go
+index 6fbb8b0..c3f5211 100644
+--- a/pkg/controller/generate/generate.go
++++ b/pkg/controller/generate/generate.go
+@@ -5,7 +5,6 @@ import (
+ 	"errors"
+ 	"fmt"
+ 	"log/slog"
+-	"path"
+ 	"path/filepath"
+ 	"strings"
+ 
+@@ -74,30 +73,7 @@ func (c *Controller) Generate(ctx context.Context, logger *slog.Logger, param *c
+ 		}
+ 	}
+ 	for _, pkg := range list {
++		cmdName := pkg.PackageInfo.GetFiles()[0].Name
+-
+-		resolvedCommands1 := pkg.PackageInfo.Files
+-		if len(resolvedCommands1) == 0 {
+-			commandName := pkg.PackageInfo.Name
+-			repositoryBacked := pkg.PackageInfo.RepoOwner != "" && pkg.PackageInfo.RepoName != ""
+-			if repositoryBacked && commandName == "" {
+-				commandName = pkg.PackageInfo.RepoName
+-			}
+-			if repositoryBacked && pkg.PackageInfo.Name != "" {
+-				if slash := strings.LastIndex(commandName, "/"); slash != -1 {
+-					commandName = commandName[slash+1:]
+-				}
+-			}
+-			if !repositoryBacked {
+-				if pkg.PackageInfo.Type == "go_install" {
+-					commandName = pkg.PackageInfo.Path
+-				}
+-				commandName = path.Base(commandName)
+-			}
+-			if commandName != "" {
+-				resolvedCommands1 = []*registry.File{{Name: commandName}}
+-			}
+-		}
+-		cmdName := resolvedCommands1[0].Name
+ 		dest := param.Dest
+ 		if dest == "" && param.Insert {
+ 			dest = filepath.Join(filepath.Dir(cfgFilePath), cfg.ImportDir, cmdName+".yaml")
+@@ -244,35 +220,14 @@ func (c *Controller) listPkgsWithoutFinder(ctx context.Context, logger *slog.Log
+ func (c *Controller) getOutputtedPkg(ctx context.Context, logger *slog.Logger, param *config.Param, pkg *fuzzyfinder.Package) *config.Package {
+ 	outputPkg := &config.Package{
+ 		Package: &aqua.Package{
++			Name:     pkg.PackageInfo.GetName(),
+-			Name: func() string {
+-				q := pkg.PackageInfo
+-				if q.Name != "" {
+-					return q.Name
+-				}
+-				if q.RepoOwner != "" && q.RepoName != "" {
+-					return q.RepoOwner + "/" + q.RepoName
+-				}
+-				if q.Type == "go_install" && q.Path != "" {
+-					return q.Path
+-				}
+-				return ""
+-			}(),
+ 			Registry: pkg.RegistryName,
+ 			Version:  pkg.Version,
+ 		},
+ 		PackageInfo: pkg.PackageInfo,
+ 	}
+ 	if param.Detail {
++		outputPkg.Package.Link = pkg.PackageInfo.GetLink()
+-		outputPkg.Package.Link = func() string {
+-			q := pkg.PackageInfo
+-			if q.Link != "" {
+-				return q.Link
+-			}
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				return "https://github.com/" + q.RepoOwner + "/" + q.RepoName
+-			}
+-			return ""
+-		}()
+ 		outputPkg.Package.Description = pkg.PackageInfo.Description
+ 	}
+ 	if outputPkg.Package.Registry == registryStandard {
+diff --git a/pkg/controller/remove/remove.go b/pkg/controller/remove/remove.go
+index ea74f36..f3be148 100644
+--- a/pkg/controller/remove/remove.go
++++ b/pkg/controller/remove/remove.go
+@@ -7,7 +7,6 @@ import (
+ 	"io/fs"
+ 	"log/slog"
+ 	"os"
+-	"path"
+ 	"path/filepath"
+ 	"strings"
+ 
+@@ -103,19 +102,7 @@ func (c *Controller) removePackagesInteractively(logger *slog.Logger, param *con
+ 	}
+ 	for _, idx := range idxes {
+ 		pkg := pkgs[idx]
++		pkgName := pkg.PackageInfo.GetName()
+-		pkgName := func() string {
+-			q := pkg.PackageInfo
+-			if q.Name != "" {
+-				return q.Name
+-			}
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				return q.RepoOwner + "/" + q.RepoName
+-			}
+-			if q.Type == "go_install" && q.Path != "" {
+-				return q.Path
+-			}
+-			return ""
+-		}()
+ 		logger := logger.With("package_name", pkgName)
+ 		if err := c.removePackage(logger, param.RootDir, pkg.PackageInfo); err != nil {
+ 			return fmt.Errorf("remove a package: %w", slogerr.With(err,
+@@ -203,30 +190,7 @@ func (c *Controller) removePackage(logger *slog.Logger, rootDir string, pkg *reg
+ 	var gErr error
+ 	logger.Info("removing a package")
+ 	if c.mode.Link {
++		for _, file := range pkg.GetFiles() {
+-
+-		resolvedCommands1 := pkg.Files
+-		if len(resolvedCommands1) == 0 {
+-			commandName := pkg.Name
+-			repositoryBacked := pkg.RepoOwner != "" && pkg.RepoName != ""
+-			if repositoryBacked && commandName == "" {
+-				commandName = pkg.RepoName
+-			}
+-			if repositoryBacked && pkg.Name != "" {
+-				if slash := strings.LastIndex(commandName, "/"); slash != -1 {
+-					commandName = commandName[slash+1:]
+-				}
+-			}
+-			if !repositoryBacked {
+-				if pkg.Type == "go_install" {
+-					commandName = pkg.Path
+-				}
+-				commandName = path.Base(commandName)
+-			}
+-			if commandName != "" {
+-				resolvedCommands1 = []*registry.File{{Name: commandName}}
+-			}
+-		}
+-		for _, file := range resolvedCommands1 {
+ 			if err := os.Remove(filepath.Join(rootDir, "bin", file.Name)); err != nil {
+ 				if errors.Is(err, fs.ErrNotExist) {
+ 					continue
+@@ -301,19 +265,7 @@ func findPkg(pkgName string, registryContents map[string]*registry.Config) (*reg
+ 		return nil, errors.New("unknown registry")
+ 	}
+ 	for _, pkg := range rgCfg.PackageInfos {
++		if pkgName != pkg.GetName() {
+-		if pkgName != func() string {
+-			q := pkg
+-			if q.Name != "" {
+-				return q.Name
+-			}
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				return q.RepoOwner + "/" + q.RepoName
+-			}
+-			if q.Type == "go_install" && q.Path != "" {
+-				return q.Path
+-			}
+-			return ""
+-		}() {
+ 			continue
+ 		}
+ 		return pkg, nil
+diff --git a/pkg/controller/update/package.go b/pkg/controller/update/package.go
+index cac4dce..026e8d7 100644
+--- a/pkg/controller/update/package.go
++++ b/pkg/controller/update/package.go
+@@ -67,19 +67,7 @@ func (c *Controller) updatePackagesInFile(ctx context.Context, logger *slog.Logg
+ 			continue
+ 		}
+ 		if newVersion := c.getPackageNewVersion(ctx, logger, param, updatedPkgs, pkg); newVersion != "" {
++			newVersions[fmt.Sprintf("%s,%s", pkg.Package.Registry, pkg.PackageInfo.GetName())] = newVersion
+-			newVersions[fmt.Sprintf("%s,%s", pkg.Package.Registry, func() string {
+-				q := pkg.PackageInfo
+-				if q.Name != "" {
+-					return q.Name
+-				}
+-				if q.RepoOwner != "" && q.RepoName != "" {
+-					return q.RepoOwner + "/" + q.RepoName
+-				}
+-				if q.Type == "go_install" && q.Path != "" {
+-					return q.Path
+-				}
+-				return ""
+-			}())] = newVersion
+ 			newVersions[fmt.Sprintf("%s,%s", pkg.Package.Registry, pkg.Package.Name)] = newVersion
+ 		}
+ 	}
+diff --git a/pkg/controller/update/update.go b/pkg/controller/update/update.go
+index 7f4adad..c0d81d3 100644
+--- a/pkg/controller/update/update.go
++++ b/pkg/controller/update/update.go
+@@ -54,34 +54,10 @@ func (c *Controller) updateCommand(ctx context.Context, logger *slog.Logger, par
+ 
+ 	pkg := findResult.Package
+ 	if newVersion != "" {
++		newVersions[fmt.Sprintf("%s,%s", pkg.Package.Registry, pkg.PackageInfo.GetName())] = newVersion
+-		newVersions[fmt.Sprintf("%s,%s", pkg.Package.Registry, func() string {
+-			q := pkg.PackageInfo
+-			if q.Name != "" {
+-				return q.Name
+-			}
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				return q.RepoOwner + "/" + q.RepoName
+-			}
+-			if q.Type == "go_install" && q.Path != "" {
+-				return q.Path
+-			}
+-			return ""
+-		}())] = newVersion
+ 		newVersions[fmt.Sprintf("%s,%s", pkg.Package.Registry, pkg.Package.Name)] = newVersion
+ 	} else if newVersion := c.getPackageNewVersion(ctx, logger, param, nil, pkg); newVersion != "" {
++		newVersions[fmt.Sprintf("%s,%s", pkg.Package.Registry, pkg.PackageInfo.GetName())] = newVersion
+-		newVersions[fmt.Sprintf("%s,%s", pkg.Package.Registry, func() string {
+-			q := pkg.PackageInfo
+-			if q.Name != "" {
+-				return q.Name
+-			}
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				return q.RepoOwner + "/" + q.RepoName
+-			}
+-			if q.Type == "go_install" && q.Path != "" {
+-				return q.Path
+-			}
+-			return ""
+-		}())] = newVersion
+ 		newVersions[fmt.Sprintf("%s,%s", pkg.Package.Registry, pkg.Package.Name)] = newVersion
+ 	}
+ 	filePath := findResult.ConfigFilePath
+diff --git a/pkg/controller/which/which.go b/pkg/controller/which/which.go
+index b165d10..4a78e91 100644
+--- a/pkg/controller/which/which.go
++++ b/pkg/controller/which/which.go
+@@ -4,9 +4,7 @@ import (
+ 	"context"
+ 	"fmt"
+ 	"log/slog"
+-	"path"
+ 	"path/filepath"
+-	"strings"
+ 
+ 	"github.com/aquaproj/aqua/v2/pkg/checksum"
+ 	"github.com/aquaproj/aqua/v2/pkg/config"
+@@ -218,29 +216,7 @@ func (c *Controller) findExecFileFromPkg(ctx context.Context, logger *slog.Logge
+ 		return nil, nil //nolint:nilnil
+ 	}
+ 
++	for _, file := range pkgInfo.GetFiles() {
+-	resolvedCommands1 := pkgInfo.Files
+-	if len(resolvedCommands1) == 0 {
+-		commandName := pkgInfo.Name
+-		repositoryBacked := pkgInfo.RepoOwner != "" && pkgInfo.RepoName != ""
+-		if repositoryBacked && commandName == "" {
+-			commandName = pkgInfo.RepoName
+-		}
+-		if repositoryBacked && pkgInfo.Name != "" {
+-			if slash := strings.LastIndex(commandName, "/"); slash != -1 {
+-				commandName = commandName[slash+1:]
+-			}
+-		}
+-		if !repositoryBacked {
+-			if pkgInfo.Type == "go_install" {
+-				commandName = pkgInfo.Path
+-			}
+-			commandName = path.Base(commandName)
+-		}
+-		if commandName != "" {
+-			resolvedCommands1 = []*registry.File{{Name: commandName}}
+-		}
+-	}
+-	for _, file := range resolvedCommands1 {
+ 		findResult, err := c.findExecFileFromFile(logger, exeName, pkg, pkgInfo, file)
+ 		if err != nil {
+ 			return nil, err
+diff --git a/pkg/fuzzyfinder/package.go b/pkg/fuzzyfinder/package.go
+index 5de0f5a..c0c0a6c 100644
+--- a/pkg/fuzzyfinder/package.go
++++ b/pkg/fuzzyfinder/package.go
+@@ -2,7 +2,6 @@ package fuzzyfinder
+ 
+ import (
+ 	"fmt"
+-	"path"
+ 	"strings"
+ 
+ 	"github.com/aquaproj/aqua/v2/pkg/config/registry"
+@@ -16,85 +15,20 @@ type Package struct {
+ 
+ func PreviewPackage(p *Package) string {
+ 	return fmt.Sprintf("%s\n\n%s\n%s",
++		p.PackageInfo.GetName(),
++		p.PackageInfo.GetLink(),
+-		func() string {
+-			q := p.PackageInfo
+-			if q.Name != "" {
+-				return q.Name
+-			}
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				return q.RepoOwner + "/" + q.RepoName
+-			}
+-			if q.Type == "go_install" && q.Path != "" {
+-				return q.Path
+-			}
+-			return ""
+-		}(),
+-		func() string {
+-			q := p.PackageInfo
+-			if q.Link != "" {
+-				return q.Link
+-			}
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				return "https://github.com/" + q.RepoOwner + "/" + q.RepoName
+-			}
+-			return ""
+-		}(),
+ 		p.PackageInfo.Description)
+ }
+ 
+ func (p *Package) Preview(w int) string {
+ 	return fmt.Sprintf("%s\n\n%s\n%s",
++		p.PackageInfo.GetName(),
++		p.PackageInfo.GetLink(),
+-		func() string {
+-			q := p.PackageInfo
+-			if q.Name != "" {
+-				return q.Name
+-			}
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				return q.RepoOwner + "/" + q.RepoName
+-			}
+-			if q.Type == "go_install" && q.Path != "" {
+-				return q.Path
+-			}
+-			return ""
+-		}(),
+-		func() string {
+-			q := p.PackageInfo
+-			if q.Link != "" {
+-				return q.Link
+-			}
+-			if q.RepoOwner != "" && q.RepoName != "" {
+-				return "https://github.com/" + q.RepoOwner + "/" + q.RepoName
+-			}
+-			return ""
+-		}(),
+ 		formatPreview(p.PackageInfo.Description, w/2-8)) //nolint:mnd
+ }
+ 
+ func (p *Package) Item() string {
++	files := p.PackageInfo.GetFiles()
+-
+-	resolvedCommands1 := p.PackageInfo.Files
+-	if len(resolvedCommands1) == 0 {
+-		commandName := p.PackageInfo.Name
+-		repositoryBacked := p.PackageInfo.RepoOwner != "" && p.PackageInfo.RepoName != ""
+-		if repositoryBacked && commandName == "" {
+-			commandName = p.PackageInfo.RepoName
+-		}
+-		if repositoryBacked && p.PackageInfo.Name != "" {
+-			if slash := strings.LastIndex(commandName, "/"); slash != -1 {
+-				commandName = commandName[slash+1:]
+-			}
+-		}
+-		if !repositoryBacked {
+-			if p.PackageInfo.Type == "go_install" {
+-				commandName = p.PackageInfo.Path
+-			}
+-			commandName = path.Base(commandName)
+-		}
+-		if commandName != "" {
+-			resolvedCommands1 = []*registry.File{{Name: commandName}}
+-		}
+-	}
+-	files := resolvedCommands1
+ 	fileNames := make([]string, 0, len(files))
+ 	for _, file := range files {
+ 		if file.Name == "" {
+@@ -110,19 +44,7 @@ func (p *Package) Item() string {
+ 		}
+ 		aliases = append(aliases, alias.Name)
+ 	}
++	pkgName := p.PackageInfo.GetName()
+-	pkgName := func() string {
+-		q := p.PackageInfo
+-		if q.Name != "" {
+-			return q.Name
+-		}
+-		if q.RepoOwner != "" && q.RepoName != "" {
+-			return q.RepoOwner + "/" + q.RepoName
+-		}
+-		if q.Type == "go_install" && q.Path != "" {
+-			return q.Path
+-		}
+-		return ""
+-	}()
+ 	item := pkgName
+ 	if len(aliases) != 0 {
+ 		item += " (" + strings.Join(aliases, ", ") + ")"
+diff --git a/pkg/installpackage/check_file.go b/pkg/installpackage/check_file.go
+index e878881..fe4830c 100644
+--- a/pkg/installpackage/check_file.go
++++ b/pkg/installpackage/check_file.go
+@@ -6,7 +6,6 @@ import (
+ 	"fmt"
+ 	"log/slog"
+ 	"os"
+-	"path"
+ 	"path/filepath"
+ 	"strings"
+ 
+@@ -24,30 +23,7 @@ func (is *Installer) checkFilesWrap(ctx context.Context, logger *slog.Logger, pa
+ 
+ 	failed := false
+ 	notFound := false
++	for _, file := range pkgInfo.GetFiles() {
+-
+-	resolvedCommands1 := pkgInfo.Files
+-	if len(resolvedCommands1) == 0 {
+-		commandName := pkgInfo.Name
+-		repositoryBacked := pkgInfo.RepoOwner != "" && pkgInfo.RepoName != ""
+-		if repositoryBacked && commandName == "" {
+-			commandName = pkgInfo.RepoName
+-		}
+-		if repositoryBacked && pkgInfo.Name != "" {
+-			if slash := strings.LastIndex(commandName, "/"); slash != -1 {
+-				commandName = commandName[slash+1:]
+-			}
+-		}
+-		if !repositoryBacked {
+-			if pkgInfo.Type == "go_install" {
+-				commandName = pkgInfo.Path
+-			}
+-			commandName = path.Base(commandName)
+-		}
+-		if commandName != "" {
+-			resolvedCommands1 = []*registry.File{{Name: commandName}}
+-		}
+-	}
+-	for _, file := range resolvedCommands1 {
+ 		logger := logger.With("file_name", file.Name)
+ 		if err := is.checkAndCopyFile(ctx, logger, pkg, file); err != nil {
+ 			if _, ok := errors.AsType[*config.FileNotFoundError](err); ok {
+diff --git a/pkg/installpackage/download.go b/pkg/installpackage/download.go
+index 2f524e5..6c3b44c 100644
+--- a/pkg/installpackage/download.go
++++ b/pkg/installpackage/download.go
+@@ -153,13 +153,7 @@ func (is *Installer) download(ctx context.Context, logger *slog.Logger, param *D
+ 		return err
+ 	}
+ 
++	return is.unarchive(ctx, logger, param, bodyFile, pkgInfo.GetFormat())
+-	return is.unarchive(ctx, logger, param, bodyFile, func() string {
+-		q := pkgInfo
+-		if q.Type == "github_archive" || q.Type == "go_build" {
+-			return "tar.gz"
+-		}
+-		return q.Format
+-	}())
+ }
+ 
+ // unarchive extracts the asset into a temporary directory and moves it to
+diff --git a/pkg/installpackage/link.go b/pkg/installpackage/link.go
+index d225888..b43df1f 100644
+--- a/pkg/installpackage/link.go
++++ b/pkg/installpackage/link.go
+@@ -4,7 +4,6 @@ import (
+ 	"fmt"
+ 	"log/slog"
+ 	"os"
+-	"path"
+ 	"path/filepath"
+ 	"strings"
+ 
+@@ -43,30 +42,7 @@ func (is *Installer) createLinks(logger *slog.Logger, pkgs []*config.Package) bo
+ func (is *Installer) createPackageLinks(logger *slog.Logger, pkg *config.Package, aquaProxyPathOnWindows string) bool {
+ 	failed := false
+ 	pkgInfo := pkg.PackageInfo
++	for _, file := range pkgInfo.GetFiles() {
+-
+-	resolvedCommands1 := pkgInfo.Files
+-	if len(resolvedCommands1) == 0 {
+-		commandName := pkgInfo.Name
+-		repositoryBacked := pkgInfo.RepoOwner != "" && pkgInfo.RepoName != ""
+-		if repositoryBacked && commandName == "" {
+-			commandName = pkgInfo.RepoName
+-		}
+-		if repositoryBacked && pkgInfo.Name != "" {
+-			if slash := strings.LastIndex(commandName, "/"); slash != -1 {
+-				commandName = commandName[slash+1:]
+-			}
+-		}
+-		if !repositoryBacked {
+-			if pkgInfo.Type == "go_install" {
+-				commandName = pkgInfo.Path
+-			}
+-			commandName = path.Base(commandName)
+-		}
+-		if commandName != "" {
+-			resolvedCommands1 = []*registry.File{{Name: commandName}}
+-		}
+-	}
+-	for _, file := range resolvedCommands1 {
+ 		logger := logger.With("command", file.Name)
+ 		if is.createFileLinks(logger, pkg, file, aquaProxyPathOnWindows) {
+ 			failed = true
+diff --git a/pkg/installpackage/verify_slsa.go b/pkg/installpackage/verify_slsa.go
+index 8b5d8b3..a6c8c18 100644
+--- a/pkg/installpackage/verify_slsa.go
++++ b/pkg/installpackage/verify_slsa.go
+@@ -38,35 +38,17 @@ func (s *slsaVerifier) Verify(ctx context.Context, logger *slog.Logger, file str
+ 	pkgInfo := s.pkg.PackageInfo
+ 
+ 	art := pkg.TemplateArtifact(s.runtime, s.asset)
+-	sourceURI := ""
+-	provenance := pkgInfo.SLSAProvenance
+-	sourceOwner, sourceRepo := "", ""
+-	if provenance != nil {
+-		sourceOwner, sourceRepo = provenance.RepoOwner, provenance.RepoName
+-	}
+-	if sourceOwner == "" {
+-		sourceOwner = pkgInfo.RepoOwner
+-	}
+ 	sourceTag := pkgInfo.SLSAProvenance.SourceTag
+ 	if sourceTag == "" {
+ 		sourceTag = pkg.Package.Version
+ 	}
+ 
+-	if sourceRepo == "" {
+-		sourceRepo = pkgInfo.RepoName
+-	}
+-	if provenance != nil {
+-		sourceURI = fmt.Sprintf("github.com/%s/%s", sourceOwner, sourceRepo)
+-		if provenance.SourceURI != nil {
+-			sourceURI = *provenance.SourceURI
+-		}
+-	}
+ 	if err := s.verifier.Verify(ctx, logger, s.runtime, pkgInfo.SLSAProvenance, art, &download.File{
+ 		RepoOwner: pkgInfo.RepoOwner,
+ 		RepoName:  pkgInfo.RepoName,
+ 		Version:   pkg.Package.Version,
+ 	}, &slsa.ParamVerify{
++		SourceURI:    pkgInfo.SLSASourceURI(),
+-		SourceURI:    sourceURI,
+ 		SourceTag:    sourceTag,
+ 		ArtifactPath: file,
+ 	}); err != nil {
+diff --git a/pkg/minisign/exec.go b/pkg/minisign/exec.go
+index 9ab98aa..68fe448 100644
+--- a/pkg/minisign/exec.go
++++ b/pkg/minisign/exec.go
+@@ -4,10 +4,8 @@ import (
+ 	"context"
+ 	"errors"
+ 	"fmt"
+-	"github.com/aquaproj/aqua/v2/pkg/config/registry"
+ 	"log/slog"
+ 	"math/rand/v2"
+-	"path"
+ 	"strings"
+ 	"time"
+ 
+@@ -48,30 +46,7 @@ func NewExecutor(logger *slog.Logger, executor CommandExecutor, param *config.Pa
+ 		return nil, nil //nolint:nilnil
+ 	}
+ 	pkg.PackageInfo = pkgInfo
++	exePath, err := pkg.ExePath(param.RootDir, pkgInfo.GetFiles()[0], rt)
+-
+-	resolvedCommands1 := pkgInfo.Files
+-	if len(resolvedCommands1) == 0 {
+-		commandName := pkgInfo.Name
+-		repositoryBacked := pkgInfo.RepoOwner != "" && pkgInfo.RepoName != ""
+-		if repositoryBacked && commandName == "" {
+-			commandName = pkgInfo.RepoName
+-		}
+-		if repositoryBacked && pkgInfo.Name != "" {
+-			if slash := strings.LastIndex(commandName, "/"); slash != -1 {
+-				commandName = commandName[slash+1:]
+-			}
+-		}
+-		if !repositoryBacked {
+-			if pkgInfo.Type == "go_install" {
+-				commandName = pkgInfo.Path
+-			}
+-			commandName = path.Base(commandName)
+-		}
+-		if commandName != "" {
+-			resolvedCommands1 = []*registry.File{{Name: commandName}}
+-		}
+-	}
+-	exePath, err := pkg.ExePath(param.RootDir, resolvedCommands1[0], rt)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("get an executable file path of minisign: %w", err)
+ 	}

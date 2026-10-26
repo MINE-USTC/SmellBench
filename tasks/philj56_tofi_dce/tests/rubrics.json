@@ -1,0 +1,155 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "philj56_tofi_dce",
+  "rubric_status": "limited",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "supported_tag_fallback",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Original callback/tag invariant persists in retry.",
+      "baseline_defect": "Opaque constructor installs scorer for every supported tag; supported cases under scorer==NULL cannot run; unknown tag default is live.",
+      "criterion": "Remove supported tag fallback and solely obsolete state or arguments, preserving the live matching behavior.",
+      "acceptance": "Retain INT32_MIN for unsupported algorithms and match_words public early rejection, normalization/query lifetime, score callback or equivalent dispatch. Do not infer nullscorer guard itself dead; removing deadcases may leave rejection guard. A concise cleanup or equivalent redesign is valid; no exact helper/callback/slab representation is prescribed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting a now-live whole scorer, keeping dormant fallback behind a renamed guard, or removing live unsupported-algorithm/error/ownership behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/matching.c",
+          "symbol": "match_query_create,match_query_score",
+          "detail": "Opaque constructor installs scorer for every supported tag; supported cases under scorer==NULL cannot run; unknown tag default is live.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "normal_raw_tokenization",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 normal loop migration; retry restores function as live.",
+      "baseline_defect": "Only live calls pass &query->words; raw normalize/strtok initial/continuation and tmp ownership alternative cannot execute.",
+      "criterion": "Remove normal raw tokenization and solely obsolete state or arguments, preserving the live matching behavior.",
+      "acceptance": "Retain prepared terms, substring search/mismatch INT32_MIN and negative BYTE offset accumulation, whitespace-only0. Remove raw-only saveptr/tmp/free(NULL) and unusedparameters as appropriate, not normalized query storage shared across candidates. A concise cleanup or equivalent redesign is valid; no exact helper/callback/slab representation is prescribed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting a now-live whole scorer, keeping dormant fallback behind a renamed guard, or removing live unsupported-algorithm/error/ownership behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/matching.c",
+          "symbol": "simple_match_words",
+          "detail": "Only live calls pass &query->words; raw normalize/strtok initial/continuation and tmp ownership alternative cannot execute.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "prefix_raw_tokenization",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 prefix migration; retry mixed prepared/raw loop.",
+      "baseline_defect": "All effective invocations have prepared words, so legacy normalization/token advance/raw pattern length arm is dead.",
+      "criterion": "Remove prefix raw tokenization and solely obsolete state or arguments, preserving the live matching behavior.",
+      "acceptance": "Preserve match must start at candidate start, negative Unicode suffix-length score, mismatch rejection and perword accumulation. Prepared lengths come from normalized words; earlyexit and zero-wordscore retained. A concise cleanup or equivalent redesign is valid; no exact helper/callback/slab representation is prescribed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting a now-live whole scorer, keeping dormant fallback behind a renamed guard, or removing live unsupported-algorithm/error/ownership behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/matching.c",
+          "symbol": "prefix_match_words",
+          "detail": "All effective invocations have prepared words, so legacy normalization/token advance/raw pattern length arm is dead.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fuzzy_raw_word_iteration",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R3 and retry live fuzzy wholequery scorer.",
+      "baseline_defect": "Nonnull preparedwords makes normalization/strtok and NULL-word call alternative unreachable.",
+      "criterion": "Remove fuzzy raw word iteration and solely obsolete state or arguments, preserving the live matching behavior.",
+      "acceptance": "Retain perword fuzzy score accumulation, immediate INT32_MIN on one failure and zero-word0; fuzzy_match receives current prepared term. Do not remove live fuzzy function based on old pre-retry report. A concise cleanup or equivalent redesign is valid; no exact helper/callback/slab representation is prescribed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting a now-live whole scorer, keeping dormant fallback behind a renamed guard, or removing live unsupported-algorithm/error/ownership behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/matching.c",
+          "symbol": "fuzzy_match_words",
+          "detail": "Nonnull preparedwords makes normalization/strtok and NULL-word call alternative unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fuzzy_raw_word_representation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 decoded chars; retry fuzzy-only slab preparation.",
+      "baseline_defect": "Fuzzy constructor decodes before publishing scorer, every live fuzzy word has prepared length and slab pointer; raw word length/nullchar argument alternative dead.",
+      "criterion": "Remove fuzzy raw word representation and solely obsolete state or arguments, preserving the live matching behavior.",
+      "acceptance": "Preserve empty-pattern behavior, candidate too short rejection, unmatched-letter penalty and slen>100 first-match-only cutoff. Normal/prefix word characters may beNULL but never reach this scorer; proof requires constructor algorithm not merely split_words. A concise cleanup or equivalent redesign is valid; no exact helper/callback/slab representation is prescribed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting a now-live whole scorer, keeping dormant fallback behind a renamed guard, or removing live unsupported-algorithm/error/ownership behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/matching.c",
+          "symbol": "fuzzy_match",
+          "detail": "Fuzzy constructor decodes before publishing scorer, every live fuzzy word has prepared length and slab pointer; raw word length/nullchar argument alternative dead.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fuzzy_utf8_recursion",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 recursion retirement becomes branch-level in retry.",
+      "baseline_defect": "Fuzzy slab allocates all word chars+terminators fail-stop; recursive advancement always stays nonnull, so raw terminator/decode/nextpattern alternatives dead.",
+      "criterion": "Remove fuzzy utf8 recursion and solely obsolete state or arguments, preserving the live matching behavior.",
+      "acceptance": "Keep compiled terminator/currentcodepoint/nextchar recursion, Unicode candidate search, compute_score, bestscore and first-match cutoff. Shared slab freed once after filter; no per-interior-word free. utf8_words_destroy no-slab branch is LIVE normal/prefix (freeNULL) and not a deadness target. Preserve desktop name\u2192keywords penalty20, history and sorting/input lifetime. A concise cleanup or equivalent redesign is valid; no exact helper/callback/slab representation is prescribed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting a now-live whole scorer, keeping dormant fallback behind a renamed guard, or removing live unsupported-algorithm/error/ownership behavior is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/matching.c",
+          "symbol": "fuzzy_match_recurse",
+          "detail": "Fuzzy slab allocates all word chars+terminators fail-stop; recursive advancement always stays nonnull, so raw terminator/decode/nextpattern alternatives dead.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "philj56_tofi_dce",
+    "rubric_status": "limited",
+    "reason": "The final injection supports six separable structural checks in one search workflow. Further points would split equivalent raw-token branches or reward behavior preservation as a separate repair.",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "aggregation": {
+      "method": "equal_weight_mean",
+      "weight_per_item": 1
+    },
+    "excluded_from_scoring": [
+      "The empty post.diff adds no defect.",
+      "Preserving matching scores, empty-query copy, unknown-algorithm rejection, keyword fallback, and query destruction is required behavior, not standalone smell-removal credit.",
+      "The live no-slab branch in utf8_words_destroy serves normal and prefix queries and is not dead code.",
+      "The expansion's standalone match_characters body was removed by the matching interaction delta and is absent from the final injected patch."
+    ]
+  }
+}

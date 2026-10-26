@@ -1,0 +1,2811 @@
+diff --git a/packages/cli-utils/src/commands/generate-output/runner.ts b/packages/cli-utils/src/commands/generate-output/runner.ts
+index 1f79aa0..409e8ad 100644
+--- a/packages/cli-utils/src/commands/generate-output/runner.ts
++++ b/packages/cli-utils/src/commands/generate-output/runner.ts
+@@ -54,143 +54,130 @@ export async function* run(tty: TTY, opts: OutputOptions): AsyncIterable<Compose
+   // so generate each distinct file once rather than once per referencing project.
+   const generated = new Set<string>();
+   for (const project of projects) {
+-    const destinations = outputDestinations(project);
++    const { pluginConfig: destinationConfig, projectPath: destinationRoot } = project;
++    const locations =
++      'schemas' in destinationConfig
++        ? destinationConfig.schemas.map((schema) => schema.tadaOutputLocation)
++        : [destinationConfig.tadaOutputLocation];
++    const destinations = locations
++      .filter((location): location is string => !!location)
++      .map((location) => path.resolve(destinationRoot, location));
+     if (destinations.length && destinations.every((destination) => generated.has(destination))) {
+       continue;
+     }
+     for (const destination of destinations) generated.add(destination);
+     if (projects.length > 1) yield logger.projectHeader(project.label);
+-    yield* runProject(tty, opts, project);
+-  }
+-}
+-
+-function outputDestinations(project: ProjectContext): string[] {
+-  const { pluginConfig, projectPath } = project;
+-  const locations =
+-    'schemas' in pluginConfig
+-      ? pluginConfig.schemas.map((schema) => schema.tadaOutputLocation)
+-      : [pluginConfig.tadaOutputLocation];
+-  return locations
+-    .filter((location): location is string => !!location)
+-    .map((location) => path.resolve(projectPath, location));
+-}
+-
+-/** Generates the introspection output for a single project. */
+-async function* runProject(
+-  tty: TTY,
+-  opts: OutputOptions,
+-  project: ProjectContext
+-): AsyncIterable<ComposeInput> {
+-  const { pluginConfig, projectPath } = project;
+-
+-  let schemaRef = loadRef(pluginConfig);
+-  try {
+-    schemaRef = await schemaRef.load({ rootPath: projectPath });
+-  } catch (error) {
+-    throw logger.externalError('Failed to load schema(s).', error);
+-  }
+-
+-  if ('schema' in pluginConfig) {
+-    const schema = schemaRef.current!;
+-
+-    let destination: WriteTarget;
+-    if (!opts.output && tty.pipeTo) {
+-      destination = tty.pipeTo;
+-    } else if (opts.output) {
+-      destination = path.resolve(process.cwd(), opts.output);
+-    } else if (pluginConfig.tadaOutputLocation) {
+-      destination = path.resolve(projectPath, pluginConfig.tadaOutputLocation);
+-    } else {
+-      throw logger.errorMessage(
+-        'No output path was specified to write the output file to.\n' +
+-          logger.hint(
+-            `You have to either set ${logger.code(
+-              '"tadaOutputLocation"'
+-            )} in your configuration,\n` +
+-              `pass an ${logger.code('--output')} argument to this command,\n` +
+-              'or pipe this command to an output file.'
+-          )
+-      );
+-    }
+-
+-    const existing = await readOutput(destination);
+-    let contents: string;
+-    try {
+-      contents = outputIntrospectionFile(minifyIntrospection(schema.introspection), {
+-        fileType:
+-          destination && typeof destination === 'string'
+-            ? destination
+-            : opts.forceTSFormat
+-              ? '.ts'
+-              : '.d.ts',
+-        shouldPreprocess: !opts.disablePreprocessing,
+-        preamble: existing ? extractIntrospectionHeader(existing) || undefined : undefined,
+-      });
+-    } catch (error) {
+-      throw logger.externalError('Could not generate introspection output', error);
+-    }
++    const { pluginConfig, projectPath } = project;
+ 
++    let showHint: boolean | undefined;
++    let schemaRef = loadRef(pluginConfig);
+     try {
+-      await writeOutput(destination, contents);
++      schemaRef = await schemaRef.load({ rootPath: projectPath });
+     } catch (error) {
+-      throw logger.externalError(
+-        'Something went wrong while writing the introspection file',
+-        error
+-      );
+-    }
+-
+-    yield logger.summary(!opts.forceTSFormat && typeof destination !== 'string');
+-  } else {
+-    if (opts.output) {
+-      throw logger.errorMessage(
+-        'Output path was specified, while multiple schemas are configured.\n' +
+-          logger.hint(
+-            `You can only output all schemas to their ${logger.code(
+-              '"tadaOutputLocation"'
+-            )} options\n` + `when multiple ${logger.code('schemas')} are set up.`
+-          )
+-      );
++      throw logger.externalError('Failed to load schema(s).', error);
+     }
+ 
+-    for (const schemaName in schemaRef.multi) {
+-      const schema = schemaRef.multi[schemaName];
+-      if (!schema) {
+-        continue;
+-      } else if (!schema.tadaOutputLocation) {
++    if ('schema' in pluginConfig) {
++      const schema = schemaRef.current!;
++
++      let destination: WriteTarget;
++      if (!opts.output && tty.pipeTo) {
++        destination = tty.pipeTo;
++      } else if (opts.output) {
++        destination = path.resolve(process.cwd(), opts.output);
++      } else if (pluginConfig.tadaOutputLocation) {
++        destination = path.resolve(projectPath, pluginConfig.tadaOutputLocation);
++      } else {
+         throw logger.errorMessage(
+-          `No output path was specified to write the '${schemaName}' schema to.\n` +
++          'No output path was specified to write the output file to.\n' +
+             logger.hint(
+-              `You have to set ${logger.code('"tadaOutputLocation"')} in each schema configuration.`
++              `You have to either set ${logger.code(
++                '"tadaOutputLocation"'
++              )} in your configuration,\n` +
++                `pass an ${logger.code('--output')} argument to this command,\n` +
++                'or pipe this command to an output file.'
+             )
+         );
+       }
+ 
+-      const destination = path.resolve(projectPath, schema.tadaOutputLocation);
+       const existing = await readOutput(destination);
+       let contents: string;
+       try {
+         contents = outputIntrospectionFile(minifyIntrospection(schema.introspection), {
+-          fileType: schema.tadaOutputLocation,
++          fileType:
++            destination && typeof destination === 'string'
++              ? destination
++              : opts.forceTSFormat
++                ? '.ts'
++                : '.d.ts',
+           shouldPreprocess: !opts.disablePreprocessing,
+           preamble: existing ? extractIntrospectionHeader(existing) || undefined : undefined,
+         });
+       } catch (error) {
+-        throw logger.externalError(
+-          `Could not generate any output for the '${schemaName}' schema`,
+-          error
+-        );
++        throw logger.externalError('Could not generate introspection output', error);
+       }
+ 
+       try {
+         await writeOutput(destination, contents);
+       } catch (error) {
+         throw logger.externalError(
+-          `Something went wrong while writing the '${schemaName}' schema's output`,
++          'Something went wrong while writing the introspection file',
+           error
+         );
+       }
+-    }
+ 
+-    yield logger.summary();
++      showHint = !opts.forceTSFormat && typeof destination !== 'string';
++    } else {
++      if (opts.output) {
++        throw logger.errorMessage(
++          'Output path was specified, while multiple schemas are configured.\n' +
++            logger.hint(
++              `You can only output all schemas to their ${logger.code(
++                '"tadaOutputLocation"'
++              )} options\n` + `when multiple ${logger.code('schemas')} are set up.`
++            )
++        );
++      }
++
++      for (const schemaName in schemaRef.multi) {
++        const schema = schemaRef.multi[schemaName];
++        if (!schema) {
++          continue;
++        } else if (!schema.tadaOutputLocation) {
++          throw logger.errorMessage(
++            `No output path was specified to write the '${schemaName}' schema to.\n` +
++              logger.hint(
++                `You have to set ${logger.code('"tadaOutputLocation"')} in each schema configuration.`
++              )
++          );
++        }
++
++        const destination = path.resolve(projectPath, schema.tadaOutputLocation);
++        const existing = await readOutput(destination);
++        let contents: string;
++        try {
++          contents = outputIntrospectionFile(minifyIntrospection(schema.introspection), {
++            fileType: schema.tadaOutputLocation,
++            shouldPreprocess: !opts.disablePreprocessing,
++            preamble: existing ? extractIntrospectionHeader(existing) || undefined : undefined,
++          });
++        } catch (error) {
++          throw logger.externalError(
++            `Could not generate any output for the '${schemaName}' schema`,
++            error
++          );
++        }
++
++        try {
++          await writeOutput(destination, contents);
++        } catch (error) {
++          throw logger.externalError(
++            `Something went wrong while writing the '${schemaName}' schema's output`,
++            error
++          );
++        }
++      }
++    }
++    yield logger.summary(showHint);
+   }
+ }
+diff --git a/packages/cli-utils/src/commands/turbo/hash.ts b/packages/cli-utils/src/commands/turbo/hash.ts
+index 6688628..5583b26 100644
+--- a/packages/cli-utils/src/commands/turbo/hash.ts
++++ b/packages/cli-utils/src/commands/turbo/hash.ts
+@@ -39,7 +39,124 @@ export function createDocumentHasher(context: HashContext): DocumentHasher {
+     }
+ 
+     activeCalls.add(callExpression);
+-    const result = computeCallExpressionHash(callExpression, schemaName);
++    let result: DocumentHashResult = { hashable: false };
++    let expression = callExpression.arguments[0];
++    if (expression) {
++      while (
++        ts.isParenthesizedExpression(expression) ||
++        ts.isAsExpression(expression) ||
++        ts.isTypeAssertionExpression(expression) ||
++        ts.isSatisfiesExpression(expression) ||
++        ts.isNonNullExpression(expression)
++      )
++        expression = expression.expression;
++      if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
++        const documentText = expression.text;
++        const fragmentHashes: string[] = [];
++        const fragmentsHashable = (function collectFragments(
++          fragmentsExpression: ts.Expression | undefined
++        ): boolean {
++          if (!fragmentsExpression) return true;
++          while (
++            ts.isParenthesizedExpression(fragmentsExpression) ||
++            ts.isAsExpression(fragmentsExpression) ||
++            ts.isTypeAssertionExpression(fragmentsExpression) ||
++            ts.isSatisfiesExpression(fragmentsExpression) ||
++            ts.isNonNullExpression(fragmentsExpression)
++          )
++            fragmentsExpression = fragmentsExpression.expression;
++          if (ts.isArrayLiteralExpression(fragmentsExpression)) {
++            for (const element of fragmentsExpression.elements) {
++              if (ts.isSpreadElement(element)) {
++                if (!collectFragments(element.expression)) return false;
++                continue;
++              }
++              let candidate: ts.Expression = element;
++              while (
++                ts.isParenthesizedExpression(candidate) ||
++                ts.isAsExpression(candidate) ||
++                ts.isTypeAssertionExpression(candidate) ||
++                ts.isSatisfiesExpression(candidate) ||
++                ts.isNonNullExpression(candidate)
++              )
++                candidate = candidate.expression;
++              let documentCall: ts.CallExpression | null = null;
++              if (ts.isCallExpression(candidate)) {
++                documentCall = candidate;
++              } else {
++                let symbol = context.checker.getSymbolAtLocation(candidate);
++                if (symbol && symbol.flags & ts.SymbolFlags.Alias)
++                  symbol = context.checker.getAliasedSymbol(symbol);
++                if (symbol) {
++                  const cached = symbolCallCache.get(symbol);
++                  if (cached !== undefined) {
++                    documentCall = cached;
++                  } else {
++                    for (const declaration of symbol.declarations || []) {
++                      if (!ts.isVariableDeclaration(declaration) || !declaration.initializer)
++                        continue;
++                      let initializer = declaration.initializer;
++                      while (
++                        ts.isParenthesizedExpression(initializer) ||
++                        ts.isAsExpression(initializer) ||
++                        ts.isTypeAssertionExpression(initializer) ||
++                        ts.isSatisfiesExpression(initializer) ||
++                        ts.isNonNullExpression(initializer)
++                      )
++                        initializer = initializer.expression;
++                      if (ts.isCallExpression(initializer)) {
++                        documentCall = initializer;
++                        break;
++                      }
++                    }
++                    symbolCallCache.set(symbol, documentCall);
++                  }
++                }
++              }
++              if (!documentCall) return false;
++              const fragmentHash = hashCallExpression(documentCall, schemaName);
++              if (!fragmentHash.hashable || !fragmentHash.documentHash) return false;
++              fragmentHashes.push(fragmentHash.documentHash);
++            }
++            return true;
++          }
++          let symbol = context.checker.getSymbolAtLocation(fragmentsExpression);
++          if (symbol && symbol.flags & ts.SymbolFlags.Alias)
++            symbol = context.checker.getAliasedSymbol(symbol);
++          let initializer: ts.Expression | null = null;
++          if (symbol) {
++            for (const declaration of symbol.declarations || []) {
++              if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
++                initializer = declaration.initializer;
++                break;
++              }
++            }
++          }
++          return !!initializer && initializer !== fragmentsExpression
++            ? collectFragments(initializer)
++            : false;
++        })(callExpression.arguments[1]);
++        if (fragmentsHashable) {
++          const hash = crypto.createHash('sha256');
++          for (let index = 0; index < fragmentHashes.length + 4; index++) {
++            const part =
++              index === 0
++                ? CACHE_BUSTER
++                : index === 1
++                  ? schemaName || ''
++                  : index === 2
++                    ? context.schemaFingerprints.get(schemaName) || ''
++                    : index === 3
++                      ? documentText
++                      : fragmentHashes[index - 4];
++            hash.update(`${part.length}:`);
++            hash.update(part);
++            hash.update('\0');
++          }
++          result = { hashable: true, documentHash: `sha256:${hash.digest('hex').slice(0, 32)}` };
++        }
++      }
++    }
+     activeCalls.delete(callExpression);
+ 
+     let schemaCache = callExpressionCache.get(callExpression);
+@@ -52,147 +169,5 @@ export function createDocumentHasher(context: HashContext): DocumentHasher {
+     return result;
+   };
+ 
+-  const computeCallExpressionHash = (
+-    callExpression: ts.CallExpression,
+-    schemaName: string | null
+-  ): DocumentHashResult => {
+-    const documentText = getStaticStringValue(callExpression.arguments[0]);
+-    if (documentText == null) {
+-      return { hashable: false };
+-    }
+-
+-    const fragmentHashes = getFragmentHashes(callExpression.arguments[1], schemaName);
+-    if (!fragmentHashes) {
+-      return { hashable: false };
+-    }
+-
+-    const hash = crypto.createHash('sha256');
+-
+-    addHashPart(hash, CACHE_BUSTER);
+-    addHashPart(hash, schemaName || '');
+-    addHashPart(hash, context.schemaFingerprints.get(schemaName) || '');
+-    addHashPart(hash, documentText);
+-    for (const fragmentHash of fragmentHashes) {
+-      addHashPart(hash, fragmentHash);
+-    }
+-
+-    return {
+-      hashable: true,
+-      documentHash: `sha256:${hash.digest('hex').slice(0, 32)}`,
+-    };
+-  };
+-
+-  const getFragmentHashes = (
+-    fragmentsExpression: ts.Expression | undefined,
+-    schemaName: string | null
+-  ): string[] | null => {
+-    if (!fragmentsExpression) return [];
+-
+-    fragmentsExpression = unwrapExpression(fragmentsExpression);
+-
+-    if (ts.isArrayLiteralExpression(fragmentsExpression)) {
+-      const hashes: string[] = [];
+-      for (const element of fragmentsExpression.elements) {
+-        if (ts.isSpreadElement(element)) {
+-          const spreadHashes = getFragmentHashes(element.expression, schemaName);
+-          if (!spreadHashes) return null;
+-          hashes.push(...spreadHashes);
+-          continue;
+-        }
+-
+-        const documentCall = resolveDocumentCallExpression(element);
+-        if (!documentCall) return null;
+-
+-        const fragmentHash = hashCallExpression(documentCall, schemaName);
+-        if (!fragmentHash.hashable || !fragmentHash.documentHash) return null;
+-        hashes.push(fragmentHash.documentHash);
+-      }
+-      return hashes;
+-    }
+-
+-    const declarationExpression = resolveDeclarationInitializer(fragmentsExpression);
+-    if (declarationExpression && declarationExpression !== fragmentsExpression) {
+-      return getFragmentHashes(declarationExpression, schemaName);
+-    }
+-
+-    return null;
+-  };
+-
+-  const resolveDocumentCallExpression = (expression: ts.Expression): ts.CallExpression | null => {
+-    expression = unwrapExpression(expression);
+-    if (ts.isCallExpression(expression)) return expression;
+-
+-    const symbol = getSymbol(expression);
+-    if (!symbol) return null;
+-
+-    const cached = symbolCallCache.get(symbol);
+-    if (cached !== undefined) return cached;
+-
+-    const callExpression = resolveSymbolCallExpression(symbol);
+-    symbolCallCache.set(symbol, callExpression);
+-    return callExpression;
+-  };
+-
+-  const resolveDeclarationInitializer = (expression: ts.Expression): ts.Expression | null => {
+-    const symbol = getSymbol(expression);
+-    if (!symbol) return null;
+-
+-    for (const declaration of symbol.declarations || []) {
+-      if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
+-        return declaration.initializer;
+-      }
+-    }
+-
+-    return null;
+-  };
+-
+-  const resolveSymbolCallExpression = (symbol: ts.Symbol): ts.CallExpression | null => {
+-    for (const declaration of symbol.declarations || []) {
+-      if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
+-        const initializer = unwrapExpression(declaration.initializer);
+-        if (ts.isCallExpression(initializer)) return initializer;
+-      }
+-    }
+-    return null;
+-  };
+-
+-  const getSymbol = (expression: ts.Expression): ts.Symbol | undefined => {
+-    let symbol = context.checker.getSymbolAtLocation(expression);
+-    if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+-      symbol = context.checker.getAliasedSymbol(symbol);
+-    }
+-    return symbol;
+-  };
+-
+   return { hashCallExpression };
+ }
+-
+-function getStaticStringValue(expression: ts.Expression | undefined): string | undefined {
+-  if (!expression) return undefined;
+-  expression = unwrapExpression(expression);
+-
+-  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+-    return expression.text;
+-  }
+-
+-  return undefined;
+-}
+-
+-function unwrapExpression(expression: ts.Expression): ts.Expression {
+-  while (
+-    ts.isParenthesizedExpression(expression) ||
+-    ts.isAsExpression(expression) ||
+-    ts.isTypeAssertionExpression(expression) ||
+-    ts.isSatisfiesExpression(expression) ||
+-    ts.isNonNullExpression(expression)
+-  ) {
+-    expression = expression.expression;
+-  }
+-  return expression;
+-}
+-
+-function addHashPart(hash: crypto.Hash, part: string): void {
+-  hash.update(`${part.length}:`);
+-  hash.update(part);
+-  hash.update('\0');
+-}
+diff --git a/packages/internal/src/introspection/minify.ts b/packages/internal/src/introspection/minify.ts
+index e81ea19..5594168 100644
+--- a/packages/internal/src/introspection/minify.ts
++++ b/packages/internal/src/introspection/minify.ts
+@@ -2,9 +2,6 @@ import type {
+   IntrospectionQuery,
+   IntrospectionType,
+   IntrospectionTypeRef,
+-  IntrospectionNamedTypeRef,
+-  IntrospectionOutputTypeRef,
+-  IntrospectionInputTypeRef,
+   IntrospectionInputValue,
+   IntrospectionEnumValue,
+   IntrospectionField,
+@@ -16,123 +13,6 @@ function nameCompare(objA: { name: string }, objB: { name: string }) {
+   return objA.name < objB.name ? -1 : objA.name > objB.name ? 1 : 0;
+ }
+ 
+-function mapTypeRef<const T extends IntrospectionTypeRef>(fromType: T): T;
+-function mapTypeRef(fromType: IntrospectionTypeRef): IntrospectionTypeRef;
+-function mapTypeRef(fromType: IntrospectionOutputTypeRef): IntrospectionOutputTypeRef;
+-function mapTypeRef(fromType: IntrospectionInputTypeRef): IntrospectionInputTypeRef;
+-
+-function mapTypeRef(fromType: IntrospectionTypeRef): IntrospectionTypeRef & { isOneOf?: boolean } {
+-  switch (fromType.kind) {
+-    case 'NON_NULL':
+-      return {
+-        kind: fromType.kind,
+-        ofType: mapTypeRef(fromType.ofType),
+-      };
+-    case 'LIST':
+-      return {
+-        kind: fromType.kind,
+-        ofType: mapTypeRef(fromType.ofType),
+-      };
+-    case 'INPUT_OBJECT':
+-    case 'ENUM':
+-    case 'SCALAR':
+-    case 'OBJECT':
+-    case 'INTERFACE':
+-    case 'UNION':
+-      return {
+-        kind: fromType.kind,
+-        name: fromType.name,
+-      };
+-  }
+-}
+-
+-function mapEnumValue(value: IntrospectionEnumValue): IntrospectionEnumValue {
+-  return {
+-    name: value.name,
+-    isDeprecated: !!value.isDeprecated,
+-    deprecationReason: undefined,
+-  };
+-}
+-
+-function mapInputField(value: IntrospectionInputValue): IntrospectionInputValue {
+-  return {
+-    name: value.name,
+-    type: mapTypeRef(value.type),
+-    defaultValue: value.defaultValue || undefined,
+-  };
+-}
+-
+-function mapField(field: IntrospectionField): IntrospectionField {
+-  return {
+-    name: field.name,
+-    type: mapTypeRef(field.type),
+-    args: field.args ? field.args.map(mapInputField).sort(nameCompare) : [],
+-    isDeprecated: !!field.isDeprecated,
+-    deprecationReason: undefined,
+-  };
+-}
+-
+-function mapPossibleType<T extends IntrospectionNamedTypeRef>(ref: T): T {
+-  return {
+-    kind: ref.kind,
+-    name: ref.name,
+-  } as T;
+-}
+-
+-function minifyIntrospectionType(type: IntrospectionType): IntrospectionType {
+-  switch (type.kind) {
+-    case 'SCALAR':
+-      return {
+-        kind: 'SCALAR',
+-        name: type.name,
+-      };
+-
+-    case 'ENUM':
+-      return {
+-        kind: 'ENUM',
+-        name: type.name,
+-        enumValues: type.enumValues.map(mapEnumValue),
+-      };
+-
+-    case 'INPUT_OBJECT': {
+-      return {
+-        kind: 'INPUT_OBJECT',
+-        name: type.name,
+-        inputFields: type.inputFields.map(mapInputField),
+-        isOneOf: (type as any).isOneOf || false,
+-      } as IntrospectionType;
+-    }
+-
+-    case 'OBJECT':
+-      return {
+-        kind: 'OBJECT',
+-        name: type.name,
+-        fields: type.fields ? type.fields.map(mapField).sort(nameCompare) : [],
+-        interfaces: type.interfaces ? type.interfaces.map(mapPossibleType).sort(nameCompare) : [],
+-      };
+-
+-    case 'INTERFACE':
+-      return {
+-        kind: 'INTERFACE',
+-        name: type.name,
+-        fields: type.fields ? type.fields.map(mapField).sort(nameCompare) : [],
+-        interfaces: type.interfaces ? type.interfaces.map(mapPossibleType).sort(nameCompare) : [],
+-        possibleTypes: type.possibleTypes
+-          ? type.possibleTypes.map(mapPossibleType).sort(nameCompare)
+-          : [],
+-      };
+-
+-    case 'UNION':
+-      return {
+-        kind: 'UNION',
+-        name: type.name,
+-        possibleTypes: type.possibleTypes
+-          ? type.possibleTypes.map(mapPossibleType).sort(nameCompare)
+-          : [],
+-      };
+-  }
+-}
+-
+ /** Minifies an {@link IntrospectionQuery} for use with Graphcache or the `populateExchange`.
+  *
+  * @param schema - An {@link IntrospectionQuery} object to be minified.
+@@ -186,7 +66,129 @@ export const minifyIntrospectionQuery = (
+           );
+       }
+     })
+-    .map(minifyIntrospectionType)
++    .map((type: IntrospectionType): IntrospectionType => {
++      switch (type.kind) {
++        case 'SCALAR':
++          return { kind: 'SCALAR', name: type.name };
++        case 'ENUM':
++          return {
++            kind: 'ENUM',
++            name: type.name,
++            enumValues: type.enumValues.map((value: IntrospectionEnumValue) => ({
++              name: value.name,
++              isDeprecated: !!value.isDeprecated,
++              deprecationReason: undefined,
++            })),
++          };
++        case 'INPUT_OBJECT': {
++          const name = type.name;
++          const inputFields: IntrospectionInputValue[] = [];
++          for (const value of type.inputFields) {
++            const name = value.name;
++            let reference = value.type;
++            const wrappers: ('NON_NULL' | 'LIST')[] = [];
++            while (reference.kind === 'NON_NULL' || reference.kind === 'LIST') {
++              wrappers.push(reference.kind);
++              reference = reference.ofType;
++            }
++            let projected: IntrospectionTypeRef = { kind: reference.kind, name: reference.name };
++            for (let i = wrappers.length - 1; i >= 0; i--)
++              projected = { kind: wrappers[i], ofType: projected } as IntrospectionTypeRef;
++
++            inputFields.push({
++              name,
++              type: projected as typeof value.type,
++              defaultValue: value.defaultValue || undefined,
++            });
++          }
++
++          return {
++            kind: 'INPUT_OBJECT',
++            name,
++            inputFields,
++            isOneOf: (type as any).isOneOf || false,
++          } as IntrospectionType;
++        }
++        case 'OBJECT':
++        case 'INTERFACE': {
++          const kind = type.kind;
++          const name = type.name;
++          const fields: IntrospectionField[] = [];
++          if (type.fields) {
++            for (const field of type.fields) {
++              const name = field.name;
++              let reference = field.type;
++              const wrappers: ('NON_NULL' | 'LIST')[] = [];
++              while (reference.kind === 'NON_NULL' || reference.kind === 'LIST') {
++                wrappers.push(reference.kind);
++                reference = reference.ofType;
++              }
++              let projected: IntrospectionTypeRef = { kind: reference.kind, name: reference.name };
++              for (let i = wrappers.length - 1; i >= 0; i--)
++                projected = { kind: wrappers[i], ofType: projected } as IntrospectionTypeRef;
++
++              const args: IntrospectionInputValue[] = [];
++              if (field.args) {
++                for (const value of field.args) {
++                  const name = value.name;
++                  let reference = value.type;
++                  const wrappers: ('NON_NULL' | 'LIST')[] = [];
++                  while (reference.kind === 'NON_NULL' || reference.kind === 'LIST') {
++                    wrappers.push(reference.kind);
++                    reference = reference.ofType;
++                  }
++                  let argumentType: IntrospectionTypeRef = {
++                    kind: reference.kind,
++                    name: reference.name,
++                  };
++                  for (let i = wrappers.length - 1; i >= 0; i--)
++                    argumentType = {
++                      kind: wrappers[i],
++                      ofType: argumentType,
++                    } as IntrospectionTypeRef;
++
++                  args.push({
++                    name,
++                    type: argumentType as typeof value.type,
++                    defaultValue: value.defaultValue || undefined,
++                  });
++                }
++                args.sort(nameCompare);
++              }
++              fields.push({
++                name,
++                type: projected as typeof field.type,
++                args,
++                isDeprecated: !!field.isDeprecated,
++                deprecationReason: undefined,
++              });
++            }
++            fields.sort(nameCompare);
++          }
++
++          const interfaces = type.interfaces
++            ? type.interfaces.map((ref) => ({ kind: ref.kind, name: ref.name })).sort(nameCompare)
++            : [];
++          if (kind === 'OBJECT') return { kind, name, fields, interfaces } as IntrospectionType;
++          const possibleTypes = type.possibleTypes
++            ? type.possibleTypes
++                .map((ref) => ({ kind: ref.kind, name: ref.name }))
++                .sort(nameCompare)
++            : [];
++          return { kind, name, fields, interfaces, possibleTypes } as IntrospectionType;
++        }
++        case 'UNION':
++          return {
++            kind: 'UNION',
++            name: type.name,
++            possibleTypes: type.possibleTypes
++              ? type.possibleTypes
++                  .map((ref) => ({ kind: ref.kind, name: ref.name }))
++                  .sort(nameCompare)
++              : [],
++          };
++      }
++    })
+     .sort(nameCompare);
+ 
+   return {
+diff --git a/packages/internal/src/introspection/output.ts b/packages/internal/src/introspection/output.ts
+index 5f9ad66..99f122d 100644
+--- a/packages/internal/src/introspection/output.ts
++++ b/packages/internal/src/introspection/output.ts
+@@ -7,9 +7,6 @@ import { preprocessIntrospection, preprocessIntrospectionTypes } from './preproc
+ 
+ const TYPES_VAR = 'introspection_types';
+ 
+-const stringifyJson = (input: unknown | string): string =>
+-  typeof input === 'string' ? input : JSON.stringify(input, null, 2);
+-
+ const ANNOTATION_SIGNATURE = 'An IntrospectionQuery representation';
+ 
+ /** Extracts the leading comment header of a previously generated file, so it
+@@ -68,7 +65,7 @@ export function outputIntrospectionFile(
+     } else {
+       out.push(
+         ANNOTATION_DTS,
+-        `export type introspection = ${stringifyJson(introspection)};\n`,
++        `export type introspection = ${typeof introspection === 'string' ? introspection : JSON.stringify(introspection, null, 2)};\n`,
+         "import * as gqlTada from 'gql.tada';\n"
+       );
+     }
+@@ -86,7 +83,8 @@ export function outputIntrospectionFile(
+     }
+     return out.join('\n');
+   } else if (/\.ts$/.test(opts.fileType)) {
+-    const json = stringifyJson(introspection);
++    const json =
++      typeof introspection === 'string' ? introspection : JSON.stringify(introspection, null, 2);
+     return [
+       preamble,
+       ANNOTATION_TS,
+diff --git a/packages/internal/src/introspection/preprocess.ts b/packages/internal/src/introspection/preprocess.ts
+index b5bb558..fb8fc92 100644
+--- a/packages/internal/src/introspection/preprocess.ts
++++ b/packages/internal/src/introspection/preprocess.ts
+@@ -1,81 +1,94 @@
+-import type {
+-  IntrospectionQuery,
+-  IntrospectionType,
+-  IntrospectionEnumValue,
+-  IntrospectionInputValue,
+-  IntrospectionTypeRef,
+-  IntrospectionNamedTypeRef,
+-  IntrospectionField,
+-} from 'graphql';
++import type { IntrospectionQuery, IntrospectionType, IntrospectionTypeRef } from 'graphql';
+ 
+ import type { IntrospectionResult } from '../loaders';
+ 
+ const printName = (input: string | undefined | null): string => (input ? `'${input}'` : 'never');
+ 
+-const printTypeRef = (typeRef: IntrospectionTypeRef) => {
+-  if (typeRef.kind === 'NON_NULL') {
+-    return `{ kind: 'NON_NULL'; name: never; ofType: ${printTypeRef(typeRef.ofType)}; }`;
+-  } else if (typeRef.kind === 'LIST') {
+-    return `{ kind: 'LIST'; name: never; ofType: ${printTypeRef(typeRef.ofType)}; }`;
+-  } else {
+-    return `{ kind: ${printName(typeRef.kind)}; name: ${printName(typeRef.name)}; ofType: null; }`;
+-  }
+-};
+-
+-const printInputFields = (inputFields: readonly IntrospectionInputValue[]) => {
+-  let output = '';
+-  for (const inputField of inputFields) {
+-    if (output) output += ', ';
+-    const name = printName(inputField.name);
+-    const type = printTypeRef(inputField.type);
+-    const defaultValue = inputField.defaultValue ? JSON.stringify(inputField.defaultValue) : 'null';
+-    output += `{ name: ${name}; type: ${type}; defaultValue: ${defaultValue} }`;
+-  }
+-  return `[${output}]`;
+-};
+-
+-const printNamedTypes = (
+-  values: readonly (IntrospectionEnumValue | IntrospectionNamedTypeRef)[]
+-) => {
+-  if (!values.length) return 'never';
+-  let output = '';
+-  for (const value of values) {
+-    if (output) output += ' | ';
+-    output += printName(value.name);
+-  }
+-  return output;
+-};
+-
+-const printFields = (fields: readonly IntrospectionField[]) => {
+-  let output = '';
+-  for (const field of fields) {
+-    const name = printName(field.name);
+-    const type = printTypeRef(field.type);
+-    output += `${printName(field.name)}: { name: ${name}; type: ${type} }; `;
+-  }
+-  return `{ ${output}}`;
+-};
+-
+ export const printIntrospectionType = (type: IntrospectionType) => {
+   if (type.kind === 'ENUM') {
+-    const values = printNamedTypes(type.enumValues);
++    let values = '';
++    for (const value of type.enumValues) {
++      if (values) values += ' | ';
++      values += printName(value.name);
++    }
++    if (!type.enumValues.length) values = 'never';
+     return `{ name: ${printName(type.name)}; enumValues: ${values}; }`;
+   } else if (type.kind === 'INPUT_OBJECT') {
+-    const fields = printInputFields(type.inputFields);
+-    return `{ kind: 'INPUT_OBJECT'; name: ${printName(type.name)}; isOneOf: ${
+-      (type as any).isOneOf || false
+-    }; inputFields: ${fields}; }`;
++    let fields = '[';
++    for (const field of type.inputFields) {
++      if (fields !== '[') fields += ', ';
++      const name = printName(field.name);
++      let ref: IntrospectionTypeRef = field.type;
++      const wrappers: ('NON_NULL' | 'LIST')[] = [];
++      while (ref.kind === 'NON_NULL' || ref.kind === 'LIST') {
++        wrappers.push(ref.kind);
++        ref = ref.ofType;
++      }
++      let rendered = `{ kind: ${printName(ref.kind)}; name: ${printName(ref.name)}; ofType: null; }`;
++      for (let i = wrappers.length - 1; i >= 0; i--)
++        rendered = `{ kind: '${wrappers[i]}'; name: never; ofType: ${rendered}; }`;
++
++      const defaultValue = field.defaultValue ? JSON.stringify(field.defaultValue) : 'null';
++      fields += `{ name: ${name}; type: ${rendered}; defaultValue: ${defaultValue} }`;
++    }
++    fields += ']';
++
++    return `{ kind: 'INPUT_OBJECT'; name: ${printName(type.name)}; isOneOf: ${(type as any).isOneOf || false}; inputFields: ${fields}; }`;
+   } else if (type.kind === 'OBJECT') {
+-    const fields = printFields(type.fields);
++    let fields = '{ ';
++    for (const field of type.fields) {
++      const name = printName(field.name);
++      let ref: IntrospectionTypeRef = field.type;
++      const wrappers: ('NON_NULL' | 'LIST')[] = [];
++      while (ref.kind === 'NON_NULL' || ref.kind === 'LIST') {
++        wrappers.push(ref.kind);
++        ref = ref.ofType;
++      }
++      let rendered = `{ kind: ${printName(ref.kind)}; name: ${printName(ref.name)}; ofType: null; }`;
++      for (let i = wrappers.length - 1; i >= 0; i--)
++        rendered = `{ kind: '${wrappers[i]}'; name: never; ofType: ${rendered}; }`;
++
++      fields += `${printName(field.name)}: { name: ${name}; type: ${rendered} }; `;
++    }
++    fields += '}';
++
+     return `{ kind: 'OBJECT'; name: ${printName(type.name)}; fields: ${fields}; }`;
+   } else if (type.kind === 'INTERFACE') {
+     const name = printName(type.name);
+-    const fields = printFields(type.fields);
+-    const possibleTypes = printNamedTypes(type.possibleTypes);
++    let fields = '{ ';
++    for (const field of type.fields) {
++      const name = printName(field.name);
++      let ref: IntrospectionTypeRef = field.type;
++      const wrappers: ('NON_NULL' | 'LIST')[] = [];
++      while (ref.kind === 'NON_NULL' || ref.kind === 'LIST') {
++        wrappers.push(ref.kind);
++        ref = ref.ofType;
++      }
++      let rendered = `{ kind: ${printName(ref.kind)}; name: ${printName(ref.name)}; ofType: null; }`;
++      for (let i = wrappers.length - 1; i >= 0; i--)
++        rendered = `{ kind: '${wrappers[i]}'; name: never; ofType: ${rendered}; }`;
++
++      fields += `${printName(field.name)}: { name: ${name}; type: ${rendered} }; `;
++    }
++    fields += '}';
++
++    let possibleTypes = '';
++    for (const value of type.possibleTypes) {
++      if (possibleTypes) possibleTypes += ' | ';
++      possibleTypes += printName(value.name);
++    }
++    if (!type.possibleTypes.length) possibleTypes = 'never';
++
+     return `{ kind: 'INTERFACE'; name: ${name}; fields: ${fields}; possibleTypes: ${possibleTypes}; }`;
+   } else if (type.kind === 'UNION') {
+     const name = printName(type.name);
+-    const possibleTypes = printNamedTypes(type.possibleTypes);
++    let possibleTypes = '';
++    for (const value of type.possibleTypes) {
++      if (possibleTypes) possibleTypes += ' | ';
++      possibleTypes += printName(value.name);
++    }
++    if (!type.possibleTypes.length) possibleTypes = 'never';
++
+     return `{ kind: 'UNION'; name: ${name}; fields: {}; possibleTypes: ${possibleTypes}; }`;
+   } else {
+     return 'unknown';
+diff --git a/packages/internal/src/loaders/index.ts b/packages/internal/src/loaders/index.ts
+index dd20a1e..e61871a 100644
+--- a/packages/internal/src/loaders/index.ts
++++ b/packages/internal/src/loaders/index.ts
+@@ -62,21 +62,6 @@ export function loadRef(
+   const teardowns: (() => void)[] = [];
+ 
+   let _loaders: { input: SingleSchemaInput; loader: SchemaLoader }[] | undefined;
+-  const getLoaders = (config?: BaseLoadConfig) => {
+-    if (!_loaders) {
+-      _loaders = (('schemas' in input && input.schemas) || []).map((input) => ({
+-        input,
+-        loader: load({ ...config, origin: input.schema, name: input.name }),
+-      }));
+-      if ('schema' in input && input.schema) {
+-        _loaders.push({
+-          input: { ...input, name: undefined },
+-          loader: load({ ...config, origin: input.schema }),
+-        });
+-      }
+-    }
+-    return _loaders;
+-  };
+ 
+   const ref: SchemaRef = {
+     version: 0,
+@@ -88,7 +73,19 @@ export function loadRef(
+     }, {}),
+ 
+     autoupdate(config: BaseLoadConfig, onUpdate, onError) {
+-      const loaders = getLoaders(config);
++      if (!_loaders) {
++        _loaders = (('schemas' in input && input.schemas) || []).map((input) => ({
++          input,
++          loader: load({ ...config, origin: input.schema, name: input.name }),
++        }));
++        if ('schema' in input && input.schema) {
++          _loaders.push({
++            input: { ...input, name: undefined },
++            loader: load({ ...config, origin: input.schema }),
++          });
++        }
++      }
++      const loaders = _loaders;
+       teardowns.push(
+         ...loaders.map(({ input, loader }) => {
+           loader
+@@ -124,7 +121,19 @@ export function loadRef(
+       };
+     },
+     async load(config: BaseLoadConfig & { reload?: boolean }) {
+-      const loaders = getLoaders(config);
++      if (!_loaders) {
++        _loaders = (('schemas' in input && input.schemas) || []).map((input) => ({
++          input,
++          loader: load({ ...config, origin: input.schema, name: input.name }),
++        }));
++        if ('schema' in input && input.schema) {
++          _loaders.push({
++            input: { ...input, name: undefined },
++            loader: load({ ...config, origin: input.schema }),
++          });
++        }
++      }
++      const loaders = _loaders;
+       await Promise.all(
+         loaders.map(async ({ input, loader }) => {
+           const result = await loader.load(config.reload);
+diff --git a/packages/internal/src/loaders/introspection.ts b/packages/internal/src/loaders/introspection.ts
+index 46aad25..14fb059 100644
+--- a/packages/internal/src/loaders/introspection.ts
++++ b/packages/internal/src/loaders/introspection.ts
+@@ -4,7 +4,6 @@ import { Kind, OperationTypeNode } from '@0no-co/graphql.web';
+ 
+ import type {
+   SelectionSetNode,
+-  FragmentDefinitionNode,
+   OperationDefinitionNode,
+   FieldNode,
+   DocumentNode,
+@@ -28,22 +27,6 @@ export interface IntrospectSupportQueryData {
+   inputValue: { fields: { name: string }[] | null } | null;
+ }
+ 
+-const _hasField = (
+-  data: IntrospectSupportQueryData[keyof IntrospectSupportQueryData],
+-  fieldName: string
+-): boolean => !!data && !!data.fields && data.fields.some((field) => field.name === fieldName);
+-
+-const _supportsDeprecatedArgumentsArg = (
+-  data: IntrospectSupportQueryData['field' | 'directive']
+-): boolean => {
+-  const argsField = data && data.fields && data.fields.find((field) => field.name === 'args');
+-  return !!(
+-    argsField &&
+-    argsField.args &&
+-    argsField.args.find((arg) => arg.name === 'includeDeprecated')
+-  );
+-};
+-
+ export const ALL_SUPPORTED_FEATURES: SupportedFeatures = {
+   directiveIsRepeatable: true,
+   specifiedByURL: true,
+@@ -64,12 +47,50 @@ export const NO_SUPPORTED_FEATURES: SupportedFeatures = {
+ 
+ /** Evaluates data from a {@link makeIntrospectSupportQuery} result to {@link SupportedFeatures} */
+ export const toSupportedFeatures = (data: IntrospectSupportQueryData): SupportedFeatures => ({
+-  directiveIsRepeatable: _hasField(data.directive, 'isRepeatable'),
+-  specifiedByURL: _hasField(data.type, 'specifiedByURL'),
+-  inputOneOf: _hasField(data.type, 'isOneOf'),
+-  inputValueDeprecation: _hasField(data.inputValue, 'isDeprecated'),
+-  directiveArgumentsIsDeprecated: _supportsDeprecatedArgumentsArg(data.directive),
+-  fieldArgumentsIsDeprecated: _supportsDeprecatedArgumentsArg(data.field),
++  directiveIsRepeatable: (function _hasField(
++    data: IntrospectSupportQueryData[keyof IntrospectSupportQueryData],
++    fieldName: string
++  ): boolean {
++    return !!data && !!data.fields && data.fields.some((field) => field.name === fieldName);
++  })(data.directive, 'isRepeatable'),
++  specifiedByURL: (function _hasField(
++    data: IntrospectSupportQueryData[keyof IntrospectSupportQueryData],
++    fieldName: string
++  ): boolean {
++    return !!data && !!data.fields && data.fields.some((field) => field.name === fieldName);
++  })(data.type, 'specifiedByURL'),
++  inputOneOf: (function _hasField(
++    data: IntrospectSupportQueryData[keyof IntrospectSupportQueryData],
++    fieldName: string
++  ): boolean {
++    return !!data && !!data.fields && data.fields.some((field) => field.name === fieldName);
++  })(data.type, 'isOneOf'),
++  inputValueDeprecation: (function _hasField(
++    data: IntrospectSupportQueryData[keyof IntrospectSupportQueryData],
++    fieldName: string
++  ): boolean {
++    return !!data && !!data.fields && data.fields.some((field) => field.name === fieldName);
++  })(data.inputValue, 'isDeprecated'),
++  directiveArgumentsIsDeprecated: (function _supportsDeprecatedArgumentsArg(
++    data: IntrospectSupportQueryData['field' | 'directive']
++  ): boolean {
++    const argsField = data && data.fields && data.fields.find((field) => field.name === 'args');
++    return !!(
++      argsField &&
++      argsField.args &&
++      argsField.args.find((arg) => arg.name === 'includeDeprecated')
++    );
++  })(data.directive),
++  fieldArgumentsIsDeprecated: (function _supportsDeprecatedArgumentsArg(
++    data: IntrospectSupportQueryData['field' | 'directive']
++  ): boolean {
++    const argsField = data && data.fields && data.fields.find((field) => field.name === 'args');
++    return !!(
++      argsField &&
++      argsField.args &&
++      argsField.args.find((arg) => arg.name === 'includeDeprecated')
++    );
++  })(data.field),
+ });
+ 
+ export const introspectionToSupportedFeatures = (data: IntrospectionQuery): SupportedFeatures => {
+@@ -79,12 +100,37 @@ export const introspectionToSupportedFeatures = (data: IntrospectionQuery): Supp
+   const field = data.__schema.types.find((type) => type.name === '__Field') as any;
+   if (directive && type && inputValue && field) {
+     return {
+-      directiveIsRepeatable: _hasField(directive, 'isRepeatable'),
+-      specifiedByURL: _hasField(type, 'specifiedByURL'),
+-      inputOneOf: _hasField(type, 'isOneOf'),
+-      inputValueDeprecation: _hasField(inputValue, 'isDeprecated'),
+-      directiveArgumentsIsDeprecated: _supportsDeprecatedArgumentsArg(directive),
+-      fieldArgumentsIsDeprecated: _supportsDeprecatedArgumentsArg(field),
++      directiveIsRepeatable:
++        !!directive &&
++        !!directive.fields &&
++        directive.fields.some((field) => field.name === 'isRepeatable'),
++      specifiedByURL:
++        !!type && !!type.fields && type.fields.some((field) => field.name === 'specifiedByURL'),
++      inputOneOf: !!type && !!type.fields && type.fields.some((field) => field.name === 'isOneOf'),
++      inputValueDeprecation:
++        !!inputValue &&
++        !!inputValue.fields &&
++        inputValue.fields.some((field) => field.name === 'isDeprecated'),
++      directiveArgumentsIsDeprecated: (function _supportsDeprecatedArgumentsArg(
++        data: IntrospectSupportQueryData['field' | 'directive']
++      ): boolean {
++        const argsField = data && data.fields && data.fields.find((field) => field.name === 'args');
++        return !!(
++          argsField &&
++          argsField.args &&
++          argsField.args.find((arg) => arg.name === 'includeDeprecated')
++        );
++      })(directive),
++      fieldArgumentsIsDeprecated: (function _supportsDeprecatedArgumentsArg(
++        data: IntrospectSupportQueryData['field' | 'directive']
++      ): boolean {
++        const argsField = data && data.fields && data.fields.find((field) => field.name === 'args');
++        return !!(
++          argsField &&
++          argsField.args &&
++          argsField.args.find((arg) => arg.name === 'includeDeprecated')
++        );
++      })(field),
+     };
+   } else {
+     return NO_SUPPORTED_FEATURES;
+@@ -117,34 +163,416 @@ export const makeIntrospectionQuery = (support: SupportedFeatures): DocumentNode
+   if (_introspectionQuery && _previousSupport === support) {
+     return _introspectionQuery;
+   } else {
+-    return (_introspectionQuery = _makeIntrospectionQuery((_previousSupport = support)));
+-  }
+-};
+-
+-const _makeIntrospectionQuery = (support: SupportedFeatures): DocumentNode => ({
+-  kind: Kind.DOCUMENT,
+-  definitions: [
+-    {
+-      kind: Kind.OPERATION_DEFINITION,
+-      name: { kind: Kind.NAME, value: 'IntrospectionQuery' },
+-      operation: OperationTypeNode.QUERY,
+-      selectionSet: {
+-        kind: Kind.SELECTION_SET,
+-        selections: [
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: '__schema' },
+-            selectionSet: _makeSchemaSelection(support),
++    _previousSupport = support;
++    return (_introspectionQuery = {
++      kind: Kind.DOCUMENT,
++      definitions: [
++        {
++          kind: Kind.OPERATION_DEFINITION,
++          name: { kind: Kind.NAME, value: 'IntrospectionQuery' },
++          operation: OperationTypeNode.QUERY,
++          selectionSet: {
++            kind: Kind.SELECTION_SET,
++            selections: [
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: '__schema' },
++                selectionSet: {
++                  kind: Kind.SELECTION_SET,
++                  selections: [
++                    // queryType { name }
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'queryType' },
++                      selectionSet: {
++                        kind: Kind.SELECTION_SET,
++                        selections: [
++                          {
++                            kind: Kind.FIELD,
++                            name: { kind: Kind.NAME, value: 'name' },
++                          },
++                        ],
++                      },
++                    },
++                    // mutationType { name }
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'mutationType' },
++                      selectionSet: {
++                        kind: Kind.SELECTION_SET,
++                        selections: [
++                          {
++                            kind: Kind.FIELD,
++                            name: { kind: Kind.NAME, value: 'name' },
++                          },
++                        ],
++                      },
++                    },
++                    // subscriptionType { name }
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'subscriptionType' },
++                      selectionSet: {
++                        kind: Kind.SELECTION_SET,
++                        selections: [
++                          {
++                            kind: Kind.FIELD,
++                            name: { kind: Kind.NAME, value: 'name' },
++                          },
++                        ],
++                      },
++                    },
++                    // types { ...FullType }
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'types' },
++                      selectionSet: {
++                        kind: Kind.SELECTION_SET,
++                        selections: [
++                          {
++                            kind: Kind.FRAGMENT_SPREAD,
++                            name: { kind: Kind.NAME, value: 'FullType' },
++                          },
++                        ],
++                      },
++                    },
++                    // directives { name description locations args }
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'directives' },
++                      selectionSet: {
++                        kind: Kind.SELECTION_SET,
++                        selections: [
++                          {
++                            kind: Kind.FIELD,
++                            name: { kind: Kind.NAME, value: 'name' },
++                          },
++                          {
++                            kind: Kind.FIELD,
++                            name: { kind: Kind.NAME, value: 'description' },
++                          },
++                          {
++                            kind: Kind.FIELD,
++                            name: { kind: Kind.NAME, value: 'locations' },
++                          },
++                          (function _makeSchemaArgsField(
++                            supportsValueDeprecation: boolean
++                          ): FieldNode {
++                            return {
++                              kind: Kind.FIELD,
++                              name: { kind: Kind.NAME, value: 'args' },
++                              arguments: supportsValueDeprecation
++                                ? [
++                                    {
++                                      kind: Kind.ARGUMENT,
++                                      name: { kind: Kind.NAME, value: 'includeDeprecated' },
++                                      value: { kind: Kind.BOOLEAN, value: true },
++                                    },
++                                  ]
++                                : [],
++                              selectionSet: {
++                                kind: Kind.SELECTION_SET,
++                                selections: [
++                                  {
++                                    kind: Kind.FRAGMENT_SPREAD,
++                                    name: { kind: Kind.NAME, value: 'InputValue' },
++                                  },
++                                ],
++                              },
++                            };
++                          })(support.directiveArgumentsIsDeprecated),
++                          ...(support.directiveIsRepeatable
++                            ? ([
++                                {
++                                  kind: Kind.FIELD,
++                                  name: { kind: Kind.NAME, value: 'isRepeatable' },
++                                },
++                              ] as const)
++                            : []),
++                        ],
++                      },
++                    },
++                  ],
++                },
++              },
++            ],
+           },
+-        ],
+-      },
+-    } satisfies OperationDefinitionNode,
++        } satisfies OperationDefinitionNode,
+ 
+-    _makeSchemaFullTypeFragment(support),
+-    _makeSchemaInputValueFragment(support),
+-    _makeTypeRefFragment(),
+-  ],
+-});
++        {
++          kind: Kind.FRAGMENT_DEFINITION,
++          name: { kind: Kind.NAME, value: 'FullType' },
++          typeCondition: { kind: Kind.NAMED_TYPE, name: { kind: Kind.NAME, value: '__Type' } },
++          selectionSet: {
++            kind: Kind.SELECTION_SET,
++            selections: [
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'kind' },
++              },
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'name' },
++              },
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'description' },
++              },
++              ...(support.inputOneOf
++                ? ([{ kind: Kind.FIELD, name: { kind: Kind.NAME, value: 'isOneOf' } }] as const)
++                : []),
++              ...(support.specifiedByURL
++                ? ([
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'specifiedByURL' },
++                    },
++                  ] as const)
++                : []),
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'fields' },
++                arguments: [
++                  {
++                    kind: Kind.ARGUMENT,
++                    name: { kind: Kind.NAME, value: 'includeDeprecated' },
++                    value: { kind: Kind.BOOLEAN, value: true },
++                  },
++                ],
++                selectionSet: {
++                  kind: Kind.SELECTION_SET,
++                  selections: [
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'name' },
++                    },
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'description' },
++                    },
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'isDeprecated' },
++                    },
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'deprecationReason' },
++                    },
++                    (function _makeSchemaArgsField(supportsValueDeprecation: boolean): FieldNode {
++                      return {
++                        kind: Kind.FIELD,
++                        name: { kind: Kind.NAME, value: 'args' },
++                        arguments: supportsValueDeprecation
++                          ? [
++                              {
++                                kind: Kind.ARGUMENT,
++                                name: { kind: Kind.NAME, value: 'includeDeprecated' },
++                                value: { kind: Kind.BOOLEAN, value: true },
++                              },
++                            ]
++                          : [],
++                        selectionSet: {
++                          kind: Kind.SELECTION_SET,
++                          selections: [
++                            {
++                              kind: Kind.FRAGMENT_SPREAD,
++                              name: { kind: Kind.NAME, value: 'InputValue' },
++                            },
++                          ],
++                        },
++                      };
++                    })(support.fieldArgumentsIsDeprecated),
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'type' },
++                      selectionSet: {
++                        kind: Kind.SELECTION_SET,
++                        selections: [
++                          {
++                            kind: Kind.FRAGMENT_SPREAD,
++                            name: { kind: Kind.NAME, value: 'TypeRef' },
++                          },
++                        ],
++                      },
++                    },
++                  ],
++                },
++              },
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'interfaces' },
++                selectionSet: {
++                  kind: Kind.SELECTION_SET,
++                  selections: [
++                    {
++                      kind: Kind.FRAGMENT_SPREAD,
++                      name: { kind: Kind.NAME, value: 'TypeRef' },
++                    },
++                  ],
++                },
++              },
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'possibleTypes' },
++                selectionSet: {
++                  kind: Kind.SELECTION_SET,
++                  selections: [
++                    {
++                      kind: Kind.FRAGMENT_SPREAD,
++                      name: { kind: Kind.NAME, value: 'TypeRef' },
++                    },
++                  ],
++                },
++              },
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'inputFields' },
++                arguments: support.inputValueDeprecation
++                  ? [
++                      {
++                        kind: Kind.ARGUMENT,
++                        name: { kind: Kind.NAME, value: 'includeDeprecated' },
++                        value: { kind: Kind.BOOLEAN, value: true },
++                      },
++                    ]
++                  : [],
++                selectionSet: {
++                  kind: Kind.SELECTION_SET,
++                  selections: [
++                    {
++                      kind: Kind.FRAGMENT_SPREAD,
++                      name: { kind: Kind.NAME, value: 'InputValue' },
++                    },
++                  ],
++                },
++              },
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'enumValues' },
++                arguments: [
++                  {
++                    kind: Kind.ARGUMENT,
++                    name: { kind: Kind.NAME, value: 'includeDeprecated' },
++                    value: { kind: Kind.BOOLEAN, value: true },
++                  },
++                ],
++                selectionSet: {
++                  kind: Kind.SELECTION_SET,
++
++                  selections: [
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'name' },
++                    },
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'description' },
++                    },
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'isDeprecated' },
++                    },
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'deprecationReason' },
++                    },
++                  ],
++                },
++              },
++            ],
++          },
++        },
++        {
++          kind: Kind.FRAGMENT_DEFINITION,
++          name: { kind: Kind.NAME, value: 'InputValue' },
++          typeCondition: {
++            kind: Kind.NAMED_TYPE,
++            name: { kind: Kind.NAME, value: '__InputValue' },
++          },
++          selectionSet: {
++            kind: Kind.SELECTION_SET,
++            selections: [
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'name' },
++              },
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'description' },
++              },
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'defaultValue' },
++              },
++              {
++                kind: Kind.FIELD,
++                name: { kind: Kind.NAME, value: 'type' },
++                selectionSet: {
++                  kind: Kind.SELECTION_SET,
++                  selections: [
++                    {
++                      kind: Kind.FRAGMENT_SPREAD,
++                      name: { kind: Kind.NAME, value: 'TypeRef' },
++                    },
++                  ],
++                },
++              },
++              ...(support.inputValueDeprecation
++                ? ([
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'isDeprecated' },
++                    },
++                    {
++                      kind: Kind.FIELD,
++                      name: { kind: Kind.NAME, value: 'deprecationReason' },
++                    },
++                  ] as const)
++                : []),
++            ],
++          },
++        },
++        {
++          kind: Kind.FRAGMENT_DEFINITION,
++          name: { kind: Kind.NAME, value: 'TypeRef' },
++          typeCondition: { kind: Kind.NAMED_TYPE, name: { kind: Kind.NAME, value: '__Type' } },
++          selectionSet: (function _makeTypeRefSelection(depth: number): SelectionSetNode {
++            return {
++              kind: Kind.SELECTION_SET,
++              selections:
++                depth < 9
++                  ? [
++                      {
++                        kind: Kind.FIELD,
++                        name: { kind: Kind.NAME, value: 'kind' },
++                      },
++                      {
++                        kind: Kind.FIELD,
++                        name: { kind: Kind.NAME, value: 'name' },
++                      },
++                      {
++                        kind: Kind.FIELD,
++                        name: { kind: Kind.NAME, value: 'ofType' },
++                        selectionSet: _makeTypeRefSelection(depth + 1),
++                      },
++                    ]
++                  : [
++                      {
++                        kind: Kind.FIELD,
++                        name: { kind: Kind.NAME, value: 'kind' },
++                      },
++                      {
++                        kind: Kind.FIELD,
++                        name: { kind: Kind.NAME, value: 'name' },
++                      },
++                    ],
++            };
++          })(0),
++        },
++      ],
++    });
++  }
++};
+ 
+ /** Builds a support matrix query resulting in {@link IntrospectSupportQueryData} results */
+ export const makeIntrospectSupportQuery = (): DocumentNode => ({
+@@ -168,7 +596,39 @@ export const makeIntrospectSupportQuery = (): DocumentNode => ({
+                 value: { kind: Kind.STRING, value: '__Directive' },
+               },
+             ],
+-            selectionSet: _makeFieldNamesSelection({ includeArgs: true }),
++            selectionSet: {
++              kind: Kind.SELECTION_SET,
++              selections: [
++                {
++                  kind: Kind.FIELD,
++                  name: { kind: Kind.NAME, value: 'fields' },
++                  selectionSet: {
++                    kind: Kind.SELECTION_SET,
++                    selections: [
++                      {
++                        kind: Kind.FIELD,
++                        name: { kind: Kind.NAME, value: 'name' },
++                      },
++                      ...([
++                        {
++                          kind: Kind.FIELD,
++                          name: { kind: Kind.NAME, value: 'args' },
++                          selectionSet: {
++                            kind: Kind.SELECTION_SET,
++                            selections: [
++                              {
++                                kind: Kind.FIELD,
++                                name: { kind: Kind.NAME, value: 'name' },
++                              },
++                            ],
++                          },
++                        },
++                      ] as const),
++                    ],
++                  },
++                },
++              ],
++            },
+           },
+           {
+             kind: Kind.FIELD,
+@@ -181,7 +641,39 @@ export const makeIntrospectSupportQuery = (): DocumentNode => ({
+                 value: { kind: Kind.STRING, value: '__Field' },
+               },
+             ],
+-            selectionSet: _makeFieldNamesSelection({ includeArgs: true }),
++            selectionSet: {
++              kind: Kind.SELECTION_SET,
++              selections: [
++                {
++                  kind: Kind.FIELD,
++                  name: { kind: Kind.NAME, value: 'fields' },
++                  selectionSet: {
++                    kind: Kind.SELECTION_SET,
++                    selections: [
++                      {
++                        kind: Kind.FIELD,
++                        name: { kind: Kind.NAME, value: 'name' },
++                      },
++                      ...([
++                        {
++                          kind: Kind.FIELD,
++                          name: { kind: Kind.NAME, value: 'args' },
++                          selectionSet: {
++                            kind: Kind.SELECTION_SET,
++                            selections: [
++                              {
++                                kind: Kind.FIELD,
++                                name: { kind: Kind.NAME, value: 'name' },
++                              },
++                            ],
++                          },
++                        },
++                      ] as const),
++                    ],
++                  },
++                },
++              ],
++            },
+           },
+           {
+             kind: Kind.FIELD,
+@@ -194,7 +686,24 @@ export const makeIntrospectSupportQuery = (): DocumentNode => ({
+                 value: { kind: Kind.STRING, value: '__Type' },
+               },
+             ],
+-            selectionSet: _makeFieldNamesSelection({ includeArgs: false }),
++            selectionSet: {
++              kind: Kind.SELECTION_SET,
++              selections: [
++                {
++                  kind: Kind.FIELD,
++                  name: { kind: Kind.NAME, value: 'fields' },
++                  selectionSet: {
++                    kind: Kind.SELECTION_SET,
++                    selections: [
++                      {
++                        kind: Kind.FIELD,
++                        name: { kind: Kind.NAME, value: 'name' },
++                      },
++                    ],
++                  },
++                },
++              ],
++            },
+           },
+           {
+             kind: Kind.FIELD,
+@@ -207,32 +716,12 @@ export const makeIntrospectSupportQuery = (): DocumentNode => ({
+                 value: { kind: Kind.STRING, value: '__InputValue' },
+               },
+             ],
+-            selectionSet: _makeFieldNamesSelection({ includeArgs: false }),
+-          },
+-        ],
+-      },
+-    } satisfies OperationDefinitionNode,
+-  ],
+-});
+-
+-const _makeFieldNamesSelection = (options: { includeArgs: boolean }): SelectionSetNode => ({
+-  kind: Kind.SELECTION_SET,
+-  selections: [
+-    {
+-      kind: Kind.FIELD,
+-      name: { kind: Kind.NAME, value: 'fields' },
+-      selectionSet: {
+-        kind: Kind.SELECTION_SET,
+-        selections: [
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'name' },
+-          },
+-          ...(options.includeArgs
+-            ? ([
++            selectionSet: {
++              kind: Kind.SELECTION_SET,
++              selections: [
+                 {
+                   kind: Kind.FIELD,
+-                  name: { kind: Kind.NAME, value: 'args' },
++                  name: { kind: Kind.NAME, value: 'fields' },
+                   selectionSet: {
+                     kind: Kind.SELECTION_SET,
+                     selections: [
+@@ -243,373 +732,11 @@ const _makeFieldNamesSelection = (options: { includeArgs: boolean }): SelectionS
+                     ],
+                   },
+                 },
+-              ] as const)
+-            : []),
+-        ],
+-      },
+-    },
+-  ],
+-});
+-
+-const _makeSchemaSelection = (support: SupportedFeatures): SelectionSetNode => ({
+-  kind: Kind.SELECTION_SET,
+-  selections: [
+-    // queryType { name }
+-    {
+-      kind: Kind.FIELD,
+-      name: { kind: Kind.NAME, value: 'queryType' },
+-      selectionSet: {
+-        kind: Kind.SELECTION_SET,
+-        selections: [
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'name' },
+-          },
+-        ],
+-      },
+-    },
+-    // mutationType { name }
+-    {
+-      kind: Kind.FIELD,
+-      name: { kind: Kind.NAME, value: 'mutationType' },
+-      selectionSet: {
+-        kind: Kind.SELECTION_SET,
+-        selections: [
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'name' },
+-          },
+-        ],
+-      },
+-    },
+-    // subscriptionType { name }
+-    {
+-      kind: Kind.FIELD,
+-      name: { kind: Kind.NAME, value: 'subscriptionType' },
+-      selectionSet: {
+-        kind: Kind.SELECTION_SET,
+-        selections: [
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'name' },
+-          },
+-        ],
+-      },
+-    },
+-    // types { ...FullType }
+-    {
+-      kind: Kind.FIELD,
+-      name: { kind: Kind.NAME, value: 'types' },
+-      selectionSet: {
+-        kind: Kind.SELECTION_SET,
+-        selections: [
+-          {
+-            kind: Kind.FRAGMENT_SPREAD,
+-            name: { kind: Kind.NAME, value: 'FullType' },
+-          },
+-        ],
+-      },
+-    },
+-    // directives { name description locations args }
+-    {
+-      kind: Kind.FIELD,
+-      name: { kind: Kind.NAME, value: 'directives' },
+-      selectionSet: {
+-        kind: Kind.SELECTION_SET,
+-        selections: [
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'name' },
+-          },
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'description' },
+-          },
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'locations' },
+-          },
+-          _makeSchemaArgsField(support.directiveArgumentsIsDeprecated),
+-          ...(support.directiveIsRepeatable
+-            ? ([
+-                {
+-                  kind: Kind.FIELD,
+-                  name: { kind: Kind.NAME, value: 'isRepeatable' },
+-                },
+-              ] as const)
+-            : []),
+-        ],
+-      },
+-    },
+-  ],
+-});
+-
+-const _makeSchemaFullTypeFragment = (support: SupportedFeatures): FragmentDefinitionNode => ({
+-  kind: Kind.FRAGMENT_DEFINITION,
+-  name: { kind: Kind.NAME, value: 'FullType' },
+-  typeCondition: { kind: Kind.NAMED_TYPE, name: { kind: Kind.NAME, value: '__Type' } },
+-  selectionSet: {
+-    kind: Kind.SELECTION_SET,
+-    selections: [
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'kind' },
+-      },
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'name' },
+-      },
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'description' },
+-      },
+-      ...(support.inputOneOf
+-        ? ([{ kind: Kind.FIELD, name: { kind: Kind.NAME, value: 'isOneOf' } }] as const)
+-        : []),
+-      ...(support.specifiedByURL
+-        ? ([
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'specifiedByURL' },
++              ],
+             },
+-          ] as const)
+-        : []),
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'fields' },
+-        arguments: [
+-          {
+-            kind: Kind.ARGUMENT,
+-            name: { kind: Kind.NAME, value: 'includeDeprecated' },
+-            value: { kind: Kind.BOOLEAN, value: true },
+           },
+         ],
+-        selectionSet: {
+-          kind: Kind.SELECTION_SET,
+-          selections: [
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'name' },
+-            },
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'description' },
+-            },
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'isDeprecated' },
+-            },
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'deprecationReason' },
+-            },
+-            _makeSchemaArgsField(support.fieldArgumentsIsDeprecated),
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'type' },
+-              selectionSet: {
+-                kind: Kind.SELECTION_SET,
+-                selections: [
+-                  {
+-                    kind: Kind.FRAGMENT_SPREAD,
+-                    name: { kind: Kind.NAME, value: 'TypeRef' },
+-                  },
+-                ],
+-              },
+-            },
+-          ],
+-        },
+       },
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'interfaces' },
+-        selectionSet: {
+-          kind: Kind.SELECTION_SET,
+-          selections: [
+-            {
+-              kind: Kind.FRAGMENT_SPREAD,
+-              name: { kind: Kind.NAME, value: 'TypeRef' },
+-            },
+-          ],
+-        },
+-      },
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'possibleTypes' },
+-        selectionSet: {
+-          kind: Kind.SELECTION_SET,
+-          selections: [
+-            {
+-              kind: Kind.FRAGMENT_SPREAD,
+-              name: { kind: Kind.NAME, value: 'TypeRef' },
+-            },
+-          ],
+-        },
+-      },
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'inputFields' },
+-        arguments: support.inputValueDeprecation
+-          ? [
+-              {
+-                kind: Kind.ARGUMENT,
+-                name: { kind: Kind.NAME, value: 'includeDeprecated' },
+-                value: { kind: Kind.BOOLEAN, value: true },
+-              },
+-            ]
+-          : [],
+-        selectionSet: {
+-          kind: Kind.SELECTION_SET,
+-          selections: [
+-            {
+-              kind: Kind.FRAGMENT_SPREAD,
+-              name: { kind: Kind.NAME, value: 'InputValue' },
+-            },
+-          ],
+-        },
+-      },
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'enumValues' },
+-        arguments: [
+-          {
+-            kind: Kind.ARGUMENT,
+-            name: { kind: Kind.NAME, value: 'includeDeprecated' },
+-            value: { kind: Kind.BOOLEAN, value: true },
+-          },
+-        ],
+-        selectionSet: {
+-          kind: Kind.SELECTION_SET,
+-
+-          selections: [
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'name' },
+-            },
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'description' },
+-            },
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'isDeprecated' },
+-            },
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'deprecationReason' },
+-            },
+-          ],
+-        },
+-      },
+-    ],
+-  },
+-});
+-
+-const _makeSchemaArgsField = (supportsValueDeprecation: boolean): FieldNode => ({
+-  kind: Kind.FIELD,
+-  name: { kind: Kind.NAME, value: 'args' },
+-  arguments: supportsValueDeprecation
+-    ? [
+-        {
+-          kind: Kind.ARGUMENT,
+-          name: { kind: Kind.NAME, value: 'includeDeprecated' },
+-          value: { kind: Kind.BOOLEAN, value: true },
+-        },
+-      ]
+-    : [],
+-  selectionSet: {
+-    kind: Kind.SELECTION_SET,
+-    selections: [
+-      {
+-        kind: Kind.FRAGMENT_SPREAD,
+-        name: { kind: Kind.NAME, value: 'InputValue' },
+-      },
+-    ],
+-  },
+-});
+-
+-const _makeSchemaInputValueFragment = (support: SupportedFeatures): FragmentDefinitionNode => ({
+-  kind: Kind.FRAGMENT_DEFINITION,
+-  name: { kind: Kind.NAME, value: 'InputValue' },
+-  typeCondition: { kind: Kind.NAMED_TYPE, name: { kind: Kind.NAME, value: '__InputValue' } },
+-  selectionSet: {
+-    kind: Kind.SELECTION_SET,
+-    selections: [
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'name' },
+-      },
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'description' },
+-      },
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'defaultValue' },
+-      },
+-      {
+-        kind: Kind.FIELD,
+-        name: { kind: Kind.NAME, value: 'type' },
+-        selectionSet: {
+-          kind: Kind.SELECTION_SET,
+-          selections: [
+-            {
+-              kind: Kind.FRAGMENT_SPREAD,
+-              name: { kind: Kind.NAME, value: 'TypeRef' },
+-            },
+-          ],
+-        },
+-      },
+-      ...(support.inputValueDeprecation
+-        ? ([
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'isDeprecated' },
+-            },
+-            {
+-              kind: Kind.FIELD,
+-              name: { kind: Kind.NAME, value: 'deprecationReason' },
+-            },
+-          ] as const)
+-        : []),
+-    ],
+-  },
+-});
+-
+-const _makeTypeRefFragment = (): FragmentDefinitionNode => ({
+-  kind: Kind.FRAGMENT_DEFINITION,
+-  name: { kind: Kind.NAME, value: 'TypeRef' },
+-  typeCondition: { kind: Kind.NAMED_TYPE, name: { kind: Kind.NAME, value: '__Type' } },
+-  selectionSet: _makeTypeRefSelection(0),
+-});
+-
+-const _makeTypeRefSelection = (depth: number): SelectionSetNode => ({
+-  kind: Kind.SELECTION_SET,
+-  selections:
+-    depth < 9
+-      ? [
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'kind' },
+-          },
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'name' },
+-          },
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'ofType' },
+-            selectionSet: _makeTypeRefSelection(depth + 1),
+-          },
+-        ]
+-      : [
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'kind' },
+-          },
+-          {
+-            kind: Kind.FIELD,
+-            name: { kind: Kind.NAME, value: 'name' },
+-          },
+-        ],
++    } satisfies OperationDefinitionNode,
++  ],
+ });
+diff --git a/packages/internal/src/loaders/sdl.ts b/packages/internal/src/loaders/sdl.ts
+index d83f909..4ee2d8c 100644
+--- a/packages/internal/src/loaders/sdl.ts
++++ b/packages/internal/src/loaders/sdl.ts
+@@ -23,100 +23,190 @@ export function loadFromSDL(config: LoadFromSDLConfig): SchemaLoader {
+   let abort: (() => void) | null = null;
+   let result: SchemaLoaderResult | null = null;
+ 
+-  const load = async (): Promise<SchemaLoaderResult> => {
+-    const ext = path.extname(config.file);
+-    const data = await fs.readFile(config.file, { encoding: 'utf8' });
+-    if (ext === '.json') {
+-      const introspection = JSON.parse(data) as IntrospectionQuery | null;
+-      if (!introspection || !introspection.__schema) {
+-        throw new Error(
+-          'Parsing JSON introspection data failed.\n' +
+-            'The JSON payload did not evaluate to an introspection schema.'
+-        );
+-      }
+-      return {
+-        introspection: {
+-          ...introspection,
+-          name: config.name,
+-        },
+-        schema: buildClientSchema(introspection, { assumeValid: !!config.assumeValid }),
+-      };
+-    } else {
+-      const schema = buildSchema(data, {
+-        assumeValid: !!config.assumeValid,
+-        assumeValidSDL: !!config.assumeValid,
+-      });
+-      const query = makeIntrospectionQuery(getPeerSupportedFeatures());
+-      const queryResult = executeSync({ schema, document: query });
+-      if (queryResult.errors) {
+-        throw new CombinedError({ graphQLErrors: queryResult.errors as any[] });
+-      } else if (queryResult.data) {
+-        const introspection = {
+-          ...(queryResult.data as unknown as IntrospectionQuery),
+-          name: config.name,
+-        };
+-        return { introspection, schema };
+-      } else {
+-        throw new Error(
+-          'Executing introspection against SDL schema failed.\n' +
+-            '`graphql` failed to return any schema data or error.'
+-        );
+-      }
+-    }
+-  };
+-
+-  // On reload failures the cached result is reset, so the next `load()` call
+-  // retries instead of returning the last successful result, and subscribers
+-  // are notified of the error rather than failing silently
+-  const reload = async () => {
+-    try {
+-      if ((result = await load())) {
+-        for (const subscriber of subscriptions) subscriber(result);
+-      }
+-    } catch (error) {
+-      result = null;
+-      for (const subscriber of errorSubscriptions) subscriber(toError(error));
+-    }
+-  };
+-
+-  const watch = async () => {
+-    if (ts.sys.watchFile) {
+-      const watcher = ts.sys.watchFile(config.file, reload, 250, {
+-        // NOTE: Using `ts.WatchFileKind.UseFsEvents` causes missed events just like fs.watch
+-        // as below on macOS, as of TypeScript 5.5 and is hence avoided here
+-        watchFile: ts.WatchFileKind.UseFsEventsOnParentDirectory,
+-        fallbackPolling: ts.PollingWatchKind.PriorityInterval,
+-      });
+-      abort = () => watcher.close();
+-    } else {
+-      const controller = new AbortController();
+-      abort = () => controller.abort();
+-      const watcher = fs.watch(config.file, {
+-        signal: controller.signal,
+-        persistent: false,
+-      });
+-      try {
+-        // A failing reload previously threw out of this loop, which silently
+-        // killed the watcher for the rest of the session; `reload` contains
+-        // load errors so watching continues
+-        for await (const _event of watcher) await reload();
+-      } catch (error: any) {
+-        if (error.name !== 'AbortError') throw error;
+-      } finally {
+-        abort = null;
+-      }
+-    }
+-  };
+-
+   return {
+     get name() {
+       return config.name;
+     },
+     async load(reload?: boolean) {
+-      return reload || !result ? (result = await load()) : result;
++      if (!reload && result) return result;
++      const ext = path.extname(config.file);
++      const data = await fs.readFile(config.file, { encoding: 'utf8' });
++      if (ext === '.json') {
++        const introspection = JSON.parse(data) as IntrospectionQuery | null;
++        if (!introspection || !introspection.__schema) {
++          throw new Error(
++            'Parsing JSON introspection data failed.\n' +
++              'The JSON payload did not evaluate to an introspection schema.'
++          );
++        }
++        const next = {
++          introspection: {
++            ...introspection,
++            name: config.name,
++          },
++          schema: buildClientSchema(introspection, { assumeValid: !!config.assumeValid }),
++        };
++        result = await next;
++      } else {
++        const schema = buildSchema(data, {
++          assumeValid: !!config.assumeValid,
++          assumeValidSDL: !!config.assumeValid,
++        });
++        const query = makeIntrospectionQuery(getPeerSupportedFeatures());
++        const queryResult = executeSync({ schema, document: query });
++        if (queryResult.errors) {
++          throw new CombinedError({ graphQLErrors: queryResult.errors as any[] });
++        } else if (queryResult.data) {
++          const introspection = {
++            ...(queryResult.data as unknown as IntrospectionQuery),
++            name: config.name,
++          };
++          result = await { introspection, schema };
++        } else {
++          throw new Error(
++            'Executing introspection against SDL schema failed.\n' +
++              '`graphql` failed to return any schema data or error.'
++          );
++        }
++      }
++      return result;
+     },
+     notifyOnUpdate(onUpdate, onError) {
+-      if (!subscriptions.size) watch();
++      if (!subscriptions.size)
++        (async function watch() {
++          if (ts.sys.watchFile) {
++            const watcher = ts.sys.watchFile(
++              config.file,
++              async function reload() {
++                try {
++                  let next: SchemaLoaderResult;
++                  const ext = path.extname(config.file);
++                  const data = await fs.readFile(config.file, { encoding: 'utf8' });
++                  if (ext === '.json') {
++                    const introspection = JSON.parse(data) as IntrospectionQuery | null;
++                    if (!introspection || !introspection.__schema) {
++                      throw new Error(
++                        'Parsing JSON introspection data failed.\n' +
++                          'The JSON payload did not evaluate to an introspection schema.'
++                      );
++                    }
++                    next = {
++                      introspection: {
++                        ...introspection,
++                        name: config.name,
++                      },
++                      schema: buildClientSchema(introspection, {
++                        assumeValid: !!config.assumeValid,
++                      }),
++                    };
++                  } else {
++                    const schema = buildSchema(data, {
++                      assumeValid: !!config.assumeValid,
++                      assumeValidSDL: !!config.assumeValid,
++                    });
++                    const query = makeIntrospectionQuery(getPeerSupportedFeatures());
++                    const queryResult = executeSync({ schema, document: query });
++                    if (queryResult.errors) {
++                      throw new CombinedError({ graphQLErrors: queryResult.errors as any[] });
++                    } else if (queryResult.data) {
++                      const introspection = {
++                        ...(queryResult.data as unknown as IntrospectionQuery),
++                        name: config.name,
++                      };
++                      next = { introspection, schema };
++                    } else {
++                      throw new Error(
++                        'Executing introspection against SDL schema failed.\n' +
++                          '`graphql` failed to return any schema data or error.'
++                      );
++                    }
++                  }
++                  result = await next;
++                  for (const subscriber of subscriptions) subscriber(result);
++                } catch (error) {
++                  result = null;
++                  for (const subscriber of errorSubscriptions) subscriber(toError(error));
++                }
++              },
++              250,
++              {
++                // NOTE: Using `ts.WatchFileKind.UseFsEvents` causes missed events just like fs.watch
++                // as below on macOS, as of TypeScript 5.5 and is hence avoided here
++                watchFile: ts.WatchFileKind.UseFsEventsOnParentDirectory,
++                fallbackPolling: ts.PollingWatchKind.PriorityInterval,
++              }
++            );
++            abort = () => watcher.close();
++          } else {
++            const controller = new AbortController();
++            abort = () => controller.abort();
++            const watcher = fs.watch(config.file, {
++              signal: controller.signal,
++              persistent: false,
++            });
++            try {
++              // A failing reload previously threw out of this loop, which silently
++              // killed the watcher for the rest of the session; `reload` contains
++              // load errors so watching continues
++              for await (const _event of watcher)
++                await (async function reload() {
++                  try {
++                    let next: SchemaLoaderResult;
++                    const ext = path.extname(config.file);
++                    const data = await fs.readFile(config.file, { encoding: 'utf8' });
++                    if (ext === '.json') {
++                      const introspection = JSON.parse(data) as IntrospectionQuery | null;
++                      if (!introspection || !introspection.__schema) {
++                        throw new Error(
++                          'Parsing JSON introspection data failed.\n' +
++                            'The JSON payload did not evaluate to an introspection schema.'
++                        );
++                      }
++                      next = {
++                        introspection: {
++                          ...introspection,
++                          name: config.name,
++                        },
++                        schema: buildClientSchema(introspection, {
++                          assumeValid: !!config.assumeValid,
++                        }),
++                      };
++                    } else {
++                      const schema = buildSchema(data, {
++                        assumeValid: !!config.assumeValid,
++                        assumeValidSDL: !!config.assumeValid,
++                      });
++                      const query = makeIntrospectionQuery(getPeerSupportedFeatures());
++                      const queryResult = executeSync({ schema, document: query });
++                      if (queryResult.errors) {
++                        throw new CombinedError({ graphQLErrors: queryResult.errors as any[] });
++                      } else if (queryResult.data) {
++                        const introspection = {
++                          ...(queryResult.data as unknown as IntrospectionQuery),
++                          name: config.name,
++                        };
++                        next = { introspection, schema };
++                      } else {
++                        throw new Error(
++                          'Executing introspection against SDL schema failed.\n' +
++                            '`graphql` failed to return any schema data or error.'
++                        );
++                      }
++                    }
++                    result = await next;
++                    for (const subscriber of subscriptions) subscriber(result);
++                  } catch (error) {
++                    result = null;
++                    for (const subscriber of errorSubscriptions) subscriber(toError(error));
++                  }
++                })();
++            } catch (error: any) {
++              if (error.name !== 'AbortError') throw error;
++            } finally {
++              abort = null;
++            }
++          }
++        })();
+       subscriptions.add(onUpdate);
+       if (onError) errorSubscriptions.add(onError);
+       return () => {
+diff --git a/packages/internal/src/loaders/url.ts b/packages/internal/src/loaders/url.ts
+index 1cf1b51..1952037 100644
+--- a/packages/internal/src/loaders/url.ts
++++ b/packages/internal/src/loaders/url.ts
+@@ -49,81 +49,305 @@ export function loadFromURL(config: LoadFromURLConfig): SchemaLoader {
+     ],
+   });
+ 
+-  const scheduleUpdate = () => {
+-    if (subscriptions.size && !timeoutID) {
+-      timeoutID = setTimeout(async () => {
+-        timeoutID = null;
+-        try {
+-          result = await load();
+-        } catch (error) {
+-          result = null;
+-          for (const subscriber of errorSubscriptions) subscriber(toError(error));
+-        }
+-        if (result) for (const subscriber of subscriptions) subscriber(result);
+-      }, interval);
+-    }
+-  };
+-
+-  const introspect = async (support: SupportedFeatures): Promise<SchemaLoaderResult> => {
+-    const query = makeIntrospectionQuery(support);
+-    const introspectionResult = await client.query<IntrospectionQuery>(query, {});
+-    try {
+-      if (introspectionResult.error) {
+-        throw introspectionResult.error;
+-      } else if (introspectionResult.data) {
+-        const introspection = introspectionResult.data;
+-        return {
+-          introspection: {
+-            ...introspection,
+-            name: config.name,
+-          },
+-          schema: buildClientSchema(introspection, { assumeValid: true }),
+-        };
+-      } else {
+-        throw new Error(
+-          'Executing introspection against API failed.\n' +
+-            'The API failed to return any schema data or error.'
+-        );
+-      }
+-    } finally {
+-      scheduleUpdate();
+-    }
+-  };
+-
+-  const load = async (): Promise<SchemaLoaderResult> => {
+-    if (!supportedFeatures) {
+-      const query = makeIntrospectSupportQuery();
+-      const supportResult = await client.query<IntrospectSupportQueryData>(query, {});
+-      if (supportResult.error && supportResult.error.graphQLErrors.length > 0) {
+-        try {
+-          // If we failed to determine support, we do a regular introspection
+-          const { introspection } = await introspect(NO_SUPPORTED_FEATURES);
+-          supportedFeatures = introspectionToSupportedFeatures(introspection);
+-        } catch (_error) {
+-          // If this also failed, we assume no supported features
+-          supportedFeatures = NO_SUPPORTED_FEATURES;
+-        }
+-      } else if (supportResult.data && !supportResult.error) {
+-        // Succeeding the support query, we get the supported features
+-        supportedFeatures = toSupportedFeatures(supportResult.data);
+-      } else if (supportResult.error) {
+-        // On misc. error, we rethrow and reset supported features
+-        supportedFeatures = null;
+-        throw supportResult.error;
+-      } else {
+-        // Otherwise we assume no features are supported
+-        supportedFeatures = NO_SUPPORTED_FEATURES;
+-      }
+-    }
+-    return introspect(supportedFeatures);
+-  };
+-
+   return {
+     get name() {
+       return config.name;
+     },
+     async load(reload?: boolean) {
+-      return reload || !result ? (result = await load()) : result;
++      if (!reload && result) return result;
++      let loadedResult: SchemaLoaderResult;
++      try {
++        if (!supportedFeatures) {
++          const query = makeIntrospectSupportQuery();
++          const supportResult = await client.query<IntrospectSupportQueryData>(query, {});
++          if (supportResult.error && supportResult.error.graphQLErrors.length > 0) {
++            try {
++              // If we failed to determine support, we do a regular introspection
++              let receivedIntrospection: IntrospectionQuery & { name?: string };
++              try {
++                const query = makeIntrospectionQuery(NO_SUPPORTED_FEATURES);
++                const introspectionResult = await client.query<IntrospectionQuery>(query, {});
++                try {
++                  if (introspectionResult.error) {
++                    throw introspectionResult.error;
++                  } else if (introspectionResult.data) {
++                    const introspection = introspectionResult.data;
++                    receivedIntrospection = {
++                      ...introspection,
++                      name: config.name,
++                    };
++                    buildClientSchema(introspection, { assumeValid: true });
++                  } else {
++                    throw new Error(
++                      'Executing introspection against API failed.\n' +
++                        'The API failed to return any schema data or error.'
++                    );
++                  }
++                } finally {
++                  (function scheduleUpdate() {
++                    if (subscriptions.size && !timeoutID) {
++                      timeoutID = setTimeout(async () => {
++                        timeoutID = null;
++                        try {
++                          let loadedResult: SchemaLoaderResult;
++                          try {
++                            if (!supportedFeatures) {
++                              const query = makeIntrospectSupportQuery();
++                              const supportResult = await client.query<IntrospectSupportQueryData>(
++                                query,
++                                {}
++                              );
++                              if (
++                                supportResult.error &&
++                                supportResult.error.graphQLErrors.length > 0
++                              ) {
++                                try {
++                                  // If we failed to determine support, we do a regular introspection
++                                  let receivedIntrospection: IntrospectionQuery & {
++                                    name?: string;
++                                  };
++                                  try {
++                                    const query = makeIntrospectionQuery(NO_SUPPORTED_FEATURES);
++                                    const introspectionResult =
++                                      await client.query<IntrospectionQuery>(query, {});
++                                    try {
++                                      if (introspectionResult.error) {
++                                        throw introspectionResult.error;
++                                      } else if (introspectionResult.data) {
++                                        const introspection = introspectionResult.data;
++                                        receivedIntrospection = {
++                                          ...introspection,
++                                          name: config.name,
++                                        };
++                                        buildClientSchema(introspection, {
++                                          assumeValid: true,
++                                        });
++                                      } else {
++                                        throw new Error(
++                                          'Executing introspection against API failed.\n' +
++                                            'The API failed to return any schema data or error.'
++                                        );
++                                      }
++                                    } finally {
++                                      scheduleUpdate();
++                                    }
++                                  } catch (error) {
++                                    await undefined;
++                                    throw error;
++                                  }
++                                  supportedFeatures = introspectionToSupportedFeatures(
++                                    await receivedIntrospection
++                                  );
++                                } catch (_error) {
++                                  // If this also failed, we assume no supported features
++                                  supportedFeatures = NO_SUPPORTED_FEATURES;
++                                }
++                              } else if (supportResult.data && !supportResult.error) {
++                                // Succeeding the support query, we get the supported features
++                                supportedFeatures = toSupportedFeatures(supportResult.data);
++                              } else if (supportResult.error) {
++                                // On misc. error, we rethrow and reset supported features
++                                supportedFeatures = null;
++                                throw supportResult.error;
++                              } else {
++                                // Otherwise we assume no features are supported
++                                supportedFeatures = NO_SUPPORTED_FEATURES;
++                              }
++                            }
++                            const query = makeIntrospectionQuery(supportedFeatures);
++                            const introspectionResult = await client.query<IntrospectionQuery>(
++                              query,
++                              {}
++                            );
++                            try {
++                              if (introspectionResult.error) {
++                                throw introspectionResult.error;
++                              } else if (introspectionResult.data) {
++                                const introspection = introspectionResult.data;
++                                loadedResult = {
++                                  introspection: {
++                                    ...introspection,
++                                    name: config.name,
++                                  },
++                                  schema: buildClientSchema(introspection, {
++                                    assumeValid: true,
++                                  }),
++                                };
++                              } else {
++                                throw new Error(
++                                  'Executing introspection against API failed.\n' +
++                                    'The API failed to return any schema data or error.'
++                                );
++                              }
++                            } finally {
++                              scheduleUpdate();
++                            }
++                          } catch (error) {
++                            await undefined;
++                            throw error;
++                          }
++                          result = await loadedResult;
++                        } catch (error) {
++                          result = null;
++                          for (const subscriber of errorSubscriptions) subscriber(toError(error));
++                        }
++                        if (result) for (const subscriber of subscriptions) subscriber(result);
++                      }, interval);
++                    }
++                  })();
++                }
++              } catch (error) {
++                await undefined;
++                throw error;
++              }
++              supportedFeatures = introspectionToSupportedFeatures(await receivedIntrospection);
++            } catch (_error) {
++              // If this also failed, we assume no supported features
++              supportedFeatures = NO_SUPPORTED_FEATURES;
++            }
++          } else if (supportResult.data && !supportResult.error) {
++            // Succeeding the support query, we get the supported features
++            supportedFeatures = toSupportedFeatures(supportResult.data);
++          } else if (supportResult.error) {
++            // On misc. error, we rethrow and reset supported features
++            supportedFeatures = null;
++            throw supportResult.error;
++          } else {
++            // Otherwise we assume no features are supported
++            supportedFeatures = NO_SUPPORTED_FEATURES;
++          }
++        }
++        const query = makeIntrospectionQuery(supportedFeatures);
++        const introspectionResult = await client.query<IntrospectionQuery>(query, {});
++        try {
++          if (introspectionResult.error) {
++            throw introspectionResult.error;
++          } else if (introspectionResult.data) {
++            const introspection = introspectionResult.data;
++            loadedResult = {
++              introspection: {
++                ...introspection,
++                name: config.name,
++              },
++              schema: buildClientSchema(introspection, { assumeValid: true }),
++            };
++          } else {
++            throw new Error(
++              'Executing introspection against API failed.\n' +
++                'The API failed to return any schema data or error.'
++            );
++          }
++        } finally {
++          (function scheduleUpdate() {
++            if (subscriptions.size && !timeoutID) {
++              timeoutID = setTimeout(async () => {
++                timeoutID = null;
++                try {
++                  let loadedResult: SchemaLoaderResult;
++                  try {
++                    if (!supportedFeatures) {
++                      const query = makeIntrospectSupportQuery();
++                      const supportResult = await client.query<IntrospectSupportQueryData>(
++                        query,
++                        {}
++                      );
++                      if (supportResult.error && supportResult.error.graphQLErrors.length > 0) {
++                        try {
++                          // If we failed to determine support, we do a regular introspection
++                          let receivedIntrospection: IntrospectionQuery & { name?: string };
++                          try {
++                            const query = makeIntrospectionQuery(NO_SUPPORTED_FEATURES);
++                            const introspectionResult = await client.query<IntrospectionQuery>(
++                              query,
++                              {}
++                            );
++                            try {
++                              if (introspectionResult.error) {
++                                throw introspectionResult.error;
++                              } else if (introspectionResult.data) {
++                                const introspection = introspectionResult.data;
++                                receivedIntrospection = {
++                                  ...introspection,
++                                  name: config.name,
++                                };
++                                buildClientSchema(introspection, {
++                                  assumeValid: true,
++                                });
++                              } else {
++                                throw new Error(
++                                  'Executing introspection against API failed.\n' +
++                                    'The API failed to return any schema data or error.'
++                                );
++                              }
++                            } finally {
++                              scheduleUpdate();
++                            }
++                          } catch (error) {
++                            await undefined;
++                            throw error;
++                          }
++                          supportedFeatures = introspectionToSupportedFeatures(
++                            await receivedIntrospection
++                          );
++                        } catch (_error) {
++                          // If this also failed, we assume no supported features
++                          supportedFeatures = NO_SUPPORTED_FEATURES;
++                        }
++                      } else if (supportResult.data && !supportResult.error) {
++                        // Succeeding the support query, we get the supported features
++                        supportedFeatures = toSupportedFeatures(supportResult.data);
++                      } else if (supportResult.error) {
++                        // On misc. error, we rethrow and reset supported features
++                        supportedFeatures = null;
++                        throw supportResult.error;
++                      } else {
++                        // Otherwise we assume no features are supported
++                        supportedFeatures = NO_SUPPORTED_FEATURES;
++                      }
++                    }
++                    const query = makeIntrospectionQuery(supportedFeatures);
++                    const introspectionResult = await client.query<IntrospectionQuery>(query, {});
++                    try {
++                      if (introspectionResult.error) {
++                        throw introspectionResult.error;
++                      } else if (introspectionResult.data) {
++                        const introspection = introspectionResult.data;
++                        loadedResult = {
++                          introspection: {
++                            ...introspection,
++                            name: config.name,
++                          },
++                          schema: buildClientSchema(introspection, { assumeValid: true }),
++                        };
++                      } else {
++                        throw new Error(
++                          'Executing introspection against API failed.\n' +
++                            'The API failed to return any schema data or error.'
++                        );
++                      }
++                    } finally {
++                      scheduleUpdate();
++                    }
++                  } catch (error) {
++                    await undefined;
++                    throw error;
++                  }
++                  result = await loadedResult;
++                } catch (error) {
++                  result = null;
++                  for (const subscriber of errorSubscriptions) subscriber(toError(error));
++                }
++                if (result) for (const subscriber of subscriptions) subscriber(result);
++              }, interval);
++            }
++          })();
++        }
++      } catch (error) {
++        await undefined;
++        throw error;
++      }
++      result = await loadedResult;
++      return result;
+     },
+     notifyOnUpdate(onUpdate, onError) {
+       subscriptions.add(onUpdate);

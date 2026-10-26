@@ -1,0 +1,850 @@
+diff --git a/src/presenter.rs b/src/presenter.rs
+index 16b9fcb..29d89e8 100644
+--- a/src/presenter.rs
++++ b/src/presenter.rs
+@@ -23,7 +23,7 @@ use crate::{
+     resource::Resources,
+     terminal::{
+         image::printer::{ImagePrinter, ImageRegistry},
++        printer::{TerminalCommand, TerminalIo},
+-        printer::TerminalCommand,
+         virt::{ImageBehavior, TerminalGrid, VirtualTerminal},
+     },
+     theme::{ProcessingThemeError, raw::PresentationTheme},
+@@ -583,9 +583,12 @@ impl<'a> Presenter<'a> {
+     }
+ 
+     fn render_frame(commands: &[TerminalCommand<'_>], drawer: &mut TerminalDrawer) -> RenderResult {
++        drawer.terminal.execute(&TerminalCommand::BeginUpdate)?;
++        for command in commands {
++            drawer.terminal.execute(command)?;
++        }
++        drawer.terminal.execute(&TerminalCommand::EndUpdate)?;
++        drawer.terminal.execute(&TerminalCommand::Flush)?;
+-        use crate::terminal::{image::scale::ImageScaler, surface::{RenderSurface, Surface}};
+-        let scaler = ImageScaler::default();
+-        Surface::new(&mut drawer.terminal, &scaler).render_frame(commands)?;
+         Ok(())
+     }
+ 
+diff --git a/src/render/engine.rs b/src/render/engine.rs
+index aeaa19d..de867a0 100644
+--- a/src/render/engine.rs
++++ b/src/render/engine.rs
+@@ -18,7 +18,6 @@ use crate::{
+             scale::{ImageScaler, ScaleImage},
+         },
+         printer::{TerminalCommand, TerminalIo},
+-        surface::{RenderSurface, Surface},
+     },
+     theme::{Alignment, Margin},
+ };
+@@ -109,13 +108,19 @@ where
+ 
+     pub(crate) fn render<'b>(mut self, operations: impl Iterator<Item = &'b RenderOperation>) -> RenderResult {
+         let current_rect = self.current_rect().clone();
++        self.terminal.execute(&TerminalCommand::SetCursorBoundaries {
++            rows: current_rect.dimensions.rows.saturating_add(current_rect.start_row),
++        })?;
++        self.terminal.execute(&TerminalCommand::BeginUpdate)?;
++        if current_rect.start_row != 0 || current_rect.start_column != 0 {
++            self.terminal
++                .execute(&TerminalCommand::MoveTo { column: current_rect.start_column, row: current_rect.start_row })?;
++        }
+-        Surface::new(self.terminal, self.image_scaler.as_ref()).begin_viewport(
+-            &current_rect.dimensions, current_rect.start_column, current_rect.start_row,
+-        )?;
+         for operation in operations {
+             self.render_one(operation)?;
+         }
++        self.terminal.execute(&TerminalCommand::EndUpdate)?;
++        self.terminal.execute(&TerminalCommand::Flush)?;
+-        Surface::new(self.terminal, self.image_scaler.as_ref()).end_viewport()?;
+         if self.options.validate_overflows && self.max_modified_row > self.window_rects[0].dimensions.rows {
+             return Err(RenderError::VerticalOverflow);
+         }
+@@ -242,7 +247,7 @@ where
+         let text_drawer = TextDrawer::new(&prefix, 0, text, positioning, &self.colors, MINIMUM_LINE_LENGTH)?;
+         let center_newlines = matches!(alignment, Alignment::Center { .. });
+         let text_drawer = text_drawer.center_newlines(center_newlines);
++        text_drawer.draw(self.terminal)?;
+-        text_drawer.draw_surface(&mut Surface::new(self.terminal, self.image_scaler.as_ref()))?;
+         // Restore colors
+         self.apply_colors()
+     }
+@@ -259,9 +264,21 @@ where
+             CursorPosition { row: starting_row.saturating_sub(rect.start_row), column: rect.start_column };
+ 
+         let (width, height) = image.image().dimensions();
++        let (columns, rows) = match properties.size {
++            ImageSize::ShrinkIfNeeded => {
++                let image_scale =
++                    self.image_scaler.fit_image_to_rect(&rect.dimensions, width, height, &starting_cursor);
++                (image_scale.columns, image_scale.rows)
++            }
++            ImageSize::Specific(columns, rows) => (columns, rows),
++            ImageSize::WidthScaled { ratio } => {
++                let extra_columns = (rect.dimensions.columns as f64 * (1.0 - ratio)).ceil() as u16;
++                let dimensions = rect.dimensions.shrink_columns(extra_columns);
++                let image_scale =
++                    self.image_scaler.scale_image(&dimensions, &rect.dimensions, width, height, &starting_cursor);
++                (image_scale.columns, image_scale.rows)
++            }
++        };
+-        let image_scale = Surface::new(self.terminal, self.image_scaler.as_ref())
+-            .image_dimensions(&rect.dimensions, width, height, &starting_cursor, &properties.size);
+-        let (columns, rows) = (image_scale.columns, image_scale.rows);
+         let cursor = match &properties.position {
+             ImagePosition::Cursor => starting_cursor.clone(),
+             ImagePosition::Center => Self::center_cursor(columns, &rect.dimensions, &starting_cursor),
+@@ -278,9 +295,12 @@ where
+             background_color: properties.background_color,
+         };
+         self.terminal.execute(&TerminalCommand::PrintImage { image: image.clone(), options })?;
++        if properties.restore_cursor {
++            self.terminal.execute(&TerminalCommand::MoveTo { column: starting_cursor.column, row: starting_row })?;
++        } else {
++            self.terminal.execute(&TerminalCommand::MoveToRow(starting_row + rows))?;
++        }
++        self.apply_colors()
+-        Surface::new(self.terminal, self.image_scaler.as_ref())
+-            .finish_image(&starting_cursor, starting_row, rows, properties.restore_cursor, self.colors)?;
+-        Ok(())
+     }
+ 
+     fn center_cursor(columns: u16, window: &WindowSize, cursor: &CursorPosition) -> CursorPosition {
+@@ -318,7 +338,7 @@ where
+             TextDrawer::new(prefix, *right_padding_length, text, positioning, &self.colors, MINIMUM_LINE_LENGTH)?
+                 .with_surrounding_block(*block_color)
+                 .repeat_prefix_on_wrap(*repeat_prefix_on_wrap);
++        text_drawer.draw(self.terminal)?;
+-        text_drawer.draw_surface(&mut Surface::new(self.terminal, self.image_scaler.as_ref()))?;
+ 
+         // Restore colors
+         self.apply_colors()?;
+@@ -421,9 +441,14 @@ where
+                 if let LayoutGrid::Draw(style) = grid {
+                     let style = *style;
+                     let max_row = columns.iter().map(|c| c.current_row).max().unwrap_or(0);
++                    for row in *start_row..=max_row {
++                        self.terminal.execute(&TerminalCommand::MoveToRow(row))?;
++                        for column in columns.iter().skip(1) {
++                            self.terminal.execute(&TerminalCommand::MoveToColumn(column.start_column))?;
++                            self.terminal.execute(&TerminalCommand::PrintText { content: "│", style })?;
++                        }
++                    }
++                    self.apply_colors()?;
+-                    let borders: Vec<_> = columns.iter().skip(1).map(|column| column.start_column).collect();
+-                    Surface::new(self.terminal, self.image_scaler.as_ref())
+-                        .draw_column_borders(*start_row, max_row, &borders, style, self.colors)?;
+                 }
+             }
+         };
+diff --git a/src/render/text.rs b/src/render/text.rs
+index ec11a1b..df4bb98 100644
+--- a/src/render/text.rs
++++ b/src/render/text.rs
+@@ -5,7 +5,7 @@ use crate::{
+         text_style::{Color, Colors, TextStyle},
+     },
+     render::{RenderError, RenderResult, layout::Positioning},
++    terminal::printer::{TerminalCommand, TerminalIo},
+-    terminal::{printer::{TerminalCommand, TerminalIo}, image::scale::ImageScaler, surface::{RenderSurface, Surface}},
+ };
+ 
+ /// Draws text on the screen.
+@@ -83,18 +83,15 @@ impl<'a> TextDrawer<'a> {
+     where
+         T: TerminalIo,
+     {
+-        let scaler = ImageScaler::default();
+-        self.draw_surface(&mut Surface::new(terminal, &scaler))
+-    }
+-
+-    pub(crate) fn draw_surface<T: RenderSurface>(self, terminal: &mut T) -> RenderResult {
+         let mut line_length: u16 = 0;
+         terminal.execute(&TerminalCommand::MoveToColumn(self.positioning.start_column))?;
+         let font_size = self.line.font_size();
+ 
+         // Print the prefix at the beginning of the line.
++        if self.prefix_width > 0 {
++            let Text { content, style } = self.prefix.text();
++            terminal.execute(&TerminalCommand::PrintText { content, style: *style })?;
++        }
+-        let Text { content, style } = self.prefix.text();
+-        terminal.print_prefix(content, *style, self.prefix_width, true, font_size, self.block_color)?;
+         for (line_index, line) in self.line.split(self.positioning.max_line_length as usize).enumerate() {
+             if line_index > 0 {
+                 // Complete the current line's block to the right before moving down.
+@@ -112,14 +109,31 @@ impl<'a> TextDrawer<'a> {
+                 line_length = 0;
+ 
+                 // Complete the new line in this block to the left where the prefix would be.
++                if self.prefix_width > 0 {
++                    if self.repeat_prefix {
++                        let Text { content, style } = self.prefix.text();
++                        terminal.execute(&TerminalCommand::PrintText { content, style: *style })?;
++                    } else {
++                        if let Some(color) = self.block_color {
++                            terminal.execute(&TerminalCommand::SetBackgroundColor(color))?;
++                        }
++                        let text = " ".repeat(self.prefix_width as usize / font_size as usize);
++                        let style = TextStyle::default().size(font_size);
++                        terminal.execute(&TerminalCommand::PrintText { content: &text, style })?;
++                    }
++                }
+-                let Text { content, style } = self.prefix.text();
+-                terminal.print_prefix(content, *style, self.prefix_width, self.repeat_prefix, font_size, self.block_color)?;
+             }
+             for chunk in line {
+                 line_length = line_length.saturating_add(chunk.width() as u16);
+ 
+                 let (text, style) = chunk.into_parts();
++                terminal.execute(&TerminalCommand::PrintText { content: text, style })?;
++
++                // Crossterm resets colors if any attributes are set so let's just re-apply colors
++                // if the format has anything on it at all.
++                if style != Default::default() {
++                    terminal.execute(&TerminalCommand::SetColors(*self.default_colors))?;
++                }
+-                terminal.print_styled_text(text, style, *self.default_colors)?;
+             }
+         }
+         self.print_block_background(line_length, terminal)?;
+@@ -128,12 +142,20 @@ impl<'a> TextDrawer<'a> {
+ 
+     fn print_block_background<T>(&self, line_length: u16, terminal: &mut T) -> RenderResult
+     where
++        T: TerminalIo,
+-        T: RenderSurface,
+     {
+         if self.draw_block {
+             let remaining =
+                 self.positioning.max_line_length.saturating_sub(line_length).saturating_add(self.right_padding_length);
++            if remaining > 0 {
++                let font_size = self.line.font_size();
++                if let Some(color) = self.block_color {
++                    terminal.execute(&TerminalCommand::SetBackgroundColor(color))?;
++                }
++                let text = " ".repeat(remaining as usize / font_size as usize);
++                let style = TextStyle::default().size(font_size);
++                terminal.execute(&TerminalCommand::PrintText { content: &text, style })?;
++            }
+-            terminal.print_block_background(remaining, self.line.font_size(), self.block_color)?;
+         }
+         Ok(())
+     }
+diff --git a/src/terminal/image/protocols/ascii.rs b/src/terminal/image/protocols/ascii.rs
+index 0190d6d..cb94db7 100644
+--- a/src/terminal/image/protocols/ascii.rs
++++ b/src/terminal/image/protocols/ascii.rs
+@@ -1,12 +1,11 @@
+ use crate::{
++    markdown::text_style::{Color, Colors, TextStyle},
+     terminal::{
+         image::printer::{ImageProperties, ImageSpec, PrintImage, PrintImageError, PrintOptions, RegisterImageError},
++        printer::{TerminalCommand, TerminalIo},
+-        printer::TerminalIo,
+-        image::scale::ImageScaler,
+-        surface::{RenderSurface, Surface},
+     },
+ };
++use image::{DynamicImage, GenericImageView, Pixel, Rgba, RgbaImage, imageops::FilterType};
+-use image::{DynamicImage, GenericImageView, RgbaImage, imageops::FilterType};
+ use itertools::Itertools;
+ use std::{
+     collections::HashMap,
+@@ -56,6 +55,30 @@ impl From<DynamicImage> for AsciiImage {
+ #[derive(Default)]
+ pub struct AsciiPrinter;
+ 
++impl AsciiPrinter {
++    fn pixel_color(pixel: &Rgba<u8>, background: Option<Color>) -> Option<Color> {
++        let [r, g, b, alpha] = pixel.0;
++        if alpha == 0 {
++            None
++        } else if alpha < 255 {
++            // For alpha > 0 && < 255, we blend it with the background color (if any). This helps
++            // smooth the image's borders.
++            let mut pixel = *pixel;
++            match background {
++                Some(Color::Rgb { r, g, b }) => {
++                    pixel.blend(&Rgba([r, g, b, 255 - alpha]));
++                    Some(Color::Rgb { r: pixel[0], g: pixel[1], b: pixel[2] })
++                }
++                // For transparent backgrounds, we can't really know whether we should blend it
++                // towards light or dark.
++                None | Some(_) => Some(Color::Rgb { r, g, b }),
++            }
++        } else {
++            Some(Color::Rgb { r, g, b })
++        }
++    }
++}
++
+ impl PrintImage for AsciiPrinter {
+     type Image = AsciiImage;
+ 
+@@ -74,13 +97,6 @@ impl PrintImage for AsciiPrinter {
+     where
+         T: TerminalIo,
+     {
+-        let scaler = ImageScaler::default();
+-        self.print_surface(image, options, &mut Surface::new(terminal, &scaler))
+-    }
+-}
+-
+-impl AsciiPrinter {
+-    fn print_surface<T: RenderSurface>(&self, image: &AsciiImage, options: &PrintOptions, terminal: &mut T) -> Result<(), PrintImageError> {
+         let columns = options.columns;
+         let rows = options.rows * 2;
+         // Scale it first
+@@ -105,14 +121,27 @@ impl PrintImage for AsciiPrinter {
+                 // number of rows disappears as we treat a transparent pixel and a non-existent
+                 // one the same: they're simply transparent.
+                 let background = default_background;
++                let top = Self::pixel_color(top_pixel, background);
++                let bottom = bottom_pixel.and_then(|c| Self::pixel_color(c, background));
++                let command = match (top, bottom) {
++                    (Some(top), Some(bottom)) => TerminalCommand::PrintText {
++                        content: TOP_CHAR,
++                        style: TextStyle::default().fg_color(top).bg_color(bottom),
++                    },
++                    (Some(top), None) => TerminalCommand::PrintText {
++                        content: TOP_CHAR,
++                        style: TextStyle::colored(Colors { foreground: Some(top), background: default_background }),
++                    },
++                    (None, Some(bottom)) => TerminalCommand::PrintText {
++                        content: BOTTOM_CHAR,
++                        style: TextStyle::colored(Colors { foreground: Some(bottom), background: default_background }),
++                    },
++                    (None, None) => TerminalCommand::MoveRight(1),
++                };
++                terminal.execute(&command)?;
+-                let top = terminal.pixel_color(top_pixel, background);
+-                let bottom = bottom_pixel.and_then(|c| terminal.pixel_color(c, background));
+-                let foreground = top.or(bottom);
+-                let background = if top.is_some() { bottom.or(default_background) } else { default_background };
+-                let glyph = if top.is_some() { TOP_CHAR } else { BOTTOM_CHAR };
+-                terminal.print_cell(glyph, foreground, background)?;
+             }
++            terminal.execute(&TerminalCommand::MoveDown(1))?;
++            terminal.execute(&TerminalCommand::MoveLeft(options.columns))?;
+-            terminal.advance_image_row(options.columns, true)?;
+         }
+         Ok(())
+     }
+diff --git a/src/terminal/image/protocols/iterm.rs b/src/terminal/image/protocols/iterm.rs
+index 0c49186..64d03f5 100644
+--- a/src/terminal/image/protocols/iterm.rs
++++ b/src/terminal/image/protocols/iterm.rs
+@@ -1,12 +1,10 @@
+ use crate::terminal::{
+     image::printer::{ImageProperties, ImageSpec, PrintImage, PrintImageError, PrintOptions, RegisterImageError},
++    printer::{TerminalCommand, TerminalIo},
+-    printer::TerminalIo,
+-        image::scale::ImageScaler,
+-        surface::{RenderSurface, Surface},
+ };
+ use base64::{Engine, engine::general_purpose::STANDARD};
+ use image::{GenericImageView, ImageEncoder, RgbaImage, codecs::png::PngEncoder};
++use std::{fs, str};
+-use std::fs;
+ 
+ const CHUNK_SIZE: usize = 32 * 1024;
+ 
+@@ -73,14 +71,38 @@ impl PrintImage for ItermPrinter {
+     where
+         T: TerminalIo,
+     {
++        let size = image.raw_length;
++        let columns = options.columns;
++        let rows = options.rows;
++        let (start, end) = match self.tmux {
++            true => ("\x1bPtmux;\x1b\x1b]1337;", "\x07\x1b\\"),
++            false => ("\x1b]1337;", "\x07"),
++        };
++        let base64 = &image.base64_contents;
++        match &self.mode {
++            ItermMode::Single => {
++                let content = &format!(
++                    "{start}File=size={size};width={columns};height={rows};inline=1;preserveAspectRatio=1:{base64}{end}"
++                );
++                terminal.execute(&TerminalCommand::PrintText { content, style: Default::default() })?;
++            }
++            ItermMode::Multipart => {
++                let content = &format!(
++                    "{start}MultipartFile=size={size};width={columns};height={rows};inline=1;preserveAspectRatio=1{end}"
++                );
++                terminal.execute(&TerminalCommand::PrintText { content, style: Default::default() })?;
++                for chunk in base64.as_bytes().chunks(CHUNK_SIZE) {
++                    // SAFETY: this is base64 so it must be utf8
++                    let chunk = str::from_utf8(chunk).expect("not utf8");
++                    let content = &format!("{start}FilePart={chunk}{end}");
++                    terminal.execute(&TerminalCommand::PrintText { content, style: Default::default() })?;
++                }
++                terminal.execute(&TerminalCommand::PrintText {
++                    content: &format!("{start}FileEnd{end}"),
++                    style: Default::default(),
++                })?;
++            }
++        };
++        Ok(())
+-        let scaler = ImageScaler::default();
+-        self.print_surface(image, options, &mut Surface::new(terminal, &scaler))
+-    }
+-}
+-
+-impl ItermPrinter {
+-    fn print_surface<T: RenderSurface>(&self, image: &ItermImage, options: &PrintOptions, terminal: &mut T) -> Result<(), PrintImageError> {
+-        terminal.print_iterm(image.raw_length, &image.base64_contents, options.columns, options.rows, self.tmux, matches!(self.mode, ItermMode::Multipart), CHUNK_SIZE)
+-
+     }
+ }
+diff --git a/src/terminal/image/protocols/kitty.rs b/src/terminal/image/protocols/kitty.rs
+index 5e05bcb..bf09236 100644
+--- a/src/terminal/image/protocols/kitty.rs
++++ b/src/terminal/image/protocols/kitty.rs
+@@ -1,10 +1,8 @@
+ use crate::{
++    markdown::text_style::{Color, TextStyle},
+-    markdown::text_style::Color,
+     terminal::{
+         image::printer::{ImageProperties, ImageSpec, PrintImage, PrintImageError, PrintOptions, RegisterImageError},
++        printer::{TerminalCommand, TerminalIo},
+-        printer::TerminalIo,
+-        image::scale::ImageScaler,
+-        surface::{RenderSurface, Surface},
+     },
+ };
+ use base64::{Engine, engine::general_purpose::STANDARD};
+@@ -178,7 +176,7 @@ impl KittyPrinter {
+         print_options: &PrintOptions,
+     ) -> Result<(), PrintImageError>
+     where
++        T: TerminalIo,
+-        T: RenderSurface,
+     {
+         let mut options = vec![
+             ControlOption::Format(ImageFormat::Rgba),
+@@ -215,7 +213,7 @@ impl KittyPrinter {
+         print_options: &PrintOptions,
+     ) -> Result<(), PrintImageError>
+     where
++        T: TerminalIo,
+-        T: RenderSurface,
+     {
+         let image_id = Self::generate_image_id();
+         for (frame_id, frame) in frames.iter().enumerate() {
+@@ -257,7 +255,7 @@ impl KittyPrinter {
+                     ControlOption::Loops(1),
+                 ];
+                 let command = self.make_command(options, "").to_string();
++                terminal.execute(&TerminalCommand::PrintText { content: &command, style: Default::default() })?;
+-                terminal.print_payload(&command)?;
+             } else if frame_id == 1 {
+                 let options = &[
+                     ControlOption::Action(Action::Animate),
+@@ -266,7 +264,7 @@ impl KittyPrinter {
+                     ControlOption::AnimationState(2),
+                 ];
+                 let command = self.make_command(options, "").to_string();
++                terminal.execute(&TerminalCommand::PrintText { content: &command, style: Default::default() })?;
+-                terminal.print_payload(&command)?;
+             }
+         }
+         if self.tmux {
+@@ -281,7 +279,7 @@ impl KittyPrinter {
+             ControlOption::Quiet(2),
+         ];
+         let command = self.make_command(options, "").to_string();
++        terminal.execute(&TerminalCommand::PrintText { content: &command, style: Default::default() })?;
+-        terminal.print_payload(&command)?;
+         Ok(())
+     }
+ 
+@@ -296,7 +294,7 @@ impl KittyPrinter {
+         terminal: &mut T,
+     ) -> Result<(), PrintImageError>
+     where
++        T: TerminalIo,
+-        T: RenderSurface,
+     {
+         let Some(path) = path.to_str() else {
+             return Err(PrintImageError::other("path is not valid utf8"));
+@@ -305,7 +303,7 @@ impl KittyPrinter {
+         options.push(ControlOption::Medium(TransmissionMedium::LocalFile));
+ 
+         let command = self.make_command(&options, &encoded_path).to_string();
++        terminal.execute(&TerminalCommand::PrintText { content: &command, style: Default::default() })?;
+-        terminal.print_payload(&command)?;
+         Ok(())
+     }
+ 
+@@ -317,19 +315,31 @@ impl KittyPrinter {
+         is_frame: bool,
+     ) -> Result<(), PrintImageError>
+     where
++        T: TerminalIo,
+-        T: RenderSurface,
+     {
+         options.push(ControlOption::Medium(TransmissionMedium::Direct));
+ 
+         let payload = STANDARD.encode(frame);
++        let chunk_size = 4096;
++        let mut index = 0;
++        while index < payload.len() {
++            let start = index;
++            let end = payload.len().min(start + chunk_size);
++            index = end;
++
++            let more = end != payload.len();
++            options.push(ControlOption::MoreData(more));
++
++            let payload = &payload[start..end];
++            let command = self.make_command(&options, payload).to_string();
++            terminal.execute(&TerminalCommand::PrintText { content: &command, style: Default::default() })?;
++
++            options.clear();
++            if is_frame {
++                options.push(ControlOption::Action(Action::TransmitFrame));
+-        terminal.print_chunks(&payload, 4096, |payload, more, first| {
+-            let mut active = if first { options.clone() } else { Vec::new() };
+-            if !first && is_frame {
+-                active.push(ControlOption::Action(Action::TransmitFrame));
+             }
++        }
++        Ok(())
+-            active.push(ControlOption::MoreData(more));
+-            self.make_command(&active, payload).to_string()
+-        })
+     }
+ 
+     fn print_unicode_placeholders<T>(
+@@ -339,9 +349,10 @@ impl KittyPrinter {
+         image_id: u32,
+     ) -> Result<(), PrintImageError>
+     where
++        T: TerminalIo,
+-        T: RenderSurface,
+     {
+         let color = Color::new((image_id >> 16) as u8, (image_id >> 8) as u8, image_id as u8);
++        let style = TextStyle::default().fg_color(color);
+         if options.rows.max(options.columns) >= DIACRITICS.len() as u16 {
+             return Err(PrintImageError::other("image is too large to fit in tmux"));
+         }
+@@ -352,9 +363,12 @@ impl KittyPrinter {
+             for column in 0..options.columns {
+                 let column_diacritic = char::from_u32(DIACRITICS[column as usize]).unwrap();
+                 let content = format!("{IMAGE_PLACEHOLDER}{row_diacritic}{column_diacritic}{last_byte}");
++                terminal.execute(&TerminalCommand::PrintText { content: &content, style })?;
++            }
++            if row != options.rows - 1 {
++                terminal.execute(&TerminalCommand::MoveDown(1))?;
+-                terminal.print_cell(&content, Some(color), None)?;
+             }
++            terminal.execute(&TerminalCommand::MoveLeft(options.columns))?;
+-            terminal.advance_image_row(options.columns, row != options.rows - 1)?;
+         }
+         Ok(())
+     }
+@@ -397,9 +411,6 @@ impl PrintImage for KittyPrinter {
+     where
+         T: TerminalIo,
+     {
+-        let scaler = ImageScaler::default();
+-        let mut surface = Surface::new(terminal, &scaler);
+-        let terminal = &mut surface;
+         match &image.resource {
+             GenericResource::Image(resource) => self.print_image(image.dimensions, resource, terminal, options)?,
+             GenericResource::Gif(frames) => self.print_gif(image.dimensions, frames, terminal, options)?,
+diff --git a/src/terminal/image/protocols/sixel.rs b/src/terminal/image/protocols/sixel.rs
+index 428906b..206cce5 100644
+--- a/src/terminal/image/protocols/sixel.rs
++++ b/src/terminal/image/protocols/sixel.rs
+@@ -2,11 +2,10 @@ use crate::terminal::{
+     image::printer::{
+         CreatePrinterError, ImageProperties, ImageSpec, PrintImage, PrintImageError, PrintOptions, RegisterImageError,
+     },
++    printer::{TerminalCommand, TerminalIo},
+-    printer::TerminalIo,
+-        image::scale::ImageScaler,
+-        surface::{RenderSurface, Surface},
+ };
++use icy_sixel::encoder::{EncodeOptions, sixel_encode};
++use image::{DynamicImage, GenericImageView, RgbaImage, imageops::FilterType};
+-use image::{DynamicImage, GenericImageView, RgbaImage};
+ use std::fs;
+ 
+ pub(crate) struct SixelImage(DynamicImage);
+@@ -50,13 +49,18 @@ impl PrintImage for SixelPrinter {
+     where
+         T: TerminalIo,
+     {
++        // We're already positioned in the right place but we may not have flushed that yet.
++        terminal.execute(&TerminalCommand::Flush)?;
++
++        // This check was taken from viuer: it seems to be a bug in xterm
++        let width = (options.column_width * options.columns).min(1000);
++        let height = options.row_height * options.rows;
++        let image = image.0.resize_exact(width as u32, height as u32, FilterType::Triangle);
++        let bytes = image.into_rgba8().into_raw();
+-        let scaler = ImageScaler::default();
+-        self.print_surface(image, options, &mut Surface::new(terminal, &scaler))
+-    }
+-}
+ 
++        let content = sixel_encode(&bytes, width as usize, height as usize, &EncodeOptions::default())
++            .map_err(|e| PrintImageError::other(format!("encoding sixel image: {e:?}")))?;
++        terminal.execute(&TerminalCommand::PrintText { content: &content, style: Default::default() })?;
++        Ok(())
+-impl SixelPrinter {
+-    fn print_surface<T: RenderSurface>(&self, image: &SixelImage, options: &PrintOptions, terminal: &mut T) -> Result<(), PrintImageError> {
+-        terminal.print_sixel(&image.0, options.columns, options.rows, options.column_width, options.row_height)
+     }
+ }
+diff --git a/src/terminal/mod.rs b/src/terminal/mod.rs
+index 56057bb..f241e1b 100644
+--- a/src/terminal/mod.rs
++++ b/src/terminal/mod.rs
+@@ -3,7 +3,6 @@ pub(crate) mod capabilities;
+ pub(crate) mod emulator;
+ pub(crate) mod image;
+ pub(crate) mod printer;
+-pub(crate) mod surface;
+ pub(crate) mod virt;
+ 
+ pub(crate) use printer::{Terminal, TerminalWrite, should_hide_cursor};
+diff --git a/src/terminal/surface.rs b/src/terminal/surface.rs
+deleted file mode 100644
+index b82c5ef..0000000
+--- a/src/terminal/surface.rs
++++ /dev/null
+@@ -1,227 +0,0 @@
+-use crate::render::{properties::{CursorPosition, WindowSize}, operation::ImageSize};
+-use crate::markdown::text_style::{Color, Colors, TextStyle};
+-use image::{Pixel, Rgba};
+-use icy_sixel::encoder::{EncodeOptions, sixel_encode};
+-use image::{DynamicImage, imageops::FilterType};
+-use super::image::printer::PrintImageError;
+-use super::{
+-    image::scale::{ScaleImage, TerminalRect},
+-    printer::{TerminalCommand, TerminalError, TerminalIo},
+-};
+-
+-pub(crate) trait RenderSurface: TerminalIo + ScaleImage {
+-    fn print_cell(&mut self, content: &str, foreground: Option<Color>, background: Option<Color>) -> Result<(), TerminalError> {
+-        if foreground.is_none() {
+-            return self.execute(&TerminalCommand::MoveRight(1));
+-        }
+-        self.execute(&TerminalCommand::PrintText {
+-            content,
+-            style: TextStyle::colored(Colors { foreground, background }),
+-        })
+-    }
+-
+-    fn advance_image_row(&mut self, columns: u16, advance: bool) -> Result<(), TerminalError> {
+-        if advance {
+-            self.execute(&TerminalCommand::MoveDown(1))?;
+-        }
+-        self.execute(&TerminalCommand::MoveLeft(columns))
+-    }
+-
+-    fn print_prefix(&mut self, content: &str, style: TextStyle, width: u16, repeat: bool, font_size: u8, background: Option<Color>) -> Result<(), TerminalError> {
+-        if width == 0 {
+-            return Ok(());
+-        }
+-        if repeat {
+-            self.execute(&TerminalCommand::PrintText { content, style })
+-        } else {
+-            self.print_block_background(width, font_size, background)
+-        }
+-    }
+-
+-    fn print_styled_text(&mut self, content: &str, style: TextStyle, colors: Colors) -> Result<(), TerminalError> {
+-        self.execute(&TerminalCommand::PrintText { content, style })?;
+-        if style != Default::default() {
+-            self.execute(&TerminalCommand::SetColors(colors))?;
+-        }
+-        Ok(())
+-    }
+-
+-    fn print_sixel(&mut self, image: &DynamicImage, columns: u16, rows: u16, column_width: u16, row_height: u16) -> Result<(), PrintImageError> {
+-        // We're already positioned in the right place but we may not have flushed that yet.
+-        self.execute(&TerminalCommand::Flush)?;
+-
+-        // This check was taken from viuer: it seems to be a bug in xterm
+-        let width = (column_width * columns).min(1000);
+-        let height = row_height * rows;
+-        let image = image.resize_exact(width as u32, height as u32, FilterType::Triangle);
+-        let bytes = image.into_rgba8().into_raw();
+-
+-        let content = sixel_encode(&bytes, width as usize, height as usize, &EncodeOptions::default())
+-            .map_err(|e| PrintImageError::other(format!("encoding sixel image: {e:?}")))?;
+-        self.print_payload(&content)?;
+-        Ok(())
+-    }
+-
+-    fn print_chunks<F>(&mut self, payload: &str, chunk_size: usize, mut command: F) -> Result<(), PrintImageError>
+-    where F: FnMut(&str, bool, bool) -> String {
+-        let mut index = 0;
+-        while index < payload.len() {
+-            let start = index;
+-            let end = payload.len().min(start + chunk_size);
+-            index = end;
+-            let more = end != payload.len();
+-            let content = command(&payload[start..end], more, start == 0);
+-            self.print_payload(&content)?;
+-        }
+-        Ok(())
+-    }
+-
+-    fn print_iterm(&mut self, raw_length: usize, base64: &str, columns: u16, rows: u16, tmux: bool, multipart: bool, chunk_size: usize) -> Result<(), super::image::printer::PrintImageError> {
+-        let size = raw_length;
+-        let (start, end) = match tmux {
+-            true => ("\x1bPtmux;\x1b\x1b]1337;", "\x07\x1b\\"),
+-            false => ("\x1b]1337;", "\x07"),
+-        };
+-        match multipart {
+-            false => {
+-                let content = &format!(
+-                    "{start}File=size={size};width={columns};height={rows};inline=1;preserveAspectRatio=1:{base64}{end}"
+-                );
+-                self.print_payload(content)?;
+-            }
+-            true => {
+-                let content = &format!(
+-                    "{start}MultipartFile=size={size};width={columns};height={rows};inline=1;preserveAspectRatio=1{end}"
+-                );
+-                self.print_payload(content)?;
+-                self.print_chunks(base64, chunk_size, |chunk, _, _| format!("{start}FilePart={chunk}{end}"))?;
+-                self.execute(&TerminalCommand::PrintText {
+-                    content: &format!("{start}FileEnd{end}"),
+-                    style: Default::default(),
+-                })?;
+-            }
+-        };
+-        Ok(())
+-    }
+-
+-    fn begin_viewport(&mut self, dimensions: &WindowSize, start_column: u16, start_row: u16) -> Result<(), TerminalError> {
+-        self.execute(&TerminalCommand::SetCursorBoundaries { rows: dimensions.rows.saturating_add(start_row) })?;
+-        self.execute(&TerminalCommand::BeginUpdate)?;
+-        if start_row != 0 || start_column != 0 {
+-            self.execute(&TerminalCommand::MoveTo { column: start_column, row: start_row })?;
+-        }
+-        Ok(())
+-    }
+-
+-    fn end_viewport(&mut self) -> Result<(), TerminalError> {
+-        self.execute(&TerminalCommand::EndUpdate)?;
+-        self.execute(&TerminalCommand::Flush)
+-    }
+-
+-    fn draw_column_borders(&mut self, start_row: u16, max_row: u16, columns: &[u16], style: TextStyle, colors: Colors) -> Result<(), TerminalError> {
+-        for row in start_row..=max_row {
+-            self.execute(&TerminalCommand::MoveToRow(row))?;
+-            for column in columns {
+-                self.execute(&TerminalCommand::MoveToColumn(*column))?;
+-                self.execute(&TerminalCommand::PrintText { content: "│", style })?;
+-            }
+-        }
+-        self.execute(&TerminalCommand::SetColors(colors))
+-    }
+-
+-    fn finish_image(&mut self, start: &CursorPosition, starting_row: u16, rows: u16, restore: bool, colors: Colors) -> Result<(), TerminalError> {
+-        if restore {
+-            self.execute(&TerminalCommand::MoveTo { column: start.column, row: starting_row })?;
+-        } else {
+-            self.execute(&TerminalCommand::MoveToRow(starting_row + rows))?;
+-        }
+-        self.execute(&TerminalCommand::SetColors(colors))
+-    }
+-
+-    fn render_frame(&mut self, commands: &[TerminalCommand<'_>]) -> Result<(), TerminalError> {
+-        self.execute(&TerminalCommand::BeginUpdate)?;
+-        for command in commands {
+-            self.execute(command)?;
+-        }
+-        self.end_viewport()
+-    }
+-
+-    fn print_block_background(&mut self, remaining: u16, font_size: u8, color: Option<Color>) -> Result<(), TerminalError> {
+-        if remaining > 0 {
+-            if let Some(color) = color {
+-                self.execute(&TerminalCommand::SetBackgroundColor(color))?;
+-            }
+-            let text = " ".repeat(remaining as usize / font_size as usize);
+-            let style = TextStyle::default().size(font_size);
+-            self.execute(&TerminalCommand::PrintText { content: &text, style })?;
+-        }
+-        Ok(())
+-    }
+-
+-    fn print_payload(&mut self, content: &str) -> Result<(), TerminalError> {
+-        self.execute(&TerminalCommand::PrintText { content, style: Default::default() })
+-    }
+-
+-    fn pixel_color(&self, pixel: &Rgba<u8>, background: Option<Color>) -> Option<Color> {
+-        let [r, g, b, alpha] = pixel.0;
+-        if alpha == 0 {
+-            None
+-        } else if alpha < 255 {
+-            let mut pixel = *pixel;
+-            match background {
+-                Some(Color::Rgb { r, g, b }) => {
+-                    pixel.blend(&Rgba([r, g, b, 255 - alpha]));
+-                    Some(Color::Rgb { r: pixel[0], g: pixel[1], b: pixel[2] })
+-                }
+-                None | Some(_) => Some(Color::Rgb { r, g, b }),
+-            }
+-        } else {
+-            Some(Color::Rgb { r, g, b })
+-        }
+-    }
+-
+-    fn image_dimensions(&self, dimensions: &WindowSize, width: u32, height: u32, cursor: &CursorPosition, size: &ImageSize) -> TerminalRect {
+-        match *size {
+-            ImageSize::ShrinkIfNeeded => self.fit_image_to_rect(dimensions, width, height, cursor),
+-            ImageSize::Specific(columns, rows) => TerminalRect { columns, rows },
+-            ImageSize::WidthScaled { ratio } => {
+-                let extra_columns = (dimensions.columns as f64 * (1.0 - ratio)).ceil() as u16;
+-                let scale_size = dimensions.shrink_columns(extra_columns);
+-                self.scale_image(&scale_size, dimensions, width, height, cursor)
+-            }
+-        }
+-    }
+-}
+-
+-pub(crate) struct Surface<'a, T: TerminalIo> {
+-    terminal: &'a mut T,
+-    scaler: &'a dyn ScaleImage,
+-}
+-
+-impl<'a, T: TerminalIo> Surface<'a, T> {
+-    pub(crate) fn new(terminal: &'a mut T, scaler: &'a dyn ScaleImage) -> Self {
+-        Self { terminal, scaler }
+-    }
+-}
+-
+-impl<T: TerminalIo> TerminalIo for Surface<'_, T> {
+-    fn execute(&mut self, command: &TerminalCommand<'_>) -> Result<(), TerminalError> {
+-        self.terminal.execute(command)
+-    }
+-
+-    fn cursor_row(&self) -> u16 {
+-        self.terminal.cursor_row()
+-    }
+-}
+-
+-impl<T: TerminalIo> ScaleImage for Surface<'_, T> {
+-    fn scale_image(&self, scale_size: &WindowSize, window_dimensions: &WindowSize, image_width: u32, image_height: u32, position: &CursorPosition) -> TerminalRect {
+-        self.scaler.scale_image(scale_size, window_dimensions, image_width, image_height, position)
+-    }
+-
+-    fn fit_image_to_rect(&self, dimensions: &WindowSize, image_width: u32, image_height: u32, position: &CursorPosition) -> TerminalRect {
+-        self.scaler.fit_image_to_rect(dimensions, image_width, image_height, position)
+-    }
+-}
+-
+-impl<T: TerminalIo> RenderSurface for Surface<'_, T> {}

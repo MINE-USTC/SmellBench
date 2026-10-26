@@ -1,0 +1,1803 @@
+diff --git a/btree.go b/btree.go
+index 200c75e..0eca7e6 100644
+--- a/btree.go
++++ b/btree.go
+@@ -3,8 +3,6 @@
+ // license that can be found in the LICENSE file.
+ package btree
+ 
+-import "sync"
+-
+ type BTree struct {
+ 	base *BTreeG[any]
+ }
+@@ -57,45 +55,11 @@ func (tr *BTree) SetHint(item any, hint *PathHint) (prev any) {
+ 	if item == nil {
+ 		panic("nil item")
+ 	}
++	v, ok := tr.base.SetHint(item, hint)
++	if !ok {
+-	if tr.base.locks {
+-		tr.base.mu.Lock()
+-	}
+-	result := (func() any {
+-
+-		if tr.base.root == nil {
+-			tr.base.init(0)
+-			tr.base.root = tr.base.newNode(true)
+-			tr.base.root.items = append([]any{}, item)
+-			tr.base.root.count = 1
+-			tr.base.count = 1
+-			return nil
+-		}
+-		prev, replaced, split := tr.base.nodeSet(&tr.base.root, item, hint, 0)
+-		if split {
+-			left := tr.base.isoLoad(&tr.base.root, true)
+-			right, median := tr.base.nodeSplit(left)
+-			tr.base.root = tr.base.newNode(false)
+-			*tr.base.root.children = make([]*node[any], 0, tr.base.max+1)
+-			*tr.base.root.children = append([]*node[any]{}, left, right)
+-			tr.base.root.items = append([]any{}, median)
+-			tr.base.root.updateCount()
+-			value, found := tr.base.setHint(item, hint)
+-			if !found {
+-				return nil
+-			}
+-			return value
+-		}
+-		if replaced {
+-			return prev
+-		}
+-		tr.base.count++
+ 		return nil
+-
+-	})()
+-	if tr.base.locks {
+-		tr.base.mu.Unlock()
+ 	}
++	return v
+-	return result
+ }
+ 
+ // Get a value for key.
+@@ -122,27 +86,17 @@ func (tr *BTree) getHintMut(key any, hint *PathHint, mut bool) (value any) {
+ 	if key == nil {
+ 		return nil
+ 	}
++	var v any
++	var ok bool
++	if mut {
++		v, ok = tr.base.GetHintMut(key, hint)
++	} else {
++		v, ok = tr.base.GetHint(key, hint)
+-
+-	if tr.base.lock(mut) {
+-		defer tr.base.unlock(mut)
+ 	}
++	if !ok {
+-	if tr.base.root == nil {
+ 		return nil
+ 	}
++	return v
+-	n := tr.base.isoLoad(&tr.base.root, mut)
+-	depth := 0
+-	for {
+-		i, found := tr.base.find(n, key, hint, depth)
+-		if found {
+-			return n.items[i]
+-		}
+-		if n.children == nil {
+-			return nil
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[i], mut)
+-		depth++
+-	}
+-
+ }
+ 
+ // Len returns the number of items in the tree
+@@ -162,88 +116,49 @@ func (tr *BTree) DeleteHint(key any, hint *PathHint) (prev any) {
+ 	if key == nil {
+ 		return nil
+ 	}
++	v, ok := tr.base.DeleteHint(key, hint)
++	if !ok {
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-
+-	if tr.base.root == nil {
+-		return nil
+-	}
+-	prev, deleted := tr.base.delete(&tr.base.root, false, key, hint, 0)
+-	if !deleted {
+ 		return nil
+ 	}
++	return v
+-	if len(tr.base.root.items) == 0 && !tr.base.root.leaf() {
+-		tr.base.root = (*tr.base.root.children)[0]
+-	}
+-	tr.base.count--
+-	if tr.base.count == 0 {
+-		tr.base.root = nil
+-	}
+-	return prev
+-
+ }
+ 
+ // Ascend the tree within the range [pivot, last]
+ // Pass nil for pivot to scan all item in ascending order
+ // Return false to stop iterating
+ func (tr *BTree) Ascend(pivot any, iter func(item any) bool) {
+-	if tr.base.lock(false) {
+-		defer tr.base.unlock(false)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+ 	if pivot == nil {
++		tr.base.Scan(iter)
+-		tr.base.nodeScan(&tr.base.root, iter, false)
+ 	} else {
++		tr.base.Ascend(pivot, iter)
+-		tr.base.nodeAscend(&tr.base.root, pivot, nil, 0, iter, false)
+ 	}
+ }
+ 
+ func (tr *BTree) AscendMut(pivot any, iter func(item any) bool) {
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+ 	if pivot == nil {
++		tr.base.ScanMut(iter)
+-		tr.base.nodeScan(&tr.base.root, iter, true)
+ 	} else {
++		tr.base.AscendMut(pivot, iter)
+-		tr.base.nodeAscend(&tr.base.root, pivot, nil, 0, iter, true)
+ 	}
+ }
+ 
+ func (tr *BTree) AscendHint(pivot any, iter func(item any) bool,
+ 	hint *PathHint,
+ ) {
+-	if tr.base.lock(false) {
+-		defer tr.base.unlock(false)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+ 	if pivot == nil {
++		tr.base.Scan(iter)
+-		tr.base.nodeScan(&tr.base.root, iter, false)
+ 	} else {
++		tr.base.AscendHint(pivot, iter, hint)
+-		tr.base.nodeAscend(&tr.base.root, pivot, hint, 0, iter, false)
+ 	}
+ }
+ 
+ func (tr *BTree) AscendHintMut(pivot any, iter func(item any) bool,
+ 	hint *PathHint,
+ ) {
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+ 	if pivot == nil {
++		tr.base.ScanMut(iter)
+-		tr.base.nodeScan(&tr.base.root, iter, true)
+ 	} else {
++		tr.base.AscendHintMut(pivot, iter, hint)
+-		tr.base.nodeAscend(&tr.base.root, pivot, hint, 0, iter, true)
+ 	}
+ }
+ 
+@@ -251,62 +166,38 @@ func (tr *BTree) AscendHintMut(pivot any, iter func(item any) bool,
+ // Pass nil for pivot to scan all item in descending order
+ // Return false to stop iterating
+ func (tr *BTree) Descend(pivot any, iter func(item any) bool) {
+-	if tr.base.lock(false) {
+-		defer tr.base.unlock(false)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+ 	if pivot == nil {
++		tr.base.Reverse(iter)
+-		tr.base.nodeReverse(&tr.base.root, iter, false)
+ 	} else {
++		tr.base.Descend(pivot, iter)
+-		tr.base.nodeDescend(&tr.base.root, pivot, nil, 0, iter, false)
+ 	}
+ }
+ 
+ func (tr *BTree) DescendMut(pivot any, iter func(item any) bool) {
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+ 	if pivot == nil {
++		tr.base.ReverseMut(iter)
+-		tr.base.nodeReverse(&tr.base.root, iter, true)
+ 	} else {
++		tr.base.DescendMut(pivot, iter)
+-		tr.base.nodeDescend(&tr.base.root, pivot, nil, 0, iter, true)
+ 	}
+ }
+ 
+ func (tr *BTree) DescendHint(pivot any, iter func(item any) bool,
+ 	hint *PathHint,
+ ) {
+-	if tr.base.lock(false) {
+-		defer tr.base.unlock(false)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+ 	if pivot == nil {
++		tr.base.Reverse(iter)
+-		tr.base.nodeReverse(&tr.base.root, iter, false)
+ 	} else {
++		tr.base.DescendHint(pivot, iter, hint)
+-		tr.base.nodeDescend(&tr.base.root, pivot, hint, 0, iter, false)
+ 	}
+ }
+ 
+ func (tr *BTree) DescendHintMut(pivot any, iter func(item any) bool,
+ 	hint *PathHint,
+ ) {
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+ 	if pivot == nil {
++		tr.base.ReverseMut(iter)
+-		tr.base.nodeReverse(&tr.base.root, iter, true)
+ 	} else {
++		tr.base.DescendHintMut(pivot, iter, hint)
+-		tr.base.nodeDescend(&tr.base.root, pivot, hint, 0, iter, true)
+ 	}
+ }
+ 
+@@ -317,357 +208,95 @@ func (tr *BTree) Load(item any) (prev any) {
+ 	if item == nil {
+ 		panic("nil item")
+ 	}
++	v, ok := tr.base.Load(item)
++	if !ok {
+-
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil {
+-		value, found := tr.base.setHint(item, nil)
+-		if !found {
+-			return nil
+-		}
+-		return value
+-	}
+-	var appendItem func(**node[any]) bool
+-	appendItem = func(edge **node[any]) bool {
+-		n := tr.base.isoLoad(edge, true)
+-		n.count++
+-		if !n.leaf() {
+-			if appendItem(&(*n.children)[len(*n.children)-1]) {
+-				return true
+-			}
+-		} else if len(n.items) < tr.base.max && tr.base.Less(n.items[len(n.items)-1], item) {
+-			n.items = append(n.items, item)
+-			return true
+-		}
+-		n.count--
+-		return false
+-	}
+-	if appendItem(&tr.base.root) {
+-		tr.base.count++
+-		return nil
+-	}
+-	value, found := tr.base.setHint(item, nil)
+-	if !found {
+ 		return nil
+ 	}
++	return v
+-	return value
+-
+ }
+ 
+ // Min returns the minimum item in tree.
+ // Returns nil if the tree has no items.
+ func (tr *BTree) Min() any {
++	v, ok := tr.base.Min()
++	if !ok {
+-
+-	if tr.base.lock(false) {
+-		defer tr.base.unlock(false)
+-	}
+-	if tr.base.root == nil {
+ 		return nil
+ 	}
++	return v
+-	n := tr.base.isoLoad(&tr.base.root, false)
+-	for {
+-		if n.leaf() {
+-			return n.items[0]
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[0], false)
+-	}
+-
+ }
+ 
+ func (tr *BTree) MinMut() any {
++	v, ok := tr.base.MinMut()
++	if !ok {
+-
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil {
+ 		return nil
+ 	}
++	return v
+-	n := tr.base.isoLoad(&tr.base.root, true)
+-	for {
+-		if n.leaf() {
+-			return n.items[0]
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[0], true)
+-	}
+-
+ }
+ 
+ // Max returns the maximum item in tree.
+ // Returns nil if the tree has no items.
+ func (tr *BTree) Max() any {
++	v, ok := tr.base.Max()
++	if !ok {
+-
+-	if tr.base.lock(false) {
+-		defer tr.base.unlock(false)
+-	}
+-	if tr.base.root == nil {
+ 		return nil
+ 	}
++	return v
+-	n := tr.base.isoLoad(&tr.base.root, false)
+-	for {
+-		if n.leaf() {
+-			return n.items[len(n.items)-1]
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[len(*n.children)-1], false)
+-	}
+-
+ }
+ 
+ func (tr *BTree) MaxMut() any {
++	v, ok := tr.base.Max()
++	if !ok {
+-
+-	if tr.base.lock(false) {
+-		defer tr.base.unlock(false)
+-	}
+-	if tr.base.root == nil {
+ 		return nil
+ 	}
++	return v
+-	n := tr.base.isoLoad(&tr.base.root, false)
+-	for {
+-		if n.leaf() {
+-			return n.items[len(n.items)-1]
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[len(*n.children)-1], false)
+-	}
+-
+ }
+ 
+ // PopMin removes the minimum item in tree and returns it.
+ // Returns nil if the tree has no items.
+ func (tr *BTree) PopMin() any {
++	v, ok := tr.base.PopMin()
++	if !ok {
+-
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil {
+-		return nil
+-	}
+-	var item any
+-	var removeEdge func(**node[any]) bool
+-	removeEdge = func(edge **node[any]) bool {
+-		n := tr.base.isoLoad(edge, true)
+-		n.count--
+-		if !n.leaf() {
+-			if removeEdge(&(*n.children)[0]) {
+-				return true
+-			}
+-		} else {
+-			item = n.items[0]
+-			if len(n.items) != tr.base.min {
+-				copy(n.items[:], n.items[1:])
+-				n.items[len(n.items)-1] = tr.base.empty
+-				n.items = n.items[:len(n.items)-1]
+-				return true
+-			}
+-		}
+-		n.count++
+-		return false
+-	}
+-	if removeEdge(&tr.base.root) {
+-		tr.base.count--
+-		if tr.base.count == 0 {
+-			tr.base.root = nil
+-		}
+-		return item
+-	}
+-
+-	if tr.base.root == nil {
+ 		return nil
+ 	}
++	return v
+-	prev, deleted := tr.base.delete(&tr.base.root, false, item, nil, 0)
+-	if !deleted {
+-		return nil
+-	}
+-	if len(tr.base.root.items) == 0 && !tr.base.root.leaf() {
+-		tr.base.root = (*tr.base.root.children)[0]
+-	}
+-	tr.base.count--
+-	if tr.base.count == 0 {
+-		tr.base.root = nil
+-	}
+-	return prev
+-
+ }
+ 
+ // PopMax removes the maximum item in tree and returns it.
+ // Returns nil if the tree has no items.
+ func (tr *BTree) PopMax() any {
++	v, ok := tr.base.PopMax()
++	if !ok {
+-
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil {
+-		return nil
+-	}
+-	var item any
+-	var removeEdge func(**node[any]) bool
+-	removeEdge = func(edge **node[any]) bool {
+-		n := tr.base.isoLoad(edge, true)
+-		n.count--
+-		if !n.leaf() {
+-			if removeEdge(&(*n.children)[len(*n.children)-1]) {
+-				return true
+-			}
+-		} else {
+-			item = n.items[len(n.items)-1]
+-			if len(n.items) != tr.base.min {
+-				n.items[len(n.items)-1] = tr.base.empty
+-				n.items = n.items[:len(n.items)-1]
+-				return true
+-			}
+-		}
+-		n.count++
+-		return false
+-	}
+-	if removeEdge(&tr.base.root) {
+-		tr.base.count--
+-		if tr.base.count == 0 {
+-			tr.base.root = nil
+-		}
+-		return item
+-	}
+-
+-	if tr.base.root == nil {
+-		return nil
+-	}
+-	prev, deleted := tr.base.delete(&tr.base.root, false, item, nil, 0)
+-	if !deleted {
+ 		return nil
+ 	}
++	return v
+-	if len(tr.base.root.items) == 0 && !tr.base.root.leaf() {
+-		tr.base.root = (*tr.base.root.children)[0]
+-	}
+-	tr.base.count--
+-	if tr.base.count == 0 {
+-		tr.base.root = nil
+-	}
+-	return prev
+-
+ }
+ 
+ // GetAt returns the value at index.
+ // Return nil if the tree is empty or the index is out of bounds.
+ func (tr *BTree) GetAt(index int) any {
++	v, ok := tr.base.GetAt(index)
++	if !ok {
+-
+-	if tr.base.lock(false) {
+-		defer tr.base.unlock(false)
+-	}
+-	if tr.base.root == nil || index < 0 || index >= tr.base.count {
+ 		return nil
+ 	}
++	return v
+-	n := tr.base.isoLoad(&tr.base.root, false)
+-	for {
+-		if n.leaf() {
+-			return n.items[index]
+-		}
+-		i := 0
+-		for ; i < len(n.items); i++ {
+-			if index < (*n.children)[i].count {
+-				break
+-			} else if index == (*n.children)[i].count {
+-				return n.items[i]
+-			}
+-			index -= (*n.children)[i].count + 1
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[i], false)
+-	}
+-
+ }
+ 
+ func (tr *BTree) GetAtMut(index int) any {
++	v, ok := tr.base.GetAtMut(index)
++	if !ok {
+-
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil || index < 0 || index >= tr.base.count {
+ 		return nil
+ 	}
++	return v
+-	n := tr.base.isoLoad(&tr.base.root, true)
+-	for {
+-		if n.leaf() {
+-			return n.items[index]
+-		}
+-		i := 0
+-		for ; i < len(n.items); i++ {
+-			if index < (*n.children)[i].count {
+-				break
+-			} else if index == (*n.children)[i].count {
+-				return n.items[i]
+-			}
+-			index -= (*n.children)[i].count + 1
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[i], true)
+-	}
+-
+ }
+ 
+ // DeleteAt deletes the item at index.
+ // Return nil if the tree is empty or the index is out of bounds.
+ func (tr *BTree) DeleteAt(index int) any {
++	v, ok := tr.base.DeleteAt(index)
++	if !ok {
+-
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil || index < 0 || index >= tr.base.count {
+ 		return nil
+ 	}
++	return v
+-	var item any
+-	var hint PathHint
+-	var removeRank func(**node[any], int, int) bool
+-	removeRank = func(edge **node[any], rank, depth int) bool {
+-		n := tr.base.isoLoad(edge, true)
+-		n.count--
+-		position := rank
+-		if n.leaf() {
+-			item = n.items[position]
+-			if len(n.items) != tr.base.min {
+-				copy(n.items[position:], n.items[position+1:])
+-				n.items[len(n.items)-1] = tr.base.empty
+-				n.items = n.items[:len(n.items)-1]
+-				return true
+-			}
+-		} else {
+-			position = 0
+-			for position < len(n.items) && rank > (*n.children)[position].count {
+-				rank -= (*n.children)[position].count + 1
+-				position++
+-			}
+-			if position < len(n.items) && rank == (*n.children)[position].count {
+-				item = n.items[position]
+-			} else if removeRank(&(*n.children)[position], rank, depth+1) {
+-				return true
+-			}
+-		}
+-		n.count++
+-		if depth < len(hint.path) {
+-			hint.path[depth] = uint8(position)
+-			hint.used[depth] = true
+-		}
+-		return false
+-	}
+-	if removeRank(&tr.base.root, index, 0) {
+-		tr.base.count--
+-		if tr.base.count == 0 {
+-			tr.base.root = nil
+-		}
+-		return item
+-	}
+-
+-	if tr.base.root == nil {
+-		return nil
+-	}
+-	prev, deleted := tr.base.delete(&tr.base.root, false, item, &hint, 0)
+-	if !deleted {
+-		return nil
+-	}
+-	if len(tr.base.root.items) == 0 && !tr.base.root.leaf() {
+-		tr.base.root = (*tr.base.root.children)[0]
+-	}
+-	tr.base.count--
+-	if tr.base.count == 0 {
+-		tr.base.root = nil
+-	}
+-	return prev
+-
+ }
+ 
+ // Height returns the height of the tree.
+@@ -679,79 +308,27 @@ func (tr *BTree) Height() int {
+ // Walk iterates over all items in tree, in order.
+ // The items param will contain one or more items.
+ func (tr *BTree) Walk(iter func(items []any)) {
++	tr.base.Walk(func(items []any) bool {
++		iter(items)
++		return true
++	})
+-	if tr.base.lock(false) {
+-		defer tr.base.unlock(false)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+-	var visit func(**node[any])
+-	visit = func(cn **node[any]) {
+-		n := tr.base.isoLoad(cn, false)
+-		if n.leaf() {
+-			iter(n.items)
+-			return
+-		}
+-		for i := range n.items {
+-			visit(&(*n.children)[i])
+-			iter(n.items[i : i+1])
+-		}
+-		visit(&(*n.children)[len(n.items)])
+-	}
+-	visit(&tr.base.root)
+ }
+ 
+ func (tr *BTree) WalkMut(iter func(items []any)) {
++	tr.base.WalkMut(func(items []any) bool {
++		iter(items)
++		return true
++	})
+-	if tr.base.lock(true) {
+-		defer tr.base.unlock(true)
+-	}
+-	if tr.base.root == nil {
+-		return
+-	}
+-	var visit func(**node[any])
+-	visit = func(cn **node[any]) {
+-		n := tr.base.isoLoad(cn, true)
+-		if n.leaf() {
+-			iter(n.items)
+-			return
+-		}
+-		for i := range n.items {
+-			visit(&(*n.children)[i])
+-			iter(n.items[i : i+1])
+-		}
+-		visit(&(*n.children)[len(n.items)])
+-	}
+-	visit(&tr.base.root)
+ }
+ 
+ // Copy the tree. This is a copy-on-write operation and is very fast because
+ // it only performs a shadowed copy.
+ func (tr *BTree) Copy() *BTree {
++	return &BTree{base: tr.base.Copy()}
+-	var mu *sync.RWMutex
+-	if tr.base.lock(true) {
+-		mu = new(sync.RWMutex)
+-		defer tr.base.unlock(true)
+-	}
+-	tr.base.isoid = newIsoID()
+-	copyTree := new(BTreeG[any])
+-	*copyTree = *tr.base
+-	copyTree.mu = mu
+-	copyTree.isoid = newIsoID()
+-	return &BTree{base: copyTree}
+ }
+ 
+ func (tr *BTree) IsoCopy() *BTree {
++	return &BTree{base: tr.base.IsoCopy()}
+-	var mu *sync.RWMutex
+-	if tr.base.lock(true) {
+-		mu = new(sync.RWMutex)
+-		defer tr.base.unlock(true)
+-	}
+-	tr.base.isoid = newIsoID()
+-	copyTree := new(BTreeG[any])
+-	*copyTree = *tr.base
+-	copyTree.mu = mu
+-	copyTree.isoid = newIsoID()
+-	return &BTree{base: copyTree}
+ }
+ 
+ // Clear will delete all items.
+@@ -793,252 +370,43 @@ func (tr *BTree) Seek(item any) (result any, ok bool) {
+ // Seek to item greater-or-equal-to key.
+ // Returns false if there was no item found.
+ func (iter *Iter) Seek(key any) bool {
++	return iter.base.Seek(key)
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	iter.base.seeked = true
+-	iter.base.stack = iter.base.stack[:0]
+-	if iter.base.tr.root == nil {
+-		return false
+-	}
+-	n := iter.base.tr.isoLoad(&iter.base.tr.root, iter.base.mut)
+-	var depth int
+-	for {
+-		i, found := iter.base.tr.find(n, key, nil, depth)
+-		iter.base.stack = append(iter.base.stack, iterStackItemG[any]{n, i})
+-		if found {
+-			iter.base.item = n.items[i]
+-			return true
+-		}
+-		if n.leaf() {
+-			for len(iter.base.stack) > 0 {
+-				frame := &iter.base.stack[len(iter.base.stack)-1]
+-				if frame.i < len(frame.n.items) {
+-					iter.base.item = frame.n.items[frame.i]
+-					return true
+-				}
+-				iter.base.stack = iter.base.stack[:len(iter.base.stack)-1]
+-			}
+-			iter.base.atend = true
+-			return false
+-		}
+-		n = iter.base.tr.isoLoad(&(*n.children)[i], iter.base.mut)
+-		depth++
+-	}
+-
+ }
+ 
+ func (iter *Iter) SeekHint(key any, hint *PathHint) bool {
++	return iter.base.SeekHint(key, hint)
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	iter.base.seeked = true
+-	iter.base.stack = iter.base.stack[:0]
+-	if iter.base.tr.root == nil {
+-		return false
+-	}
+-	n := iter.base.tr.isoLoad(&iter.base.tr.root, iter.base.mut)
+-	var depth int
+-	for {
+-		i, found := iter.base.tr.find(n, key, hint, depth)
+-		iter.base.stack = append(iter.base.stack, iterStackItemG[any]{n, i})
+-		if found {
+-			iter.base.item = n.items[i]
+-			return true
+-		}
+-		if n.leaf() {
+-			for len(iter.base.stack) > 0 {
+-				frame := &iter.base.stack[len(iter.base.stack)-1]
+-				if frame.i < len(frame.n.items) {
+-					iter.base.item = frame.n.items[frame.i]
+-					return true
+-				}
+-				iter.base.stack = iter.base.stack[:len(iter.base.stack)-1]
+-			}
+-			iter.base.atend = true
+-			return false
+-		}
+-		n = iter.base.tr.isoLoad(&(*n.children)[i], iter.base.mut)
+-		depth++
+-	}
+-
+ }
+ 
+ // First moves iterator to first item in tree.
+ // Returns false if the tree is empty.
+ func (iter *Iter) First() bool {
++	return iter.base.First()
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	iter.base.atend = false
+-	iter.base.atstart = false
+-	iter.base.seeked = true
+-	iter.base.stack = iter.base.stack[:0]
+-	if iter.base.tr.root == nil {
+-		return false
+-	}
+-	n := iter.base.tr.isoLoad(&iter.base.tr.root, iter.base.mut)
+-	for {
+-		iter.base.stack = append(iter.base.stack, iterStackItemG[any]{n, 0})
+-		if n.leaf() {
+-			break
+-		}
+-		n = iter.base.tr.isoLoad(&(*n.children)[0], iter.base.mut)
+-	}
+-	s := &iter.base.stack[len(iter.base.stack)-1]
+-	iter.base.item = s.n.items[s.i]
+-	return true
+-
+ }
+ 
+ // Last moves iterator to last item in tree.
+ // Returns false if the tree is empty.
+ func (iter *Iter) Last() bool {
++	return iter.base.Last()
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	iter.base.seeked = true
+-	iter.base.stack = iter.base.stack[:0]
+-	if iter.base.tr.root == nil {
+-		return false
+-	}
+-	n := iter.base.tr.isoLoad(&iter.base.tr.root, iter.base.mut)
+-	for {
+-		iter.base.stack = append(iter.base.stack, iterStackItemG[any]{n, len(n.items)})
+-		if n.leaf() {
+-			iter.base.stack[len(iter.base.stack)-1].i--
+-			break
+-		}
+-		n = iter.base.tr.isoLoad(&(*n.children)[len(n.items)], iter.base.mut)
+-	}
+-	s := &iter.base.stack[len(iter.base.stack)-1]
+-	iter.base.item = s.n.items[s.i]
+-	return true
+-
+ }
+ 
+ // First moves iterator to first item in tree.
+ // Returns false if the tree is empty.
+ func (iter *Iter) Release() {
++	iter.base.Release()
+-
+-	if iter.base.tr == nil {
+-		return
+-	}
+-	if iter.base.locked {
+-		iter.base.tr.unlock(iter.base.mut)
+-		iter.base.locked = false
+-	}
+-
+-	// Preserve the backing memory for the stack, so that the iterator can be re-used without
+-	// allocating.
+-	stack := iter.base.stack[:0]
+-	iter.base = IterG[any]{}
+-	iter.base.stack = stack
+-
+ }
+ 
+ // Next moves iterator to the next item in iterator.
+ // Returns false if the tree is empty or the iterator is at the end of
+ // the tree.
+ func (iter *Iter) Next() bool {
++	return iter.base.Next()
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	if !iter.base.seeked {
+-		return iter.First()
+-	}
+-	if len(iter.base.stack) == 0 {
+-		if iter.base.atstart {
+-			return iter.First() && iter.Next()
+-		}
+-		return false
+-	}
+-	s := &iter.base.stack[len(iter.base.stack)-1]
+-	s.i++
+-	if s.n.leaf() {
+-		if s.i == len(s.n.items) {
+-			for {
+-				iter.base.stack = iter.base.stack[:len(iter.base.stack)-1]
+-				if len(iter.base.stack) == 0 {
+-					iter.base.atend = true
+-					return false
+-				}
+-				s = &iter.base.stack[len(iter.base.stack)-1]
+-				if s.i < len(s.n.items) {
+-					break
+-				}
+-			}
+-		}
+-	} else {
+-		n := iter.base.tr.isoLoad(&(*s.n.children)[s.i], iter.base.mut)
+-		for {
+-			iter.base.stack = append(iter.base.stack, iterStackItemG[any]{n, 0})
+-			if n.leaf() {
+-				break
+-			}
+-			n = iter.base.tr.isoLoad(&(*n.children)[0], iter.base.mut)
+-		}
+-	}
+-	s = &iter.base.stack[len(iter.base.stack)-1]
+-	iter.base.item = s.n.items[s.i]
+-	return true
+-
+ }
+ 
+ // Prev moves iterator to the previous item in iterator.
+ // Returns false if the tree is empty or the iterator is at the beginning of
+ // the tree.
+ func (iter *Iter) Prev() bool {
++	return iter.base.Prev()
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	if !iter.base.seeked {
+-		return false
+-	}
+-	if len(iter.base.stack) == 0 {
+-		if iter.base.atend {
+-			return iter.Last() && iter.Prev()
+-		}
+-		return false
+-	}
+-	s := &iter.base.stack[len(iter.base.stack)-1]
+-	if s.n.leaf() {
+-		s.i--
+-		if s.i == -1 {
+-			for {
+-				iter.base.stack = iter.base.stack[:len(iter.base.stack)-1]
+-				if len(iter.base.stack) == 0 {
+-					iter.base.atstart = true
+-					return false
+-				}
+-				s = &iter.base.stack[len(iter.base.stack)-1]
+-				s.i--
+-				if s.i > -1 {
+-					break
+-				}
+-			}
+-		}
+-	} else {
+-		n := iter.base.tr.isoLoad(&(*s.n.children)[s.i], iter.base.mut)
+-		for {
+-			iter.base.stack = append(iter.base.stack, iterStackItemG[any]{n, len(n.items)})
+-			if n.leaf() {
+-				iter.base.stack[len(iter.base.stack)-1].i--
+-				break
+-			}
+-			n = iter.base.tr.isoLoad(&(*n.children)[len(n.items)], iter.base.mut)
+-		}
+-	}
+-	s = &iter.base.stack[len(iter.base.stack)-1]
+-	iter.base.item = s.n.items[s.i]
+-	return true
+-
+ }
+ 
+ // Item returns the current iterator item.
+diff --git a/set.go b/set.go
+index 2951fe2..42f3c86 100644
+--- a/set.go
++++ b/set.go
+@@ -7,112 +7,31 @@ type Set[K ordered] struct {
+ // Copy
+ func (tr *Set[K]) Copy() *Set[K] {
+ 	tr2 := new(Set[K])
++	tr2.base = *tr.base.Copy()
+-	tr2.base = tr.base
+-	tr2.base.isoid = newIsoID()
+-	tr.base.isoid = newIsoID()
+ 	return tr2
+ }
+ 
+ func (tr *Set[K]) IsoCopy() *Set[K] {
+ 	tr2 := new(Set[K])
++	tr2.base = *tr.base.IsoCopy()
+-	tr2.base = tr.base
+-	tr2.base.isoid = newIsoID()
+-	tr.base.isoid = newIsoID()
+ 	return tr2
+ }
+ 
+ // Insert an item
+ func (tr *Set[K]) Insert(key K) {
++	tr.base.Set(key, struct{}{})
+-
+-	item := mapPair[K, struct{}]{key: key, value: struct{}{}}
+-	if tr.base.root == nil {
+-		tr.base.init(0)
+-		tr.base.root = tr.base.newNode(true)
+-		tr.base.root.items = append([]mapPair[K, struct{}]{}, item)
+-		tr.base.root.count = 1
+-		tr.base.count = 1
+-		return
+-	}
+-	_, replaced, split := tr.base.nodeSet(&tr.base.root, item)
+-	if split {
+-		left := tr.base.root
+-		right, median := tr.base.nodeSplit(left)
+-		tr.base.root = tr.base.newNode(false)
+-		*tr.base.root.children = make([]*mapNode[K, struct{}], 0, tr.base.max+1)
+-		*tr.base.root.children = append([]*mapNode[K, struct{}]{}, left, right)
+-		tr.base.root.items = append([]mapPair[K, struct{}]{}, median)
+-		tr.base.root.updateCount()
+-		tr.Insert(item.key)
+-		return
+-	}
+-	if replaced {
+-		return
+-	}
+-	tr.base.count++
+-	return
+-
+ }
+ 
+ func (tr *Set[K]) Scan(iter func(key K) bool) {
++	tr.base.Scan(func(key K, value struct{}) bool {
++		return iter(key)
++	})
+-	if tr.base.root == nil {
+-		return
+-	}
+-	var visit func(**mapNode[K, struct{}]) bool
+-	visit = func(cn **mapNode[K, struct{}]) bool {
+-
+-		n := tr.base.isoLoad(cn, false)
+-		if n.leaf() {
+-			for i := 0; i < len(n.items); i++ {
+-				if !iter(n.items[i].key) {
+-					return false
+-				}
+-			}
+-			return true
+-		}
+-		for i := 0; i < len(n.items); i++ {
+-			if !visit(&(*n.children)[i]) {
+-				return false
+-			}
+-			if !iter(n.items[i].key) {
+-				return false
+-			}
+-		}
+-		return visit(&(*n.children)[len(*n.children)-1])
+-
+-	}
+-	visit(&tr.base.root)
+ }
+ 
+ // Get a value for key
+ func (tr *Set[K]) Contains(key K) bool {
++	_, ok := tr.base.Get(key)
++	return ok
+-
+-	if tr.base.root == nil {
+-		return false
+-	}
+-	n := tr.base.isoLoad(&tr.base.root, false)
+-	for {
+-		low, high := 0, len(n.items)
+-		for low < high {
+-			mid := (low + high) / 2
+-			if !(key < n.items[mid].key) {
+-				low = mid + 1
+-			} else {
+-				high = mid
+-			}
+-		}
+-		i, found := low, false
+-		if low > 0 && !(n.items[low-1].key < key) {
+-			i, found = low-1, true
+-		}
+-		if found {
+-			return true
+-		}
+-		if n.leaf() {
+-			return false
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[i], false)
+-	}
+-
+ }
+ 
+ // Len returns the number of items in the tree
+@@ -122,435 +41,78 @@ func (tr *Set[K]) Len() int {
+ 
+ // Delete an item
+ func (tr *Set[K]) Delete(key K) {
++	tr.base.Delete(key)
+-
+-	if tr.base.root == nil {
+-		return
+-	}
+-	_, deleted := tr.base.delete(&tr.base.root, false, key)
+-	if !deleted {
+-		return
+-	}
+-	if len(tr.base.root.items) == 0 && !tr.base.root.leaf() {
+-		tr.base.root = (*tr.base.root.children)[0]
+-	}
+-	tr.base.count--
+-	if tr.base.count == 0 {
+-		tr.base.root = nil
+-	}
+-	return
+-
+ }
+ 
+ // Ascend the tree within the range [pivot, last]
+ // Pass nil for pivot to scan all item in ascending order
+ // Return false to stop iterating
+ func (tr *Set[K]) Ascend(pivot K, iter func(key K) bool) {
++	tr.base.Ascend(pivot, func(key K, value struct{}) bool {
++		return iter(key)
++	})
+-	if tr.base.root == nil {
+-		return
+-	}
+-	var scan func(**mapNode[K, struct{}]) bool
+-	scan = func(cn **mapNode[K, struct{}]) bool {
+-
+-		n := tr.base.isoLoad(cn, false)
+-		if n.leaf() {
+-			for i := 0; i < len(n.items); i++ {
+-				if !iter(n.items[i].key) {
+-					return false
+-				}
+-			}
+-			return true
+-		}
+-		for i := 0; i < len(n.items); i++ {
+-			if !scan(&(*n.children)[i]) {
+-				return false
+-			}
+-			if !iter(n.items[i].key) {
+-				return false
+-			}
+-		}
+-		return scan(&(*n.children)[len(*n.children)-1])
+-
+-	}
+-	var visit func(**mapNode[K, struct{}]) bool
+-	visit = func(cn **mapNode[K, struct{}]) bool {
+-
+-		n := tr.base.isoLoad(cn, false)
+-		low, high := 0, len(n.items)
+-		for low < high {
+-			mid := (low + high) / 2
+-			if !(pivot < n.items[mid].key) {
+-				low = mid + 1
+-			} else {
+-				high = mid
+-			}
+-		}
+-		i, found := low, false
+-		if low > 0 && !(n.items[low-1].key < pivot) {
+-			i, found = low-1, true
+-		}
+-		if !found {
+-			if !n.leaf() {
+-				if !visit(&(*n.children)[i]) {
+-					return false
+-				}
+-			}
+-		}
+-		// We are either in the case that
+-		// - node is found, we should iterate through it starting at `i`,
+-		//   the index it was located at.
+-		// - no matching item was found, so iteration starts at this index.
+-		for ; i < len(n.items); i++ {
+-			if !iter(n.items[i].key) {
+-				return false
+-			}
+-			if !n.leaf() {
+-				if !scan(&(*n.children)[i+1]) {
+-					return false
+-				}
+-			}
+-		}
+-		return true
+-
+-	}
+-	visit(&tr.base.root)
+ }
+ 
+ func (tr *Set[K]) Reverse(iter func(key K) bool) {
++	tr.base.Reverse(func(key K, value struct{}) bool {
++		return iter(key)
++	})
+-	if tr.base.root == nil {
+-		return
+-	}
+-	var visit func(**mapNode[K, struct{}]) bool
+-	visit = func(cn **mapNode[K, struct{}]) bool {
+-
+-		n := tr.base.isoLoad(cn, false)
+-		if n.leaf() {
+-			for i := len(n.items) - 1; i >= 0; i-- {
+-				if !iter(n.items[i].key) {
+-					return false
+-				}
+-			}
+-			return true
+-		}
+-		if !visit(&(*n.children)[len(*n.children)-1]) {
+-			return false
+-		}
+-		for i := len(n.items) - 1; i >= 0; i-- {
+-			if !iter(n.items[i].key) {
+-				return false
+-			}
+-			if !visit(&(*n.children)[i]) {
+-				return false
+-			}
+-		}
+-		return true
+-
+-	}
+-	visit(&tr.base.root)
+ }
+ 
+ // Descend the tree within the range [pivot, first]
+ // Pass nil for pivot to scan all item in descending order
+ // Return false to stop iterating
+ func (tr *Set[K]) Descend(pivot K, iter func(key K) bool) {
++	tr.base.Descend(pivot, func(key K, value struct{}) bool {
++		return iter(key)
++	})
+-	if tr.base.root == nil {
+-		return
+-	}
+-	var scan func(**mapNode[K, struct{}]) bool
+-	scan = func(cn **mapNode[K, struct{}]) bool {
+-
+-		n := tr.base.isoLoad(cn, false)
+-		if n.leaf() {
+-			for i := len(n.items) - 1; i >= 0; i-- {
+-				if !iter(n.items[i].key) {
+-					return false
+-				}
+-			}
+-			return true
+-		}
+-		if !scan(&(*n.children)[len(*n.children)-1]) {
+-			return false
+-		}
+-		for i := len(n.items) - 1; i >= 0; i-- {
+-			if !iter(n.items[i].key) {
+-				return false
+-			}
+-			if !scan(&(*n.children)[i]) {
+-				return false
+-			}
+-		}
+-		return true
+-
+-	}
+-	var visit func(**mapNode[K, struct{}]) bool
+-	visit = func(cn **mapNode[K, struct{}]) bool {
+-
+-		n := tr.base.isoLoad(cn, false)
+-		low, high := 0, len(n.items)
+-		for low < high {
+-			mid := (low + high) / 2
+-			if !(pivot < n.items[mid].key) {
+-				low = mid + 1
+-			} else {
+-				high = mid
+-			}
+-		}
+-		i, found := low, false
+-		if low > 0 && !(n.items[low-1].key < pivot) {
+-			i, found = low-1, true
+-		}
+-		if !found {
+-			if !n.leaf() {
+-				if !visit(&(*n.children)[i]) {
+-					return false
+-				}
+-			}
+-			i--
+-		}
+-		for ; i >= 0; i-- {
+-			if !iter(n.items[i].key) {
+-				return false
+-			}
+-			if !n.leaf() {
+-				if !scan(&(*n.children)[i]) {
+-					return false
+-				}
+-			}
+-		}
+-		return true
+-
+-	}
+-	visit(&tr.base.root)
+ }
+ 
+ // Load is for bulk loading pre-sorted items
+ func (tr *Set[K]) Load(key K) {
++	tr.base.Load(key, struct{}{})
+-
+-	item := mapPair[K, struct{}]{key: key, value: struct{}{}}
+-	if tr.base.root == nil {
+-		tr.Insert(item.key)
+-		return
+-	}
+-	var appendItem func(**mapNode[K, struct{}]) bool
+-	appendItem = func(edge **mapNode[K, struct{}]) bool {
+-		n := tr.base.isoLoad(edge, true)
+-		n.count++
+-		if !n.leaf() {
+-			if appendItem(&(*n.children)[len(*n.children)-1]) {
+-				return true
+-			}
+-		} else if len(n.items) < tr.base.max && n.items[len(n.items)-1].key < key {
+-			n.items = append(n.items, item)
+-			return true
+-		}
+-		n.count--
+-		return false
+-	}
+-	if appendItem(&tr.base.root) {
+-		tr.base.count++
+-		return
+-	}
+-	tr.Insert(item.key)
+-	return
+-
+ }
+ 
+ // Min returns the minimum item in tree.
+ // Returns nil if the treex has no items.
+ func (tr *Set[K]) Min() (K, bool) {
++	key, _, ok := tr.base.Min()
++	return key, ok
+-	var key K
+-
+-	if tr.base.root == nil {
+-		return key, false
+-	}
+-	n := tr.base.isoLoad(&tr.base.root, false)
+-	for {
+-		if n.leaf() {
+-			item := n.items[0]
+-			return item.key, true
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[0], false)
+-	}
+-
+ }
+ 
+ // Max returns the maximum item in tree.
+ // Returns nil if the tree has no items.
+ func (tr *Set[K]) Max() (K, bool) {
++	key, _, ok := tr.base.Max()
++	return key, ok
+-
+-	if tr.base.root == nil {
+-		return tr.base.empty.key, false
+-	}
+-	n := tr.base.isoLoad(&tr.base.root, false)
+-	for {
+-		if n.leaf() {
+-			item := n.items[len(n.items)-1]
+-			return item.key, true
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[len(*n.children)-1], false)
+-	}
+-
+ }
+ 
+ // PopMin removes the minimum item in tree and returns it.
+ // Returns nil if the tree has no items.
+ func (tr *Set[K]) PopMin() (K, bool) {
++	key, _, ok := tr.base.PopMin()
++	return key, ok
+-
+-	if tr.base.root == nil {
+-		return tr.base.empty.key, false
+-	}
+-	var item mapPair[K, struct{}]
+-	var removeEdge func(**mapNode[K, struct{}]) bool
+-	removeEdge = func(edge **mapNode[K, struct{}]) bool {
+-		n := tr.base.isoLoad(edge, true)
+-		n.count--
+-		if !n.leaf() {
+-			if removeEdge(&(*n.children)[0]) {
+-				return true
+-			}
+-		} else {
+-			item = n.items[0]
+-			if len(n.items) != tr.base.min {
+-				copy(n.items[:], n.items[1:])
+-				n.items[len(n.items)-1] = tr.base.empty
+-				n.items = n.items[:len(n.items)-1]
+-				return true
+-			}
+-		}
+-		n.count++
+-		return false
+-	}
+-	if removeEdge(&tr.base.root) {
+-		tr.base.count--
+-		if tr.base.count == 0 {
+-			tr.base.root = nil
+-		}
+-		return item.key, true
+-	}
+-	_, deleted := tr.base.Delete(item.key)
+-	if deleted {
+-		return item.key, true
+-	}
+-	return tr.base.empty.key, false
+-
+ }
+ 
+ // PopMax removes the maximum item in tree and returns it.
+ // Returns nil if the tree has no items.
+ func (tr *Set[K]) PopMax() (K, bool) {
++	key, _, ok := tr.base.PopMax()
++	return key, ok
+-
+-	if tr.base.root == nil {
+-		return tr.base.empty.key, false
+-	}
+-	var item mapPair[K, struct{}]
+-	var removeEdge func(**mapNode[K, struct{}]) bool
+-	removeEdge = func(edge **mapNode[K, struct{}]) bool {
+-		n := tr.base.isoLoad(edge, true)
+-		n.count--
+-		if !n.leaf() {
+-			if removeEdge(&(*n.children)[len(*n.children)-1]) {
+-				return true
+-			}
+-		} else {
+-			item = n.items[len(n.items)-1]
+-			if len(n.items) != tr.base.min {
+-				n.items[len(n.items)-1] = tr.base.empty
+-				n.items = n.items[:len(n.items)-1]
+-				return true
+-			}
+-		}
+-		n.count++
+-		return false
+-	}
+-	if removeEdge(&tr.base.root) {
+-		tr.base.count--
+-		if tr.base.count == 0 {
+-			tr.base.root = nil
+-		}
+-		return item.key, true
+-	}
+-	_, deleted := tr.base.Delete(item.key)
+-	if deleted {
+-		return item.key, true
+-	}
+-	return tr.base.empty.key, false
+-
+ }
+ 
+ // GetAt returns the value at index.
+ // Return nil if the tree is empty or the index is out of bounds.
+ func (tr *Set[K]) GetAt(index int) (K, bool) {
++	key, _, ok := tr.base.GetAt(index)
++	return key, ok
+-
+-	if tr.base.root == nil || index < 0 || index >= tr.base.count {
+-		return tr.base.empty.key, false
+-	}
+-	n := tr.base.isoLoad(&tr.base.root, false)
+-	for {
+-		if n.leaf() {
+-			return n.items[index].key, true
+-		}
+-		i := 0
+-		for ; i < len(n.items); i++ {
+-			if index < (*n.children)[i].count {
+-				break
+-			} else if index == (*n.children)[i].count {
+-				return n.items[i].key, true
+-			}
+-			index -= (*n.children)[i].count + 1
+-		}
+-		n = tr.base.isoLoad(&(*n.children)[i], false)
+-	}
+-
+ }
+ 
+ // DeleteAt deletes the item at index.
+ // Return nil if the tree is empty or the index is out of bounds.
+ func (tr *Set[K]) DeleteAt(index int) (K, bool) {
++	key, _, ok := tr.base.DeleteAt(index)
++	return key, ok
+-
+-	if tr.base.root == nil || index < 0 || index >= tr.base.count {
+-		return tr.base.empty.key, false
+-	}
+-	var item mapPair[K, struct{}]
+-	var removeRank func(**mapNode[K, struct{}], int, int) bool
+-	removeRank = func(edge **mapNode[K, struct{}], rank, depth int) bool {
+-		n := tr.base.isoLoad(edge, true)
+-		n.count--
+-		position := rank
+-		if n.leaf() {
+-			item = n.items[position]
+-			if len(n.items) != tr.base.min {
+-				copy(n.items[position:], n.items[position+1:])
+-				n.items[len(n.items)-1] = tr.base.empty
+-				n.items = n.items[:len(n.items)-1]
+-				return true
+-			}
+-		} else {
+-			position = 0
+-			for position < len(n.items) && rank > (*n.children)[position].count {
+-				rank -= (*n.children)[position].count + 1
+-				position++
+-			}
+-			if position < len(n.items) && rank == (*n.children)[position].count {
+-				item = n.items[position]
+-			} else if removeRank(&(*n.children)[position], rank, depth+1) {
+-				return true
+-			}
+-		}
+-		n.count++
+-		return false
+-	}
+-	if removeRank(&tr.base.root, index, 0) {
+-		tr.base.count--
+-		if tr.base.count == 0 {
+-			tr.base.root = nil
+-		}
+-		return item.key, true
+-	}
+-	_, deleted := tr.base.Delete(item.key)
+-	if deleted {
+-		return item.key, true
+-	}
+-	return tr.base.empty.key, false
+-
+ }
+ 
+ // Height returns the height of the tree.
+@@ -572,206 +134,33 @@ func (tr *Set[K]) Iter() SetIter[K] {
+ // Seek to item greater-or-equal-to key.
+ // Returns false if there was no item found.
+ func (iter *SetIter[K]) Seek(key K) bool {
++	return iter.base.Seek(key)
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	iter.base.seeked = true
+-	iter.base.stack = iter.base.stack[:0]
+-	if iter.base.tr.root == nil {
+-		return false
+-	}
+-	n := iter.base.tr.isoLoad(&iter.base.tr.root, iter.base.mut)
+-	for {
+-		low, high := 0, len(n.items)
+-		for low < high {
+-			mid := (low + high) / 2
+-			if !(key < n.items[mid].key) {
+-				low = mid + 1
+-			} else {
+-				high = mid
+-			}
+-		}
+-		i, found := low, false
+-		if low > 0 && !(n.items[low-1].key < key) {
+-			i, found = low-1, true
+-		}
+-		iter.base.stack = append(iter.base.stack, mapIterStackItem[K, struct{}]{n, i})
+-		if found {
+-			iter.base.item = n.items[i]
+-			return true
+-		}
+-		if n.leaf() {
+-			for len(iter.base.stack) > 0 {
+-				frame := &iter.base.stack[len(iter.base.stack)-1]
+-				if frame.i < len(frame.n.items) {
+-					iter.base.item = frame.n.items[frame.i]
+-					return true
+-				}
+-				iter.base.stack = iter.base.stack[:len(iter.base.stack)-1]
+-			}
+-			iter.base.atend = true
+-			return false
+-		}
+-		n = iter.base.tr.isoLoad(&(*n.children)[i], iter.base.mut)
+-	}
+-
+ }
+ 
+ // First moves iterator to first item in tree.
+ // Returns false if the tree is empty.
+ func (iter *SetIter[K]) First() bool {
++	return iter.base.First()
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	iter.base.atend = false
+-	iter.base.atstart = false
+-	iter.base.seeked = true
+-	iter.base.stack = iter.base.stack[:0]
+-	if iter.base.tr.root == nil {
+-		return false
+-	}
+-	n := iter.base.tr.isoLoad(&iter.base.tr.root, iter.base.mut)
+-	for {
+-		iter.base.stack = append(iter.base.stack, mapIterStackItem[K, struct{}]{n, 0})
+-		if n.leaf() {
+-			break
+-		}
+-		n = iter.base.tr.isoLoad(&(*n.children)[0], iter.base.mut)
+-	}
+-	s := &iter.base.stack[len(iter.base.stack)-1]
+-	iter.base.item = s.n.items[s.i]
+-	return true
+-
+ }
+ 
+ // Last moves iterator to last item in tree.
+ // Returns false if the tree is empty.
+ func (iter *SetIter[K]) Last() bool {
++	return iter.base.Last()
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	iter.base.seeked = true
+-	iter.base.stack = iter.base.stack[:0]
+-	if iter.base.tr.root == nil {
+-		return false
+-	}
+-	n := iter.base.tr.isoLoad(&iter.base.tr.root, iter.base.mut)
+-	for {
+-		iter.base.stack = append(iter.base.stack, mapIterStackItem[K, struct{}]{n, len(n.items)})
+-		if n.leaf() {
+-			iter.base.stack[len(iter.base.stack)-1].i--
+-			break
+-		}
+-		n = iter.base.tr.isoLoad(&(*n.children)[len(n.items)], iter.base.mut)
+-	}
+-	s := &iter.base.stack[len(iter.base.stack)-1]
+-	iter.base.item = s.n.items[s.i]
+-	return true
+-
+ }
+ 
+ // Next moves iterator to the next item in iterator.
+ // Returns false if the tree is empty or the iterator is at the end of
+ // the tree.
+ func (iter *SetIter[K]) Next() bool {
++	return iter.base.Next()
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	if !iter.base.seeked {
+-		return iter.First()
+-	}
+-	if len(iter.base.stack) == 0 {
+-		if iter.base.atstart {
+-			return iter.First() && iter.Next()
+-		}
+-		return false
+-	}
+-	s := &iter.base.stack[len(iter.base.stack)-1]
+-	s.i++
+-	if s.n.leaf() {
+-		if s.i == len(s.n.items) {
+-			for {
+-				iter.base.stack = iter.base.stack[:len(iter.base.stack)-1]
+-				if len(iter.base.stack) == 0 {
+-					iter.base.atend = true
+-					return false
+-				}
+-				s = &iter.base.stack[len(iter.base.stack)-1]
+-				if s.i < len(s.n.items) {
+-					break
+-				}
+-			}
+-		}
+-	} else {
+-		n := iter.base.tr.isoLoad(&(*s.n.children)[s.i], iter.base.mut)
+-		for {
+-			iter.base.stack = append(iter.base.stack, mapIterStackItem[K, struct{}]{n, 0})
+-			if n.leaf() {
+-				break
+-			}
+-			n = iter.base.tr.isoLoad(&(*n.children)[0], iter.base.mut)
+-		}
+-	}
+-	s = &iter.base.stack[len(iter.base.stack)-1]
+-	iter.base.item = s.n.items[s.i]
+-	return true
+-
+ }
+ 
+ // Prev moves iterator to the previous item in iterator.
+ // Returns false if the tree is empty or the iterator is at the beginning of
+ // the tree.
+ func (iter *SetIter[K]) Prev() bool {
++	return iter.base.Prev()
+-
+-	if iter.base.tr == nil {
+-		return false
+-	}
+-	if !iter.base.seeked {
+-		return false
+-	}
+-	if len(iter.base.stack) == 0 {
+-		if iter.base.atend {
+-			return iter.Last() && iter.Prev()
+-		}
+-		return false
+-	}
+-	s := &iter.base.stack[len(iter.base.stack)-1]
+-	if s.n.leaf() {
+-		s.i--
+-		if s.i == -1 {
+-			for {
+-				iter.base.stack = iter.base.stack[:len(iter.base.stack)-1]
+-				if len(iter.base.stack) == 0 {
+-					iter.base.atstart = true
+-					return false
+-				}
+-				s = &iter.base.stack[len(iter.base.stack)-1]
+-				s.i--
+-				if s.i > -1 {
+-					break
+-				}
+-			}
+-		}
+-	} else {
+-		n := iter.base.tr.isoLoad(&(*s.n.children)[s.i], iter.base.mut)
+-		for {
+-			iter.base.stack = append(iter.base.stack,
+-				mapIterStackItem[K, struct{}]{n, len(n.items)})
+-			if n.leaf() {
+-				iter.base.stack[len(iter.base.stack)-1].i--
+-				break
+-			}
+-			n = iter.base.tr.isoLoad(&(*n.children)[len(n.items)], iter.base.mut)
+-		}
+-	}
+-	s = &iter.base.stack[len(iter.base.stack)-1]
+-	iter.base.item = s.n.items[s.i]
+-	return true
+-
+ }
+ 
+ // Key returns the current iterator item key.

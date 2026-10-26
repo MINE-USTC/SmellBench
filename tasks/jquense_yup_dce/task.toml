@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/jquense_yup_dce"
+version = "1.0.0"
+description = "Refactor an injected dead_code_elimination smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "data_clumps", "typescript"]
+
+[metadata]
+repo_name = "yup"
+repo_url = "https://github.com/jquense/yup"
+git_commit = "ff31eee8a2b10c938bb3a22544d9e33957a8cf01"
+language = "TypeScript"
+smell_type = "dead_code_elimination"
+prompt_mode = "natural"
+apt_packages = []
+smell_checker_match_count = 33
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 4
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"  # baseline; agent defaults to public networking
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/jquense/yup", CC_FORBIDDEN_REPO_URL = "yup", CC_FORBIDDEN_REPO_NAME = "yup" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

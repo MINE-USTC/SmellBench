@@ -1,0 +1,502 @@
+diff --git a/src/desktop_vec.c b/src/desktop_vec.c
+index 1fd0b41..f055391 100644
+--- a/src/desktop_vec.c
++++ b/src/desktop_vec.c
+@@ -149,13 +149,12 @@ struct desktop_entry *desktop_vec_find_sorted(struct desktop_vec *restrict vec,
+ 
+ struct string_ref_vec desktop_vec_filter(
+ 		const struct desktop_vec *restrict vec,
+-		const char *restrict substr,
+-		enum matching_algorithm algorithm)
++		const struct match_query *query)
+ {
+ 	struct string_ref_vec filt = string_ref_vec_create();
+ 	for (size_t i = 0; i < vec->count; i++) {
+ 		int32_t search_score;
+-		search_score = match_words(algorithm, substr, vec->buf[i].name);
++		search_score = match_query_score(query, vec->buf[i].name);
+ 		if (search_score != INT32_MIN) {
+ 			string_ref_vec_add(&filt, vec->buf[i].name);
+ 			/* Store the score of the match for later sorting. */
+@@ -163,7 +162,7 @@ struct string_ref_vec desktop_vec_filter(
+ 			filt.buf[filt.count - 1].history_score = vec->buf[i].history_score;
+ 		} else {
+ 			/* If we didn't match the name, check the keywords. */
+-			search_score = match_words(algorithm, substr, vec->buf[i].keywords);
++			search_score = match_query_score(query, vec->buf[i].keywords);
+ 			if (search_score != INT32_MIN) {
+ 				string_ref_vec_add(&filt, vec->buf[i].name);
+ 				/*
+diff --git a/src/desktop_vec.h b/src/desktop_vec.h
+index cdc0d6c..fbc5e58 100644
+--- a/src/desktop_vec.h
++++ b/src/desktop_vec.h
+@@ -37,8 +37,7 @@ void desktop_vec_sort(struct desktop_vec *restrict vec);
+ struct desktop_entry *desktop_vec_find_sorted(struct desktop_vec *restrict vec, const char *name);
+ struct string_ref_vec desktop_vec_filter(
+ 		const struct desktop_vec *restrict vec,
+-		const char *restrict substr,
+-		enum matching_algorithm algorithm);
++		const struct match_query *query);
+ 
+ struct desktop_vec desktop_vec_load(FILE *file);
+ void desktop_vec_save(struct desktop_vec *restrict vec, FILE *restrict file);
+diff --git a/src/input.c b/src/input.c
+index 8b8f0a7..eb4f9b1 100644
+--- a/src/input.c
++++ b/src/input.c
+@@ -197,16 +197,18 @@ void add_character(struct tofi *tofi, xkb_keycode_t keycode)
+ 				N_ELEM(buf));
+ 		entry->input_utf8_length += len;
+ 
++		struct match_query *query = match_query_create(tofi->matching_algorithm, entry->input_utf8);
+ 		if (entry->mode == TOFI_MODE_DRUN) {
+-			struct string_ref_vec results = desktop_vec_filter(&entry->apps, entry->input_utf8, tofi->matching_algorithm);
++			struct string_ref_vec results = desktop_vec_filter(&entry->apps, query);
+ 			string_ref_vec_destroy(&entry->results);
+ 			entry->results = results;
+ 		} else {
+ 			struct string_ref_vec tmp = entry->results;
+-			entry->results = string_ref_vec_filter(&entry->results, entry->input_utf8, tofi->matching_algorithm);
++			entry->results = string_ref_vec_filter(&entry->results, query);
+ 			string_ref_vec_destroy(&tmp);
+ 		}
+ 
++		match_query_destroy(query);
+ 		reset_selection(tofi);
+ 	} else {
+ 		for (size_t i = entry->input_utf32_length; i > entry->cursor_position; i--) {
+@@ -235,11 +237,13 @@ void input_refresh_results(struct tofi *tofi)
+ 	entry->input_utf8[bytes_written] = '\0';
+ 	entry->input_utf8_length = bytes_written;
+ 	string_ref_vec_destroy(&entry->results);
++	struct match_query *query = match_query_create(tofi->matching_algorithm, entry->input_utf8);
+ 	if (entry->mode == TOFI_MODE_DRUN) {
+-		entry->results = desktop_vec_filter(&entry->apps, entry->input_utf8, tofi->matching_algorithm);
++		entry->results = desktop_vec_filter(&entry->apps, query);
+ 	} else {
+-		entry->results = string_ref_vec_filter(&entry->commands, entry->input_utf8, tofi->matching_algorithm);
++		entry->results = string_ref_vec_filter(&entry->commands, query);
+ 	}
++	match_query_destroy(query);
+ 
+ 	reset_selection(tofi);
+ }
+diff --git a/src/matching.c b/src/matching.c
+index b0d184f..f551bdf 100644
+--- a/src/matching.c
++++ b/src/matching.c
+@@ -12,22 +12,27 @@
+ #define MAX(a, b) ((a) > (b) ? (a) : (b))
+ 
+ static int32_t simple_match_words(
++		const struct utf8_words *words,
+ 		const char *restrict patterns,
+ 		const char *restrict str);
+ 
+ static int32_t prefix_match_words(
++		const struct utf8_words *words,
+ 		const char *restrict patterns,
+ 		const char *restrict str);
+ 
+ static int32_t fuzzy_match_words(
++		const struct utf8_words *words,
+ 		const char *restrict patterns,
+ 		const char *restrict str);
+ 
+ static int32_t fuzzy_match(
++		const struct utf8_word *word,
+ 		const char *restrict pattern,
+ 		const char *restrict str);
+ 
+ static int32_t fuzzy_match_recurse(
++		const uint32_t *characters,
+ 		const char *restrict pattern,
+ 		const char *restrict str,
+ 		int32_t score,
+@@ -39,6 +44,64 @@ static int32_t compute_score(
+ 		bool first_char,
+ 		const char *restrict match);
+ 
++struct match_query {
++	enum matching_algorithm algorithm;
++	const char *patterns;
++	struct utf8_words words;
++	int32_t (*score_words)(const struct utf8_words *, const char *, const char *);
++};
++
++struct match_query *match_query_create(enum matching_algorithm algorithm, const char *patterns)
++{
++	struct match_query *query = xcalloc(1, sizeof(*query));
++	query->algorithm = algorithm;
++	query->patterns = patterns;
++	query->words = utf8_split_words(patterns);
++	switch (algorithm) {
++		case MATCHING_ALGORITHM_NORMAL:
++			query->score_words = simple_match_words;
++			break;
++		case MATCHING_ALGORITHM_PREFIX:
++			query->score_words = prefix_match_words;
++			break;
++		case MATCHING_ALGORITHM_FUZZY:
++			utf8_words_decode(&query->words);
++			query->score_words = fuzzy_match_words;
++			break;
++		default:
++			break;
++	}
++	return query;
++}
++
++void match_query_destroy(struct match_query *query)
++{
++	utf8_words_destroy(&query->words);
++	free(query);
++}
++
++bool match_query_empty(const struct match_query *query)
++{
++	return query->patterns[0] == '\0';
++}
++
++int32_t match_query_score(const struct match_query *query, const char *str)
++{
++	if (query->score_words == NULL) {
++		switch (query->algorithm) {
++			case MATCHING_ALGORITHM_NORMAL:
++				return simple_match_words(NULL, query->patterns, str);
++			case MATCHING_ALGORITHM_PREFIX:
++				return prefix_match_words(NULL, query->patterns, str);
++			case MATCHING_ALGORITHM_FUZZY:
++				return fuzzy_match_words(NULL, query->patterns, str);
++			default:
++				return INT32_MIN;
++		}
++	}
++	return query->score_words(&query->words, query->patterns, str);
++}
++
+ /*
+  * Select the appropriate algorithm, and return its score.
+  * Each algorithm returns larger scores for better matches,
+@@ -49,16 +112,13 @@ int32_t match_words(
+ 		const char *restrict patterns,
+ 		const char *restrict str)
+ {
+-	switch (algorithm) {
+-		case MATCHING_ALGORITHM_NORMAL:
+-			return simple_match_words(patterns, str);
+-		case MATCHING_ALGORITHM_PREFIX:
+-			return prefix_match_words(patterns, str);
+-		case MATCHING_ALGORITHM_FUZZY:
+-			return fuzzy_match_words(patterns, str);
+-		default:
+-			return INT32_MIN;
++	if (algorithm < MATCHING_ALGORITHM_NORMAL || algorithm > MATCHING_ALGORITHM_FUZZY) {
++		return INT32_MIN;
+ 	}
++	struct match_query *query = match_query_create(algorithm, patterns);
++	int32_t score = match_query_score(query, str);
++	match_query_destroy(query);
++	return score;
+ }
+ 
+ /*
+@@ -66,12 +126,14 @@ int32_t match_words(
+  * Returns the negative sum of substring distances from the start of str.
+  * If a word is not found, returns INT32_MIN.
+  */
+-int32_t simple_match_words(const char *restrict patterns, const char *restrict str)
++int32_t simple_match_words(const struct utf8_words *words, const char *patterns, const char *str)
+ {
+ 	int32_t score = 0;
+ 	char *saveptr = NULL;
+-	char *tmp = utf8_normalize(patterns);
+-	char *pattern = strtok_r(tmp, " ", &saveptr);
++	char *tmp = words ? NULL : utf8_normalize(patterns);
++	size_t index = 0;
++	char *pattern = words ? (words->count ? words->items[0].text : NULL)
++		: strtok_r(tmp, " ", &saveptr);
+ 	while (pattern != NULL) {
+ 		char *c = utf8_strcasestr(str, pattern);
+ 		if (c == NULL) {
+@@ -80,7 +142,11 @@ int32_t simple_match_words(const char *restrict patterns, const char *restrict s
+ 		} else {
+ 			score -= c - str;
+ 		}
+-		pattern = strtok_r(NULL, " ", &saveptr);
++		if (words) {
++			pattern = ++index < words->count ? words->items[index].text : NULL;
++		} else {
++			pattern = strtok_r(NULL, " ", &saveptr);
++		}
+ 	}
+ 	free(tmp);
+ 	return score;
+@@ -91,21 +157,27 @@ int32_t simple_match_words(const char *restrict patterns, const char *restrict s
+  * Returns the negative sum of remaining string suffix lengths.
+  * If a word is not found, returns INT32_MIN.
+  */
+-int32_t prefix_match_words(const char *restrict patterns, const char *restrict str)
++int32_t prefix_match_words(const struct utf8_words *words, const char *patterns, const char *str)
+ {
+ 	int32_t score = 0;
+ 	char *saveptr = NULL;
+-	char *tmp = utf8_normalize(patterns);
+-	char *pattern = strtok_r(tmp, " ", &saveptr);
++	char *tmp = words ? NULL : utf8_normalize(patterns);
++	size_t index = 0;
++	char *pattern = words ? (words->count ? words->items[0].text : NULL)
++		: strtok_r(tmp, " ", &saveptr);
+ 	while (pattern != NULL) {
+ 		char *c = utf8_strcasestr(str, pattern);
+ 		if (c != str) {
+ 			score = INT32_MIN;
+ 			break;
+ 		} else {
+-			score -= utf8_strlen(str) - utf8_strlen(pattern);
++			score -= utf8_strlen(str) - (words ? words->items[index].length : utf8_strlen(pattern));
++		}
++		if (words) {
++			pattern = ++index < words->count ? words->items[index].text : NULL;
++		} else {
++			pattern = strtok_r(NULL, " ", &saveptr);
+ 		}
+-		pattern = strtok_r(NULL, " ", &saveptr);
+ 	}
+ 	free(tmp);
+ 	return score;
+@@ -116,21 +188,27 @@ int32_t prefix_match_words(const char *restrict patterns, const char *restrict s
+  * Split patterns into words, and return the sum of fuzzy_match(word, str).
+  * If a word is not found, returns INT32_MIN.
+  */
+-int32_t fuzzy_match_words(const char *restrict patterns, const char *restrict str)
++int32_t fuzzy_match_words(const struct utf8_words *words, const char *patterns, const char *str)
+ {
+ 	int32_t score = 0;
+ 	char *saveptr = NULL;
+-	char *tmp = utf8_normalize(patterns);
+-	char *pattern = strtok_r(tmp, " ", &saveptr);
++	char *tmp = words ? NULL : utf8_normalize(patterns);
++	size_t index = 0;
++	char *pattern = words ? (words->count ? words->items[0].text : NULL)
++		: strtok_r(tmp, " ", &saveptr);
+ 	while (pattern != NULL) {
+-		int32_t word_score = fuzzy_match(pattern, str);
++		int32_t word_score = fuzzy_match(words ? &words->items[index] : NULL, pattern, str);
+ 		if (word_score == INT32_MIN) {
+ 			score = INT32_MIN;
+ 			break;
+ 		} else {
+ 			score += word_score;
+ 		}
+-		pattern = strtok_r(NULL, " ", &saveptr);
++		if (words) {
++			pattern = ++index < words->count ? words->items[index].text : NULL;
++		} else {
++			pattern = strtok_r(NULL, " ", &saveptr);
++		}
+ 	}
+ 	free(tmp);
+ 	return score;
+@@ -140,11 +218,11 @@ int32_t fuzzy_match_words(const char *restrict patterns, const char *restrict st
+  * Returns score if each character in pattern is found sequentially within str.
+  * Returns INT32_MIN otherwise.
+  */
+-int32_t fuzzy_match(const char *restrict pattern, const char *restrict str)
++int32_t fuzzy_match(const struct utf8_word *word, const char *pattern, const char *str)
+ {
+ 	const int unmatched_letter_penalty = -1;
+ 	const size_t slen = utf8_strlen(str);
+-	const size_t plen = utf8_strlen(pattern);
++	const size_t plen = word ? word->length : utf8_strlen(pattern);
+ 	int32_t score = 0;
+ 
+ 	if (*pattern == '\0') {
+@@ -182,7 +260,8 @@ int32_t fuzzy_match(const char *restrict pattern, const char *restrict str)
+         bool first_match_only = slen > 100;
+ 
+ 	/* Perform the match. */
+-	score = fuzzy_match_recurse(pattern, str, score, first_match_only, true);
++	score = fuzzy_match_recurse(word ? word->characters : NULL,
++			pattern, str, score, first_match_only, true);
+ 
+ 	return score;
+ }
+@@ -197,19 +276,20 @@ int32_t fuzzy_match(const char *restrict pattern, const char *restrict str)
+  * characters.
+  */
+ int32_t fuzzy_match_recurse(
++		const uint32_t *characters,
+ 		const char *restrict pattern,
+ 		const char *restrict str,
+ 		int32_t score,
+ 		bool first_match_only,
+ 		bool first_char)
+ {
+-	if (*pattern == '\0') {
++	if (characters ? *characters == 0 : *pattern == '\0') {
+ 		/* We've matched the full pattern. */
+ 		return score;
+ 	}
+ 
+ 	const char *match = str;
+-	uint32_t search = utf8_to_utf32(pattern);
++	uint32_t search = characters ? *characters : utf8_to_utf32(pattern);
+ 
+ 	int32_t best_score = INT32_MIN;
+ 
+@@ -223,7 +303,8 @@ int32_t fuzzy_match_recurse(
+ 			jump++;
+ 		}
+ 		int32_t subscore = fuzzy_match_recurse(
+-				utf8_next_char(pattern),
++				characters ? characters + 1 : NULL,
++				characters ? pattern : utf8_next_char(pattern),
+ 				utf8_next_char(match),
+ 				compute_score(jump, first_char, match),
+ 				first_match_only,
+diff --git a/src/matching.h b/src/matching.h
+index f619804..6e8bcfd 100644
+--- a/src/matching.h
++++ b/src/matching.h
+@@ -2,6 +2,8 @@
+ #define MATCHING_H
+ 
+ #include <stdint.h>
++#include <stddef.h>
++#include <stdbool.h>
+ 
+ enum matching_algorithm {
+ 	MATCHING_ALGORITHM_NORMAL,
+@@ -11,4 +13,10 @@ enum matching_algorithm {
+ 
+ int32_t match_words(enum matching_algorithm algorithm, const char *restrict patterns, const char *restrict str);
+ 
++struct match_query;
++struct match_query *match_query_create(enum matching_algorithm algorithm, const char *patterns);
++int32_t match_query_score(const struct match_query *query, const char *str);
++void match_query_destroy(struct match_query *query);
++bool match_query_empty(const struct match_query *query);
++
+ #endif /* MATCHING_H */
+diff --git a/src/string_vec.c b/src/string_vec.c
+index eb3e117..66e11fb 100644
+--- a/src/string_vec.c
++++ b/src/string_vec.c
+@@ -180,16 +180,15 @@ struct scored_string_ref *string_ref_vec_find_sorted(struct string_ref_vec *rest
+ 
+ struct string_ref_vec string_ref_vec_filter(
+ 		const struct string_ref_vec *restrict vec,
+-		const char *restrict substr,
+-		enum matching_algorithm algorithm)
++		const struct match_query *query)
+ {
+-	if (substr[0] == '\0') {
++	if (match_query_empty(query)) {
+ 		return string_ref_vec_copy(vec);
+ 	}
+ 	struct string_ref_vec filt = string_ref_vec_create();
+ 	for (size_t i = 0; i < vec->count; i++) {
+ 		int32_t search_score;
+-		search_score = match_words(algorithm, substr, vec->buf[i].string);
++		search_score = match_query_score(query, vec->buf[i].string);
+ 		if (search_score != INT32_MIN) {
+ 			string_ref_vec_add(&filt, vec->buf[i].string);
+ 			filt.buf[filt.count - 1].search_score = search_score;
+diff --git a/src/string_vec.h b/src/string_vec.h
+index 4d77ad3..70a40b4 100644
+--- a/src/string_vec.h
++++ b/src/string_vec.h
+@@ -73,8 +73,7 @@ struct scored_string_ref *string_ref_vec_find_sorted(struct string_ref_vec *rest
+ [[nodiscard("memory leaked")]]
+ struct string_ref_vec string_ref_vec_filter(
+ 		const struct string_ref_vec *restrict vec,
+-		const char *restrict substr,
+-		enum matching_algorithm algorithm);
++		const struct match_query *query);
+ 
+ [[nodiscard("memory leaked")]]
+ struct string_ref_vec string_ref_vec_from_buffer(char *buffer);
+diff --git a/src/unicode.c b/src/unicode.c
+index 4560d50..a2d7123 100644
+--- a/src/unicode.c
++++ b/src/unicode.c
+@@ -2,6 +2,52 @@
+ #include <string.h>
+ 
+ #include "unicode.h"
++#include "xmalloc.h"
++
++struct utf8_words utf8_split_words(const char *text)
++{
++	struct utf8_words words = {0};
++	words.storage = utf8_normalize(text);
++	words.items = xcalloc(strlen(text) + 1, sizeof(*words.items));
++	char *saveptr = NULL;
++	for (char *word = strtok_r(words.storage, " ", &saveptr);
++			word != NULL; word = strtok_r(NULL, " ", &saveptr)) {
++		struct utf8_word *item = &words.items[words.count++];
++		item->text = word;
++		item->length = utf8_strlen(word);
++	}
++	return words;
++}
++
++void utf8_words_decode(struct utf8_words *words)
++{
++	size_t count = words->count;
++	for (size_t i = 0; i < words->count; i++) {
++		count += words->items[i].length;
++	}
++	words->characters = xcalloc(count + 1, sizeof(*words->characters));
++	uint32_t *next = words->characters;
++	for (size_t i = 0; i < words->count; i++) {
++		struct utf8_word *word = &words->items[i];
++		word->characters = next;
++		for (char *cur = word->text; *cur != '\0'; cur = utf8_next_char(cur)) {
++			*next++ = utf8_to_utf32(cur);
++		}
++		next++;
++	}
++}
++
++void utf8_words_destroy(struct utf8_words *words)
++{
++	for (size_t i = 0; i < words->count; i++) {
++		if (words->characters == NULL) {
++			free(words->items[i].characters);
++		}
++	}
++	free(words->characters);
++	free(words->items);
++	free(words->storage);
++}
+ 
+ uint8_t utf32_to_utf8(uint32_t c, char *buf)
+ {
+diff --git a/src/unicode.h b/src/unicode.h
+index 5456db0..30a0906 100644
+--- a/src/unicode.h
++++ b/src/unicode.h
+@@ -29,4 +29,20 @@ char *utf8_normalize(const char *s);
+ char *utf8_compose(const char *s);
+ bool utf8_validate(const char *s);
+ 
++struct utf8_word {
++	char *text;
++	uint32_t *characters;
++	size_t length;
++};
++
++struct utf8_words {
++	char *storage;
++	struct utf8_word *items;
++	size_t count;
++	uint32_t *characters;
++};
++struct utf8_words utf8_split_words(const char *text);
++void utf8_words_decode(struct utf8_words *words);
++void utf8_words_destroy(struct utf8_words *words);
++
+ #endif /* UNICODE_H */

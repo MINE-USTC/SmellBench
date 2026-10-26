@@ -1,0 +1,2910 @@
+diff --git a/kpatch-build/create-diff-object.c b/kpatch-build/create-diff-object.c
+index ec4d237..3d01e71 100644
+--- a/kpatch-build/create-diff-object.c
++++ b/kpatch-build/create-diff-object.c
+@@ -570,6 +570,176 @@ static int kpatch_mangled_strcmp(char *s1, char *s2)
+ 	return 1;
+ }
+ 
++static bool rela_equal(struct rela *rela1, struct rela *rela2)
++{
++	struct rela *rela_toc1, *rela_toc2;
++	unsigned long toc_data1 = 0, toc_data2 = 0; /* = 0 to prevent gcc warning */
++
++	if (rela1->type != rela2->type ||
++	    rela1->offset != rela2->offset)
++		return false;
++
++	/*
++	 * On x86, .altinstr_aux is used to store temporary code which allows
++	 * static_cpu_has() to work before apply_alternatives() has run.  This
++	 * code is completely inert for modules, because apply_alternatives()
++	 * runs during module init, before the module is fully formed.  Any
++	 * changed references to it (i.e. changed addend) can be ignored.  As
++	 * long as they're both references to .altinstr_aux, they can be
++	 * considered equal, even if the addends differ.
++	 */
++	if (!strcmp(rela1->sym->name, ".altinstr_aux") &&
++	    !strcmp(rela2->sym->name, ".altinstr_aux"))
++		return true;
++
++	/*
++	 * With -mcmodel=large on ppc64le, GCC might generate entries in the .toc
++	 * section for relocation symbol references.   The .toc offsets may change
++	 * between the original and patched .o, so comparing ".toc + offset" isn't
++	 * right.  Compare the .toc-based symbols by reading the corresponding relas
++	 * from the .toc section.
++	 */
++	rela_toc1 = toc_rela(rela1);
++	if (!rela_toc1) {
++		/*
++		 * .toc section entries are mostly place holder for relocation entries, specified
++		 * in .rela.toc section. Sometimes, .toc section may have constants as entries.
++		 * These constants are not reference to any symbols, but plain instructions mostly
++		 * due to some arithmetics in the functions referring them.
++		 *
++		 * They are referred by the functions like normal .toc entries, these entries can
++		 * not be resolved to any symbols.
++		 *
++		 * Disassembly of section .toc:
++		 *
++		 * 0000000000000000 <.toc>:
++		 *         ...
++		 *                        148: R_PPC64_ADDR64     .data.capacity_margin
++		 *  150:   0b d7 a3 70     andi.   r3,r5,55051
++		 *  154:   3d 0a d7 a3     lhz     r30,2621(r23)
++		 *                        158: R_PPC64_ADDR64     sched_max_numa_distance
++		 *
++		 * Relocation section '.rela.toc' at offset 0xadac0 contains 160 entries:
++		 *     Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
++		 *     ...
++		 * 0000000000000148  0000009100000026 R_PPC64_ADDR64         0000000000000000 .data.capacity_margin + 0
++		 * 0000000000000158  000001a500000026 R_PPC64_ADDR64         0000000000000000 sched_max_numa_distance + 0
++		 *
++		 * Relocation section '.rela.text.select_task_rq_fair' at offset 0x90e98 contains 37 entries:
++		 *     Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
++		 *     ...
++		 * 00000000000004a0  0000008800000032 R_PPC64_TOC16_HA       0000000000000000 .toc + 148
++		 * 00000000000004ac  0000008800000040 R_PPC64_TOC16_LO_DS    0000000000000000 .toc + 148
++		 * 0000000000000514  0000008800000032 R_PPC64_TOC16_HA       0000000000000000 .toc + 150
++		 * 000000000000051c  0000008800000040 R_PPC64_TOC16_LO_DS    0000000000000000 .toc + 150
++		 */
++		memcpy(&toc_data1, rela1->sym->sec->data->d_buf + rela1->addend, sizeof(toc_data1));
++		if (!toc_data1)
++			ERROR(".toc entry not found %s + %lx", rela1->sym->name, rela1->addend);
++	}
++
++	rela_toc2 = toc_rela(rela2);
++	if (!rela_toc2) {
++		memcpy(&toc_data2, rela2->sym->sec->data->d_buf + rela2->addend, sizeof(toc_data2));
++		if (!toc_data2)
++			ERROR(".toc entry not found %s + %lx", rela2->sym->name, rela2->addend);
++	}
++
++	if (!rela_toc1 && !rela_toc2)
++		return toc_data1 == toc_data2;
++
++	if (!rela_toc1 || !rela_toc2)
++		return false;
++
++	if (rela_toc1->string)
++		return rela_toc2->string && !strcmp(rela_toc1->string, rela_toc2->string);
++
++	if (rela_toc1->addend != rela_toc2->addend)
++		return false;
++
++	return !kpatch_mangled_strcmp(rela_toc1->sym->name, rela_toc2->sym->name);
++}
++
++static void kpatch_compare_correlated_rela_section(struct section *relasec)
++{
++	struct rela *rela1, *rela2 = NULL;
++
++	/*
++	 * On ppc64le, don't compare the .rela.toc section.  The .toc and
++	 * .rela.toc sections are included as standard elements.
++	 */
++	if (!strcmp(relasec->name, ".rela.toc")) {
++		relasec->status = SAME;
++		return;
++	}
++
++	rela2 = list_entry(relasec->twin->relas.next, struct rela, list);
++	list_for_each_entry(rela1, &relasec->relas, list) {
++		if (rela_equal(rela1, rela2)) {
++			rela2 = list_entry(rela2->list.next, struct rela, list);
++			continue;
++		}
++		relasec->status = CHANGED;
++		return;
++	}
++
++	relasec->status = SAME;
++}
++
++static void kpatch_compare_correlated_nonrela_section(struct section *sec)
++{
++	struct section *sec1 = sec, *sec2 = sec->twin;
++
++	if (sec1->sh.sh_type != SHT_NOBITS &&
++	    memcmp(sec1->data->d_buf, sec2->data->d_buf, sec1->data->d_size))
++		sec->status = CHANGED;
++	else
++		sec->status = SAME;
++}
++
++static void kpatch_compare_correlated_section(struct section *sec)
++{
++	struct section *sec1 = sec, *sec2 = sec->twin;
++
++	/* Compare section headers (must match or fatal) */
++	if (sec1->sh.sh_type != sec2->sh.sh_type ||
++	    sec1->sh.sh_flags != sec2->sh.sh_flags ||
++	    sec1->sh.sh_entsize != sec2->sh.sh_entsize ||
++	    (sec1->sh.sh_addralign != sec2->sh.sh_addralign &&
++	     !is_text_section(sec1)))
++		DIFF_FATAL("%s section header details differ from %s", sec1->name, sec2->name);
++
++	/*
++	 * Short circuit for mcount and patchable_function_entries
++	 * sections, we rebuild regardless
++	 */
++	if (!strcmp(sec->name, ".rela__mcount_loc") ||
++	    !strcmp(sec->name, "__mcount_loc") ||
++	    !strcmp(sec->name, ".sframe") ||
++	    !strcmp(sec->name, ".rela.sframe") ||
++	    !strcmp(sec->name, ".rela__patchable_function_entries") ||
++	    !strcmp(sec->name, "__patchable_function_entries")) {
++		sec->status = SAME;
++		goto out;
++	}
++
++	if (sec1->sh.sh_size != sec2->sh.sh_size ||
++	    sec1->data->d_size != sec2->data->d_size ||
++		(sec1->rela && !sec2->rela) ||
++		(sec2->rela && !sec1->rela)) {
++		sec->status = CHANGED;
++		goto out;
++	}
++
++	if (is_rela_section(sec))
++		kpatch_compare_correlated_rela_section(sec);
++	else
++		kpatch_compare_correlated_nonrela_section(sec);
++out:
++	if (sec->status == CHANGED)
++		log_debug("section %s has changed\n", sec->name);
++}
++
+ /*
+  * This function is not comprehensive, i.e. it doesn't detect immediate loads
+  * to *all* registers.  It only detects those which have been found in the wild
+@@ -809,82 +979,9 @@ static void kpatch_compare_sections(struct kpatch_elf *kelf)
+ 
+ 	/* compare all sections */
+ 	list_for_each_entry(sec, seclist, list) {
++		if (sec->twin)
++			kpatch_compare_correlated_section(sec);
++		else
+-		if (sec->twin) {
+-			struct section *sec2 = sec->twin;
+-			struct rela *rela1, *rela2;
+-
+-			if (sec->sh.sh_type != sec2->sh.sh_type ||
+-			    sec->sh.sh_flags != sec2->sh.sh_flags ||
+-			    sec->sh.sh_entsize != sec2->sh.sh_entsize ||
+-			    (sec->sh.sh_addralign != sec2->sh.sh_addralign &&
+-			     !is_text_section(sec)))
+-				DIFF_FATAL("%s section header details differ from %s", sec->name, sec2->name);
+-
+-			if (!strcmp(sec->name, ".rela__mcount_loc") ||
+-			    !strcmp(sec->name, "__mcount_loc") ||
+-			    !strcmp(sec->name, ".sframe") ||
+-			    !strcmp(sec->name, ".rela.sframe") ||
+-			    !strcmp(sec->name, ".rela__patchable_function_entries") ||
+-			    !strcmp(sec->name, "__patchable_function_entries")) {
+-				sec->status = SAME;
+-			} else if (sec->sh.sh_size != sec2->sh.sh_size ||
+-				   sec->data->d_size != sec2->data->d_size ||
+-				   (sec->rela && !sec2->rela) ||
+-				   (sec2->rela && !sec->rela)) {
+-				sec->status = CHANGED;
+-			} else if (is_rela_section(sec)) {
+-				sec->status = SAME;
+-				if (strcmp(sec->name, ".rela.toc")) {
+-					rela2 = list_entry(sec2->relas.next, struct rela, list);
+-					list_for_each_entry(rela1, &sec->relas, list) {
+-						struct rela *target1, *target2;
+-						unsigned long constant1 = 0, constant2 = 0;
+-						if (rela1->type != rela2->type || rela1->offset != rela2->offset)
+-							goto relocation_changed;
+-						if (!strcmp(rela1->sym->name, ".altinstr_aux") &&
+-						    !strcmp(rela2->sym->name, ".altinstr_aux"))
+-							goto relocation_same;
+-						target1 = toc_rela(rela1);
+-						if (!target1) {
+-							memcpy(&constant1, rela1->sym->sec->data->d_buf + rela1->addend, sizeof(constant1));
+-							if (!constant1)
+-								ERROR(".toc entry not found %s + %lx", rela1->sym->name, rela1->addend);
+-						}
+-						target2 = toc_rela(rela2);
+-						if (!target2) {
+-							memcpy(&constant2, rela2->sym->sec->data->d_buf + rela2->addend, sizeof(constant2));
+-							if (!constant2)
+-								ERROR(".toc entry not found %s + %lx", rela2->sym->name, rela2->addend);
+-						}
+-						if (!target1 && !target2) {
+-							if (constant1 != constant2)
+-								goto relocation_changed;
+-						} else if (!target1 || !target2) {
+-							goto relocation_changed;
+-						} else if (target1->string) {
+-							if (!target2->string || strcmp(target1->string, target2->string))
+-								goto relocation_changed;
+-						} else if (target1->addend != target2->addend ||
+-							   kpatch_mangled_strcmp(target1->sym->name, target2->sym->name)) {
+-							goto relocation_changed;
+-						}
+-					 relocation_same:
+-						rela2 = list_entry(rela2->list.next, struct rela, list);
+-						continue;
+-					 relocation_changed:
+-						sec->status = CHANGED;
+-						break;
+-					}
+-				}
+-			} else if (sec->sh.sh_type != SHT_NOBITS &&
+-				   memcmp(sec->data->d_buf, sec2->data->d_buf, sec->data->d_size)) {
+-				sec->status = CHANGED;
+-			} else {
+-				sec->status = SAME;
+-			}
+-			if (sec->status == CHANGED)
+-				log_debug("section %s has changed\n", sec->name);
+-		} else
+ 			sec->status = NEW;
+ 	}
+ 
+@@ -915,6 +1012,22 @@ static void kpatch_compare_sections(struct kpatch_elf *kelf)
+ 	}
+ }
+ 
++static enum subsection kpatch_subsection_type(struct section *sec)
++{
++	if (!strncmp(sec->name, ".text.unlikely.", 15))
++		return SUBSECTION_UNLIKELY;
++
++	if (!strncmp(sec->name, ".text.hot.", 10))
++		return SUBSECTION_HOT;
++
++	return SUBSECTION_NORMAL;
++}
++
++static bool kpatch_subsection_changed(struct section *sec1, struct section *sec2)
++{
++	return kpatch_subsection_type(sec1) != kpatch_subsection_type(sec2);
++}
++
+ static struct symbol *kpatch_get_correlated_parent(struct symbol *sym)
+ {
+ 	while (sym->parent && !sym->parent->twin)
+@@ -922,34 +1035,51 @@ static struct symbol *kpatch_get_correlated_parent(struct symbol *sym)
+ 	return sym->parent;
+ }
+ 
++static void kpatch_compare_correlated_symbol(struct symbol *sym)
++{
++	struct symbol *sym1 = sym, *sym2 = sym->twin;
++
++	if (sym1->sym.st_info != sym2->sym.st_info ||
++	    (sym1->sec && !sym2->sec) ||
++	    (sym2->sec && !sym1->sec))
++		DIFF_FATAL("symbol info mismatch: %s", sym1->name);
++
++	/*
++	 * If two symbols are correlated but their sections are not, then the
++	 * symbol has changed sections.  This is only allowed if the symbol is
++	 * moving out of an ignored section, or moving between normal/hot/unlikely
++	 * subsections.
++	 */
++	if (sym1->sec && sym2->sec && sym1->sec->twin != sym2->sec) {
++		if ((sym2->sec->twin && sym2->sec->twin->ignore) ||
++		    kpatch_subsection_changed(sym1->sec, sym2->sec))
++			sym->status = CHANGED;
++		else
++			DIFF_FATAL("symbol changed sections: %s", sym1->name);
++	}
++
++	if (sym1->type == STT_OBJECT &&
++	    sym1->sym.st_size != sym2->sym.st_size)
++		DIFF_FATAL("object size mismatch: %s", sym1->name);
++
++	if (sym1->sym.st_shndx == SHN_UNDEF ||
++	     sym1->sym.st_shndx == SHN_ABS)
++		sym1->status = SAME;
++
++	/*
++	 * The status of LOCAL symbols is dependent on the status of their
++	 * matching section and is set during section comparison.
++	 */
++}
++
+ static void kpatch_compare_symbols(struct list_head *symlist)
+ {
+ 	struct symbol *sym;
+ 
+ 	list_for_each_entry(sym, symlist, list) {
++		if (sym->twin)
++			kpatch_compare_correlated_symbol(sym);
++		else
+-		if (sym->twin) {
+-			struct symbol *twin = sym->twin;
+-			if (sym->sym.st_info != twin->sym.st_info ||
+-			    (sym->sec && !twin->sec) || (twin->sec && !sym->sec))
+-				DIFF_FATAL("symbol info mismatch: %s", sym->name);
+-			if (sym->sec && twin->sec && sym->sec->twin != twin->sec) {
+-				enum subsection original, patched;
+-				original = !strncmp(sym->sec->name, ".text.unlikely.", 15) ?
+-					SUBSECTION_UNLIKELY : !strncmp(sym->sec->name, ".text.hot.", 10) ?
+-					SUBSECTION_HOT : SUBSECTION_NORMAL;
+-				patched = !strncmp(twin->sec->name, ".text.unlikely.", 15) ?
+-					SUBSECTION_UNLIKELY : !strncmp(twin->sec->name, ".text.hot.", 10) ?
+-					SUBSECTION_HOT : SUBSECTION_NORMAL;
+-				if ((twin->sec->twin && twin->sec->twin->ignore) || original != patched)
+-					sym->status = CHANGED;
+-				else
+-					DIFF_FATAL("symbol changed sections: %s", sym->name);
+-			}
+-			if (sym->type == STT_OBJECT && sym->sym.st_size != twin->sym.st_size)
+-				DIFF_FATAL("object size mismatch: %s", sym->name);
+-			if (sym->sym.st_shndx == SHN_UNDEF || sym->sym.st_shndx == SHN_ABS)
+-				sym->status = SAME;
+-		} else
+ 			sym->status = NEW;
+ 
+ 		log_debug("symbol %s is %s\n", sym->name, status_str(sym->status));
+@@ -981,6 +1111,12 @@ do {								\
+ 	elem->twin = NULL;					\
+ } while (0)
+ 
++static void __kpatch_correlate_section(struct section *sec_orig,
++		struct section *sec_patched)
++{
++	CORRELATE_ELEMENT(sec_orig, sec_patched, "section");
++}
++
+ static void kpatch_correlate_symbol(struct symbol *sym_orig,
+ 		struct symbol *sym_patched)
+ {
+@@ -995,6 +1131,112 @@ static void kpatch_correlate_static_local(struct symbol *sym_orig,
+ 	CORRELATE_ELEMENT(sym_orig, sym_patched, "static local");
+ }
+ 
++static void kpatch_correlate_section(struct section *sec_orig,
++		struct section *sec_patched)
++{
++	__kpatch_correlate_section(sec_orig, sec_patched);
++
++	if (is_rela_section(sec_orig)) {
++		__kpatch_correlate_section(sec_orig->base, sec_patched->base);
++		sec_orig = sec_orig->base;
++		sec_patched = sec_patched->base;
++	} else if (sec_orig->rela && sec_patched->rela) {
++		__kpatch_correlate_section(sec_orig->rela, sec_patched->rela);
++	}
++
++	if (sec_orig->secsym)
++		kpatch_correlate_symbol(sec_orig->secsym, sec_patched->secsym);
++	if (sec_orig->sym)
++		kpatch_correlate_symbol(sec_orig->sym, sec_patched->sym);
++}
++
++static void kpatch_correlate_sections(struct list_head *seclist_orig,
++		struct list_head *seclist_patched)
++{
++	struct section *sec_orig, *sec_patched;
++
++	list_for_each_entry(sec_orig, seclist_orig, list) {
++		if (sec_orig->twin)
++			continue;
++		list_for_each_entry(sec_patched, seclist_patched, list) {
++			if (kpatch_mangled_strcmp(sec_orig->name, sec_patched->name) ||
++			    sec_patched->twin)
++				continue;
++
++			if (is_ubsan_sec(sec_orig->name))
++				continue;
++
++			/* Skip correlation for unstable Clang anonymous sections */
++			if (is_clang_unnamed_data(sec_orig->name) ||
++			    is_clang_unnamed_data(sec_patched->name))
++				continue;
++
++			if (is_special_static(is_rela_section(sec_orig) ?
++					      sec_orig->base->secsym :
++					      sec_orig->secsym))
++				continue;
++
++			/*
++			 * Group sections must match exactly to be correlated.
++			 * Changed group sections are currently not supported.
++			 */
++			if (sec_orig->sh.sh_type == SHT_GROUP) {
++				if (sec_orig->data->d_size != sec_patched->data->d_size)
++					continue;
++				if (memcmp(sec_orig->data->d_buf, sec_patched->data->d_buf,
++				           sec_orig->data->d_size))
++					continue;
++			}
++
++			kpatch_correlate_section(sec_orig, sec_patched);
++			break;
++		}
++	}
++}
++
++static void kpatch_correlate_symbols(struct kpatch_elf *kelf_orig,
++		struct kpatch_elf *kelf_patched)
++{
++	struct symbol *sym_orig, *sym_patched;
++
++	list_for_each_entry(sym_orig, &kelf_orig->symbols, list) {
++		if (sym_orig->twin)
++			continue;
++		list_for_each_entry(sym_patched, &kelf_patched->symbols, list) {
++			if (kpatch_mangled_strcmp(sym_orig->name, sym_patched->name) ||
++			    sym_orig->type != sym_patched->type || sym_patched->twin)
++				continue;
++
++			if (is_ubsan_sec(sym_orig->name))
++				continue;
++
++			if (is_special_static(sym_orig))
++				continue;
++
++			/*
++			 * The .LCx symbols point to string literals in
++			 * '.rodata.<func>.str1.*' sections.  They get included
++			 * in kpatch_include_standard_elements().
++			 */
++			if (sym_orig->type == STT_NOTYPE &&
++			    !strncmp(sym_orig->name, ".LC", 3))
++				continue;
++
++			if (kpatch_is_mapping_symbol(kelf_orig, sym_orig))
++				continue;
++
++			/* group section symbols must have correlated sections */
++			if (sym_orig->sec &&
++			    sym_orig->sec->sh.sh_type == SHT_GROUP &&
++			    sym_orig->sec->twin != sym_patched->sec)
++				continue;
++
++			kpatch_correlate_symbol(sym_orig, sym_patched);
++			break;
++		}
++	}
++}
++
+ static void kpatch_compare_elf_headers(Elf *elf_orig, Elf *elf_patched)
+ {
+ 	GElf_Ehdr ehdr_orig, ehdr_patched;
+@@ -1309,32 +1551,7 @@ static void kpatch_correlate_static_local_variables(struct kpatch_elf *orig,
+ 			kpatch_correlate_static_local(sym, patched_sym);
+ 
+ 			if (bundled)
++				kpatch_correlate_section(sym->sec, patched_sym->sec);
+-				{
+-					struct section *owner_original = sym->sec;
+-					struct section *owner_patched = patched_sym->sec;
+-					CORRELATE_ELEMENT(sym->sec, patched_sym->sec, "section");
+-					if (is_rela_section(sym->sec)) {
+-						CORRELATE_ELEMENT((sym->sec)->base, (patched_sym->sec)->base, "section");
+-						owner_original = (sym->sec)->base;
+-						owner_patched = (patched_sym->sec)->base;
+-					} else if ((sym->sec)->rela && (patched_sym->sec)->rela) {
+-						CORRELATE_ELEMENT((sym->sec)->rela, (patched_sym->sec)->rela, "section");
+-					}
+-					if (owner_original->secsym) {
+-						struct symbol *original = owner_original->secsym;
+-						struct symbol *patched = owner_patched->secsym;
+-						CORRELATE_ELEMENT(original, patched, "symbol");
+-						if (original->lookup_table_file_sym && !patched->lookup_table_file_sym)
+-							patched->lookup_table_file_sym = original->lookup_table_file_sym;
+-					}
+-					if (owner_original->sym) {
+-						struct symbol *original = owner_original->sym;
+-						struct symbol *patched = owner_patched->sym;
+-						CORRELATE_ELEMENT(original, patched, "symbol");
+-						if (original->lookup_table_file_sym && !patched->lookup_table_file_sym)
+-							patched->lookup_table_file_sym = original->lookup_table_file_sym;
+-					}
+-				}
+ 		}
+ 	}
+ 
+@@ -1412,112 +1629,8 @@ static void kpatch_correlate_static_local_variables(struct kpatch_elf *orig,
+ static void kpatch_correlate_elfs(struct kpatch_elf *kelf_orig,
+ 		struct kpatch_elf *kelf_patched)
+ {
++	kpatch_correlate_sections(&kelf_orig->sections, &kelf_patched->sections);
++	kpatch_correlate_symbols(kelf_orig, kelf_patched);
+-	{
+-		struct section *sec_orig, *sec_patched;
+-
+-		list_for_each_entry(sec_orig, &kelf_orig->sections, list) {
+-			if (sec_orig->twin)
+-				continue;
+-			list_for_each_entry(sec_patched, &kelf_patched->sections, list) {
+-				if (kpatch_mangled_strcmp(sec_orig->name, sec_patched->name) ||
+-				    sec_patched->twin)
+-					continue;
+-
+-				if (is_ubsan_sec(sec_orig->name))
+-					continue;
+-
+-				/* Skip correlation for unstable Clang anonymous sections */
+-				if (is_clang_unnamed_data(sec_orig->name) ||
+-				    is_clang_unnamed_data(sec_patched->name))
+-					continue;
+-
+-				if (is_special_static(is_rela_section(sec_orig) ?
+-						      sec_orig->base->secsym :
+-						      sec_orig->secsym))
+-					continue;
+-
+-				/*
+-				 * Group sections must match exactly to be correlated.
+-				 * Changed group sections are currently not supported.
+-				 */
+-				if (sec_orig->sh.sh_type == SHT_GROUP) {
+-					if (sec_orig->data->d_size != sec_patched->data->d_size)
+-						continue;
+-					if (memcmp(sec_orig->data->d_buf, sec_patched->data->d_buf,
+-					           sec_orig->data->d_size))
+-						continue;
+-				}
+-
+-				{
+-					struct section *owner_original = sec_orig;
+-					struct section *owner_patched = sec_patched;
+-					CORRELATE_ELEMENT(sec_orig, sec_patched, "section");
+-					if (is_rela_section(sec_orig)) {
+-						CORRELATE_ELEMENT((sec_orig)->base, (sec_patched)->base, "section");
+-						owner_original = (sec_orig)->base;
+-						owner_patched = (sec_patched)->base;
+-					} else if ((sec_orig)->rela && (sec_patched)->rela) {
+-						CORRELATE_ELEMENT((sec_orig)->rela, (sec_patched)->rela, "section");
+-					}
+-					if (owner_original->secsym) {
+-						struct symbol *original = owner_original->secsym;
+-						struct symbol *patched = owner_patched->secsym;
+-						CORRELATE_ELEMENT(original, patched, "symbol");
+-						if (original->lookup_table_file_sym && !patched->lookup_table_file_sym)
+-							patched->lookup_table_file_sym = original->lookup_table_file_sym;
+-					}
+-					if (owner_original->sym) {
+-						struct symbol *original = owner_original->sym;
+-						struct symbol *patched = owner_patched->sym;
+-						CORRELATE_ELEMENT(original, patched, "symbol");
+-						if (original->lookup_table_file_sym && !patched->lookup_table_file_sym)
+-							patched->lookup_table_file_sym = original->lookup_table_file_sym;
+-					}
+-				}
+-				break;
+-			}
+-		}
+-	}
+-	{
+-		struct symbol *sym_orig, *sym_patched;
+-
+-		list_for_each_entry(sym_orig, &kelf_orig->symbols, list) {
+-			if (sym_orig->twin)
+-				continue;
+-			list_for_each_entry(sym_patched, &kelf_patched->symbols, list) {
+-				if (kpatch_mangled_strcmp(sym_orig->name, sym_patched->name) ||
+-				    sym_orig->type != sym_patched->type || sym_patched->twin)
+-					continue;
+-
+-				if (is_ubsan_sec(sym_orig->name))
+-					continue;
+-
+-				if (is_special_static(sym_orig))
+-					continue;
+-
+-				/*
+-				 * The .LCx symbols point to string literals in
+-				 * '.rodata.<func>.str1.*' sections.  They get included
+-				 * in kpatch_include_standard_elements().
+-				 */
+-				if (sym_orig->type == STT_NOTYPE &&
+-				    !strncmp(sym_orig->name, ".LC", 3))
+-					continue;
+-
+-				if (kpatch_is_mapping_symbol(kelf_orig, sym_orig))
+-					continue;
+-
+-				/* group section symbols must have correlated sections */
+-				if (sym_orig->sec &&
+-				    sym_orig->sec->sh.sh_type == SHT_GROUP &&
+-				    sym_orig->sec->twin != sym_patched->sec)
+-					continue;
+-
+-				kpatch_correlate_symbol(sym_orig, sym_patched);
+-				break;
+-			}
+-		}
+-	}
+ }
+ 
+ static void kpatch_compare_correlated_elements(struct kpatch_elf *kelf)
+@@ -2657,11 +2770,224 @@ static struct special_section special_sections[] = {
+ 	{},
+ };
+ 
++static bool should_keep_rela_group(struct lookup_table *lookup,
++				   struct section *relasec, unsigned int offset,
++				   unsigned int size)
++{
++	struct rela *rela;
++	bool found = false;
++
++	/* check if any relas in the group reference any changed functions */
++	list_for_each_entry(rela, &relasec->relas, list) {
++		if (rela->offset >= offset &&
++		    rela->offset < offset + size &&
++		    rela->sym->type == STT_FUNC &&
++		    rela->sym->sec->include) {
++			found = true;
++			log_debug("new/changed symbol %s found in special section %s\n",
++				  rela->sym->name, relasec->name);
++		}
++	}
++
++	if (!found)
++		return false;
++
++	return true;
++}
++
+ /*
+  * When updating .fixup, the corresponding addends in .ex_table need to be
+  * updated too. Stash the result in rela.r_addend so that the calculation in
+  * fixup_group_size() is not affected.
+  */
++static void kpatch_update_ex_table_addend(struct kpatch_elf *kelf,
++					  struct special_section *special,
++					  int src_offset, int dest_offset,
++					  int group_size)
++{
++	struct rela *rela;
++	struct section *relasec;
++
++	relasec = find_section_by_name(&kelf->sections, ".rela__ex_table");
++	if (!relasec)
++		ERROR("missing .rela__ex_table section");
++
++	list_for_each_entry(rela, &relasec->relas, list) {
++		if (!strcmp(rela->sym->name, ".fixup") &&
++		    rela->addend >= src_offset &&
++		    rela->addend < src_offset + group_size)
++			rela->rela.r_addend = rela->addend - (src_offset - dest_offset);
++	}
++}
++
++static bool is_reloc_to_bug_table(struct rela *rela)
++{
++	return !strcmp(rela->sym->name, "__bug_table");
++}
++
++static void recalculate_bug_table_rela_addend(struct kpatch_elf *kelf,
++					      long old_bug_offset,
++					      long new_bug_offset)
++{
++	long add_offset, old_target_offset;
++	struct section *relasec;
++	struct rela *rela;
++
++	list_for_each_entry(relasec, &kelf->sections, list) {
++		if (!is_rela_section(relasec) ||
++		    !relasec->include ||
++		    !strcmp(relasec->name, ".rela__bug_table"))
++			continue;
++		list_for_each_entry(rela, &relasec->relas, list) {
++			if (!is_reloc_to_bug_table(rela))
++				continue;
++			old_target_offset = rela_target_offset(kelf, relasec, rela);
++			if (old_target_offset == old_bug_offset) {
++				add_offset = rela_target_offset(kelf, relasec, rela) - rela->addend;
++				rela->addend = new_bug_offset - add_offset;
++				rela->rela.r_addend = rela->addend;
++				log_debug("%s: adjusting rela from %s+%lx to %s+%lx\n",
++					relasec->name,
++					rela->sym->name,
++					old_bug_offset - add_offset,
++					rela->sym->name,
++					new_bug_offset - add_offset);
++			}
++		}
++	}
++
++}
++
++static void kpatch_regenerate_special_section(struct kpatch_elf *kelf,
++					      struct lookup_table *lookup,
++					      struct special_section *special,
++					      struct section *relasec)
++{
++	struct rela *rela, *safe;
++	char *src, *dest;
++	unsigned int group_size, src_offset, dest_offset, new_offset;
++
++	LIST_HEAD(newrelas);
++
++	src = relasec->base->data->d_buf;
++	/* alloc buffer for new base section */
++	dest = malloc(relasec->base->sh.sh_size);
++	if (!dest)
++		ERROR("malloc");
++
++	/* Restore the stashed r_addend from kpatch_update_ex_table_addend. */
++	if (!strcmp(special->name, "__ex_table")) {
++		list_for_each_entry(rela, &relasec->relas, list) {
++			if (!strcmp(rela->sym->name, ".fixup"))
++				rela->addend = rela->rela.r_addend;
++		}
++	}
++
++	src_offset = 0;
++	dest_offset = 0;
++	for ( ; src_offset < relasec->base->sh.sh_size; src_offset += group_size) {
++
++		group_size = special->group_size(kelf, src_offset);
++
++		/*
++		 * In some cases the struct has padding at the end to ensure
++		 * that all structs after it are properly aligned.  But the
++		 * last struct in the section may not be padded.  In that case,
++		 * shrink the group_size such that it still (hopefully)
++		 * contains the data but doesn't go past the end of the
++		 * section.
++		 */
++		if (src_offset + group_size > relasec->base->sh.sh_size)
++			group_size = (unsigned int)(relasec->base->sh.sh_size - src_offset);
++
++		if (!should_keep_rela_group(lookup, relasec, src_offset, group_size))
++			continue;
++
++		if (special->group_filter &&
++		    !special->group_filter(lookup, relasec, src_offset, group_size))
++			continue;
++
++		/*
++		 * Copy all relas in the group.  It's possible that the relas
++		 * aren't sorted (e.g. .rela.fixup), so go through the entire
++		 * rela list each time.
++		 */
++		list_for_each_entry_safe(rela, safe, &relasec->relas, list) {
++			if (rela->offset >= src_offset &&
++			    rela->offset < src_offset + group_size) {
++				/* copy rela entry */
++				list_del(&rela->list);
++				list_add_tail(&rela->list, &newrelas);
++
++				if (!strcmp(relasec->name, ".rela__bug_table")) {
++					new_offset = rela->offset - (src_offset - dest_offset);
++					/*
++					 * When a bug table rela entry is
++					 * reassigned to a new offset
++					 * (rela->offset adjustment below),
++					 * update the addends of all
++					 * relocations targeting __bug_table so
++					 * they continue to reference the
++					 * updated bug entry.
++					 */
++					recalculate_bug_table_rela_addend(kelf, rela->offset,
++									  new_offset);
++				}
++
++				rela->offset -= src_offset - dest_offset;
++				rela->rela.r_offset = rela->offset;
++
++				kpatch_include_symbol(rela->sym);
++
++				if (!strcmp(special->name, ".fixup"))
++					kpatch_update_ex_table_addend(kelf, special,
++								      src_offset,
++								      dest_offset,
++								      group_size);
++			}
++		}
++
++		/* copy base section group */
++		memcpy(dest + dest_offset, src + src_offset, group_size);
++		dest_offset += group_size;
++	}
++
++	if (jump_label_errors)
++		ERROR("Found %d unsupported jump label(s) in the patched code. Use static_key_enabled() instead.",
++		      jump_label_errors);
++
++	if (static_call_errors)
++		ERROR("Found %d unsupported static call(s) in the patched code. Use KPATCH_STATIC_CALL() instead.",
++		      static_call_errors);
++
++	if (!dest_offset) {
++		/* no changed or global functions referenced */
++		relasec->status = relasec->base->status = SAME;
++		relasec->include = relasec->base->include = 0;
++		free(dest);
++		return;
++	}
++
++	/* overwrite with new relas list */
++	list_replace(&newrelas, &relasec->relas);
++
++	/* include both rela and base sections */
++	relasec->include = 1;
++	relasec->base->include = 1;
++	/* include secsym so .kpatch.arch relas can point to section symbols */
++	if (relasec->base->secsym)
++		relasec->base->secsym->include = 1;
++
++	/*
++	 * Update text section data buf and size.
++	 *
++	 * The rela section's data buf and size will be regenerated in
++	 * kpatch_rebuild_rela_section_data().
++	 */
++	relasec->base->data->d_buf = dest;
++	relasec->base->data->d_size = dest_offset;
++}
++
+ #define ORC_IP_PTR_SIZE 4
+ 
+ /*
+@@ -2670,6 +2996,89 @@ static void kpatch_regenerate_special_section(struct kpatch_elf *kelf,
+  * special sections because each ORC entry is split into .orc_unwind (struct
+  * orc_entry) and .orc_unwind_ip.
+  */
++static void kpatch_regenerate_orc_sections(struct kpatch_elf *kelf)
++{
++	struct rela *rela, *safe;
++	char *src, *dest, *str;
++	unsigned int src_idx = 0, dest_idx = 0, orc_entry_size;
++	struct section *orc_sec, *ip_sec;
++
++
++	str = getenv("ORC_STRUCT_SIZE");
++	if (!str)
++		return;
++	orc_entry_size = atoi(str);
++
++	if (!orc_entry_size)
++		ERROR("bad ORC_STRUCT_SIZE");
++
++	LIST_HEAD(newrelas);
++
++	orc_sec = find_section_by_name(&kelf->sections, ".orc_unwind");
++	ip_sec  = find_section_by_name(&kelf->sections, ".orc_unwind_ip");
++
++	if (!orc_sec || !ip_sec)
++		return;
++
++	if (orc_sec->sh.sh_size % orc_entry_size != 0)
++		ERROR("bad .orc_unwind size");
++
++	if (ip_sec->sh.sh_size !=
++	    (orc_sec->sh.sh_size / orc_entry_size) * ORC_IP_PTR_SIZE)
++		ERROR(".orc_unwind/.orc_unwind_ip size mismatch");
++
++	src = orc_sec->data->d_buf;
++	dest = malloc(orc_sec->sh.sh_size);
++	if (!dest)
++		ERROR("malloc");
++
++	list_for_each_entry_safe(rela, safe, &ip_sec->rela->relas, list) {
++
++		if (rela->sym->type != STT_FUNC || !rela->sym->sec->include)
++			goto next;
++
++		/* copy orc entry */
++		memcpy(dest + (dest_idx * orc_entry_size),
++		       src + (src_idx * orc_entry_size),
++		       orc_entry_size);
++
++		/* move ip rela */
++		list_del(&rela->list);
++		list_add_tail(&rela->list, &newrelas);
++		rela->offset = dest_idx * ORC_IP_PTR_SIZE;
++		rela->sym->include = 1;
++
++		dest_idx++;
++next:
++		src_idx++;
++	}
++
++	if (!dest_idx) {
++		/* no changed or global functions referenced */
++		orc_sec->status = ip_sec->status = ip_sec->rela->status = SAME;
++		orc_sec->include = ip_sec->include = ip_sec->rela->include = 0;
++		free(dest);
++		return;
++	}
++
++	/* overwrite with new relas list */
++	list_replace(&newrelas, &ip_sec->rela->relas);
++
++	/* include the sections */
++	orc_sec->include = ip_sec->include = ip_sec->rela->include = 1;
++
++	/*
++	 * Update data buf/size.
++	 *
++	 * The ip section can keep its old (zeroed data), though its size has
++	 * possibly decreased.  The ip rela section's data buf and size will be
++	 * regenerated in kpatch_rebuild_rela_section_data().
++	 */
++	orc_sec->data->d_buf = dest;
++	orc_sec->data->d_size = dest_idx * orc_entry_size;
++	ip_sec->data->d_size = dest_idx * ORC_IP_PTR_SIZE;
++}
++
+ static bool is_ftr_alt_fixup_reloc(struct section *relasec, struct rela *rela)
+ {
+ 	if (!relasec->base)
+@@ -2964,172 +3373,7 @@ static void kpatch_process_special_sections(struct kpatch_elf *kelf,
+ 		if (!sec || !sec->rela)
+ 			continue;
+ 
++		kpatch_regenerate_special_section(kelf, lookup, special, sec->rela);
+-		{
+-			struct section *relasec = sec->rela;
+-			struct rela *rela, *safe;
+-			char *src, *dest;
+-			unsigned int group_size, src_offset, dest_offset, new_offset;
+-
+-			LIST_HEAD(newrelas);
+-
+-			src = relasec->base->data->d_buf;
+-			/* alloc buffer for new base section */
+-			dest = malloc(relasec->base->sh.sh_size);
+-			if (!dest)
+-				ERROR("malloc");
+-
+-			/* Restore the stashed r_addend before processing __ex_table relas. */
+-			if (!strcmp(special->name, "__ex_table")) {
+-				list_for_each_entry(rela, &relasec->relas, list) {
+-					if (!strcmp(rela->sym->name, ".fixup"))
+-						rela->addend = rela->rela.r_addend;
+-				}
+-			}
+-
+-			src_offset = 0;
+-			dest_offset = 0;
+-			for ( ; src_offset < relasec->base->sh.sh_size; src_offset += group_size) {
+-
+-				group_size = special->group_size(kelf, src_offset);
+-
+-				/*
+-				 * In some cases the struct has padding at the end to ensure
+-				 * that all structs after it are properly aligned.  But the
+-				 * last struct in the section may not be padded.  In that case,
+-				 * shrink the group_size such that it still (hopefully)
+-				 * contains the data but doesn't go past the end of the
+-				 * section.
+-				 */
+-				if (src_offset + group_size > relasec->base->sh.sh_size)
+-					group_size = (unsigned int)(relasec->base->sh.sh_size - src_offset);
+-
+-				bool keep = false;
+-				struct rela *reference;
+-				list_for_each_entry(reference, &relasec->relas, list) {
+-					if (reference->offset >= src_offset && reference->offset < src_offset + group_size &&
+-					    reference->sym->type == STT_FUNC && reference->sym->sec->include) {
+-						keep = true;
+-						log_debug("new/changed symbol %s found in special section %s\n", reference->sym->name, relasec->name);
+-					}
+-				}
+-				if (!keep)
+-					continue;
+-
+-				if (special->group_filter &&
+-				    !special->group_filter(lookup, relasec, src_offset, group_size))
+-					continue;
+-
+-				/*
+-				 * Copy all relas in the group.  It's possible that the relas
+-				 * aren't sorted (e.g. .rela.fixup), so go through the entire
+-				 * rela list each time.
+-				 */
+-				list_for_each_entry_safe(rela, safe, &relasec->relas, list) {
+-					if (rela->offset >= src_offset &&
+-					    rela->offset < src_offset + group_size) {
+-						/* copy rela entry */
+-						list_del(&rela->list);
+-						list_add_tail(&rela->list, &newrelas);
+-
+-						if (!strcmp(relasec->name, ".rela__bug_table")) {
+-							new_offset = rela->offset - (src_offset - dest_offset);
+-							/*
+-							 * When a bug table rela entry is
+-							 * reassigned to a new offset
+-							 * (rela->offset adjustment below),
+-							 * update the addends of all
+-							 * relocations targeting __bug_table so
+-							 * they continue to reference the
+-							 * updated bug entry.
+-							 */
+-							{
+-								struct section *referencing_section;
+-								struct rela *reference;
+-								list_for_each_entry(referencing_section, &kelf->sections, list) {
+-									if (!is_rela_section(referencing_section) || !referencing_section->include ||
+-									    !strcmp(referencing_section->name, ".rela__bug_table"))
+-										continue;
+-									list_for_each_entry(reference, &referencing_section->relas, list) {
+-										long target, adjustment;
+-										if (strcmp(reference->sym->name, "__bug_table"))
+-											continue;
+-										target = rela_target_offset(kelf, referencing_section, reference);
+-										if (target != (long)rela->offset)
+-											continue;
+-										adjustment = target - reference->addend;
+-										reference->addend += (long)new_offset - (long)rela->offset;
+-										reference->rela.r_addend = reference->addend;
+-										log_debug("%s: adjusting rela from %s+%lx to %s+%lx\n",
+-											  referencing_section->name, reference->sym->name,
+-											  (long)rela->offset - adjustment, reference->sym->name,
+-											  (long)new_offset - adjustment);
+-									}
+-								}
+-							}
+-						}
+-
+-						rela->offset -= src_offset - dest_offset;
+-						rela->rela.r_offset = rela->offset;
+-
+-						kpatch_include_symbol(rela->sym);
+-
+-						if (!strcmp(special->name, ".fixup")) {
+-							struct section *ex_table = find_section_by_name(&kelf->sections, ".rela__ex_table");
+-							struct rela *exception;
+-							if (!ex_table)
+-								ERROR("missing .rela__ex_table section");
+-							list_for_each_entry(exception, &ex_table->relas, list) {
+-								if (!strcmp(exception->sym->name, ".fixup") &&
+-								    exception->addend >= (int)src_offset &&
+-								    exception->addend < (int)src_offset + (int)group_size)
+-									exception->rela.r_addend = exception->addend - ((int)src_offset - (int)dest_offset);
+-							}
+-						}
+-					}
+-				}
+-
+-				/* copy base section group */
+-				memcpy(dest + dest_offset, src + src_offset, group_size);
+-				dest_offset += group_size;
+-			}
+-
+-			if (jump_label_errors)
+-				ERROR("Found %d unsupported jump label(s) in the patched code. Use static_key_enabled() instead.",
+-				      jump_label_errors);
+-
+-			if (static_call_errors)
+-				ERROR("Found %d unsupported static call(s) in the patched code. Use KPATCH_STATIC_CALL() instead.",
+-				      static_call_errors);
+-
+-			if (!dest_offset) {
+-				/* no changed or global functions referenced */
+-				relasec->status = relasec->base->status = SAME;
+-				relasec->include = relasec->base->include = 0;
+-				free(dest);
+-				goto special_done;
+-			}
+-
+-			/* overwrite with new relas list */
+-			list_replace(&newrelas, &relasec->relas);
+-
+-			/* include both rela and base sections */
+-			relasec->include = 1;
+-			relasec->base->include = 1;
+-			/* include secsym so .kpatch.arch relas can point to section symbols */
+-			if (relasec->base->secsym)
+-				relasec->base->secsym->include = 1;
+-
+-			/*
+-			 * Update text section data buf and size.
+-			 *
+-			 * The rela section's data buf and size will be regenerated in
+-			 * kpatch_rebuild_rela_section_data().
+-			 */
+-			relasec->base->data->d_buf = dest;
+-			relasec->base->data->d_size = dest_offset;
+-		 special_done:
+-			;
+-		}
+ 
+ 		if (!strcmp(special->name, ".altinstructions") && sec->include)
+ 			altinstr = 1;
+@@ -3191,87 +3435,7 @@ static void kpatch_process_special_sections(struct kpatch_elf *kelf,
+ 		}
+ 	}
+ 
++	kpatch_regenerate_orc_sections(kelf);
+-	{
+-		struct rela *rela, *safe;
+-		char *src, *dest, *str;
+-		unsigned int src_idx = 0, dest_idx = 0, orc_entry_size;
+-		struct section *orc_sec, *ip_sec;
+-
+-
+-		str = getenv("ORC_STRUCT_SIZE");
+-		if (!str)
+-			return;
+-		orc_entry_size = atoi(str);
+-
+-		if (!orc_entry_size)
+-			ERROR("bad ORC_STRUCT_SIZE");
+-
+-		LIST_HEAD(newrelas);
+-
+-		orc_sec = find_section_by_name(&kelf->sections, ".orc_unwind");
+-		ip_sec  = find_section_by_name(&kelf->sections, ".orc_unwind_ip");
+-
+-		if (!orc_sec || !ip_sec)
+-			return;
+-
+-		if (orc_sec->sh.sh_size % orc_entry_size != 0)
+-			ERROR("bad .orc_unwind size");
+-
+-		if (ip_sec->sh.sh_size !=
+-		    (orc_sec->sh.sh_size / orc_entry_size) * ORC_IP_PTR_SIZE)
+-			ERROR(".orc_unwind/.orc_unwind_ip size mismatch");
+-
+-		src = orc_sec->data->d_buf;
+-		dest = malloc(orc_sec->sh.sh_size);
+-		if (!dest)
+-			ERROR("malloc");
+-
+-		list_for_each_entry_safe(rela, safe, &ip_sec->rela->relas, list) {
+-
+-			if (rela->sym->type != STT_FUNC || !rela->sym->sec->include)
+-				goto next;
+-
+-			/* copy orc entry */
+-			memcpy(dest + (dest_idx * orc_entry_size),
+-			       src + (src_idx * orc_entry_size),
+-			       orc_entry_size);
+-
+-			/* move ip rela */
+-			list_del(&rela->list);
+-			list_add_tail(&rela->list, &newrelas);
+-			rela->offset = dest_idx * ORC_IP_PTR_SIZE;
+-			rela->sym->include = 1;
+-
+-			dest_idx++;
+-	next:
+-			src_idx++;
+-		}
+-
+-		if (!dest_idx) {
+-			/* no changed or global functions referenced */
+-			orc_sec->status = ip_sec->status = ip_sec->rela->status = SAME;
+-			orc_sec->include = ip_sec->include = ip_sec->rela->include = 0;
+-			free(dest);
+-			return;
+-		}
+-
+-		/* overwrite with new relas list */
+-		list_replace(&newrelas, &ip_sec->rela->relas);
+-
+-		/* include the sections */
+-		orc_sec->include = ip_sec->include = ip_sec->rela->include = 1;
+-
+-		/*
+-		 * Update data buf/size.
+-		 *
+-		 * The ip section can keep its old (zeroed data), though its size has
+-		 * possibly decreased.  The ip rela section's data buf and size will be
+-		 * regenerated in kpatch_rebuild_rela_section_data().
+-		 */
+-		orc_sec->data->d_buf = dest;
+-		orc_sec->data->d_size = dest_idx * orc_entry_size;
+-		ip_sec->data->d_size = dest_idx * ORC_IP_PTR_SIZE;
+-	}
+ }
+ 
+ static void kpatch_create_patches_sections(struct kpatch_elf *kelf,
+@@ -4231,6 +4395,31 @@ static void kpatch_no_sibling_calls_ppc64le(struct kpatch_elf *kelf)
+ 		      sibling_call_errors);
+ }
+ 
++static bool kpatch_symbol_has_pfe_entry(struct kpatch_elf *kelf, struct symbol *sym)
++{
++	struct section *sec;
++	struct rela *rela;
++
++	if (!kelf->has_pfe)
++		return false;
++
++	list_for_each_entry(sec, &kelf->sections, list) {
++		if (strcmp(sec->name, "__patchable_function_entries"))
++			continue;
++		if (!sec->rela)
++			continue;
++
++		list_for_each_entry(rela, &sec->rela->relas, list) {
++			if (rela->sym->sec && sym->sec == rela->sym->sec &&
++			    rela->sym->pfe == sec) {
++				return true;
++			}
++		}
++	}
++
++	return false;
++}
++
+ /* Check which functions have fentry/mcount calls; save this info for later use. */
+ static void kpatch_find_func_profiling_calls(struct kpatch_elf *kelf)
+ {
+@@ -4241,30 +4430,9 @@ static void kpatch_find_func_profiling_calls(struct kpatch_elf *kelf)
+ 		if (sym->type != STT_FUNC || sym->is_pfx || !sym->sec)
+ 			continue;
+ 
+-
+-		bool has_entry = false;
+-		if (kelf->has_pfe && (kelf->arch == PPC64 ||
+-		    kelf->arch == AARCH64 || kelf->arch == LOONGARCH64)) {
+-			struct section *entry_section;
+-			struct rela *entry_rela;
+-			list_for_each_entry(entry_section, &kelf->sections, list) {
+-				if (strcmp(entry_section->name, "__patchable_function_entries") ||
+-				    !entry_section->rela)
+-					continue;
+-				list_for_each_entry(entry_rela, &entry_section->rela->relas, list) {
+-					if (entry_rela->sym->sec && sym->sec == entry_rela->sym->sec &&
+-					    entry_rela->sym->pfe == entry_section) {
+-						has_entry = true;
+-						break;
+-					}
+-				}
+-				if (has_entry)
+-					break;
+-			}
+-		}
+ 		switch(kelf->arch) {
+ 		case PPC64:
++			if (kpatch_symbol_has_pfe_entry(kelf, sym)) {
+-			if (has_entry) {
+ 				sym->has_func_profiling = 1;
+ 			} else if (sym->sec->rela) {
+ 				list_for_each_entry(rela, &sym->sec->rela->relas, list) {
+@@ -4298,7 +4466,7 @@ static void kpatch_find_func_profiling_calls(struct kpatch_elf *kelf)
+ 			break;
+ 		case AARCH64:
+ 		case LOONGARCH64:
++			if (kpatch_symbol_has_pfe_entry(kelf, sym))
+-			if (has_entry)
+ 				sym->has_func_profiling = 1;
+ 			break;
+ 		default:
+diff --git a/kpatch-build/create-klp-module.c b/kpatch-build/create-klp-module.c
+index 5aa58ac..fef92c8 100644
+--- a/kpatch-build/create-klp-module.c
++++ b/kpatch-build/create-klp-module.c
+@@ -36,12 +36,125 @@ enum loglevel loglevel = NORMAL;
+  * If a symbol matching the .kpatch.symbols entry already
+  * exists, return it.
+  */
++static struct symbol *find_or_add_ksym_to_symbols(struct kpatch_elf *kelf,
++						  struct section *ksymsec,
++						  char *strings, int offset)
++{
++	struct kpatch_symbol *ksyms, *ksym;
++	struct symbol *sym;
++	struct rela *rela;
++	char *objname, *name;
++	char pos[32], buf[256];
++	unsigned int index;
++
++	ksyms = ksymsec->data->d_buf;
++	index = (unsigned int)(offset / sizeof(*ksyms));
++	ksym = &ksyms[index];
++
++	/* Get name of ksym */
++	rela = find_rela_by_offset(ksymsec->rela,
++		(unsigned int)(offset + offsetof(struct kpatch_symbol, name)));
++	if (!rela)
++		ERROR("name of ksym not found?");
++
++	name = strings + rela->addend;
++
++	/* Get objname of ksym */
++	rela = find_rela_by_offset(ksymsec->rela,
++		(unsigned int)(offset + offsetof(struct kpatch_symbol, objname)));
++	if (!rela)
++		ERROR("objname of ksym not found?");
++
++	objname = strings + rela->addend;
++
++	snprintf(pos, 32, "%lu", ksym->sympos);
++	/* .klp.sym.objname.name,pos */
++	snprintf(buf, 256, KLP_SYM_PREFIX "%s.%s,%s", objname, name, pos);
++
++	/* Look for an already allocated symbol */
++	list_for_each_entry(sym, &kelf->symbols, list) {
++		if (!strcmp(buf, sym->name))
++			return sym;
++	}
++
++	ALLOC_LINK(sym, NULL);
++	sym->name = strdup(buf);
++	if (!sym->name)
++		ERROR("strdup");
++	sym->type = ksym->type;
++	sym->bind = ksym->bind;
++	/*
++	 * Note that st_name will be set in kpatch_create_strtab(),
++	 * and sym->index is set in kpatch_reindex_elements()
++	 */
++	sym->sym.st_shndx = SHN_LIVEPATCH;
++	sym->sym.st_info = (unsigned char)GELF_ST_INFO(sym->bind, sym->type);
++	/*
++	 * Figure out where to put the new symbol:
++	 *   a) locals need to be grouped together, before globals
++	 *   b) globals can be tacked into the end of the list
++	 */
++	if (is_local_sym(sym)) {
++		struct list_head *head;
++		struct symbol *s;
++
++		head = &kelf->symbols;
++		list_for_each_entry(s, &kelf->symbols, list) {
++			if (!is_local_sym(s))
++				break;
++			head = &s->list;
++		}
++		list_add_tail(&sym->list, head);
++	} else {
++		list_add_tail(&sym->list, &kelf->symbols);
++	}
++
++	return sym;
++}
++
+ /*
+  * Create a .klp.rela section given the base section and objname
+  *
+  * If a .klp.rela section matching the base section and objname
+  * already exists, return it.
+  */
++static struct section *find_or_add_klp_relasec(struct kpatch_elf *kelf,
++					       struct section *base,
++					       char *objname)
++{
++	struct section  *relasec;
++	char buf[256];
++
++	/* .klp.rela.objname.secname */
++	snprintf(buf, 256, KLP_RELASEC_PREFIX "%s.%s", objname, base->name);
++
++	list_for_each_entry(relasec, &kelf->sections, list) {
++		if (!strcmp(relasec->name, buf))
++			return relasec;
++	}
++
++	ALLOC_LINK(relasec, &kelf->sections);
++	relasec->name = strdup(buf);
++	if (!relasec->name)
++		ERROR("strdup");
++	relasec->base = base;
++
++	INIT_LIST_HEAD(&relasec->relas);
++
++	relasec->data = malloc(sizeof(*relasec->data));
++	if (!relasec->data)
++		ERROR("malloc");
++	relasec->data->d_type = ELF_T_RELA;
++
++	/* sh_info and sh_link are set when rebuilding rela sections */
++	relasec->sh.sh_type = SHT_RELA;
++	relasec->sh.sh_entsize = sizeof(GElf_Rela);
++	relasec->sh.sh_addralign = 8;
++	relasec->sh.sh_flags = SHF_RELA_LIVEPATCH | SHF_INFO_LINK | SHF_ALLOC;
++
++	return relasec;
++}
++
+ /*
+  * Create klp relocation sections and klp symbols from .kpatch.relocations
+  * and .kpatch.symbols sections
+@@ -54,6 +167,65 @@ static struct section *find_or_add_klp_relasec(struct kpatch_elf *kelf,
+  *      the matching .klp.rela section (given the base section and objname)
+  *      doesn't exist yet, create it (find_or_add_klp_relasec())
+  */
++static void create_klp_relasecs_and_syms(struct kpatch_elf *kelf, struct section *krelasec,
++					 struct section *ksymsec, char *strings)
++{
++	struct section *klp_relasec;
++	struct kpatch_relocation *krelas;
++	struct symbol *sym, *dest;
++	struct rela *rela;
++	char *objname;
++	unsigned int nr, index, offset, dest_off;
++
++	krelas = krelasec->data->d_buf;
++	nr = (unsigned int)(krelasec->data->d_size / sizeof(*krelas));
++
++	for (index = 0; index < nr; index++) {
++		offset = (unsigned int)(index * sizeof(*krelas));
++
++		/* Get the rela dest sym + offset */
++		rela = find_rela_by_offset(krelasec->rela,
++					   offset + offsetof(struct kpatch_relocation, dest));
++		if (!rela)
++			ERROR("find_rela_by_offset");
++
++		dest = rela->sym;
++		dest_off = (unsigned int)rela->addend;
++
++		/* Get the name of the object the dest belongs to */
++		rela = find_rela_by_offset(krelasec->rela,
++			(unsigned int)(offset + offsetof(struct kpatch_relocation, objname)));
++		if (!rela)
++			ERROR("find_rela_by_offset");
++
++		objname = strings + rela->addend;
++
++		/* Get the .kpatch.symbol entry for the rela src */
++		rela = find_rela_by_offset(krelasec->rela,
++			(unsigned int)(offset + offsetof(struct kpatch_relocation, ksym)));
++		if (!rela)
++			ERROR("find_rela_by_offset");
++
++		/* Create (or find) a klp symbol from the rela src entry */
++		sym = find_or_add_ksym_to_symbols(kelf, ksymsec, strings,
++							(unsigned int)rela->addend);
++		if (!sym)
++			ERROR("error finding or adding ksym to symtab");
++
++		/* Create (or find) the .klp.rela section for the dest sec and object */
++		klp_relasec = find_or_add_klp_relasec(kelf, dest->sec, objname);
++		if (!klp_relasec)
++			ERROR("error finding or adding .klp.rela section");
++
++		/* Add the klp relocation to the .klp.rela section */
++		ALLOC_LINK(rela, &klp_relasec->relas);
++		rela->offset = (unsigned int)(dest->sym.st_value + dest_off);
++		rela->type = krelas[index].type;
++		rela->sym = sym;
++		rela->addend = krelas[index].addend;
++	}
++}
++
+ /*
+  * Create .klp.arch. sections by iterating through the .kpatch.arch section
+  *
+@@ -302,127 +474,7 @@ int main(int argc, char *argv[])
+ 	 * Create .klp.rela sections and klp symbols from
+ 	 * .kpatch.{relocations,symbols} sections
+ 	 */
++	create_klp_relasecs_and_syms(kelf, krelasec, ksymsec, strings);
+-	{
+-		struct section *klp_relasec;
+-		struct kpatch_relocation *krelas;
+-		struct symbol *sym, *dest;
+-		struct rela *rela;
+-		char *objname;
+-		unsigned int nr, index, offset, dest_off;
+-
+-		krelas = krelasec->data->d_buf;
+-		nr = (unsigned int)(krelasec->data->d_size / sizeof(*krelas));
+-
+-		for (index = 0; index < nr; index++) {
+-			offset = (unsigned int)(index * sizeof(*krelas));
+-
+-			/* Get the rela dest sym + offset */
+-			rela = find_rela_by_offset(krelasec->rela,
+-						   offset + offsetof(struct kpatch_relocation, dest));
+-			if (!rela)
+-				ERROR("find_rela_by_offset");
+-
+-			dest = rela->sym;
+-			dest_off = (unsigned int)rela->addend;
+-
+-			/* Get the name of the object the dest belongs to */
+-			rela = find_rela_by_offset(krelasec->rela,
+-				(unsigned int)(offset + offsetof(struct kpatch_relocation, objname)));
+-			if (!rela)
+-				ERROR("find_rela_by_offset");
+-
+-			objname = strings + rela->addend;
+-
+-			/* Get the .kpatch.symbol entry for the rela src */
+-			rela = find_rela_by_offset(krelasec->rela,
+-				(unsigned int)(offset + offsetof(struct kpatch_relocation, ksym)));
+-			if (!rela)
+-				ERROR("find_rela_by_offset");
+-
+-			int symbol_offset = (int)(unsigned int)rela->addend;
+-			struct kpatch_symbol *symbols = ksymsec->data->d_buf;
+-			struct kpatch_symbol *source_symbol = &symbols[(unsigned int)(symbol_offset / sizeof(*symbols))];
+-			char *source_name, *source_object;
+-			char position[32], symbol_name[256], section_name[256];
+-			struct symbol *existing;
+-			struct section *existing_section;
+-			rela = find_rela_by_offset(ksymsec->rela,
+-				(unsigned int)(symbol_offset + offsetof(struct kpatch_symbol, name)));
+-			if (!rela)
+-				ERROR("name of ksym not found?");
+-			source_name = strings + rela->addend;
+-			rela = find_rela_by_offset(ksymsec->rela,
+-				(unsigned int)(symbol_offset + offsetof(struct kpatch_symbol, objname)));
+-			if (!rela)
+-				ERROR("objname of ksym not found?");
+-			source_object = strings + rela->addend;
+-			snprintf(position, 32, "%lu", source_symbol->sympos);
+-			snprintf(symbol_name, 256, KLP_SYM_PREFIX "%s.%s,%s", source_object, source_name, position);
+-			sym = NULL;
+-			list_for_each_entry(existing, &kelf->symbols, list) {
+-				if (!strcmp(symbol_name, existing->name)) {
+-					sym = existing;
+-					break;
+-				}
+-			}
+-			if (!sym) {
+-				ALLOC_LINK(sym, NULL);
+-				sym->name = strdup(symbol_name);
+-				if (!sym->name)
+-					ERROR("strdup");
+-				sym->type = source_symbol->type;
+-				sym->bind = source_symbol->bind;
+-				sym->sym.st_shndx = SHN_LIVEPATCH;
+-				sym->sym.st_info = (unsigned char)GELF_ST_INFO(sym->bind, sym->type);
+-				if (is_local_sym(sym)) {
+-					struct list_head *insertion = &kelf->symbols;
+-					list_for_each_entry(existing, &kelf->symbols, list) {
+-						if (!is_local_sym(existing))
+-							break;
+-						insertion = &existing->list;
+-					}
+-					list_add_tail(&sym->list, insertion);
+-				} else {
+-					list_add_tail(&sym->list, &kelf->symbols);
+-				}
+-			}
+-			if (!sym)
+-				ERROR("error finding or adding ksym to symtab");
+-			snprintf(section_name, 256, KLP_RELASEC_PREFIX "%s.%s", objname, dest->sec->name);
+-			klp_relasec = NULL;
+-			list_for_each_entry(existing_section, &kelf->sections, list) {
+-				if (!strcmp(existing_section->name, section_name)) {
+-					klp_relasec = existing_section;
+-					break;
+-				}
+-			}
+-			if (!klp_relasec) {
+-				ALLOC_LINK(klp_relasec, &kelf->sections);
+-				klp_relasec->name = strdup(section_name);
+-				if (!klp_relasec->name)
+-					ERROR("strdup");
+-				klp_relasec->base = dest->sec;
+-				INIT_LIST_HEAD(&klp_relasec->relas);
+-				klp_relasec->data = malloc(sizeof(*klp_relasec->data));
+-				if (!klp_relasec->data)
+-					ERROR("malloc");
+-				klp_relasec->data->d_type = ELF_T_RELA;
+-				klp_relasec->sh.sh_type = SHT_RELA;
+-				klp_relasec->sh.sh_entsize = sizeof(GElf_Rela);
+-				klp_relasec->sh.sh_addralign = 8;
+-				klp_relasec->sh.sh_flags = SHF_RELA_LIVEPATCH | SHF_INFO_LINK | SHF_ALLOC;
+-			}
+-			if (!klp_relasec)
+-				ERROR("error finding or adding .klp.rela section");
+-
+-			/* Add the klp relocation to the .klp.rela section */
+-			ALLOC_LINK(rela, &klp_relasec->relas);
+-			rela->offset = (unsigned int)(dest->sym.st_value + dest_off);
+-			rela->type = krelas[index].type;
+-			rela->sym = sym;
+-			rela->addend = krelas[index].addend;
+-		}
+-	}
+ 
+ 	/*
+ 	 * If --no-klp-arch-sections wasn't set, additionally
+diff --git a/kpatch-build/kpatch-elf.c b/kpatch-build/kpatch-elf.c
+index e78cb36..d418ecd 100755
+--- a/kpatch-build/kpatch-elf.c
++++ b/kpatch-build/kpatch-elf.c
+@@ -302,6 +302,137 @@ unsigned int insn_length(struct kpatch_elf *kelf, void *addr)
+ 	return 0;
+ }
+ 
++static void kpatch_create_rela_list(struct kpatch_elf *kelf,
++				    struct section *relasec)
++{
++	int index = 0, skip = 0;
++	struct rela *rela;
++	unsigned int symndx;
++	unsigned long rela_nr;
++
++	/* find matching base (text/data) section */
++	relasec->base = find_section_by_index(&kelf->sections, relasec->sh.sh_info);
++	if (!relasec->base)
++		ERROR("can't find base section for rela section %s", relasec->name);
++
++	/* create reverse link from base section to this rela section */
++	relasec->base->rela = relasec;
++
++	rela_nr = relasec->sh.sh_size / relasec->sh.sh_entsize;
++
++	log_debug("\n=== rela list for %s (%ld entries) ===\n",
++		relasec->base->name, rela_nr);
++
++	if (is_debug_section(relasec)) {
++		log_debug("skipping rela listing for .debug_* section\n");
++		skip = 1;
++	}
++
++	/* read and store the rela entries */
++	while (rela_nr--) {
++		ALLOC_LINK(rela, &relasec->relas);
++
++		if (!gelf_getrela(relasec->data, index, &rela->rela))
++			ERROR("gelf_getrela");
++		index++;
++
++		rela->type = GELF_R_TYPE(rela->rela.r_info);
++		rela->addend = rela->rela.r_addend;
++		rela->offset = (unsigned int)rela->rela.r_offset;
++		symndx = (unsigned int)GELF_R_SYM(rela->rela.r_info);
++		rela->sym = find_symbol_by_index(&kelf->symbols, symndx);
++		if (!rela->sym)
++			ERROR("could not find rela entry symbol\n");
++		if (rela->sym->sec &&
++		    (rela->sym->sec->sh.sh_flags & SHF_STRINGS)) {
++			rela->string = rela->sym->sec->data->d_buf +
++				       rela->sym->sym.st_value +
++				       rela_target_offset(kelf, relasec, rela);
++			if (!rela->string)
++				ERROR("could not lookup rela string for %s+%ld",
++				      rela->sym->name, rela->addend);
++		}
++
++		if (kelf->arch == LOONGARCH64) {
++			/*
++			 * LoongArch GCC creates local labels such as .LBB7266,
++			 * replace them with section symbols.
++			 */
++			if (rela->sym->sec && rela->sym->type == STT_NOTYPE &&
++			    rela->sym->bind == STB_LOCAL) {
++				log_debug("local label: %s -> ", rela->sym->name);
++				rela->addend += rela->sym->sym.st_value;
++				rela->sym = rela->sym->sec->secsym;
++				log_debug("section symbol: %s\n", rela->sym->name);
++			}
++		}
++
++
++		if (skip)
++			continue;
++		log_debug("offset %d, type %d, %s %s %ld", rela->offset,
++			rela->type, rela->sym->name,
++			(rela->addend < 0)?"-":"+", labs(rela->addend));
++		if (rela->string)
++			log_debug(" (string = %s)", rela->string);
++		log_debug("\n");
++	}
++}
++
++static void kpatch_create_section_list(struct kpatch_elf *kelf)
++{
++	Elf_Scn *scn = NULL;
++	struct section *sec;
++	size_t shstrndx, sections_nr;
++
++	if (elf_getshdrnum(kelf->elf, &sections_nr))
++		ERROR("elf_getshdrnum");
++
++	/*
++	 * elf_getshdrnum() includes section index 0 but elf_nextscn
++	 * doesn't return that section so subtract one.
++	 */
++	sections_nr--;
++
++	if (elf_getshdrstrndx(kelf->elf, &shstrndx))
++		ERROR("elf_getshdrstrndx");
++
++	log_debug("=== section list (%zu) ===\n", sections_nr);
++
++	while (sections_nr--) {
++		ALLOC_LINK(sec, &kelf->sections);
++
++		scn = elf_nextscn(kelf->elf, scn);
++		if (!scn)
++			ERROR("scn NULL");
++
++		if (!gelf_getshdr(scn, &sec->sh))
++			ERROR("gelf_getshdr");
++
++		sec->name = elf_strptr(kelf->elf, shstrndx, sec->sh.sh_name);
++		if (!sec->name)
++			ERROR("elf_strptr");
++
++		sec->data = elf_getdata(scn, NULL);
++		if (!sec->data)
++			ERROR("elf_getdata");
++
++		sec->index = (unsigned int)elf_ndxscn(scn);
++
++
++		if (sec->sh.sh_type == SHT_SYMTAB_SHNDX)
++			kelf->symtab_shndx = sec->data;
++
++		log_debug("ndx %02d, data %p, size %zu, name %s\n",
++			sec->index, sec->data->d_buf, sec->data->d_size,
++			sec->name);
++	}
++
++	/* Sanity check, one more call to elf_nextscn() should return NULL */
++	if (elf_nextscn(kelf->elf, scn))
++		ERROR("expected NULL");
++}
++
+ /*
+  * Some x86 kernels have NOP function padding [1] for which objtool [2]
+  * adds ELF function symbols with prefix "__pfx_" to indicate the start
+@@ -355,6 +486,109 @@ static void kpatch_create_section_list(struct kpatch_elf *kelf)
+  * [1] bea75b33895f ("x86/Kconfig: Introduce function padding")
+  * [2] 9f2899fe36a6 ("objtool: Add option to generate prefix symbols")
+  */
++static void kpatch_link_prefixed_functions(struct kpatch_elf *kelf)
++{
++	struct symbol *func, *pfx;
++	bool found;
++
++	if (kelf->arch != X86_64)
++		return;
++
++	list_for_each_entry(pfx, &kelf->symbols, list) {
++		if (!pfx->name || pfx->type != STT_FUNC)
++			continue;
++
++		if (strncmp(pfx->name, "__pfx_", 6) &&
++		    strncmp(pfx->name, "__cfi_", 6))
++			continue;
++
++		found = false;
++
++		list_for_each_entry(func, &kelf->symbols, list) {
++			if (func->type == STT_FUNC && func->sec == pfx->sec &&
++			    func->sym.st_value == pfx->sym.st_value + pfx->sym.st_size) {
++
++				/*
++				 * If a func has aliases, it's possible for
++				 * multiple functions to have the same 'pfx'.
++				 */
++
++				pfx->is_pfx = true;
++				func->pfx = pfx;
++				found = true;
++			}
++		}
++
++		if (!found)
++			ERROR("missing func for %s", pfx->name);
++	}
++}
++
++static void kpatch_create_symbol_list(struct kpatch_elf *kelf)
++{
++	struct section *symtab;
++	struct symbol *sym;
++	unsigned int symbols_nr, index = 0;
++	Elf32_Word shndx;
++
++	symtab = find_section_by_name(&kelf->sections, ".symtab");
++	if (!symtab)
++		ERROR("missing symbol table");
++
++	symbols_nr = (unsigned int)(symtab->sh.sh_size / symtab->sh.sh_entsize);
++
++	log_debug("\n=== symbol list (%d entries) ===\n", symbols_nr);
++
++	while (symbols_nr--) {
++		ALLOC_LINK(sym, &kelf->symbols);
++
++		INIT_LIST_HEAD(&sym->children);
++
++		sym->index = index;
++		if (!gelf_getsym(symtab->data, index, &sym->sym))
++			ERROR("gelf_getsym");
++		index++;
++
++		sym->name = elf_strptr(kelf->elf, symtab->sh.sh_link,
++				       sym->sym.st_name);
++		if (!sym->name)
++			ERROR("elf_strptr");
++
++		sym->type = GELF_ST_TYPE(sym->sym.st_info);
++		sym->bind = GELF_ST_BIND(sym->sym.st_info);
++
++		shndx = sym->sym.st_shndx;
++		if (shndx == SHN_XINDEX &&
++		    !gelf_getsymshndx(symtab->data, kelf->symtab_shndx, sym->index, &sym->sym, &shndx))
++			ERROR("couldn't find extended section index for symbol %s; idx=%d",
++			      sym->name, sym->index);
++
++		if ((sym->sym.st_shndx > SHN_UNDEF &&
++		    sym->sym.st_shndx < SHN_LORESERVE) ||
++		    sym->sym.st_shndx == SHN_XINDEX) {
++			sym->sec = find_section_by_index(&kelf->sections, shndx);
++			if (!sym->sec)
++				ERROR("couldn't find section for symbol %s\n",
++					sym->name);
++
++			if (sym->type == STT_SECTION) {
++				sym->sec->secsym = sym;
++				/* use the section name as the symbol name */
++				sym->name = sym->sec->name;
++			}
++		}
++
++		log_debug("sym %02d, type %d, bind %d, ndx %02d, name %s",
++			sym->index, sym->type, sym->bind, sym->sym.st_shndx,
++			sym->name);
++		if (sym->sec)
++			log_debug(" -> %s", sym->sec->name);
++		log_debug("\n");
++	}
++
++	kpatch_link_prefixed_functions(kelf);
++}
++
+ struct kpatch_elf *kpatch_elf_open(const char *name)
+ {
+ 	Elf *elf;
+@@ -406,279 +640,15 @@ struct kpatch_elf *kpatch_elf_open(const char *name)
+ 		ERROR("Unsupported target architecture");
+ 	}
+ 
++	kpatch_create_section_list(kelf);
++	kpatch_create_symbol_list(kelf);
+-	{
+-		Elf_Scn *scn = NULL;
+-		struct section *sec;
+-		size_t shstrndx, sections_nr;
+-
+-		if (elf_getshdrnum(kelf->elf, &sections_nr))
+-			ERROR("elf_getshdrnum");
+-
+-		/*
+-		 * elf_getshdrnum() includes section index 0 but elf_nextscn
+-		 * doesn't return that section so subtract one.
+-		 */
+-		sections_nr--;
+-
+-		if (elf_getshdrstrndx(kelf->elf, &shstrndx))
+-			ERROR("elf_getshdrstrndx");
+-
+-		log_debug("=== section list (%zu) ===\n", sections_nr);
+-
+-		while (sections_nr--) {
+-			ALLOC_LINK(sec, &kelf->sections);
+-
+-			scn = elf_nextscn(kelf->elf, scn);
+-			if (!scn)
+-				ERROR("scn NULL");
+-
+-			if (!gelf_getshdr(scn, &sec->sh))
+-				ERROR("gelf_getshdr");
+-
+-			sec->name = elf_strptr(kelf->elf, shstrndx, sec->sh.sh_name);
+-			if (!sec->name)
+-				ERROR("elf_strptr");
+-
+-			sec->data = elf_getdata(scn, NULL);
+-			if (!sec->data)
+-				ERROR("elf_getdata");
+-
+-			sec->index = (unsigned int)elf_ndxscn(scn);
+-
+-
+-			if (sec->sh.sh_type == SHT_SYMTAB_SHNDX)
+-				kelf->symtab_shndx = sec->data;
+-
+-			log_debug("ndx %02d, data %p, size %zu, name %s\n",
+-				sec->index, sec->data->d_buf, sec->data->d_size,
+-				sec->name);
+-		}
+-
+-		/* Sanity check, one more call to elf_nextscn() should return NULL */
+-		if (elf_nextscn(kelf->elf, scn))
+-			ERROR("expected NULL");
+-	}
+-	{
+-		struct section *symtab;
+-		struct symbol *sym;
+-		unsigned int symbols_nr, index = 0;
+-		Elf32_Word shndx;
+-
+-		symtab = find_section_by_name(&kelf->sections, ".symtab");
+-		if (!symtab)
+-			ERROR("missing symbol table");
+-
+-		symbols_nr = (unsigned int)(symtab->sh.sh_size / symtab->sh.sh_entsize);
+-
+-		log_debug("\n=== symbol list (%d entries) ===\n", symbols_nr);
+-
+-		while (symbols_nr--) {
+-			ALLOC_LINK(sym, &kelf->symbols);
+-
+-			INIT_LIST_HEAD(&sym->children);
+-
+-			sym->index = index;
+-			if (!gelf_getsym(symtab->data, index, &sym->sym))
+-				ERROR("gelf_getsym");
+-			index++;
+-
+-			sym->name = elf_strptr(kelf->elf, symtab->sh.sh_link,
+-					       sym->sym.st_name);
+-			if (!sym->name)
+-				ERROR("elf_strptr");
+-
+-			sym->type = GELF_ST_TYPE(sym->sym.st_info);
+-			sym->bind = GELF_ST_BIND(sym->sym.st_info);
+-
+-			shndx = sym->sym.st_shndx;
+-			if (shndx == SHN_XINDEX &&
+-			    !gelf_getsymshndx(symtab->data, kelf->symtab_shndx, sym->index, &sym->sym, &shndx))
+-				ERROR("couldn't find extended section index for symbol %s; idx=%d",
+-				      sym->name, sym->index);
+-
+-			if ((sym->sym.st_shndx > SHN_UNDEF &&
+-			    sym->sym.st_shndx < SHN_LORESERVE) ||
+-			    sym->sym.st_shndx == SHN_XINDEX) {
+-				sym->sec = find_section_by_index(&kelf->sections, shndx);
+-				if (!sym->sec)
+-					ERROR("couldn't find section for symbol %s\n",
+-						sym->name);
+-
+-				if (sym->type == STT_SECTION) {
+-					sym->sec->secsym = sym;
+-					/* use the section name as the symbol name */
+-					sym->name = sym->sec->name;
+-				}
+-			}
+-
+-			log_debug("sym %02d, type %d, bind %d, ndx %02d, name %s",
+-				sym->index, sym->type, sym->bind, sym->sym.st_shndx,
+-				sym->name);
+-			if (sym->sec)
+-				log_debug(" -> %s", sym->sec->name);
+-			log_debug("\n");
+-		}
+-
+-		{
+-			struct symbol *func, *pfx;
+-			bool found;
+-
+-			if (kelf->arch == X86_64) {
+-
+-			list_for_each_entry(pfx, &kelf->symbols, list) {
+-				if (!pfx->name || pfx->type != STT_FUNC)
+-					continue;
+-
+-				if (strncmp(pfx->name, "__pfx_", 6) &&
+-				    strncmp(pfx->name, "__cfi_", 6))
+-					continue;
+-
+-				found = false;
+-
+-				list_for_each_entry(func, &kelf->symbols, list) {
+-					if (func->type == STT_FUNC && func->sec == pfx->sec &&
+-					    func->sym.st_value == pfx->sym.st_value + pfx->sym.st_size) {
+-
+-						/*
+-						 * If a func has aliases, it's possible for
+-						 * multiple functions to have the same 'pfx'.
+-						 */
+-
+-						pfx->is_pfx = true;
+-						func->pfx = pfx;
+-						found = true;
+-					}
+-				}
+-
+-				if (!found)
+-					ERROR("missing func for %s", pfx->name);
+-			}
+-			}
+-		}
+-	}
+ 
+ 	/* for each rela section, read and store the rela entries */
+ 	list_for_each_entry(relasec, &kelf->sections, list) {
+ 		if (!is_rela_section(relasec))
+ 			continue;
+ 		INIT_LIST_HEAD(&relasec->relas);
++		kpatch_create_rela_list(kelf, relasec);
+-		{
+-			int index = 0, skip = 0;
+-			struct rela *rela;
+-			unsigned int symndx;
+-			unsigned long rela_nr;
+-
+-			/* find matching base (text/data) section */
+-			relasec->base = find_section_by_index(&kelf->sections, relasec->sh.sh_info);
+-			if (!relasec->base)
+-				ERROR("can't find base section for rela section %s", relasec->name);
+-
+-			/* create reverse link from base section to this rela section */
+-			relasec->base->rela = relasec;
+-
+-			rela_nr = relasec->sh.sh_size / relasec->sh.sh_entsize;
+-
+-			log_debug("\n=== rela list for %s (%ld entries) ===\n",
+-				relasec->base->name, rela_nr);
+-
+-			if (is_debug_section(relasec)) {
+-				log_debug("skipping rela listing for .debug_* section\n");
+-				skip = 1;
+-			}
+-
+-			/* read and store the rela entries */
+-			while (rela_nr--) {
+-				ALLOC_LINK(rela, &relasec->relas);
+-
+-				if (!gelf_getrela(relasec->data, index, &rela->rela))
+-					ERROR("gelf_getrela");
+-				index++;
+-
+-				rela->type = GELF_R_TYPE(rela->rela.r_info);
+-				rela->addend = rela->rela.r_addend;
+-				rela->offset = (unsigned int)rela->rela.r_offset;
+-				symndx = (unsigned int)GELF_R_SYM(rela->rela.r_info);
+-				rela->sym = find_symbol_by_index(&kelf->symbols, symndx);
+-				if (!rela->sym)
+-					ERROR("could not find rela entry symbol\n");
+-				if (rela->sym->sec &&
+-				    (rela->sym->sec->sh.sh_flags & SHF_STRINGS)) {
+-					long target_offset = rela->addend;
+-					switch (kelf->arch) {
+-					case PPC64:
+-					case AARCH64:
+-					case LOONGARCH64:
+-						break;
+-					case X86_64:
+-						if (!is_text_section(relasec->base) ||
+-						    rela->type == R_X86_64_64 || rela->type == R_X86_64_32S)
+-							break;
+-						if (rela->type == R_X86_64_PC32 ||
+-						    rela->type == R_X86_64_PLT32 || rela->type == R_X86_64_NONE) {
+-							struct insn instruction;
+-							unsigned long start = (unsigned long)relasec->base->data->d_buf;
+-							unsigned long end = start + relasec->base->sh.sh_size;
+-							unsigned long address, target = start + rela->offset;
+-							if (end <= start)
+-								ERROR("bad section size");
+-							for (address = start; address < end; address += instruction.length) {
+-								insn_init(&instruction, (void *)address, 1);
+-								insn_get_length(&instruction);
+-								if (!instruction.length)
+-									ERROR("can't decode instruction in section %s at offset 0x%lx",
+-									      relasec->base->name, address);
+-								if (target >= address && target < address + instruction.length)
+-									break;
+-							}
+-							if (address >= end)
+-								ERROR("can't find instruction for rela at %s+0x%x", relasec->base->name, rela->offset);
+-							target_offset += (long)instruction.next_byte -
+-								(long)relasec->base->data->d_buf - rela->offset;
+-						} else
+-							ERROR("unhandled rela type %d", rela->type);
+-						break;
+-					case S390:
+-						if (rela->type == R_390_GOTENT || rela->type == R_390_PLT32DBL ||
+-						    rela->type == R_390_PC32DBL)
+-							target_offset -= 2;
+-						else if (rela->type != R_390_32 && rela->type != R_390_64 &&
+-							 rela->type != R_390_PC32 && rela->type != R_390_PC64)
+-							ERROR("unhandled rela type %d", rela->type);
+-						break;
+-					default:
+-						ERROR("unsupported arch\n");
+-					}
+-					rela->string = rela->sym->sec->data->d_buf + rela->sym->sym.st_value + target_offset;
+-					if (!rela->string)
+-						ERROR("could not lookup rela string for %s+%ld",
+-						      rela->sym->name, rela->addend);
+-				}
+-
+-				if (kelf->arch == LOONGARCH64) {
+-					/*
+-					 * LoongArch GCC creates local labels such as .LBB7266,
+-					 * replace them with section symbols.
+-					 */
+-					if (rela->sym->sec && rela->sym->type == STT_NOTYPE &&
+-					    rela->sym->bind == STB_LOCAL) {
+-						log_debug("local label: %s -> ", rela->sym->name);
+-						rela->addend += rela->sym->sym.st_value;
+-						rela->sym = rela->sym->sec->secsym;
+-						log_debug("section symbol: %s\n", rela->sym->name);
+-					}
+-				}
+-
+-
+-				if (skip)
+-					continue;
+-				log_debug("offset %d, type %d, %s %s %ld", rela->offset,
+-					rela->type, rela->sym->name,
+-					(rela->addend < 0)?"-":"+", labs(rela->addend));
+-				if (rela->string)
+-					log_debug(" (string = %s)", rela->string);
+-				log_debug("\n");
+-			}
+-		}
+ 	}
+ 
+ 	/*
+diff --git a/kpatch-build/lookup.c b/kpatch-build/lookup.c
+index 3b03539..ca84bf2 100644
+--- a/kpatch-build/lookup.c
++++ b/kpatch-build/lookup.c
+@@ -95,6 +95,139 @@ static bool maybe_discarded_sym(const char *name)
+ 	return false;
+ }
+ 
++static bool locals_match(struct lookup_table *table, int idx,
++			struct symbol *file_sym, struct list_head *sym_list)
++{
++	struct symbol *sym;
++	struct object_symbol *table_sym;
++	int i, found;
++
++	i = idx + 1;
++	for_each_obj_symbol_continue(i, table_sym, table) {
++		if (table_sym->type == STT_FILE)
++			break;
++		if (table_sym->bind != STB_LOCAL)
++			continue;
++		if (table_sym->type != STT_FUNC && table_sym->type != STT_OBJECT)
++			continue;
++
++		found = 0;
++		sym = file_sym;
++		list_for_each_entry_continue(sym, sym_list, list) {
++			if (sym->type == STT_FILE)
++				break;
++			if (sym->bind != STB_LOCAL)
++				continue;
++
++			if (sym->type == table_sym->type &&
++			    !strcmp(sym->name, table_sym->name)) {
++				found = 1;
++				break;
++			}
++		}
++
++		if (!found)
++			return false;
++	}
++
++	sym = file_sym;
++	list_for_each_entry_continue(sym, sym_list, list) {
++		if (sym->type == STT_FILE)
++			break;
++		if (sym->bind != STB_LOCAL)
++			continue;
++		if (sym->type != STT_FUNC && sym->type != STT_OBJECT)
++			continue;
++		/*
++		 * Symbols which get discarded at link time are missing from
++		 * the lookup table, so skip them.
++		 */
++		if (maybe_discarded_sym(sym->name))
++			continue;
++
++		found = 0;
++		i = idx + 1;
++		for_each_obj_symbol_continue(i, table_sym, table) {
++			if (table_sym->type == STT_FILE)
++				break;
++			if (table_sym->bind != STB_LOCAL)
++				continue;
++			if (maybe_discarded_sym(table_sym->name))
++				continue;
++
++			if (sym->type == table_sym->type &&
++			    !strcmp(sym->name, table_sym->name)) {
++				found = 1;
++				break;
++			}
++		}
++
++		if (!found)
++			return false;
++	}
++
++	return true;
++}
++
++static bool file_has_locals(struct symbol *file_sym, struct list_head *sym_list)
++{
++	struct symbol *sym = file_sym;
++
++	list_for_each_entry_continue(sym, sym_list, list) {
++		if (sym->type == STT_FILE)
++			break;
++		if (sym->bind != STB_LOCAL)
++			continue;
++		if (maybe_discarded_sym(sym->name))
++			continue;
++
++		if (sym->type == STT_FUNC || sym->type == STT_OBJECT)
++			return true;
++	}
++
++	return false;
++}
++
++static void find_local_syms(struct lookup_table *table, struct symbol *file_sym,
++		struct list_head *sym_list)
++{
++	struct object_symbol *sym;
++	struct object_symbol *lookup_table_file_sym = NULL;
++	int i;
++
++	for_each_obj_symbol(i, sym, table) {
++		if (sym->type != STT_FILE)
++			continue;
++		if (strcmp(file_sym->name, sym->name))
++			continue;
++		if (!locals_match(table, i, file_sym, sym_list))
++			continue;
++		if (lookup_table_file_sym)
++			ERROR("found duplicate matches for %s local symbols in %s symbol table",
++			      file_sym->name, table->objname);
++
++		lookup_table_file_sym = sym;
++
++		if (!file_has_locals(file_sym, sym_list)) {
++			/*
++			 * If the file doesn't have local symbols, any empty
++			 * match will do.  Skip the duplicate check.
++			 */
++			break;
++		}
++	}
++
++	if (!lookup_table_file_sym)
++		ERROR("couldn't find matching %s local symbols in %s symbol table",
++		      file_sym->name, table->objname);
++
++	list_for_each_entry_continue(file_sym, sym_list, list) {
++		if (file_sym->type == STT_FILE)
++			break;
++		file_sym->lookup_table_file_sym = lookup_table_file_sym;
++	}
++}
++
+ /*
+  * Because there can be duplicate symbols and duplicate filenames we need to
+  * correlate each symbol from the elf file to it's corresponding symbol in
+@@ -104,6 +237,17 @@ static void find_local_syms(struct lookup_table *table, struct symbol *file_sym,
+  * pointer to STT_FILE symbol in lookup table for later use in
+  * lookup_local_symbol().
+  */
++static void find_local_syms_multiple(struct lookup_table *table,
++		struct kpatch_elf *kelf)
++{
++	struct symbol *sym;
++
++	list_for_each_entry(sym, &kelf->symbols, list) {
++		if (sym->type == STT_FILE)
++			find_local_syms(table, sym, &kelf->symbols);
++	}
++}
++
+ /* Strip the path and replace '-' with '_' */
+ static char *make_modname(char *modname)
+ {
+@@ -126,261 +270,190 @@ static char *make_modname(char *modname)
+ 	return name;
+ }
+ 
++static void symtab_read(struct lookup_table *table, char *path)
+-/*
+- * The Module.symvers file format is one of the following, depending on kernel
+- * version:
+- *
+- * <CRC>	<Symbol>	<Module>	<Export Type>
+- * <CRC>	<Symbol>	<Namespace>	<Module>	<Export Type>
+- * <CRC>	<Symbol>	<Module>	<Export Type>	<Namespace>
+- *
+- * All we care about is Symbol and Module.  Since the format is unpredictable,
+- * we have to dynamically determine which column is Module by looking for
+- * "vmlinux".
+- */
+-struct lookup_table *lookup_open(char *symtab_path, char *objname,
+-				 char *symvers_path, struct kpatch_elf *kelf)
+ {
++	FILE *file;
++	long unsigned int addr;
++	int alloc_nr = 0, i = 0;
++	int matched;
++	bool skip = false;
++	char line[256], name[256], size[16], type[16], bind[16], ndx[16];
++
++	if ((file = fopen(path, "r")) == NULL)
++		ERROR("fopen");
++
++	/*
++	 * First, get an upper limit on the number of entries for allocation
++	 * purposes:
++	 */
++	while (fgets(line, 256, file))
++		alloc_nr++;
+-	struct lookup_table *table;
+ 
++	table->obj_syms = malloc(alloc_nr * sizeof(*table->obj_syms));
++	if (!table->obj_syms)
++		ERROR("malloc table.obj_syms");
++	memset(table->obj_syms, 0, alloc_nr * sizeof(*table->obj_syms));
+-	table = malloc(sizeof(*table));
+-	if (!table)
+-		ERROR("malloc table");
+-	memset(table, 0, sizeof(*table));
+ 
++	rewind(file);
+-	table->objname = objname;
+-	{
+-		FILE *file;
+-		long unsigned int addr;
+-		int alloc_nr = 0, i = 0;
+-		int matched;
+-		bool skip = false;
+-		char line[256], name[256], size[16], type[16], bind[16], ndx[16];
+ 
++	/* Now read the actual entries: */
++	while (fgets(line, 256, file)) {
+-		if ((file = fopen(symtab_path, "r")) == NULL)
+-			ERROR("fopen");
+ 
+ 		/*
++		 * On powerpc, "readelf -s" shows both .dynsym and .symtab
++		 * tables.  .dynsym is just a subset of .symtab, so skip it to
++		 * avoid duplicates.
+-		 * First, get an upper limit on the number of entries for allocation
+-		 * purposes:
+ 		 */
++		if (!strncmp(line, "Symbol table ", 13)) {
++			if (strstr(line, ".dynsym")) {
++				skip = true;
++				continue;
++			} else if (strstr(line, ".symtab")) {
++				skip = false;
++				continue;
++			}
++		}
++		if (skip)
++			continue;
++
++		matched = sscanf(line, "%*s %lx %s %s %s %*s %s %s\n",
++				 &addr, size, type, bind, ndx, name);
+-		while (fgets(line, 256, file))
+-			alloc_nr++;
+ 
++		if (matched == 5) {
++			name[0] = '\0';
++			matched++;
++		}
+-		table->obj_syms = malloc(alloc_nr * sizeof(*table->obj_syms));
+-		if (!table->obj_syms)
+-			ERROR("malloc table.obj_syms");
+-		memset(table->obj_syms, 0, alloc_nr * sizeof(*table->obj_syms));
+ 
++		if (matched != 6 ||
++		    !strcmp(ndx, "UND") ||
++		    !strcmp(type, "SECTION"))
++			continue;
+-		rewind(file);
+ 
++		table->obj_syms[i].addr = addr;
++		table->obj_syms[i].size = strtoul(size, NULL, 0);
++
++		if (!strcmp(bind, "LOCAL")) {
++			table->obj_syms[i].bind = STB_LOCAL;
++		} else if (!strcmp(bind, "GLOBAL")) {
++			table->obj_syms[i].bind = STB_GLOBAL;
++		} else if (!strcmp(bind, "WEAK")) {
++			table->obj_syms[i].bind = STB_WEAK;
++		} else {
++			ERROR("unknown symbol bind %s", bind);
++		}
+-		/* Now read the actual entries: */
+-		while (fgets(line, 256, file)) {
+ 
++		if (!strcmp(type, "NOTYPE")) {
++			table->obj_syms[i].type = STT_NOTYPE;
++		} else if (!strcmp(type, "OBJECT")) {
++			table->obj_syms[i].type = STT_OBJECT;
++		} else if (!strcmp(type, "FUNC")) {
++			table->obj_syms[i].type = STT_FUNC;
++		} else if (!strcmp(type, "FILE")) {
++			table->obj_syms[i].type = STT_FILE;
++		} else {
++			ERROR("unknown symbol type %s", type);
++		}
+-			/*
+-			 * On powerpc, "readelf -s" shows both .dynsym and .symtab
+-			 * tables.  .dynsym is just a subset of .symtab, so skip it to
+-			 * avoid duplicates.
+-			 */
+-			if (!strncmp(line, "Symbol table ", 13)) {
+-				if (strstr(line, ".dynsym")) {
+-					skip = true;
+-					continue;
+-				} else if (strstr(line, ".symtab")) {
+-					skip = false;
+-					continue;
+-				}
+-			}
+-			if (skip)
+-				continue;
+ 
++		table->obj_syms[i].name = strdup(name);
++		if (!table->obj_syms[i].name)
++			ERROR("strdup");
+-			matched = sscanf(line, "%*s %lx %s %s %s %*s %s %s\n",
+-					 &addr, size, type, bind, ndx, name);
+ 
++		i++;
++	}
+-			if (matched == 5) {
+-				name[0] = '\0';
+-				matched++;
+-			}
+ 
++	table->obj_nr = i;
+-			if (matched != 6 ||
+-			    !strcmp(ndx, "UND") ||
+-			    !strcmp(type, "SECTION"))
+-				continue;
+ 
++	fclose(file);
++}
+-			table->obj_syms[i].addr = addr;
+-			table->obj_syms[i].size = strtoul(size, NULL, 0);
+-
+-			if (!strcmp(bind, "LOCAL")) {
+-				table->obj_syms[i].bind = STB_LOCAL;
+-			} else if (!strcmp(bind, "GLOBAL")) {
+-				table->obj_syms[i].bind = STB_GLOBAL;
+-			} else if (!strcmp(bind, "WEAK")) {
+-				table->obj_syms[i].bind = STB_WEAK;
+-			} else {
+-				ERROR("unknown symbol bind %s", bind);
+-			}
+ 
++/*
++ * The Module.symvers file format is one of the following, depending on kernel
++ * version:
++ *
++ * <CRC>	<Symbol>	<Module>	<Export Type>
++ * <CRC>	<Symbol>	<Namespace>	<Module>	<Export Type>
++ * <CRC>	<Symbol>	<Module>	<Export Type>	<Namespace>
++ *
++ * All we care about is Symbol and Module.  Since the format is unpredictable,
++ * we have to dynamically determine which column is Module by looking for
++ * "vmlinux".
++ */
++static void symvers_read(struct lookup_table *table, char *path)
++{
++	FILE *file;
++	int i, column, mod_column = 0;
++	char line[4096];
++	char *tmp, *objname, *symname;
+-			if (!strcmp(type, "NOTYPE")) {
+-				table->obj_syms[i].type = STT_NOTYPE;
+-			} else if (!strcmp(type, "OBJECT")) {
+-				table->obj_syms[i].type = STT_OBJECT;
+-			} else if (!strcmp(type, "FUNC")) {
+-				table->obj_syms[i].type = STT_FUNC;
+-			} else if (!strcmp(type, "FILE")) {
+-				table->obj_syms[i].type = STT_FILE;
+-			} else {
+-				ERROR("unknown symbol type %s", type);
+-			}
+ 
++	if ((file = fopen(path, "r")) == NULL)
++		ERROR("fopen");
+-			table->obj_syms[i].name = strdup(name);
+-			if (!table->obj_syms[i].name)
+-				ERROR("strdup");
+ 
++	while (fgets(line, 4096, file)) {
++		table->exp_nr++;
+-			i++;
+-		}
+ 
++		if (mod_column)
++			continue;
+-		table->obj_nr = i;
+ 
++		/* Find the module column */
++		for (column = 1, tmp = line; (tmp = strchr(tmp, '\t')); column++) {
++			tmp++;
++			if (*tmp && !strncmp(tmp, "vmlinux", 7))
++				mod_column = column;
++		}
+-		fclose(file);
+ 	}
+-	{
+-		FILE *file;
+-		int i, column, mod_column = 0;
+-		char line[4096];
+-		char *tmp, *objname, *symname;
+ 
++	if (table->exp_nr && !mod_column)
++		ERROR("Module.symvers: invalid format");
++
++	table->exp_syms = malloc(table->exp_nr * sizeof(*table->exp_syms));
++	if (!table->exp_syms)
++		ERROR("malloc table.exp_syms");
++	memset(table->exp_syms, 0,
++	       table->exp_nr * sizeof(*table->exp_syms));
++
++	rewind(file);
++	for (i = 0; fgets(line, 4096, file); i++) {
++		char *name = NULL, *mod = NULL;
++
++		for (column = 1, tmp = line; (tmp = strchr(tmp, '\t')); column++) {
++			*tmp++ = '\0';
++			if (*tmp && column == 1)
++				name = tmp;
++			else if (*tmp && column == mod_column)
++				mod = tmp;
++		}
+-		if ((file = fopen(symvers_path, "r")) == NULL)
+-			ERROR("fopen");
+ 
++		if (!name || !mod)
++			continue;
+-		while (fgets(line, 4096, file)) {
+-			table->exp_nr++;
+ 
++		symname = strdup(name);
++		if (!symname)
++			perror("strdup");
+-			if (mod_column)
+-				continue;
+ 
++		objname = make_modname(mod);
+-			/* Find the module column */
+-			for (column = 1, tmp = line; (tmp = strchr(tmp, '\t')); column++) {
+-				tmp++;
+-				if (*tmp && !strncmp(tmp, "vmlinux", 7))
+-					mod_column = column;
+-			}
+-		}
+ 
++		table->exp_syms[i].name = symname;
++		table->exp_syms[i].objname = objname;
++	}
+-		if (table->exp_nr && !mod_column)
+-			ERROR("Module.symvers: invalid format");
+-
+-		table->exp_syms = malloc(table->exp_nr * sizeof(*table->exp_syms));
+-		if (!table->exp_syms)
+-			ERROR("malloc table.exp_syms");
+-		memset(table->exp_syms, 0,
+-		       table->exp_nr * sizeof(*table->exp_syms));
+-
+-		rewind(file);
+-		for (i = 0; fgets(line, 4096, file); i++) {
+-			char *name = NULL, *mod = NULL;
+-
+-			for (column = 1, tmp = line; (tmp = strchr(tmp, '\t')); column++) {
+-				*tmp++ = '\0';
+-				if (*tmp && column == 1)
+-					name = tmp;
+-				else if (*tmp && column == mod_column)
+-					mod = tmp;
+-			}
+ 
++	fclose(file);
++}
+-			if (!name || !mod)
+-				continue;
+ 
++struct lookup_table *lookup_open(char *symtab_path, char *objname,
++				 char *symvers_path, struct kpatch_elf *kelf)
++{
++	struct lookup_table *table;
+-			symname = strdup(name);
+-			if (!symname)
+-				perror("strdup");
+ 
++	table = malloc(sizeof(*table));
++	if (!table)
++		ERROR("malloc table");
++	memset(table, 0, sizeof(*table));
+-			objname = make_modname(mod);
+ 
++	table->objname = objname;
++	symtab_read(table, symtab_path);
++	symvers_read(table, symvers_path);
+-			table->exp_syms[i].name = symname;
+-			table->exp_syms[i].objname = objname;
+-		}
+ 
++	find_local_syms_multiple(table, kelf);
+-		fclose(file);
+-	}
+-
+-	struct symbol *file_symbol;
+-	list_for_each_entry(file_symbol, &kelf->symbols, list) {
+-		struct object_symbol *file_match = NULL, *candidate, *table_member;
+-		struct symbol *member;
+-		int file_index, member_index;
+-		if (file_symbol->type != STT_FILE)
+-			continue;
+-		for_each_obj_symbol(file_index, candidate, table) {
+-			bool compatible = true, has_locals = false;
+-			if (candidate->type != STT_FILE || strcmp(file_symbol->name, candidate->name))
+-				continue;
+-			member_index = file_index + 1;
+-			for_each_obj_symbol_continue(member_index, table_member, table) {
+-				bool found = false;
+-				if (table_member->type == STT_FILE)
+-					break;
+-				if (table_member->bind != STB_LOCAL ||
+-				    (table_member->type != STT_FUNC && table_member->type != STT_OBJECT))
+-					continue;
+-				member = file_symbol;
+-				list_for_each_entry_continue(member, &kelf->symbols, list) {
+-					if (member->type == STT_FILE)
+-						break;
+-					if (member->bind == STB_LOCAL && member->type == table_member->type &&
+-					    !strcmp(member->name, table_member->name)) {
+-						found = true;
+-						break;
+-					}
+-				}
+-				if (!found) {
+-					compatible = false;
+-					break;
+-				}
+-			}
+-			if (!compatible)
+-				continue;
+-			member = file_symbol;
+-			list_for_each_entry_continue(member, &kelf->symbols, list) {
+-				bool found = false;
+-				if (member->type == STT_FILE)
+-					break;
+-				if (member->bind != STB_LOCAL ||
+-				    (member->type != STT_FUNC && member->type != STT_OBJECT) ||
+-				    maybe_discarded_sym(member->name))
+-					continue;
+-				has_locals = true;
+-				member_index = file_index + 1;
+-				for_each_obj_symbol_continue(member_index, table_member, table) {
+-					if (table_member->type == STT_FILE)
+-						break;
+-					if (table_member->bind == STB_LOCAL && !maybe_discarded_sym(table_member->name) &&
+-					    member->type == table_member->type && !strcmp(member->name, table_member->name)) {
+-						found = true;
+-						break;
+-					}
+-				}
+-				if (!found) {
+-					compatible = false;
+-					break;
+-				}
+-			}
+-			if (!compatible)
+-				continue;
+-			if (file_match)
+-				ERROR("found duplicate matches for %s local symbols in %s symbol table", file_symbol->name, table->objname);
+-			file_match = candidate;
+-			if (!has_locals)
+-				break;
+-		}
+-		if (!file_match)
+-			ERROR("couldn't find matching %s local symbols in %s symbol table", file_symbol->name, table->objname);
+-		member = file_symbol;
+-		list_for_each_entry_continue(member, &kelf->symbols, list) {
+-			if (member->type == STT_FILE)
+-				break;
+-			member->lookup_table_file_sym = file_match;
+-		}
+-	}
+ 
+ 	return table;
+ }
+@@ -403,6 +476,61 @@ void lookup_close(struct lookup_table *table)
+ 	free(table);
+ }
+ 
++static bool lookup_local_symbol(struct lookup_table *table,
++				struct symbol *lookup_sym,
++				struct lookup_result *result)
++{
++	struct object_symbol *sym;
++	unsigned long sympos = 0;
++	int i, in_file = 0;
++	bool found = false;
++
++	memset(result, 0, sizeof(*result));
++	for_each_obj_symbol(i, sym, table) {
++		if (lookup_sym->lookup_table_file_sym == sym) {
++			in_file = 1;
++			continue;
++		}
++
++		if (!in_file)
++			continue;
++
++		if (sym->type == STT_FILE)
++			break;
++
++		if (sym->bind == STB_LOCAL && !strcmp(sym->name,
++					lookup_sym->name)) {
++			if (found)
++				ERROR("duplicate local symbol found for %s",
++						lookup_sym->name);
++
++			result->objname		= table->objname;
++			result->addr		= sym->addr;
++			result->size		= sym->size;
++			result->global		= false;
++			result->exported	= false;
++			found = true;
++		}
++	}
++	if (!found)
++		return false;
++
++	/*
++	 * The kernel calculates sympos based on the order of addresses.
++	 * "readelf -s" does not guarantee the ordering of symbols.
++	 * Therefore, it is safer to iterate the symbol table again to
++	 * calcuate the actual sympos.
++	 */
++	for_each_obj_symbol(i, sym, table) {
++		if (sym->bind == STB_LOCAL &&
++		    !strcmp(sym->name, lookup_sym->name) &&
++		    sym->addr <= result->addr)
++			sympos++;
++	}
++	result->sympos = sympos;
++	return true;
++}
++
+ static bool lookup_exported_symbol(struct lookup_table *table, char *name,
+ 				   struct lookup_result *result)
+ {
+@@ -438,94 +566,40 @@ bool is_exported(struct lookup_table *table, char *name)
+ 	return lookup_exported_symbol(table, name, NULL);
+ }
+ 
++static bool lookup_global_symbol(struct lookup_table *table, char *name,
++				 struct lookup_result *result)
+-bool lookup_symbol(struct lookup_table *table, struct symbol *sym,
+-		   struct lookup_result *result)
+ {
++	struct object_symbol *sym;
++	int i;
+-	{
+-		struct object_symbol *entry;
+-		int i, in_file = 0;
+-		bool found = false;
+-
+-		memset(result, 0, sizeof(*result));
+-		for_each_obj_symbol(i, entry, table) {
+-			if (sym->lookup_table_file_sym == entry) {
+-				in_file = 1;
+-				continue;
+-			}
+ 
++	memset(result, 0, sizeof(*result));
++	for_each_obj_symbol(i, sym, table) {
++		if ((sym->bind == STB_GLOBAL || sym->bind == STB_WEAK) &&
++		    !strcmp(sym->name, name)) {
+-			if (!in_file)
+-				continue;
+ 
++			if (result->objname)
++				ERROR("duplicate global symbol found for %s", name);
+-			if (entry->type == STT_FILE)
+-				break;
+ 
++			result->objname		= table->objname;
++			result->addr		= sym->addr;
++			result->size		= sym->size;
++			result->sympos		= 0; /* always 0 for global symbols */
++			result->global		= true;
++			result->exported	= is_exported(table, name);
+-			if (entry->bind == STB_LOCAL && !strcmp(entry->name,
+-						sym->name)) {
+-				if (found)
+-					ERROR("duplicate local symbol found for %s",
+-							sym->name);
+-
+-				result->objname		= table->objname;
+-				result->addr		= entry->addr;
+-				result->size		= entry->size;
+-				result->global		= false;
+-				result->exported	= false;
+-				found = true;
+-			}
+ 		}
+-		if (!found)
+-			goto global_lookup;
+-
+-		/*
+-		 * The kernel calculates sympos based on the order of addresses.
+-		 * "readelf -s" does not guarantee the ordering of symbols.
+-		 * Therefore, it is safer to iterate the symbol table again to
+-		 * calcuate the actual sympos.
+-		 */
+-		for_each_obj_symbol(i, entry, table) {
+-			if (entry->bind == STB_LOCAL &&
+-			    !strcmp(entry->name, sym->name) &&
+-			    entry->addr <= result->addr)
+-				result->sympos++;
+-		}
+-		return true;
+ 	}
+- global_lookup:
+ 
++	return !!result->objname;
++}
+ 
++bool lookup_symbol(struct lookup_table *table, struct symbol *sym,
++		   struct lookup_result *result)
++{
++	if (lookup_local_symbol(table, sym, result))
++		return true;
+-	{
+-		char *name = sym->name;
+-		struct object_symbol *entry;
+-		int i;
+ 
++	if (lookup_global_symbol(table, sym->name, result))
++		return true;
+-		memset(result, 0, sizeof(*result));
+-		for_each_obj_symbol(i, entry, table) {
+-			if ((entry->bind == STB_GLOBAL || entry->bind == STB_WEAK) &&
+-			    !strcmp(entry->name, name)) {
+-
+-				if (result->objname)
+-					ERROR("duplicate global symbol found for %s", name);
+-
+-				result->objname		= table->objname;
+-				result->addr		= entry->addr;
+-				result->size		= entry->size;
+-				result->sympos		= 0; /* always 0 for global symbols */
+-				result->global		= true;
+-				result->exported = false;
+-				struct export_symbol *export;
+-				int export_index;
+-				for_each_exp_symbol(export_index, export, table) {
+-					if (!strcmp(export->name, name)) {
+-						result->exported = true;
+-						break;
+-					}
+-				}
+-			}
+-		}
+-
+-		if (result->objname)
+-			return true;
+-	}
+ 
+ 	return lookup_exported_symbol(table, sym->name, result);
+ }

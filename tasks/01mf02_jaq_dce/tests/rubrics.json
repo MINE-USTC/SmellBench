@@ -1,0 +1,823 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "01mf02_jaq_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "J01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stored literal terms are converted to Atom at every LUT construction and overwrite site. This item covers the independently removable integer/general numeric literal responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Atom(Literal::Int/Num) the executable form for integer/general numeric literal, while filter.rs retains obsolete Int/Num consumers for numeric conversion. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete integer/general numeric literal implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Int/Num execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Numeric conversion remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Int/Num body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::new,insert_term,def,iterm",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/compile.rs:Lut::new,insert_term,def,iterm"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/lower.rs",
+          "symbol": "value",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/lower.rs:value"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J12",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stored literal terms are converted to Atom at every LUT construction and overwrite site. This item covers the independently removable string literal responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Atom(Literal::Str) the executable form for string literal, while filter.rs retains obsolete Str consumers for string construction. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete string literal implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Str execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. String construction remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Str body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::new,insert_term,def,iterm",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/compile.rs:Lut::new,insert_term,def,iterm"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/lower.rs",
+          "symbol": "value",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/lower.rs:value"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J13",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Stored literal terms are converted to Atom at every LUT construction and overwrite site. This item covers the independently removable empty-object literal responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Atom(Literal::Object) the executable form for empty-object literal, while filter.rs retains obsolete ObjEmpty consumers for empty map construction. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete empty-object literal implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead ObjEmpty execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Empty map construction remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete ObjEmpty body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::new,insert_term,def,iterm",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/compile.rs:Lut::new,insert_term,def,iterm"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/lower.rs",
+          "symbol": "value",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/lower.rs:value"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J02",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Final Compiler::term Num emits Atom(Literal::Num) only after isize parsing fails; lower::value also converts any raw numeric builder form before storage.",
+      "baseline_defect": "Literal::value reparses a Num as isize even though a successful parse would have produced Int earlier; its success branch is dead under the supported producer chain.",
+      "criterion": "Eliminate the unreachable second integer-parse path, whether by deleting it or by consistently redesigning numeric production and evaluation without dormant duplicate conversion.",
+      "acceptance": "No numeric evaluation branch remains unreachable because the producer has already excluded its success case. Deleting the reparse or redesigning the numeric representation and conversion policy both qualify. Integer/general-number semantics remain supported; no particular enum variant, integer representation, or number of genuinely reachable optimized paths is required.",
+      "insufficient_repairs": [
+        "Keeping the reparse under a renamed helper or adding a test that merely demonstrates numeric behavior."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term Num",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term Num"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/program.rs",
+          "symbol": "Literal::value Num",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/program.rs:Literal::value Num"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/lower.rs",
+          "symbol": "value",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/lower.rs:value"
+        }
+      ]
+    },
+    {
+      "id": "J03",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Scalar-producing compiler branches and the scalar conversion at all LUT writes store Scalar variants for string conversion, negation, math, comparison and logic. This item covers the independently removable string conversion responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Scalar::ToString the executable form for string conversion, while filter.rs retains obsolete ToString consumers for input-to-string conversion. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete string conversion implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead ToString execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Input-to-string conversion remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete ToString body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/scalar.rs",
+          "symbol": "expression",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/scalar.rs:expression"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term,Lut::insert_term",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term,Lut::insert_term"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J14",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Scalar-producing compiler branches and the scalar conversion at all LUT writes store Scalar variants for string conversion, negation, math, comparison and logic. This item covers the independently removable unary negation responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Scalar::Neg the executable form for unary negation, while filter.rs retains obsolete Neg consumers for unary evaluation and error propagation. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete unary negation implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Neg execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Unary evaluation and error propagation remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Neg body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/scalar.rs",
+          "symbol": "expression",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/scalar.rs:expression"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term,Lut::insert_term",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term,Lut::insert_term"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J15",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Scalar-producing compiler branches and the scalar conversion at all LUT writes store Scalar variants for string conversion, negation, math, comparison and logic. This item covers the independently removable binary arithmetic responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Scalar::Math the executable form for binary arithmetic, while filter.rs retains obsolete Math consumers for cartesian arithmetic operand evaluation. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete binary arithmetic implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Math execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Cartesian arithmetic operand evaluation remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Math body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/scalar.rs",
+          "symbol": "expression",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/scalar.rs:expression"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term,Lut::insert_term",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term,Lut::insert_term"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J16",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Scalar-producing compiler branches and the scalar conversion at all LUT writes store Scalar variants for string conversion, negation, math, comparison and logic. This item covers the independently removable comparison responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Scalar::Cmp the executable form for comparison, while filter.rs retains obsolete Cmp consumers for cartesian comparison operand evaluation. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete comparison implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Cmp execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Cartesian comparison operand evaluation remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Cmp body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/scalar.rs",
+          "symbol": "expression",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/scalar.rs:expression"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term,Lut::insert_term",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term,Lut::insert_term"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J17",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Scalar-producing compiler branches and the scalar conversion at all LUT writes store Scalar variants for string conversion, negation, math, comparison and logic. This item covers the independently removable short-circuit Boolean logic responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Scalar::Logic the executable form for short-circuit Boolean logic, while filter.rs retains obsolete Logic consumers for conditional right-operand execution. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete short-circuit Boolean logic implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Logic execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Conditional right-operand execution remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Logic body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/scalar.rs",
+          "symbol": "expression",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/scalar.rs:expression"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term,Lut::insert_term",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term,Lut::insert_term"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J04",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Child term IDs used by Scalar::Math point into a LUT whose integer literals are stored as Atom(Literal::Int).",
+      "baseline_defect": "scalar_run Math checks two child IDs for raw Ast::Int and contains an unreachable special branch before the live cartesian operand path.",
+      "criterion": "Eliminate the impossible raw-integer-child shortcut as dormant code, either by removal or by a coherent producer/consumer redesign with no redundant unreachable operand evaluator.",
+      "acceptance": "The impossible raw Int child branch and its dead body are removed, or genuinely integrated into a supported live representation without duplicating operand evaluation. Generic current operands still have a live path. Equivalent elimination by consistently unifying the producer and consumer representation is accepted; exact variant names and module locations are not required.",
+      "insufficient_repairs": [
+        "Changing only the branch name or retaining the raw-tag condition inside a helper."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "scalar_run Math",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/filter.rs:scalar_run Math"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/lower.rs",
+          "symbol": "value Int",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/lower.rs:value Int"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::insert_term",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/compile.rs:Lut::insert_term"
+        }
+      ]
+    },
+    {
+      "id": "J05",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "String literal child IDs are stored as Atom(Literal::Str) before comparison operands are fetched.",
+      "baseline_defect": "scalar_run Cmp tests for two raw Ast::Str children, retaining a branch that cannot match the published LUT.",
+      "criterion": "Eliminate the unreachable raw-string comparison shortcut and keep the live comparison operand path coherent.",
+      "acceptance": "The impossible raw Str comparison branch and its dead body are removed or integrated into a supported live representation without retaining a dormant alternate executor. Equivalent elimination by consistently unifying the producer and consumer representation is accepted; exact variant names and module locations are not required.",
+      "insufficient_repairs": [
+        "Relocating the raw-string test to program.rs or merely preserving comparison output."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "scalar_run Cmp",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/filter.rs:scalar_run Cmp"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/lower.rs",
+          "symbol": "value Str",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/lower.rs:value Str"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::insert_term",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/compile.rs:Lut::insert_term"
+        }
+      ]
+    },
+    {
+      "id": "J06",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Array and object-entry terms are stored as Build(Aggregate) and evaluated by build_run. This item covers the independently removable array aggregation responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Build(Aggregate::Array) the executable form for array aggregation, while filter.rs retains obsolete Arr consumers for collecting all child results. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete array aggregation implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Arr execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Collecting all child results remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Arr body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/lower.rs",
+          "symbol": "value Arr,ObjSingle",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term Arr,obj",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term Arr,obj"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "build_run,Id::run",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/filter.rs:build_run,Id::run"
+        }
+      ]
+    },
+    {
+      "id": "J18",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Array and object-entry terms are stored as Build(Aggregate) and evaluated by build_run. This item covers the independently removable object-entry aggregation responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Build(Aggregate::Entry) the executable form for object-entry aggregation, while filter.rs retains obsolete ObjSingle consumers for cartesian key/value construction. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete object-entry aggregation implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead ObjSingle execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Cartesian key/value construction remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete ObjSingle body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/lower.rs",
+          "symbol": "value Arr,ObjSingle",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term Arr,obj",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term Arr,obj"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "build_run,Id::run",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/filter.rs:build_run,Id::run"
+        }
+      ]
+    },
+    {
+      "id": "J07",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Object keys produced as string literals are stored through lower::value as Atom(Literal::Str), including ordinary object-entry creation.",
+      "baseline_defect": "build_run Entry checks its key child for raw Ast::Str and keeps a special map-building path that cannot run for normal stored keys.",
+      "criterion": "Eliminate the impossible raw-string-key shortcut while retaining the live object-entry path for current key expressions.",
+      "acceptance": "The impossible raw Str key branch and its dead body are removed or integrated into a supported live representation; ordinary and computed key expressions keep a live path. Equivalent elimination by consistently unifying the producer and consumer representation is accepted; exact variant names and module locations are not required.",
+      "insufficient_repairs": [
+        "Keeping the raw-tag check under a helper or addressing only literal strings in the parser."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "build_run Entry",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/filter.rs:build_run Entry"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::obj",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::obj"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/lower.rs",
+          "symbol": "value Str",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/lower.rs:value Str"
+        }
+      ]
+    },
+    {
+      "id": "J08",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Builder edit forms pass through compile::Lut::map_funs and finalize::term before the filter evaluator consumes the published LUT. This item covers the independently removable assignment responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Edit::Assign the executable form for assignment, while filter.rs retains obsolete Assign consumers for evaluating replacement output then assigning it. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete assignment implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Assign execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Evaluating replacement output then assigning it remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Assign body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::map_funs",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Lut::map_funs"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/finalize.rs",
+          "symbol": "term edit cases",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/finalize.rs:term edit cases"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J19",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Builder edit forms pass through compile::Lut::map_funs and finalize::term before the filter evaluator consumes the published LUT. This item covers the independently removable filter update responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Edit::Update the executable form for filter update, while filter.rs retains obsolete Update consumers for evaluating a replacement filter per selected value. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete filter update implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Update execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Evaluating a replacement filter per selected value remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Update body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::map_funs",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Lut::map_funs"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/finalize.rs",
+          "symbol": "term edit cases",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/finalize.rs:term edit cases"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J20",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Builder edit forms pass through compile::Lut::map_funs and finalize::term before the filter evaluator consumes the published LUT. This item covers the independently removable arithmetic update responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Edit::Math the executable form for arithmetic update, while filter.rs retains obsolete UpdateMath consumers for combining each selected value with evaluated right operands. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete arithmetic update implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead UpdateMath execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Combining each selected value with evaluated right operands remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete UpdateMath body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::map_funs",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Lut::map_funs"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/finalize.rs",
+          "symbol": "term edit cases",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/finalize.rs:term edit cases"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J21",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Builder edit forms pass through compile::Lut::map_funs and finalize::term before the filter evaluator consumes the published LUT. This item covers the independently removable alternative update responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Edit::Alt the executable form for alternative update, while filter.rs retains obsolete UpdateAlt consumers for conditional replacement based on existing value truthiness. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete alternative update implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead UpdateAlt execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Conditional replacement based on existing value truthiness remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete UpdateAlt body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::map_funs",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Lut::map_funs"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/finalize.rs",
+          "symbol": "term edit cases",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/finalize.rs:term edit cases"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J09",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Unbound Pipe, Comma and Alt forms become Apply, Concat and Select when map_funs finalizes terms; bound Pipe(Some(pattern)) is a different live form. This item covers the independently removable unbound pipeline responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Apply the executable form for unbound pipeline, while filter.rs retains obsolete Pipe(_,None,_) consumers for passing each left result into the right filter. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete unbound pipeline implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Pipe(_,None,_) execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Passing each left result into the right filter remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Pipe(_,None,_) body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term Pipe,Comma,Alt;Lut::map_funs",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term Pipe,Comma,Alt;Lut::map_funs"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/finalize.rs",
+          "symbol": "term Pipe,Alt,Comma",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/finalize.rs:term Pipe,Alt,Comma"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,paths,update",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/filter.rs:Id::run,paths,update"
+        }
+      ]
+    },
+    {
+      "id": "J22",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Unbound Pipe, Comma and Alt forms become Apply, Concat and Select when map_funs finalizes terms; bound Pipe(Some(pattern)) is a different live form. This item covers the independently removable concatenation responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Concat the executable form for concatenation, while filter.rs retains obsolete Comma consumers for ordered lazy concatenation and sequential updates. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete concatenation implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Comma execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Ordered lazy concatenation and sequential updates remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Comma body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term Pipe,Comma,Alt;Lut::map_funs",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term Pipe,Comma,Alt;Lut::map_funs"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/finalize.rs",
+          "symbol": "term Pipe,Alt,Comma",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/finalize.rs:term Pipe,Alt,Comma"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,paths,update",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/filter.rs:Id::run,paths,update"
+        }
+      ]
+    },
+    {
+      "id": "J23",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Unbound Pipe, Comma and Alt forms become Apply, Concat and Select when map_funs finalizes terms; bound Pipe(Some(pattern)) is a different live form. This item covers the independently removable alternative selection responsibility, not every operation sharing the conversion helper.",
+      "baseline_defect": "The injected compiler conversion makes Select the executable form for alternative selection, while filter.rs retains obsolete Alt consumers for fallback based on left output truthiness. The old execution body was live in clean code but is redundant after injection.",
+      "criterion": "Eliminate the obsolete alternative selection implementation across value, path, and update dispatch so no unreachable duplicate implementation of this operation remains in the supported producer/consumer flow.",
+      "acceptance": "Remove the dead Alt execution body and associated obsolete path/update cases, or consistently unify producers and consumers using an equivalent representation. Fallback based on left output truthiness remains supported. Minimal non-executing exhaustiveness guards are accepted when builder variants remain. Other operations and embedded dead shortcuts are scored separately.",
+      "insufficient_repairs": [
+        "Renaming or moving the obsolete Alt body, preserving its outputs without removing redundancy, or only cleaning a different operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term Pipe,Comma,Alt;Lut::map_funs",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::term Pipe,Comma,Alt;Lut::map_funs"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/finalize.rs",
+          "symbol": "term Pipe,Alt,Comma",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/finalize.rs:term Pipe,Alt,Comma"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,paths,update",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/filter.rs:Id::run,paths,update"
+        }
+      ]
+    },
+    {
+      "id": "J10",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "CallDef catch modes are converted by finalize::term from CatchOne/CatchAll to Resolve(false/true) at publication.",
+      "baseline_defect": "def_run retains CatchOne and CatchAll runtime branches alongside Resolve although normal published calls use Resolve for both catch modes.",
+      "criterion": "Eliminate dormant duplicate catch execution across finalization and runtime dispatch.",
+      "acceptance": "Published call states and runtime catch handling agree without unreachable duplicate CatchOne/CatchAll or Resolve execution. Either representation, or another coherent redesign, may be used. Distinct reachable Inline/Throw behavior is retained; no required surviving variant or fixed number of live handlers is imposed.",
+      "insufficient_repairs": [
+        "Rename or relocate catch handlers while an unreachable duplicate catch executor remains. Retaining a formerly old variant in a consistent live redesign is not itself a failure."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/finalize.rs",
+          "symbol": "term CallDef",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/finalize.rs:term CallDef"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "def_run",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/filter.rs:def_run"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Lut::map_funs",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/compile.rs:Lut::map_funs"
+        }
+      ]
+    },
+    {
+      "id": "J11",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "fold::fold starts with Input and sends all subsequent frames through continuation::push, which transforms Output to Resume before storage; continuation::next handles Resume tails.",
+      "baseline_defect": "fold::fold retains the old Output consumer block even though stack pops can now only see Input or Resume; frame processing and iterator-tail decisions remain duplicated across two consumer bodies.",
+      "criterion": "Eliminate the unreachable pending-output consumer and its duplicate projection/queue implementation across continuation and fold.",
+      "acceptance": "Actual stack producers and pending-output consumption agree, with no dormant alternative consumer caused by Output-to-Resume normalization. Removing either obsolete representation or consistently redesigning state production/consumption qualifies. Iterator tails, errors and optional projection remain supported; exact variant names, module placement and a single literal consumer function are not required.",
+      "insufficient_repairs": [
+        "Move the obsolete pending-output arm without resolving producer/consumer reachability, or create nominally reachable duplicate machinery solely to retain unused code."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/continuation.rs",
+          "symbol": "push",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/continuation.rs:push"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/continuation.rs",
+          "symbol": "next",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/continuation.rs:next"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/fold.rs",
+          "symbol": "Fold::Resume,Output;fold",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/fold.rs:Fold::Resume,Output;fold"
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "01mf02_jaq_dce",
+    "scoring": "Equal weight per item; score only repaired structural defects, not behavior preservation alone.",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "Scalar/build helper extraction alone",
+      "Stack-overflow correctness fix from helper extraction",
+      "Test passage, compilation, and preservation of already supported behavior"
+    ]
+  }
+}

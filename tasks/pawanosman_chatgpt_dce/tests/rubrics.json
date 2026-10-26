@@ -1,0 +1,140 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "pawanosman_chatgpt_dce",
+  "rubric_status": "limited",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "buffered_content_formatter",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 buffer split; retry allrows queue then same-array flush.",
+      "baseline_defect": "contentWriter captures exact rows array and empties it before format iteration when mode is content; metadata modes lack writer, so else content arm and local lastPath are dead.",
+      "criterion": "Eliminate buffered content formatter and its exclusively obsolete work while retaining equivalent supported result production.",
+      "acceptance": "Preserve accepted rows admission, skip/cap/20k character lookahead,500char clipping, persistent count independent of drained rows, next_offset and empty/incomplete headers. Content grouped path/blank separator state persists across repeated format and laterpush; metadata format loop live. Remove only obsolete renderer/local or reorganize equivalently; do not discard rows wholesale. Short deletion is sufficient; a coherent redesign may change which helper is live provided the dormant alternative and observable behavior are both resolved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Hiding or renaming the dormant path, deleting shared live state, or making both producers emit to justify keeping the obsolete path is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/agent/tools/grepResults.ts",
+          "symbol": "GrepPage::format",
+          "detail": "contentWriter captures exact rows array and empties it before format iteration when mode is content; metadata modes lack writer, so else content arm and local lastPath are dead.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "downstream_begin_handler",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 begin consumed across every mode; retry shared cursor.",
+      "baseline_defect": "Receiver returns true for every begin before downstream branch.",
+      "criterion": "Eliminate downstream begin handler and its exclusively obsolete work while retaining equivalent supported result production.",
+      "acceptance": "Preserve one live begin reset of path,lastRow,lastMatch,matchingLines,markedFile; content lastRow must reset for each file and receiver remains live unless equivalent owner replaces it. Dead downstream begin arm removable, not shared cursor initialization. Short deletion is sufficient; a coherent redesign may change which helper is live provided the dormant alternative and observable behavior are both resolved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Hiding or renaming the dormant path, deleting shared live state, or making both producers emit to justify keeping the obsolete path is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/agent/tools/search.ts",
+          "symbol": "grepTool accept,metadataReceiver",
+          "detail": "Receiver returns true for every begin before downstream branch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "orphan_content_count_updates",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 metadata reception isolates count; retry shared cursor.",
+      "baseline_defect": "Downstream match/context reachable only content; lastMatch/matchingLines mutations there have no observable consumer because count end handled upstream and next begin resets.",
+      "criterion": "Eliminate orphan content count updates and its exclusively obsolete work while retaining equivalent supported result production.",
+      "acceptance": "Remove those content-only writes while preserving matching flag used for row markers and lastRow used for duplicate suppression. Metadata receiver lastMatch/matchingLines still live and must retain matching-line dedup and perfile counts. Short deletion is sufficient; a coherent redesign may change which helper is live provided the dormant alternative and observable behavior are both resolved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Hiding or renaming the dormant path, deleting shared live state, or making both producers emit to justify keeping the obsolete path is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/agent/tools/search.ts",
+          "symbol": "grepTool accept",
+          "detail": "Downstream match/context reachable only content; lastMatch/matchingLines mutations there have no observable consumer because count end handled upstream and next begin resets.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "downstream_file_emission",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 firstmatch event interception.",
+      "baseline_defect": "All noncontent events return true from receiver, so downstream file-mode emission and markedFile write cannot execute.",
+      "criterion": "Eliminate downstream file emission and its exclusively obsolete work while retaining equivalent supported result production.",
+      "acceptance": "One live first-match file emission per file, before page stop when lookahead full; preserve upstream markedFile state and metadata decoding. No need retain a particular receiver function if replacement preserves gate and event behavior. Short deletion is sufficient; a coherent redesign may change which helper is live provided the dormant alternative and observable behavior are both resolved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Hiding or renaming the dormant path, deleting shared live state, or making both producers emit to justify keeping the obsolete path is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/agent/tools/search.ts",
+          "symbol": "grepTool accept files_with_matches",
+          "detail": "All noncontent events return true from receiver, so downstream file-mode emission and markedFile write cannot execute.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "downstream_count_end",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 count end intercepted.",
+      "baseline_defect": "Count-mode end never reaches accept trailing branch.",
+      "criterion": "Eliminate downstream count end and its exclusively obsolete work while retaining equivalent supported result production.",
+      "acceptance": "One live end-count producer for positive matchingLines and currentpath; preserve page-full stop/close/timer/abort cleanup and error formatting. Content end has no count output; deleting lifecycle owner is invalid. Short deletion is sufficient; a coherent redesign may change which helper is live provided the dormant alternative and observable behavior are both resolved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Hiding or renaming the dormant path, deleting shared live state, or making both producers emit to justify keeping the obsolete path is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/agent/tools/search.ts",
+          "symbol": "grepTool accept end",
+          "detail": "Count-mode end never reaches accept trailing branch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fallback_window_replay",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 fallback windows; retry maximum emitted frontier instead of clearing set.",
+      "baseline_defect": "Successful content emitter through is max of all interval ends, so replay start>=through+1>end for every interval; full page breaks outer first and metadata continues before loop.",
+      "criterion": "Eliminate fallback window replay and its exclusively obsolete work while retaining equivalent supported result production.",
+      "acceptance": "Remove effectless replay loop/bounds/previousEnd, preserve live emitter merged context/1basedline/match markers and offset/lookahead. Matches stays needed for markers and metadata counts; do not clear it or reset previousEnd to-1 while keeping emitter. Sorted file batch ordering, cancellation and incomplete-output paths remain live; equivalent sole-emitter redesign valid. Short deletion is sufficient; a coherent redesign may change which helper is live provided the dormant alternative and observable behavior are both resolved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Hiding or renaming the dormant path, deleting shared live state, or making both producers emit to justify keeping the obsolete path is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/agent/tools/search.ts",
+          "symbol": "grepTool consumeWindows/previousEnd loop",
+          "detail": "Successful content emitter through is max of all interval ends, so replay start>=through+1>end for every interval; full page breaks outer first and metadata continues before loop.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "pawanosman_chatgpt_dce",
+    "rubric_status": "limited",
+    "weighting": "equal; each item is one point",
+    "limitations": "The final injection affects one Grep retrieval family and supports six independently removable dead artifacts. Fewer than ten genuine obligations remain after excluding pre-existing live behavior and duplicate branches. The empty post.diff adds none."
+  }
+}

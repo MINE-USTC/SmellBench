@@ -1,0 +1,309 @@
+diff --git a/src/request-plan.js b/src/request-plan.js
+new file mode 100644
+index 0000000..729af47
+--- /dev/null
++++ b/src/request-plan.js
+@@ -0,0 +1,31 @@
++/* global module */
++'use strict';
++
++module.exports = function (type, postData, contentType, optionsAlwaysExtendParams) {
++  var encoding = 'empty';
++  if (type === 'GET') {
++    encoding = 'none';
++  } else if (postData) {
++    encoding = contentType === 'image/jpeg' ? 'image' : 'json';
++  }
++  var destination = type !== 'GET' && postData && !optionsAlwaysExtendParams ? 'postData' : 'params';
++  return {
++    encoding: encoding,
++    destination: destination,
++    prepare: function () {
++      var headers = [];
++      var payload = null;
++      if (encoding === 'image') {
++        payload = postData;
++        headers.push(['Content-Type', contentType]);
++      } else if (encoding === 'json') {
++        payload = JSON.stringify(postData);
++        headers.push(['Content-Type', 'application/json']);
++      }
++      return { headers: headers, payload: payload };
++    },
++    options: function (requestData) {
++      return { owner: requestData, key: destination, value: requestData[destination] };
++    }
++  };
++};
+diff --git a/src/response-plan.js b/src/response-plan.js
+new file mode 100644
+index 0000000..5fc49bb
+--- /dev/null
++++ b/src/response-plan.js
+@@ -0,0 +1,21 @@
++/* global module */
++'use strict';
++
++module.exports = {
++  complete: function (readyState) {
++    return readyState === 4;
++  },
++  read: function (req, report) {
++    var data = null;
++    try {
++      data = req.responseText ? JSON.parse(req.responseText) : '';
++    } catch (e) {
++      report(e);
++    }
++    var status = req.status;
++    if (status >= 200 && status < 300) {
++      return { value: data, error: null };
++    }
++    return { value: null, error: req };
++  }
++};
+diff --git a/src/spotify-web-api.js b/src/spotify-web-api.js
+index c73ad58..1c4244e 100644
+--- a/src/spotify-web-api.js
++++ b/src/spotify-web-api.js
+@@ -1,4 +1,4 @@
+-/* global module */
++/* global module, require */
+ 'use strict';
+ 
+ /**
+@@ -8,6 +8,112 @@ var SpotifyWebApi = (function () {
+   var _baseUri = 'https://api.spotify.com/v1';
+   var _accessToken = null;
+   var _promiseImplementation = null;
++  var _responsePlan = typeof module === 'object' && typeof module.exports === 'object'
++    ? require('./response-plan')
++    : {
++      complete: function (readyState) {
++        return readyState === 4;
++      },
++      read: function (req, report) {
++        var data = null;
++        try {
++          data = req.responseText ? JSON.parse(req.responseText) : '';
++        } catch (e) {
++          report(e);
++        }
++        var status = req.status;
++        if (status >= 200 && status < 300) {
++          return { value: data, error: null };
++        }
++        return { value: null, error: req };
++      }
++    };
++  var _requestPlan = typeof module === 'object' && typeof module.exports === 'object'
++    ? require('./request-plan')
++    : function (type, postData, contentType, optionsAlwaysExtendParams) {
++      var encoding = 'empty';
++      if (type === 'GET') {
++        encoding = 'none';
++      } else if (postData) {
++        encoding = contentType === 'image/jpeg' ? 'image' : 'json';
++      }
++      var destination = type !== 'GET' && postData && !optionsAlwaysExtendParams ? 'postData' : 'params';
++      return {
++        encoding: encoding,
++        destination: destination,
++        prepare: function () {
++          var headers = [];
++          var payload = null;
++          if (encoding === 'image') {
++            payload = postData;
++            headers.push(['Content-Type', contentType]);
++          } else if (encoding === 'json') {
++            payload = JSON.stringify(postData);
++            headers.push(['Content-Type', 'application/json']);
++          }
++          return { headers: headers, payload: payload };
++        },
++        options: function (requestData) {
++          return { owner: requestData, key: destination, value: requestData[destination] };
++        }
++      };
++    };
++
++  var _sendRead = function (req, plan) {
++    if (Object.prototype.hasOwnProperty.call(plan, 'payload')) {
++      req.send(plan.payload);
++      return;
++    }
++    if (plan.type === 'GET') {
++      req.send(null);
++    } else {
++      var postData = plan.body.value ? JSON.stringify(plan.body.value) : null;
++      if (postData) {
++        req.setRequestHeader('Content-Type', 'application/json');
++      }
++      req.send(postData);
++    }
++  };
++
++  var _sendImage = function (req, body) {
++    var postData = null;
++    if (body.headers) {
++      body.headers.forEach(function (header) {
++        req.setRequestHeader(header[0], header[1]);
++      });
++      postData = body.payload;
++    }
++    if (Object.prototype.hasOwnProperty.call(body, 'value') && body.value) {
++      if (body.contentType === 'image/jpeg') {
++        postData = body.value;
++        req.setRequestHeader('Content-Type', body.contentType);
++      } else {
++        postData = JSON.stringify(body.value);
++        req.setRequestHeader('Content-Type', 'application/json');
++      }
++    }
++    req.send(postData);
++  };
++
++  var _sendStructured = function (req, body) {
++    var postData = null;
++    if (body.headers) {
++      body.headers.forEach(function (header) {
++        req.setRequestHeader(header[0], header[1]);
++      });
++      postData = body.payload;
++    }
++    if (Object.prototype.hasOwnProperty.call(body, 'value') && body.value) {
++      if (body.contentType === 'image/jpeg') {
++        postData = body.value;
++        req.setRequestHeader('Content-Type', body.contentType);
++      } else {
++        postData = JSON.stringify(body.value);
++        req.setRequestHeader('Content-Type', 'application/json');
++      }
++    }
++    req.send(postData);
++  };
+ 
+   var WrapPromiseWithAbort = function (promise, onAbort) {
+     promise.abort = onAbort;
+@@ -93,6 +199,30 @@ var SpotifyWebApi = (function () {
+         }
+       }
+ 
++      function accept(outcome, data) {
++        if (Object.prototype.hasOwnProperty.call(outcome, 'value')) {
++          success(outcome.value);
++          return;
++        }
++        if (outcome.status >= 200 && outcome.status < 300) {
++          success(data);
++        } else {
++          failure();
++        }
++      }
++
++      function rejectResponse(outcome, data) {
++        if (outcome.error) {
++          failure();
++          return;
++        }
++        if (outcome.status >= 200 && outcome.status < 300) {
++          success(data);
++        } else {
++          failure();
++        }
++      }
++
+       var type = requestData.type || 'GET';
+       req.open(type, _buildUrl(requestData.url, requestData.params));
+       if (_accessToken) {
+@@ -100,36 +230,26 @@ var SpotifyWebApi = (function () {
+       }
+ 
+       req.onreadystatechange = function () {
+-        if (req.readyState === 4) {
+-          var data = null;
+-          try {
+-            data = req.responseText ? JSON.parse(req.responseText) : '';
+-          } catch (e) {
+-            console.error(e);
+-          }
+-
+-          if (req.status >= 200 && req.status < 300) {
+-            success(data);
++        if (_responsePlan.complete(req.readyState)) {
++          var outcome = _responsePlan.read(req, function (error) {
++            console.error(error);
++          });
++          if (outcome.error) {
++            rejectResponse(outcome);
+           } else {
+-            failure();
++            accept(outcome);
+           }
+         }
+       };
+ 
+-      if (type === 'GET') {
+-        req.send(null);
++      var plan = _requestPlan(type, requestData.postData, requestData.contentType);
++      var body = plan.prepare();
++      if (plan.encoding === 'none') {
++        _sendRead(req, body);
++      } else if (plan.encoding === 'image') {
++        _sendImage(req, body);
+       } else {
+-        var postData = null;
+-        if (requestData.postData) {
+-          if (requestData.contentType === 'image/jpeg') {
+-            postData = requestData.postData;
+-            req.setRequestHeader('Content-Type', requestData.contentType);
+-          } else {
+-            postData = JSON.stringify(requestData.postData);
+-            req.setRequestHeader('Content-Type', 'application/json');
+-          }
+-        }
+-        req.send(postData);
++        _sendStructured(req, body);
+       }
+     };
+ 
+@@ -161,12 +281,38 @@ var SpotifyWebApi = (function () {
+ 
+     // options extend postData, if any. Otherwise they extend parameters sent in the url
+     var type = requestData.type || 'GET';
++    var plan = _requestPlan(type, requestData.postData, requestData.contentType, optionsAlwaysExtendParams);
++    var target = plan.options(requestData);
++    if (plan.destination === 'postData') {
++      _mergeBodyOptions(target, opt, type, optionsAlwaysExtendParams);
++    } else {
++      _mergeQueryOptions(target, opt, type, optionsAlwaysExtendParams);
++    }
++    return _performRequest(requestData, cb);
++  };
++
++  var _mergeBodyOptions = function (requestData, opt, type, optionsAlwaysExtendParams) {
++    if (requestData.owner) {
++      requestData.owner[requestData.key] = _extend(requestData.value, opt);
++      return;
++    }
++    if (type !== 'GET' && requestData.postData && !optionsAlwaysExtendParams) {
++      requestData.postData = _extend(requestData.postData, opt);
++    } else {
++      requestData.params = _extend(requestData.params, opt);
++    }
++  };
++
++  var _mergeQueryOptions = function (requestData, opt, type, optionsAlwaysExtendParams) {
++    if (requestData.owner) {
++      requestData.owner[requestData.key] = _extend(requestData.value, opt);
++      return;
++    }
+     if (type !== 'GET' && requestData.postData && !optionsAlwaysExtendParams) {
+       requestData.postData = _extend(requestData.postData, opt);
+     } else {
+       requestData.params = _extend(requestData.params, opt);
+     }
+-    return _performRequest(requestData, cb);
+   };
+ 
+   /**

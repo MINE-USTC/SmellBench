@@ -1,0 +1,5 @@
+Refactor NLopt's optimization termination implementation to reduce Shotgun Surgery: changes to shared convergence and stopping rules should have coherent ownership across the participating algorithms.
+
+Convergence policy is repeated across algorithms: objective and coordinate tolerances, optional targets, weights, disabled limits and nested optimization must remain consistent. Consolidate the rules that change together while retaining algorithm-specific feasibility and accepted-point publication.
+
+Preserve public APIs and supported optimizer behavior, including result precedence, objective and coordinate tolerances, weights, disabled limits, feasibility and penalty handling, fixed coordinates, nested optimization, callback timing, accepted-point publication, iteration history, and algorithm-specific exceptions. Keep native tests and build configuration unchanged. Use abstractions appropriate to the existing C/C++ code. A concise correct repair is welcome; avoid unrelated algorithm changes.

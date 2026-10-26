@@ -1,0 +1,803 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "01mf02_jaq_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "J01",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "CLI binding construction was moved from binds and args into real_main; the final patch retains it there.",
+      "baseline_defect": "real_main owns argument conversion, file loading, ARGS construction, ENV creation, filter setup and execution at once.",
+      "criterion": "Give CLI argument-source materialization a focused boundary for --arg, --rawfile, --slurpfile, and --argjson, separate from main execution orchestration.",
+      "acceptance": "Source-specific conversion and file-read error attribution live behind a coherent operation; caller retains orchestration. Positional materialization and named-source precedence remain constraints. ARGS/ENV packaging is scored separately. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the entire dispatcher while retaining the inline responsibility, or preserving correct outputs without establishing the stated boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main,binds,args",
+          "detail": null,
+          "raw": "expanded.diff:jaq/src/main.rs:real_main,binds,args"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq/src/main.rs:real_main"
+        }
+      ]
+    },
+    {
+      "id": "J02",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Filter loading and compilation formerly had a common path used by CLI and REPL.",
+      "baseline_defect": "main::real_main and funs::repl separately assemble built-in definitions, search paths, imported JSON variables and Compiler configuration.",
+      "criterion": "Coordinate CLI and REPL filter preparation through a shared compilation boundary while allowing their real inputs, globals and paths to differ.",
+      "acceptance": "Both callers delegate the common loader, import and compiler sequence, and retain only caller-specific configuration and error presentation. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Extracting each copied sequence into a different local helper leaves the two consumers independently implementing compilation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq/src/filter.rs",
+          "symbol": "parse_compile,defs",
+          "detail": null,
+          "raw": "expanded.diff:jaq/src/filter.rs:parse_compile,defs"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq/src/main.rs:real_main"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/funs.rs",
+          "symbol": "repl",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq/src/funs.rs:repl"
+        }
+      ]
+    },
+    {
+      "id": "J03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "REPL editing and evaluation were separate operations before the injection.",
+      "baseline_defect": "funs::repl now nests editor setup, history, depth control, loading, compilation, execution and error display in one callback.",
+      "criterion": "Separate the REPL input lifecycle from evaluation of a submitted line so each has a focused owner.",
+      "acceptance": "Editor, prompt, history and kill-depth control are maintained independently of line compilation and execution, with their handoff explicit. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Wrapping the full nested callback in one function or moving it intact retains the mixed responsibilities."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq/src/funs.rs",
+          "symbol": "repl,eval,repl_with",
+          "detail": null,
+          "raw": "expanded.diff:jaq/src/funs.rs:repl,eval,repl_with"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/funs.rs",
+          "symbol": "repl",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq/src/funs.rs:repl"
+        }
+      ]
+    },
+    {
+      "id": "J04",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The second stage removed filter::run and copied its runtime loop into CLI branches and REPL.",
+      "baseline_defect": "Null-input selection, Data/Ctx creation, input iteration, Exn translation and output handling are repeated in main::real_main and funs::repl.",
+      "criterion": "Own input-stream selection, Data/Ctx lifetime and filter iteration in a reusable runtime boundary for stdin, file, in-place and REPL consumers.",
+      "acceptance": "Stdin, file, in-place and REPL flows no longer independently implement the same input selection, context lifetime and iteration mechanics. A shared driver, iterator composition, contextual object or unified execution flow qualifies; an adapter API is optional. Null-input and RcIter semantics remain constraints. Error/last-truth policy is separately scored by J05. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the entire dispatcher while retaining the inline responsibility, or preserving correct outputs without establishing the stated boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq/src/filter.rs",
+          "symbol": "run",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq/src/filter.rs:run"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq/src/main.rs:real_main"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/funs.rs",
+          "symbol": "repl",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq/src/funs.rs:repl"
+        }
+      ]
+    },
+    {
+      "id": "J05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The second stage spread error conversion and last-output truth tracking from the execution boundary into callers.",
+      "baseline_defect": "CLI branches each translate parse and evaluation errors and update last, while REPL unwraps input and omits last tracking inside its copied loop.",
+      "criterion": "Remove duplicated runtime error classification and last-value truth accounting while allowing CLI and REPL to use the resulting policy for their own outcomes.",
+      "acceptance": "The repeated classification/accounting policy has coherent ownership rather than separate implementations in each execution branch. Result values, callbacks, iterator composition or another equivalent arrangement qualify; no required returned-result interface or module location is imposed. REPL need not calculate an unused last value. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Sharing an iterator but leaving separate Exn mapping and last updates in every branch does not resolve the split ownership."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq/src/filter.rs",
+          "symbol": "run",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq/src/filter.rs:run"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq/src/main.rs:real_main"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/funs.rs",
+          "symbol": "repl",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq/src/funs.rs:repl"
+        }
+      ]
+    },
+    {
+      "id": "J06",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Both stages successively inlined definition compilation and then local parent binding stack operations.",
+      "baseline_defect": "Compiler::module and Term::Def repeat placeholder insertion, parent argument pushes/pops, body compilation, tail-call bookkeeping and sibling registration.",
+      "criterion": "Factor definition compilation out of module and nested Def orchestration, sharing placeholder reservation, body lowering and sibling publication.",
+      "acceptance": "Both declaration consumers compose a focused definition operation with their different incoming tail-call sets. Moving the whole compiler or copying two helpers is insufficient. Internal parent-frame mechanics are separately scored. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the entire dispatcher while retaining the inline responsibility, or preserving correct outputs without establishing the stated boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "module,Term::Def,def,open_def",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/compile.rs:module,Term::Def,def,open_def"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Locals::push_parent,pop_parent",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Locals::push_parent,pop_parent"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "module,Term::Def",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/compile.rs:module,Term::Def"
+        }
+      ]
+    },
+    {
+      "id": "J07",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Scoped label and variable helpers were removed and scope pushes/pops were embedded in term branches.",
+      "baseline_defect": "Label, Fold update/projection and Pipe branches directly coordinate binding stack mutation, term allocation, compilation and cleanup.",
+      "criterion": "Remove caller-managed duplication of scoped label/variable admission and cleanup from Label, Fold and Pipe handling.",
+      "acceptance": "Scope mutation/cleanup is coherently owned or avoided through an equivalent representation such as persistent environments. Explicit lifecycle operations, guards and unified term handling can qualify; branches need not call a new helper. Correct balance alone with the original split responsibility is insufficient. Nested allocation/publication is scored separately. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the entire dispatcher while retaining the inline responsibility, or preserving correct outputs without establishing the stated boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "with_label,with_vars,Term::Label,Term::Fold,Term::Pipe",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/compile.rs:with_label,with_vars,Term::Label,Term::Fold,Term::Pipe"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Term::Label,Term::Fold,Term::Pipe",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/compile.rs:Term::Label,Term::Fold,Term::Pipe"
+        }
+      ]
+    },
+    {
+      "id": "J08",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Number and identifier lexing were first embedded in token dispatch; escape decoding was then embedded in string lexing.",
+      "baseline_defect": "Lexer::token embeds decimal digit/fraction/exponent scanning and source span calculation; identifier and escape defects are scored separately.",
+      "criterion": "Separate decimal and exponent token scanning from token-kind dispatch.",
+      "acceptance": "A focused numeric scanner owns digit requirements, optional fraction/exponent and consumed source span; token dispatch composes its result without retaining the full scanning body. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the entire dispatcher while retaining the inline responsibility, or preserving correct outputs without establishing the stated boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/load/lex.rs",
+          "symbol": "digits1,num,token",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/load/lex.rs:digits1,num,token"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/load/lex.rs",
+          "symbol": "escape,string",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/load/lex.rs:escape,string"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/load/lex.rs",
+          "symbol": "string,token",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/load/lex.rs:string,token"
+        }
+      ]
+    },
+    {
+      "id": "J09",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Both loader entry points now inline parsing, and both then inline parsed-dependency mapping.",
+      "baseline_defect": "Loader::load and find embed lexing, parser invocation and token-error conversion inside module lifecycles; dependency mapping is separately scored.",
+      "criterion": "Separate lexing, parse-target selection and token-to-source diagnostic conversion from main and imported module lifecycle orchestration.",
+      "acceptance": "Both loader consumers delegate parsing through focused operations, with main term versus imported definitions as supported variation; dependency partition/publication is scored separately. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the entire dispatcher while retaining the inline responsibility, or preserving correct outputs without establishing the stated boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "parse_main,parse_defs,Loader::load",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/load/mod.rs:parse_main,parse_defs,Loader::load"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "parse::Module::map,Loader",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/load/mod.rs:parse::Module::map,Loader"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "Loader",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-core/src/load/mod.rs:Loader"
+        }
+      ]
+    },
+    {
+      "id": "J10",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Format::Json, Xml and Yaml already vary in parsing source and slurp handling.",
+      "baseline_defect": "read::formats::read and parse each embed collection-versus-stream decisions in selected match arms instead of using their common collection boundary.",
+      "criterion": "Make the existing slurp variation for JSON, XML and YAML change at a focused collection boundary shared by the supported read/parse entry points.",
+      "acceptance": "Format-specific parsers supply values while a focused operation handles slurp behavior across applicable formats and entry points. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Restoring only the JSON arm still leaves XML and YAML with copied slurp branches in parse."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-fmts/src/read/formats.rs",
+          "symbol": "read,parse,collect_if",
+          "detail": null,
+          "raw": "expanded.diff:jaq-fmts/src/read/formats.rs:read,parse,collect_if"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-fmts/src/read/formats.rs",
+          "symbol": "read,parse",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-fmts/src/read/formats.rs:read,parse"
+        }
+      ]
+    },
+    {
+      "id": "J11",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "CSV and TSV are current delimiter and escape-policy variations of tabular row reading.",
+      "baseline_defect": "read_csv and read_tsv each own the row loop, field state, EOF handling and scalar inference, so a shared row rule must be edited twice.",
+      "criterion": "Separate tabular row assembly and record termination from byte-level field scanning in CSV and TSV consumers.",
+      "acceptance": "A focused row boundary consumes field results and determines record publication, empty EOF and error return; field scanners own CR lookahead, delimiters and escape policy. Scalar inference is a separate obligation. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the entire dispatcher while retaining the inline responsibility, or preserving correct outputs without establishing the stated boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-fmts/src/read/tabular.rs",
+          "symbol": "field,csv_field,tsv_field,row",
+          "detail": null,
+          "raw": "expanded.diff:jaq-fmts/src/read/tabular.rs:field,csv_field,tsv_field,row"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-fmts/src/read/tabular.rs",
+          "symbol": "Field,read_csv,read_tsv",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-fmts/src/read/tabular.rs:Field,read_csv,read_tsv"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-fmts/src/read/tabular.rs",
+          "symbol": "read_csv,read_tsv",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-fmts/src/read/tabular.rs:read_csv,read_tsv"
+        }
+      ]
+    },
+    {
+      "id": "J12",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Tabular Row conversion and CSV/TSV emission were folded into the generic format writer.",
+      "baseline_defect": "write::formats::write owns row validation, per-field scalar validation, CSV quoting, TSV escaping and generic dispatch.",
+      "criterion": "Separate tabular admissibility policy from generic format orchestration without prescribing a particular extraction or validation API.",
+      "acceptance": "Row/field admissibility is expressed coherently as tabular policy rather than embedded procedural validation in generic format dispatch. Typed values, declarative validation, a tabular writer or focused operations qualify. Existing error/output timing remains a preservation constraint; no mandatory helper or separate validation pass is imposed. Encoding ownership is scored separately. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the entire dispatcher while retaining the inline responsibility, or preserving correct outputs without establishing the stated boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-fmts/src/write/formats.rs",
+          "symbol": "write,tabular::Row",
+          "detail": null,
+          "raw": "expanded.diff:jaq-fmts/src/write/formats.rs:write,tabular::Row"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-fmts/src/write/formats.rs",
+          "symbol": "write",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-fmts/src/write/formats.rs:write"
+        }
+      ]
+    },
+    {
+      "id": "J13",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Big integer radix parsing was embedded in Num::from_str_radix.",
+      "baseline_defect": "The public small-integer fallback now contains sign parsing, digit normalization, radix validation and BigUint assembly.",
+      "criterion": "Keep the public small-integer-or-big-integer choice separate from focused big-integer radix decoding.",
+      "acceptance": "The fallback delegates sign/digit/magnitude decoding to a focused operation, allowing the existing 2..=36 radix variation to be handled there. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A one-line wrapper around the unchanged closure inside from_str_radix leaves the decoding body embedded."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-json/src/num.rs",
+          "symbol": "Num::from_str_radix,bigint_from_str_radix,biguint_from_str_radix",
+          "detail": null,
+          "raw": "expanded.diff:jaq-json/src/num.rs:Num::from_str_radix,bigint_from_str_radix,biguint_from_str_radix"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-json/src/num.rs",
+          "symbol": "Num::from_str_radix",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-json/src/num.rs:Num::from_str_radix"
+        }
+      ]
+    },
+    {
+      "id": "J14",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "JSON value parsing absorbed the prior string and number decoding operations.",
+      "baseline_defect": "JSON parse embeds byte/text string accumulation and escape folds in token dispatch; numeric conversion is separately scored.",
+      "criterion": "Separate byte/text string decoding from JSON value-kind dispatch.",
+      "acceptance": "Cohesive string operations own accumulation and escape folds, including byte Unicode rejection, hexadecimal byte escape and text discarded-lexer behavior. Numeric conversion is separately scored. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating the entire dispatcher while retaining the inline responsibility, or preserving correct outputs without establishing the stated boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-json/src/read.rs",
+          "symbol": "parse_string,parse_num,parse",
+          "detail": null,
+          "raw": "expanded.diff:jaq-json/src/read.rs:parse_string,parse_num,parse"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-json/src/read.rs",
+          "symbol": "parse",
+          "detail": null,
+          "raw": "environment/smell.diff:jaq-json/src/read.rs:parse"
+        }
+      ]
+    },
+    {
+      "id": "J15",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 2 batch 3 inlines args and binds separately.",
+      "baseline_defect": "ARGS positional/named object and ENV packaging now sit in main beside IO/execution.",
+      "criterion": "Give ARGS and ENV aggregate construction a focused owner separate from argument-source loading and main execution.",
+      "acceptance": "Materialized values feed an aggregate construction operation; fixing file conversion alone does not earn this item. Equivalent functional, object-based, or existing supported helper boundaries are accepted; exact names and locations are not required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main,args",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main,args",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J16",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage-two parent frame ownership log.",
+      "baseline_defect": "Both declaration paths manipulate parent argument arrays, function frames and variable bases directly around body compilation.",
+      "criterion": "Own parent-frame entry, argument recovery and reverse cleanup within a coherent scope operation.",
+      "acceptance": "Parent argument/frame lifetime has a coherent owner or equivalent state model, so body compilation no longer directly coordinates the old frame internals. Guards, persistent frames, encapsulated state transitions or another design qualify. Merely moving the complete definition body while retaining the original dispersed frame handling is insufficient; no extra nested helper is mandatory. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::module,Compiler::term Def,Locals::push_parent,pop_parent",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::module,Compiler::term Def,Locals::push_parent,pop_parent",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J17",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 3 batch 1 collapses nested term allocation in several scope branches.",
+      "baseline_defect": "Branches repeat placeholder insertion, recursive term lowering, tail-set assertion and LUT overwrite.",
+      "criterion": "Centralize nested term reservation, lowering and publication behind a focused compiler operation.",
+      "acceptance": "Label, fold update/projection and pipe-right consumers no longer duplicate allocation/publication mechanics. Scope push/pop extraction alone is insufficient. Equivalent functional, object-based, or existing supported helper boundaries are accepted; exact names and locations are not required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term Label,Fold,Pipe;Compiler::iterm_tr",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::term Label,Fold,Pipe;Compiler::iterm_tr",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J18",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 1 batch 5 explicitly expands variable and formatter identifier scanning.",
+      "baseline_defect": "token embeds prefix removal, identifier validation and consumed-span construction for $ and @.",
+      "criterion": "Separate prefixed identifier scanning and source-span production from token classification.",
+      "acceptance": "The existing variable/formatter variation uses a focused scanner, preserving its failure suffix. Numeric scanning repair does not satisfy this point. Equivalent functional, object-based, or existing supported helper boundaries are accepted; exact names and locations are not required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/load/lex.rs",
+          "symbol": "Lexer::token,ident1,consumed",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/load/lex.rs",
+          "symbol": "Lexer::token,ident1,consumed",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J19",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "String-recovery deepening log.",
+      "baseline_defect": "String traversal embeds escape decoding, Unicode cursor rollback and interpolation span capture with outer-loop continue transfers.",
+      "criterion": "Give escape decoding and its recovery outcome a cohesive boundary consumed by string traversal.",
+      "acceptance": "The boundary owns success/failure cursor decisions and interpolation handoff; traversal does not retain the full escape state machine. Preserving errors alone is insufficient. Equivalent functional, object-based, or existing supported helper boundaries are accepted; exact names and locations are not required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/load/lex.rs",
+          "symbol": "Lexer::string,escape",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/load/lex.rs",
+          "symbol": "Lexer::string,escape",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J20",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Module dependency publication deepening log.",
+      "baseline_defect": "Prelude insertion, module/data import partition, missing-import collection and publication decisions are copied into main and recursive loader paths.",
+      "criterion": "Own parsed dependency mapping and its result as a focused operation used by main and imported modules.",
+      "acceptance": "Main and imported module flows no longer duplicate dependency partition, prelude insertion and publication policy. Mapping values, iterator composition, callbacks or a unified dependency flow qualify; a separately returned mapping result is optional. Continuing later dependencies and retaining transitive successes on parent failure remain behavioral constraints. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "Loader::load,Loader::find,parse::Module::map",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "Loader::load,Loader::find,parse::Module::map",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J21",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage-two CSV/TSV logs remove Field and inline typed publication.",
+      "baseline_defect": "Rows each interpret quoted/escaped status with bytes to choose string, null, Boolean or numeric values.",
+      "criterion": "Give field-to-value interpretation a coherent boundary shared by tabular readers.",
+      "acceptance": "Quoted/escaped fields remain strings and unescaped scalar inference is owned separately from byte scanning and row publication; copying the if-chain into each scanner is insufficient. Equivalent functional, object-based, or existing supported helper boundaries are accepted; exact names and locations are not required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-fmts/src/read/tabular.rs",
+          "symbol": "read_csv,read_tsv,Field,From<Field>",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-fmts/src/read/tabular.rs",
+          "symbol": "read_csv,read_tsv,Field,From<Field>",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J22",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 1 batch 3 collapses field/string encoding into generic writer.",
+      "baseline_defect": "Generic format dispatch implements CSV doubled quotes and TSV multi-pattern escaping plus field separators.",
+      "criterion": "Delegate tabular field encoding and delimiter emission to focused serialization operations.",
+      "acceptance": "CSV and TSV encoding variations are maintained behind the tabular boundary; extracting validation alone does not satisfy encoding ownership. Preserve write_fmt dispatch as a constraint, not a separate point. Equivalent functional, object-based, or existing supported helper boundaries are accepted; exact names and locations are not required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-fmts/src/write/formats.rs",
+          "symbol": "write,tabular::Row::write_csv,tabular::Row::write_tsv",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-fmts/src/write/formats.rs",
+          "symbol": "write,tabular::Row::write_csv,tabular::Row::write_tsv",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J23",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 1 batch 1 explicitly inlines numeric conversion separately from string decoding.",
+      "baseline_defect": "Value-kind dispatch embeds signed Infinity recognition and integer-versus-decimal conversion.",
+      "criterion": "Separate numeric token conversion from JSON value dispatch.",
+      "acceptance": "A focused numeric operation owns signed parsing and numeric construction; restoring string helpers alone does not satisfy this item. Equivalent functional, object-based, or existing supported helper boundaries are accepted; exact names and locations are not required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-json/src/read.rs",
+          "symbol": "parse,parse_num",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-json/src/read.rs",
+          "symbol": "parse,parse_num",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J24",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 3 batch 3 expands sequence whitespace/comment scanning.",
+      "baseline_defect": "Memory and streaming sequence consumers duplicate whitespace/comment loops before parsing and error attribution.",
+      "criterion": "Factor sequence whitespace and comment scanning into a focused lexical operation used by both sequence consumers.",
+      "acceptance": "Consumers retain memory-offset and IO-error policies while sharing scanning; stream IO error priority remains a constraint. Equivalent functional, object-based, or existing supported helper boundaries are accepted; exact names and locations are not required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-json/src/read.rs",
+          "symbol": "parse_many,read_many,ws_tk",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-json/src/read.rs",
+          "symbol": "parse_many,read_many,ws_tk",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J25",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 3 batch 2 and breadth_rescan explicitly identify changed stdout lifecycle.",
+      "baseline_defect": "Stdin, per-file and REPL line consumers inline terminal lock versus BufWriter selection and lifetime handling.",
+      "criterion": "Coordinate terminal versus buffered stdout lifetime through a shared output boundary across CLI and REPL.",
+      "acceptance": "Terminal-versus-buffered stdout selection and resource lifetime are coherently owned across CLI and REPL instead of separately managed in each consumer. Resource objects, RAII, higher-order execution or another shared design qualify; a callback/adaptor interface is optional. Tempfile persistence is not a scored repair. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main;jaq/src/funs.rs::repl",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main;jaq/src/funs.rs::repl",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/funs.rs",
+          "symbol": "repl",
+          "detail": "REPL stdout lifecycle consumer",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "J26",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 1 batch 2 expands json_array in binding and imported-data consumers.",
+      "baseline_defect": "Slurpfile and CLI/REPL imported JSON each embed load_file, parse_many, IO conversion and collection.",
+      "criterion": "Restore a focused file-to-JSON-array boundary used by binding and import consumers.",
+      "acceptance": "Path-specific outer error attribution remains with callers; shared JSON loading/parsing/collection is not copied into each workflow. General compilation extraction alone does not satisfy this point. Equivalent functional, object-based, or existing supported helper boundaries are accepted; exact names and locations are not required. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A cosmetic wrapper, unchanged whole-block relocation, or behavior preservation without separating the specified responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main slurpfile and import closure",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/main.rs",
+          "symbol": "real_main slurpfile and import closure",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq/src/funs.rs",
+          "symbol": "repl load::import closure",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "01mf02_jaq_dim",
+    "scoring": "equal_weight_per_item"
+  }
+}

@@ -1,0 +1,1318 @@
+diff --git a/src/code/snippet.rs b/src/code/snippet.rs
+index 0bd0d8a..cb136a0 100644
+--- a/src/code/snippet.rs
++++ b/src/code/snippet.rs
+@@ -89,9 +89,7 @@ impl SnippetLine {
+         font_size: u8,
+     ) -> WeightedLine {
+         let mut line = code_highlighter.style_line(&self.code, block_style);
++        line.apply_style(&TextStyle::default().size(font_size));
+-        for chunk in &mut line.0 {
+-            chunk.style.size = chunk.style.size.max(font_size.min(16));
+-        }
+         line.into()
+     }
+ 
+diff --git a/src/markdown/elements.rs b/src/markdown/elements.rs
+index 68760db..6245ff7 100644
+--- a/src/markdown/elements.rs
++++ b/src/markdown/elements.rs
+@@ -1,4 +1,4 @@
++use super::text_style::{Color, TextStyle, UndefinedPaletteColorError};
+-use super::text_style::{Color, Colors, TextStyle, UndefinedPaletteColorError};
+ use crate::theme::{ColorPalette, raw::RawColor};
+ use comrak::nodes::AlertType;
+ use std::{fmt, iter, path::PathBuf, str::FromStr};
+@@ -132,9 +132,7 @@ impl Line<RawColor> {
+     pub(crate) fn resolve(self, palette: &ColorPalette) -> Result<Line<Color>, UndefinedPaletteColorError> {
+         let mut output = Vec::with_capacity(self.0.len());
+         for text in self.0 {
++            let style = text.style.resolve(palette)?;
+-            let background = text.style.colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = text.style.colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let style = TextStyle { flags: text.style.flags, size: text.style.size, colors: Colors { foreground, background } };
+             output.push(Text::new(text.content, style));
+         }
+         Ok(Line(output))
+diff --git a/src/markdown/text_style.rs b/src/markdown/text_style.rs
+index 8486251..f9124a3 100644
+--- a/src/markdown/text_style.rs
++++ b/src/markdown/text_style.rs
+@@ -12,7 +12,7 @@ use std::{
+ /// The style of a piece of text.
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub(crate) struct TextStyle<C = Color> {
++    flags: u8,
+-    pub(crate) flags: u8,
+     pub(crate) colors: Colors<C>,
+     pub(crate) size: u8,
+ }
+diff --git a/src/presentation/builder/frontmatter.rs b/src/presentation/builder/frontmatter.rs
+index ecf1362..4a14a36 100644
+--- a/src/presentation/builder/frontmatter.rs
++++ b/src/presentation/builder/frontmatter.rs
+@@ -3,7 +3,7 @@ use crate::{
+     markdown::{
+         elements::{Line, Text},
+         parse::MarkdownParser,
++        text_style::TextStyle,
+-        text_style::{Colors, TextStyle},
+     },
+     presentation::{
+         PresentationMetadata, PresentationThemeMetadata,
+@@ -135,14 +135,14 @@ impl PresentationBuilder<'_, '_> {
+         self.chunk_operations.push(RenderOperation::JumpToVerticalCenter);
+         if let Some(title_lines) = title_lines {
+             for line in title_lines {
++                self.push_text(line, ElementType::PresentationTitle);
+-                self.push_aligned_text(line, self.slide_state.alignment.or(self.theme.intro_slide.title.alignment).unwrap_or(self.theme.default_style.alignment));
+                 self.push_line_break();
+             }
+         }
+ 
+         if let Some(sub_title_lines) = sub_title_lines {
+             for line in sub_title_lines {
++                self.push_text(line, ElementType::PresentationSubTitle);
+-                self.push_aligned_text(line, self.slide_state.alignment.or(self.theme.intro_slide.subtitle.alignment).unwrap_or(self.theme.default_style.alignment));
+                 self.push_line_break();
+             }
+         }
+@@ -177,15 +177,7 @@ impl PresentationBuilder<'_, '_> {
+     }
+ 
+     fn push_intro_slide_text(&mut self, text: Text, element_type: ElementType) {
++        self.push_text(Line::from(text), element_type);
+-        let alignment = match element_type {
+-            ElementType::PresentationEvent => self.theme.intro_slide.event.alignment,
+-            ElementType::PresentationLocation => self.theme.intro_slide.location.alignment,
+-            ElementType::PresentationDate => self.theme.intro_slide.date.alignment,
+-            ElementType::PresentationAuthor => self.theme.intro_slide.author.alignment,
+-            other => Some(self.theme.alignment(&other)),
+-        };
+-        let alignment = self.slide_state.alignment.or(alignment).unwrap_or(self.theme.default_style.alignment);
+-        self.push_aligned_text(Line::from(text), alignment);
+         self.push_line_break();
+     }
+ 
+@@ -207,23 +199,9 @@ impl PresentationBuilder<'_, '_> {
+                 )
+             })?;
+ 
++            let mut line = line.resolve(&self.theme.palette)?;
++            line.apply_style(style);
++            lines.push(line);
+-            let mut chunks = Vec::with_capacity(line.0.len());
+-            for chunk in line.0 {
+-                let background = chunk.style.colors.background.clone()
+-                    .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-                let foreground = chunk.style.colors.foreground.clone()
+-                    .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-                let colors = Colors {
+-                    background: background.or(style.colors.background),
+-                    foreground: foreground.or(style.colors.foreground),
+-                };
+-                chunks.push(Text::new(chunk.content, TextStyle {
+-                    flags: chunk.style.flags | style.flags,
+-                    size: chunk.style.size.max(style.size),
+-                    colors,
+-                }));
+-            }
+-            lines.push(Line(chunks));
+         }
+         Ok(lines)
+     }
+diff --git a/src/presentation/builder/heading.rs b/src/presentation/builder/heading.rs
+index 54ef2e7..75b9ffc 100644
+--- a/src/presentation/builder/heading.rs
++++ b/src/presentation/builder/heading.rs
+@@ -1,5 +1,5 @@
+ use crate::{
++    markdown::elements::{Line, Text},
+-    markdown::{elements::{Line, Text}, text_style::{Colors, TextStyle}},
+     presentation::builder::{BuildResult, LastElement, PresentationBuilder},
+     theme::{ElementType, raw::RawColor},
+     ui::separator::RenderSeparator,
+@@ -14,37 +14,21 @@ impl PresentationBuilder<'_, '_> {
+         let mut style = self.theme.slide_title.clone();
+         self.push_line_breaks(style.padding_top as usize);
+         for (index, title_line) in text.into_iter().enumerate() {
++            let mut title_line = title_line.resolve(&self.theme.palette)?;
++            self.slide_state.title.get_or_insert_with(|| title_line.clone());
++
+-            let mut original = Line::default();
+-            let mut rendered = Line::default();
+-            if let Some(font_size) = self.slide_state.font_size {
+-                style.style = style.style.size(font_size);
+-            }
+-            for chunk in title_line.0 {
+-                let background = chunk.style.colors.background
+-                    .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-                let mut rendered_style = style.style;
+-                rendered_style.flags |= chunk.style.flags;
+-                rendered_style.size = rendered_style.size.max(chunk.style.size);
+-                rendered_style.colors.background = background.or(rendered_style.colors.background);
+-                let foreground = chunk.style.colors.foreground
+-                    .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-                original.0.push(Text::new(chunk.content.clone(), TextStyle {
+-                    flags: chunk.style.flags, size: chunk.style.size, colors: Colors { background, foreground },
+-                }));
+-                rendered_style.colors.foreground = foreground.or(rendered_style.colors.foreground);
+-                rendered.0.push(Text::new(chunk.content, rendered_style));
+-            }
+-            self.slide_state.title.get_or_insert(original);
+             if let (prefix, 0) = (&style.prefix, index) {
+                 if !prefix.is_empty() {
+                     let mut prefix = prefix.clone();
+                     prefix.push(' ');
++                    title_line.0.insert(0, Text::from(prefix));
+-                    let mut prefix_style = style.style;
+-                    prefix_style.size = prefix_style.size.max(1);
+-                    rendered.0.insert(0, Text::new(prefix, prefix_style));
+                 }
+             }
++            if let Some(font_size) = self.slide_state.font_size {
++                style.style = style.style.size(font_size);
++            }
++            title_line.apply_style(&style.style);
++            self.push_text(title_line, ElementType::SlideTitle);
+-            self.push_aligned_text(rendered, self.slide_state.alignment.or(self.theme.slide_title.alignment).unwrap_or(self.theme.default_style.alignment));
+             self.push_line_break();
+         }
+ 
+@@ -68,17 +52,8 @@ impl PresentationBuilder<'_, '_> {
+         {
+             return self.push_slide_title(vec![text]);
+         }
++        let mut text = text.resolve(&self.theme.palette)?;
++        let (element_type, style) = match level {
+-        let mut resolved = Line::default();
+-        for chunk in text.0 {
+-            let background = chunk.style.colors.background
+-                .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-            let foreground = chunk.style.colors.foreground
+-                .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-            resolved.0.push(Text::new(chunk.content, TextStyle {
+-                flags: chunk.style.flags, size: chunk.style.size, colors: Colors { background, foreground },
+-            }));
+-        }
+-        let (_element_type, style) = match level {
+             1 => (ElementType::Heading1, &self.theme.headings.h1),
+             2 => (ElementType::Heading2, &self.theme.headings.h2),
+             3 => (ElementType::Heading3, &self.theme.headings.h3),
+@@ -87,26 +62,16 @@ impl PresentationBuilder<'_, '_> {
+             6 => (ElementType::Heading6, &self.theme.headings.h6),
+             other => panic!("unexpected heading level {other}"),
+         };
+-        let mut text = Line::default();
+         if let Some(prefix) = &style.prefix {
+             if !prefix.is_empty() {
+                 let mut prefix = prefix.clone();
+                 prefix.push(' ');
++                text.0.insert(0, Text::from(prefix));
+-                let mut prefix_style = style.style;
+-                prefix_style.size = prefix_style.size.max(1);
+-                text.0.push(Text::new(prefix, prefix_style));
+             }
+         }
++        text.apply_style(&style.style);
+-        let inherited_style = style.style;
+-        for mut chunk in resolved.0 {
+-            chunk.style.flags |= inherited_style.flags;
+-            chunk.style.size = chunk.style.size.max(inherited_style.size);
+-            chunk.style.colors.background = chunk.style.colors.background.or(inherited_style.colors.background);
+-            chunk.style.colors.foreground = chunk.style.colors.foreground.or(inherited_style.colors.foreground);
+-            text.0.push(chunk);
+-        }
+ 
++        self.push_text(text, element_type);
+-        self.push_aligned_text(text, self.slide_state.alignment.or(style.alignment).unwrap_or(self.theme.default_style.alignment));
+         self.push_line_break();
+         Ok(())
+     }
+diff --git a/src/presentation/builder/list.rs b/src/presentation/builder/list.rs
+index d719492..5889726 100644
+--- a/src/presentation/builder/list.rs
++++ b/src/presentation/builder/list.rs
+@@ -1,7 +1,7 @@
+ use crate::{
+     markdown::{
++        elements::{ListItem, ListItemType, Text},
++        text_style::TextStyle,
+-        elements::{Line, ListItem, ListItemType, Text},
+-        text_style::{Colors, TextStyle},
+     },
+     presentation::builder::{BuildResult, LastElement, PresentationBuilder},
+     render::operation::{BlockLine, RenderOperation},
+@@ -27,7 +27,7 @@ impl PresentationBuilder<'_, '_> {
+ 
+         let block_length =
+             list.iter().map(|l| self.list_item_prefix(l).width() + l.contents.width()).max().unwrap_or_default() as u16;
++        let block_length = block_length * self.slide_font_size() as u16;
+-        let block_length = block_length * (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 }) as u16;
+         let incremental = self.slide_state.incremental_lists.unwrap_or(self.options.incremental_lists);
+         let iter = ListIterator::new(list, start_index);
+         if incremental && self.options.pause_before_incremental_lists {
+@@ -47,41 +47,13 @@ impl PresentationBuilder<'_, '_> {
+ 
+     fn push_list_item(&mut self, index: usize, item: ListItem, block_length: u16) -> BuildResult {
+         let prefix = self.list_item_prefix(&item);
++        let mut text = item.contents.resolve(&self.theme.palette)?;
++        let font_size = self.slide_font_size();
++        for piece in &mut text.0 {
++            self.apply_theme_text_style(piece);
++            piece.style = piece.style.size(font_size);
+-        let mut text = Line::default();
+-        let font_size = (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 });
+-        for raw in item.contents.0 {
+-            let mut inherited_background = raw.style.colors.background
+-                .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-            let foreground = raw.style.colors.foreground
+-                .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-            let mut piece = Text::new(raw.content, TextStyle {
+-                flags: raw.style.flags, size: font_size,
+-                colors: Colors { background: inherited_background, foreground },
+-            });
+-            let mut inherited_foreground = foreground;
+-            if piece.style.is_code() {
+-                let theme_style = self.theme.inline_code.style;
+-                piece.style.flags |= theme_style.flags;
+-                inherited_background = inherited_background.or(theme_style.colors.background);
+-                inherited_foreground = inherited_foreground.or(theme_style.colors.foreground);
+-            }
+-            if piece.style.is_bold() {
+-                let theme_style = self.theme.bold.style;
+-                piece.style.flags |= theme_style.flags;
+-                inherited_background = inherited_background.or(theme_style.colors.background);
+-                inherited_foreground = inherited_foreground.or(theme_style.colors.foreground);
+-            }
+-            if piece.style.is_italics() {
+-                let theme_style = self.theme.italics.style;
+-                piece.style.flags |= theme_style.flags;
+-                inherited_background = inherited_background.or(theme_style.colors.background);
+-                inherited_foreground = inherited_foreground.or(theme_style.colors.foreground);
+-            }
+-            piece.style.colors.background = inherited_background;
+-            piece.style.colors.foreground = inherited_foreground;
+-            text.0.push(piece);
+         }
++        let alignment = self.slide_state.alignment.unwrap_or(self.theme.alignment(&ElementType::List));
+-        let alignment = self.slide_state.alignment.unwrap_or(self.theme.default_style.alignment);
+         self.chunk_operations.push(RenderOperation::RenderBlockLine(BlockLine {
+             prefix: prefix.into(),
+             right_padding_length: 0,
+@@ -100,7 +72,7 @@ impl PresentationBuilder<'_, '_> {
+     }
+ 
+     fn list_item_prefix(&self, item: &ListItem) -> Text {
++        let font_size = self.slide_font_size();
+-        let font_size = (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 });
+         let spaces_per_indent = match item.depth {
+             0 => 3_u8.div_ceil(font_size),
+             _ => {
+diff --git a/src/presentation/builder/mod.rs b/src/presentation/builder/mod.rs
+index f66eb35..50d92a5 100644
+--- a/src/presentation/builder/mod.rs
++++ b/src/presentation/builder/mod.rs
+@@ -383,7 +383,7 @@ impl<'a, 'b> PresentationBuilder<'a, 'b> {
+             MarkdownElement::Alert { alert_type, title, lines } => self.push_alert(alert_type, title, lines)?,
+             MarkdownElement::Footnote(line) => {
+                 let line = line.resolve(&self.theme.palette)?;
++                self.push_text(line, ElementType::Paragraph);
+-                self.push_aligned_text(line, self.slide_state.alignment.or(Some(self.theme.default_style.alignment)).unwrap_or(self.theme.default_style.alignment));
+             }
+         };
+         if should_clear_last {
+@@ -471,8 +471,8 @@ impl<'a, 'b> PresentationBuilder<'a, 'b> {
+     fn push_paragraph(&mut self, lines: Vec<Line<RawColor>>) -> BuildResult {
+         for line in lines {
+             let line = line.resolve(&self.theme.palette)?;
++            self.push_text(line, ElementType::Paragraph);
++            self.push_line_breaks(self.slide_font_size() as usize);
+-            self.push_aligned_text(line, self.slide_state.alignment.or(Some(self.theme.default_style.alignment)).unwrap_or(self.theme.default_style.alignment));
+-            self.push_line_breaks((if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 }) as usize);
+         }
+         Ok(())
+     }
+@@ -483,7 +483,7 @@ impl<'a, 'b> PresentationBuilder<'a, 'b> {
+             self.slide_state.ignore_element_line_break = true;
+         } else {
+             self.chunk_operations.extend([
++                RenderSeparator::new(Line::default(), Default::default(), self.slide_font_size()).into(),
+-                RenderSeparator::new(Line::default(), Default::default(), (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 })).into(),
+                 RenderOperation::RenderLineBreak,
+             ]);
+         }
+@@ -495,33 +495,9 @@ impl<'a, 'b> PresentationBuilder<'a, 'b> {
+     }
+ 
+     fn push_aligned_text(&mut self, mut block: Line, alignment: Alignment) {
++        let default_font_size = self.slide_font_size();
+-        let default_font_size = (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 });
+         for chunk in &mut block.0 {
++            self.apply_theme_text_style(chunk);
+-            let mut inherited_background = chunk.style.colors.background;
+-            let mut inherited_foreground = chunk.style.colors.foreground;
+-            if chunk.style.is_code() {
+-                let theme_style = self.theme.inline_code.style;
+-                chunk.style.flags |= theme_style.flags;
+-                chunk.style.size = chunk.style.size.max(theme_style.size);
+-                inherited_background = inherited_background.or(theme_style.colors.background);
+-                inherited_foreground = inherited_foreground.or(theme_style.colors.foreground);
+-            }
+-            if chunk.style.is_bold() {
+-                let theme_style = self.theme.bold.style;
+-                chunk.style.flags |= theme_style.flags;
+-                chunk.style.size = chunk.style.size.max(theme_style.size);
+-                inherited_background = inherited_background.or(theme_style.colors.background);
+-                inherited_foreground = inherited_foreground.or(theme_style.colors.foreground);
+-            }
+-            if chunk.style.is_italics() {
+-                let theme_style = self.theme.italics.style;
+-                chunk.style.flags |= theme_style.flags;
+-                chunk.style.size = chunk.style.size.max(theme_style.size);
+-                inherited_background = inherited_background.or(theme_style.colors.background);
+-                inherited_foreground = inherited_foreground.or(theme_style.colors.foreground);
+-            }
+-            chunk.style.colors.background = inherited_background;
+-            chunk.style.colors.foreground = inherited_foreground;
+             if default_font_size > 1 {
+                 chunk.style = chunk.style.size(default_font_size);
+             }
+diff --git a/src/presentation/builder/quote.rs b/src/presentation/builder/quote.rs
+index 2131c58..12d6efc 100644
+--- a/src/presentation/builder/quote.rs
++++ b/src/presentation/builder/quote.rs
+@@ -19,7 +19,7 @@ impl PresentationBuilder<'_, '_> {
+             prefix,
+             self.theme.block_quote.base_style.colors,
+             prefix_style,
++            self.theme.alignment(&ElementType::BlockQuote),
+-            self.theme.block_quote.alignment.unwrap_or(self.theme.default_style.alignment),
+         )
+     }
+ 
+@@ -60,51 +60,24 @@ impl PresentationBuilder<'_, '_> {
+         alignment: Alignment,
+     ) -> BuildResult {
+         let block_length = lines.iter().map(|line| line.width() + prefix.width()).max().unwrap_or(0) as u16;
++        let font_size = self.slide_font_size();
+-        let font_size = (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 });
+         let prefix = Text::new(prefix, prefix_style.size(font_size));
+ 
+         for line in lines {
++            let mut line = line.resolve(&self.theme.palette)?;
++            // Apply our colors to each chunk in this line.
++            for text in &mut line.0 {
++                if text.style.colors.background.is_none() && text.style.colors.foreground.is_none() {
+-            let mut rendered = Line::default();
+-            for raw in line.0 {
+-                let background = raw.style.colors.background
+-                    .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-                let foreground = raw.style.colors.foreground
+-                    .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-                let mut text = Text::new(raw.content, TextStyle {
+-                    flags: raw.style.flags, size: font_size, colors: Colors { background, foreground },
+-                });
+-                if background.is_none() && foreground.is_none() {
+                     text.style.colors = base_colors;
++                    self.apply_theme_text_style(text);
+-                    let mut inherited_background = text.style.colors.background;
+-                    let mut inherited_foreground = text.style.colors.foreground;
+-                    if text.style.is_code() {
+-                        let theme_style = self.theme.inline_code.style;
+-                        text.style.flags |= theme_style.flags;
+-                        inherited_background = inherited_background.or(theme_style.colors.background);
+-                        inherited_foreground = inherited_foreground.or(theme_style.colors.foreground);
+-                    }
+-                    if text.style.is_bold() {
+-                        let theme_style = self.theme.bold.style;
+-                        text.style.flags |= theme_style.flags;
+-                        inherited_background = inherited_background.or(theme_style.colors.background);
+-                        inherited_foreground = inherited_foreground.or(theme_style.colors.foreground);
+-                    }
+-                    if text.style.is_italics() {
+-                        let theme_style = self.theme.italics.style;
+-                        text.style.flags |= theme_style.flags;
+-                        inherited_background = inherited_background.or(theme_style.colors.background);
+-                        inherited_foreground = inherited_foreground.or(theme_style.colors.foreground);
+-                    }
+-                    text.style.colors.background = inherited_background;
+-                    text.style.colors.foreground = inherited_foreground;
+                 }
++                text.style = text.style.size(font_size);
+-                rendered.0.push(text);
+             }
+             self.chunk_operations.push(RenderOperation::RenderBlockLine(BlockLine {
+                 prefix: prefix.clone().into(),
+                 right_padding_length: 0,
+                 repeat_prefix_on_wrap: true,
++                text: line.into(),
+-                text: rendered.into(),
+                 block_length,
+                 alignment,
+                 block_color: base_colors.background,
+diff --git a/src/presentation/builder/snippet.rs b/src/presentation/builder/snippet.rs
+index 0501684..6b338a9 100644
+--- a/src/presentation/builder/snippet.rs
++++ b/src/presentation/builder/snippet.rs
+@@ -172,7 +172,7 @@ impl PresentationBuilder<'_, '_> {
+     fn push_code_lines(&mut self, snippet: &Snippet) -> u16 {
+         let lines = SnippetSplitter::new(&self.theme.code, self.snippet_executor.hidden_line_prefix(&snippet.language))
+             .split(snippet);
++        let block_length = lines.iter().map(|line| line.width()).max().unwrap_or(0) * self.slide_font_size() as usize;
+-        let block_length = lines.iter().map(|line| line.width()).max().unwrap_or(0) * (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 }) as usize;
+         let block_length = block_length as u16;
+         let (lines, context) = self.highlight_lines(snippet, lines, block_length);
+         for line in lines {
+@@ -275,7 +275,7 @@ impl PresentationBuilder<'_, '_> {
+         let mut code_highlighter = self.highlighter.language_highlighter(&code.language);
+         let style = self.code_style(code);
+         let block_length = self.theme.code.alignment.adjust_size(block_length);
++        let font_size = self.slide_font_size();
+-        let font_size = (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 });
+         let dim_style = {
+             let mut highlighter = self.highlighter.language_highlighter(&SnippetLanguage::Rust);
+             highlighter.style_line("//", &style).0.first().expect("no styles").style.size(font_size)
+@@ -350,7 +350,7 @@ impl PresentationBuilder<'_, '_> {
+             executor,
+             self.theme.execution_output.status,
+             block_length,
++            self.slide_font_size(),
+-            (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 }),
+         );
+         let operation = RenderOperation::RenderAsync(Rc::new(operation));
+         self.chunk_operations.push(operation);
+@@ -361,7 +361,7 @@ impl PresentationBuilder<'_, '_> {
+         let style = ExecIndicatorStyle {
+             theme: self.theme.execution_output.status,
+             block_length,
++            font_size: self.slide_font_size(),
+-            font_size: (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 }),
+             alignment,
+         };
+         let indicator = Rc::new(ExecIndicator::new(handle, style));
+@@ -382,7 +382,7 @@ impl PresentationBuilder<'_, '_> {
+             execution_output_style,
+             block_length,
+             alignment,
++            self.slide_font_size(),
+-            (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 }),
+         );
+         let operation = RenderOperation::RenderDynamic(Rc::new(operation));
+         self.chunk_operations.push(operation);
+@@ -395,7 +395,7 @@ impl PresentationBuilder<'_, '_> {
+         if snippet.attributes.no_background {
+             style.style.colors.background = None;
+         }
++        let operation = PtySnippetOutputOperation::new(handle, style, self.slide_font_size());
+-        let operation = PtySnippetOutputOperation::new(handle, style, (if self.options.theme_options.font_size_supported { self.slide_state.font_size.unwrap_or(1).clamp(1, 7) } else { 1 }));
+         let operation = RenderOperation::RenderDynamic(Rc::new(operation));
+         self.chunk_operations.push(operation);
+         Ok(())
+diff --git a/src/presentation/builder/table.rs b/src/presentation/builder/table.rs
+index b11ed6a..a43378f 100644
+--- a/src/presentation/builder/table.rs
++++ b/src/presentation/builder/table.rs
+@@ -1,5 +1,5 @@
+ use crate::{
++    markdown::elements::{Line, Table, TableColumnAlignment, Text},
+-    markdown::{elements::{Line, Table, TableColumnAlignment, Text}, text_style::{Colors, TextStyle}},
+     presentation::builder::{BuildResult, PresentationBuilder, error::BuildError},
+     theme::{ElementType, raw::RawColor},
+ };
+@@ -18,7 +18,7 @@ impl PresentationBuilder<'_, '_> {
+         if incremental && self.options.pause_before_incremental_tables {
+             self.push_pause();
+         }
++        self.push_text(flattened_header, ElementType::Table);
+-        self.push_aligned_text(flattened_header, self.slide_state.alignment.or(self.theme.table).unwrap_or(self.theme.default_style.alignment));
+         self.push_line_break();
+ 
+         let mut separator = Line(Vec::new());
+@@ -36,7 +36,7 @@ impl PresentationBuilder<'_, '_> {
+             separator.0.push(Text::from(contents));
+         }
+ 
++        self.push_text(separator, ElementType::Table);
+-        self.push_aligned_text(separator, self.slide_state.alignment.or(self.theme.table).unwrap_or(self.theme.default_style.alignment));
+         self.push_line_break();
+ 
+         for row in table.rows {
+@@ -44,7 +44,7 @@ impl PresentationBuilder<'_, '_> {
+                 self.push_pause();
+             }
+             let flattened_row = self.prepare_table_row(row.0, alignments.iter().copied(), &widths)?;
++            self.push_text(flattened_row, ElementType::Table);
+-            self.push_aligned_text(flattened_row, self.slide_state.alignment.or(self.theme.table).unwrap_or(self.theme.default_style.alignment));
+             self.push_line_break();
+         }
+         if incremental && self.options.pause_after_incremental_tables {
+@@ -60,24 +60,11 @@ impl PresentationBuilder<'_, '_> {
+     {
+         let mut flattened_row = Line(Vec::new());
+         for (column, (text, alignment)) in texts.into_iter().zip(alignments).enumerate() {
++            let text = text.resolve(&self.theme.palette)?;
+-            let mut cells = Vec::with_capacity(text.0.len());
+-            let mut text_length = 0;
+-            for chunk in text.0 {
+-                let background = chunk.style.colors.background
+-                    .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-                let mut cell = Text::new(chunk.content, TextStyle {
+-                    flags: chunk.style.flags, size: chunk.style.size,
+-                    colors: Colors { background, foreground: None },
+-                });
+-                text_length += cell.width();
+-                cell.style.colors.foreground = chunk.style.colors.foreground
+-                    .map(|color| color.resolve(&self.theme.palette)).transpose()?.flatten();
+-                cells.push(cell);
+-            }
+-            let text = Line(cells);
+             if column > 0 {
+                 flattened_row.0.push(Text::from(" │ "));
+             }
++            let text_length = text.width();
+             let cell_width = widths[column];
+             let padding = cell_width.saturating_sub(text_length);
+             if padding == 0 {
+diff --git a/src/render/engine.rs b/src/render/engine.rs
+index 1c10d13..de867a0 100644
+--- a/src/render/engine.rs
++++ b/src/render/engine.rs
+@@ -87,12 +87,7 @@ where
+         let mut start_column = 0;
+         if dimensions.columns > options.max_size.max_columns {
+             let extra_width = dimensions.columns - options.max_size.max_columns;
++            dimensions = dimensions.shrink_columns(extra_width);
+-            dimensions = {
+-            let size = dimensions;
+-            let amount = extra_width;
+-            let pixels = ((size.width as f64 / size.columns as f64) * amount as f64) as u16;
+-            WindowSize { columns: size.columns.saturating_sub(amount), width: size.width.saturating_sub(pixels), ..size }
+-        };
+             start_column = match options.max_size.max_columns_alignment {
+                 MaxColumnsAlignment::Left => 0,
+                 MaxColumnsAlignment::Center => extra_width / 2,
+@@ -101,12 +96,7 @@ where
+         }
+         if dimensions.rows > options.max_size.max_rows {
+             let extra_height = dimensions.rows - options.max_size.max_rows;
++            dimensions = dimensions.shrink_rows(extra_height);
+-            dimensions = {
+-            let size = dimensions;
+-            let amount = extra_height;
+-            let pixels = ((size.height as f64 / size.rows as f64) * amount as f64) as u16;
+-            WindowSize { rows: size.rows.saturating_sub(amount), height: size.height.saturating_sub(pixels), ..size }
+-        };
+             start_row = match options.max_size.max_rows_alignment {
+                 MaxRowsAlignment::Top => 0,
+                 MaxRowsAlignment::Center => extra_height / 2,
+@@ -178,14 +168,7 @@ where
+ 
+     fn current_available_dimensions(&self) -> WindowSize {
+         let rect = self.current_rect();
++        rect.dimensions.shrink_rows(self.terminal.cursor_row())
+-        let used_rows = self.terminal.cursor_row();
+-        let removed_pixels =
+-            ((rect.dimensions.height as f64 / rect.dimensions.rows as f64) * used_rows as f64) as u16;
+-        WindowSize {
+-            rows: rect.dimensions.rows.saturating_sub(used_rows),
+-            height: rect.dimensions.height.saturating_sub(removed_pixels),
+-            ..rect.dimensions
+-        }
+     }
+ 
+     fn clear_screen(&mut self) -> RenderResult {
+@@ -199,25 +182,8 @@ where
+     fn apply_margin(&mut self, properties: &MarginProperties) -> RenderResult {
+         let MarginProperties { horizontal: horizontal_margin, top, bottom } = properties;
+         let current = self.current_rect();
++        let margin = horizontal_margin.as_characters(current.dimensions.columns);
++        let new_rect = current.shrink_horizontal(margin).shrink_bottom(*bottom).shrink_top(*top);
+-        let margin = match *horizontal_margin {
+-            Margin::Fixed(value) => value,
+-            Margin::Percent(percent) => (current.dimensions.columns as f64 * (percent as f64 / 100.0)).ceil() as u16,
+-        };
+-        let horizontal_cells = margin.saturating_mul(2);
+-        let horizontal_pixels = ((current.dimensions.width as f64 / current.dimensions.columns as f64)
+-            * horizontal_cells as f64) as u16;
+-        let start_column = current.start_column + margin;
+-        let mut dimensions = current.dimensions;
+-        dimensions.width = dimensions.width.saturating_sub(horizontal_pixels);
+-        dimensions.columns = dimensions.columns.saturating_sub(horizontal_cells);
+-        let bottom_pixels = ((dimensions.height as f64 / dimensions.rows as f64) * *bottom as f64) as u16;
+-        dimensions.height = dimensions.height.saturating_sub(bottom_pixels);
+-        dimensions.rows = dimensions.rows.saturating_sub(*bottom);
+-        let top_pixels = ((dimensions.height as f64 / dimensions.rows as f64) * *top as f64) as u16;
+-        let start_row = current.start_row.saturating_add(*top);
+-        dimensions.height = dimensions.height.saturating_sub(top_pixels);
+-        dimensions.rows = dimensions.rows.saturating_sub(*top);
+-        let new_rect = WindowRect { dimensions, start_column, start_row };
+         if new_rect.start_row != self.terminal.cursor_row() {
+             self.terminal.execute(&TerminalCommand::MoveToRow(new_rect.start_row))?;
+         }
+@@ -307,12 +273,7 @@ where
+             ImageSize::Specific(columns, rows) => (columns, rows),
+             ImageSize::WidthScaled { ratio } => {
+                 let extra_columns = (rect.dimensions.columns as f64 * (1.0 - ratio)).ceil() as u16;
++                let dimensions = rect.dimensions.shrink_columns(extra_columns);
+-                let dimensions = {
+-            let size = rect.dimensions;
+-            let amount = extra_columns;
+-            let pixels = ((size.width as f64 / size.columns as f64) * amount as f64) as u16;
+-            WindowSize { columns: size.columns.saturating_sub(amount), width: size.width.saturating_sub(pixels), ..size }
+-        };
+                 let image_scale =
+                     self.image_scaler.scale_image(&dimensions, &rect.dimensions, width, height, &starting_cursor);
+                 (image_scale.columns, image_scale.rows)
+@@ -329,8 +290,8 @@ where
+             columns,
+             rows,
+             z_index: properties.z_index,
++            column_width: rect.dimensions.pixels_per_column() as u16,
++            row_height: rect.dimensions.pixels_per_row() as u16,
+-            column_width: (rect.dimensions.width as f64 / rect.dimensions.columns as f64) as u16,
+-            row_height: (rect.dimensions.height as f64 / rect.dimensions.rows as f64) as u16,
+             background_color: properties.background_color,
+         };
+         self.terminal.execute(&TerminalCommand::PrintImage { image: image.clone(), options })?;
+@@ -448,42 +409,22 @@ where
+         let column = &columns[column_index];
+         let current_rect = self.current_rect();
+         let total_columns = column.end_column.saturating_sub(column.start_column);
++        let new_size = current_rect
++            .dimensions
++            .set_columns(total_columns)
++            .shrink_rows(column.current_row.saturating_sub(current_rect.start_row));
+-        let consumed_rows = column.current_row.saturating_sub(current_rect.start_row);
+-        let column_pixels = ((current_rect.dimensions.width as f64 / current_rect.dimensions.columns as f64)
+-            * total_columns as f64) as u16;
+-        let consumed_pixels = ((current_rect.dimensions.height as f64 / current_rect.dimensions.rows as f64)
+-            * consumed_rows as f64) as u16;
+-        let new_size = WindowSize {
+-            columns: total_columns,
+-            width: column_pixels,
+-            rows: current_rect.dimensions.rows.saturating_sub(consumed_rows),
+-            height: current_rect.dimensions.height.saturating_sub(consumed_pixels),
+-        };
+         let mut dimensions =
+             WindowRect { dimensions: new_size, start_column: column.start_column, start_row: column.current_row };
+ 
++        let total_margin = margin.as_characters(self.window_rects[0].dimensions.columns);
++        if column_index == 0 {
++            dimensions = dimensions.shrink_right(total_margin);
+-        let total_margin = match margin {
+-            Margin::Fixed(value) => value,
+-            Margin::Percent(percent) =>
+-                (self.window_rects[0].dimensions.columns as f64 * (percent as f64 / 100.0)).ceil() as u16,
+-        };
+-        let (left_margin, right_margin) = if column_index == 0 {
+-            (0, total_margin)
+         } else if column_index == columns.len() - 1 {
++            dimensions = dimensions.shrink_left(total_margin);
+-            (total_margin, 0)
+         } else {
+             let margin = total_margin / 2;
++            dimensions = dimensions.shrink_left(margin).shrink_right(margin);
++        }
+-            (margin, margin)
+-        };
+-        let left_pixels = ((dimensions.dimensions.width as f64 / dimensions.dimensions.columns as f64)
+-            * left_margin as f64) as u16;
+-        dimensions.start_column = dimensions.start_column.saturating_add(left_margin);
+-        dimensions.dimensions.width = dimensions.dimensions.width.saturating_sub(left_pixels);
+-        dimensions.dimensions.columns = dimensions.dimensions.columns.saturating_sub(left_margin);
+-        let right_pixels = ((dimensions.dimensions.width as f64 / dimensions.dimensions.columns as f64)
+-            * right_margin as f64) as u16;
+-        dimensions.dimensions.columns = dimensions.dimensions.columns.saturating_sub(right_margin);
+-        dimensions.dimensions.width = dimensions.dimensions.width.saturating_sub(right_pixels);
+ 
+         self.window_rects.push(dimensions);
+         self.terminal.execute(&TerminalCommand::MoveToRow(column.current_row))?;
+@@ -562,55 +503,30 @@ struct WindowRect {
+ 
+ impl WindowRect {
+     fn shrink_horizontal(&self, margin: u16) -> Self {
++        let dimensions = self.dimensions.shrink_columns(margin.saturating_mul(2));
+-        let dimensions = {
+-            let size = self.dimensions;
+-            let amount = margin.saturating_mul(2);
+-            let pixels = ((size.width as f64 / size.columns as f64) * amount as f64) as u16;
+-            WindowSize { columns: size.columns.saturating_sub(amount), width: size.width.saturating_sub(pixels), ..size }
+-        };
+         let start_column = self.start_column + margin;
+         Self { dimensions, start_column, start_row: self.start_row }
+     }
+ 
+     fn shrink_left(&self, size: u16) -> Self {
++        let dimensions = self.dimensions.shrink_columns(size);
+-        let dimensions = {
+-            let amount = size;
+-            let size = self.dimensions;
+-            let pixels = ((size.width as f64 / size.columns as f64) * amount as f64) as u16;
+-            WindowSize { columns: size.columns.saturating_sub(amount), width: size.width.saturating_sub(pixels), ..size }
+-        };
+         let start_column = self.start_column.saturating_add(size);
+         Self { dimensions, start_column, start_row: self.start_row }
+     }
+ 
+     fn shrink_right(&self, size: u16) -> Self {
++        let dimensions = self.dimensions.shrink_columns(size);
+-        let dimensions = {
+-            let amount = size;
+-            let size = self.dimensions;
+-            let pixels = ((size.width as f64 / size.columns as f64) * amount as f64) as u16;
+-            WindowSize { columns: size.columns.saturating_sub(amount), width: size.width.saturating_sub(pixels), ..size }
+-        };
+         Self { dimensions, start_column: self.start_column, start_row: self.start_row }
+     }
+ 
+     fn shrink_top(&self, rows: u16) -> Self {
++        let dimensions = self.dimensions.shrink_rows(rows);
+-        let dimensions = {
+-            let size = self.dimensions;
+-            let amount = rows;
+-            let pixels = ((size.height as f64 / size.rows as f64) * amount as f64) as u16;
+-            WindowSize { rows: size.rows.saturating_sub(amount), height: size.height.saturating_sub(pixels), ..size }
+-        };
+         let start_row = self.start_row.saturating_add(rows);
+         Self { dimensions, start_column: self.start_column, start_row }
+     }
+ 
+     fn shrink_bottom(&self, rows: u16) -> Self {
++        let dimensions = self.dimensions.shrink_rows(rows);
+-        let dimensions = {
+-            let size = self.dimensions;
+-            let amount = rows;
+-            let pixels = ((size.height as f64 / size.rows as f64) * amount as f64) as u16;
+-            WindowSize { rows: size.rows.saturating_sub(amount), height: size.height.saturating_sub(pixels), ..size }
+-        };
+         Self { dimensions, start_column: self.start_column, start_row: self.start_row }
+     }
+ }
+diff --git a/src/render/layout.rs b/src/render/layout.rs
+index 08aa484..9d93d03 100644
+--- a/src/render/layout.rs
++++ b/src/render/layout.rs
+@@ -1,4 +1,4 @@
++use crate::{render::properties::WindowSize, theme::Alignment};
+-use crate::{render::properties::WindowSize, theme::{Alignment, Margin}};
+ 
+ #[derive(Debug)]
+ pub(crate) struct Layout {
+@@ -28,44 +28,30 @@ impl Layout {
+         let mut start_column;
+         match &self.alignment {
+             Alignment::Left { margin } => {
++                let margin = margin.as_characters(dimensions.columns);
+-                start_column = match *margin {
+-                    Margin::Fixed(value) => value,
+-                    Margin::Percent(percent) => (dimensions.columns as f64 * (percent as f64 / 100.0)).ceil() as u16,
+-                };
+                 // Ignore the margin if it's larger than the screen: we can't satisfy it so we
+                 // might as well not do anything about it.
++                let margin = Self::fit_to_columns(dimensions, margin.saturating_mul(2), margin);
++                start_column = margin;
++                max_line_length = dimensions.columns - margin.saturating_mul(2);
+-                if start_column.saturating_mul(2) > dimensions.columns {
+-                    start_column = 0;
+-                }
+-                max_line_length = dimensions.columns - start_column.saturating_mul(2);
+             }
+             Alignment::Right { margin } => {
++                let margin = margin.as_characters(dimensions.columns);
++                let margin = Self::fit_to_columns(dimensions, margin.saturating_mul(2), margin);
++                start_column = dimensions.columns.saturating_sub(margin).saturating_sub(text_length).max(margin);
++                max_line_length = (dimensions.columns - margin) - start_column;
+-                let margin = match *margin {
+-                    Margin::Fixed(value) => value,
+-                    Margin::Percent(percent) => (dimensions.columns as f64 * (percent as f64 / 100.0)).ceil() as u16,
+-                };
+-                let right_edge = if margin.saturating_mul(2) > dimensions.columns {
+-                    dimensions.columns
+-                } else {
+-                    dimensions.columns - margin
+-                };
+-                start_column = right_edge.saturating_sub(text_length).max(dimensions.columns - right_edge);
+-                max_line_length = right_edge - start_column;
+             }
+             Alignment::Center { minimum_margin, minimum_size } => {
++                let minimum_margin = minimum_margin.as_characters(dimensions.columns);
+-                let minimum_margin = match *minimum_margin {
+-                    Margin::Fixed(value) => value,
+-                    Margin::Percent(percent) => (dimensions.columns as f64 * (percent as f64 / 100.0)).ceil() as u16,
+-                };
+                 // Respect minimum size as much as we can if both together overflow.
+                 let minimum_size = dimensions.columns.min(*minimum_size);
++                let minimum_margin = Self::fit_to_columns(
++                    dimensions,
++                    minimum_margin.saturating_mul(2).saturating_add(minimum_size),
++                    minimum_margin,
++                );
++                max_line_length =
++                    text_length.min(dimensions.columns - minimum_margin.saturating_mul(2)).max(minimum_size);
+-                let available_columns = if minimum_margin.saturating_mul(2).saturating_add(minimum_size) > dimensions.columns {
+-                    dimensions.columns
+-                } else {
+-                    dimensions.columns - minimum_margin.saturating_mul(2)
+-                };
+-                let minimum_margin = if available_columns == dimensions.columns { 0 } else { minimum_margin };
+-                max_line_length = text_length.min(available_columns).max(minimum_size);
+                 if max_line_length > dimensions.columns {
+                     start_column = minimum_margin;
+                 } else {
+@@ -78,6 +64,9 @@ impl Layout {
+         Positioning { max_line_length, start_column }
+     }
+ 
++    fn fit_to_columns(dimensions: &WindowSize, required_fit: u16, actual_fit: u16) -> u16 {
++        if required_fit > dimensions.columns { 0 } else { actual_fit }
++    }
+ }
+ 
+ #[derive(Clone, Debug, PartialEq, Eq)]
+diff --git a/src/terminal/image/scale.rs b/src/terminal/image/scale.rs
+index f45430f..caa3188 100644
+--- a/src/terminal/image/scale.rs
++++ b/src/terminal/image/scale.rs
+@@ -35,7 +35,7 @@ impl ScaleImage for ImageScaler {
+         position: &CursorPosition,
+     ) -> TerminalRect {
+         let aspect_ratio = image_height as f64 / image_width as f64;
++        let column_in_pixels = scale_size.pixels_per_column();
+-        let column_in_pixels = (scale_size.width as f64 / scale_size.columns as f64);
+         let width_in_columns = scale_size.columns;
+         let image_width = width_in_columns as f64 * column_in_pixels;
+         let image_height = image_width * aspect_ratio;
+@@ -53,12 +53,12 @@ impl ScaleImage for ImageScaler {
+         let aspect_ratio = image_height as f64 / image_width as f64;
+ 
+         // Compute the image's width in columns by translating pixels -> columns.
++        let column_in_pixels = dimensions.pixels_per_column();
+-        let column_in_pixels = (dimensions.width as f64 / dimensions.columns as f64);
+         let column_margin = (dimensions.columns as f64 * (1.0 - self.horizontal_margin)) as u32;
+         let mut width_in_columns = (image_width as f64 / column_in_pixels) as u32;
+ 
+         // Do the same for its height.
++        let row_in_pixels = dimensions.pixels_per_row();
+-        let row_in_pixels = (dimensions.height as f64 / dimensions.rows as f64);
+         let height_in_rows = (image_height as f64 / row_in_pixels) as u32;
+ 
+         // If the image doesn't fit vertically, shrink it.
+@@ -74,7 +74,7 @@ impl ScaleImage for ImageScaler {
+ 
+         // Now translate width -> height by using the original aspect ratio + translate based on
+         // the window size's aspect ratio.
++        let height_in_rows = (width_in_columns as f64 * aspect_ratio * dimensions.aspect_ratio()).round() as u16;
+-        let height_in_rows = (width_in_columns as f64 * aspect_ratio * ((dimensions.rows as f64 / dimensions.height as f64) / (dimensions.columns as f64 / dimensions.width as f64))).round() as u16;
+ 
+         let width_in_columns = width_in_columns.max(1);
+         let height_in_rows = height_in_rows.max(1);
+diff --git a/src/theme/clean.rs b/src/theme/clean.rs
+index 83ad779..02b6951 100644
+--- a/src/theme/clean.rs
++++ b/src/theme/clean.rs
+@@ -179,17 +179,8 @@ impl SlideTitleStyle {
+             font_size,
+             prefix,
+         } = raw;
++        let colors = colors.resolve(palette)?;
++        let mut style = TextStyle::colored(colors).size(options.adjust_font_size(*font_size));
+-        let colors = {
+-            let background = colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        };
+-        let mut style = TextStyle::colored(colors);
+-        if options.font_size_supported {
+-            style = style.size(font_size.unwrap_or(1).clamp(1, 7));
+-        } else {
+-            style = style.size(1);
+-        }
+         if bold.unwrap_or_default() {
+             style = style.bold();
+         }
+@@ -253,17 +244,7 @@ impl HeadingStyle {
+     ) -> Result<Self, ProcessingThemeError> {
+         let raw::HeadingStyle { alignment, prefix, colors, font_size, bold, underlined, italics } = raw;
+         let alignment = alignment.clone().map(Into::into);
++        let mut style = TextStyle::colored(colors.resolve(palette)?).size(options.adjust_font_size(*font_size));
+-        let mut style = TextStyle::colored({
+-            let background = colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+-        let heading_size = if options.font_size_supported {
+-            font_size.unwrap_or(1).clamp(1, 7)
+-        } else {
+-            1
+-        };
+-        style = style.size(heading_size);
+         if bold.unwrap_or_default() {
+             style = style.bold();
+         }
+@@ -290,18 +271,11 @@ impl BlockQuoteStyle {
+         let raw::BlockQuoteStyle { alignment, prefix, colors } = raw;
+         let alignment = alignment.clone().map(Into::into);
+         let prefix = prefix.as_deref().unwrap_or(DEFAULT_BLOCK_QUOTE_PREFIX).to_string();
++        let base_style = TextStyle::colored(colors.base.resolve(palette)?);
++        let mut prefix_style = TextStyle::colored(colors.base.resolve(palette)?);
++        if let Some(color) = &colors.prefix {
++            prefix_style.colors.foreground = color.resolve(palette)?;
++        }
+-        let mut prefix_style = TextStyle::default();
+-        prefix_style.colors.background = colors.base.background.as_ref()
+-            .map(|color| color.resolve(palette)).transpose()?.flatten();
+-        let foreground = colors.base.foreground.as_ref()
+-            .map(|color| color.resolve(palette)).transpose()?.flatten();
+-        let base_style = TextStyle::colored(Colors {
+-            background: prefix_style.colors.background, foreground,
+-        });
+-        prefix_style.colors.foreground = match &colors.prefix {
+-            Some(color) => color.resolve(palette)?,
+-            None => foreground,
+-        };
+         Ok(Self { alignment, prefix, base_style, prefix_style })
+     }
+ }
+@@ -444,11 +418,7 @@ pub(crate) struct IntroSlideLabelStyle {
+ impl IntroSlideLabelStyle {
+     fn new(raw: &raw::BasicStyle, palette: &ColorPalette) -> Result<Self, ProcessingThemeError> {
+         let raw::BasicStyle { alignment, colors } = raw;
++        let style = TextStyle::colored(colors.resolve(palette)?);
+-        let style = TextStyle::colored({
+-            let background = colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+         Ok(Self { alignment: alignment.clone().map(Into::into), style })
+     }
+ }
+@@ -466,15 +436,7 @@ impl IntroSlideTitleStyle {
+         options: &ThemeOptions,
+     ) -> Result<Self, ProcessingThemeError> {
+         let raw::IntroSlideTitleStyle { alignment, colors, font_size } = raw;
++        let style = TextStyle::colored(colors.resolve(palette)?).size(options.adjust_font_size(*font_size));
+-        let mut style = TextStyle::colored({
+-            let background = colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+-        match (options.font_size_supported, font_size) {
+-            (true, Some(size)) => style = style.size((*size).clamp(1, 7)),
+-            _ => style = style.size(1),
+-        }
+         Ok(Self { alignment: alignment.clone().map(Into::into), style })
+     }
+ }
+@@ -489,11 +451,7 @@ pub(crate) struct AuthorStyle {
+ impl AuthorStyle {
+     fn new(raw: &raw::AuthorStyle, palette: &ColorPalette) -> Result<Self, ProcessingThemeError> {
+         let raw::AuthorStyle { alignment, colors, positioning } = raw;
++        let style = TextStyle::colored(colors.resolve(palette)?);
+-        let style = TextStyle::colored({
+-            let background = colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+         Ok(Self { alignment: alignment.clone().map(Into::into), style, positioning: positioning.clone() })
+     }
+ }
+@@ -588,21 +546,13 @@ impl FooterStyle {
+                 let left = left.as_ref().map(|t| FooterContent::new(t, resources)).transpose()?;
+                 let center = center.as_ref().map(|t| FooterContent::new(t, resources)).transpose()?;
+                 let right = right.as_ref().map(|t| FooterContent::new(t, resources)).transpose()?;
++                let style = TextStyle::colored(colors.resolve(palette)?);
+-                let style = TextStyle::colored({
+-            let background = colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+                 let height = height.unwrap_or(DEFAULT_FOOTER_HEIGHT);
+                 Ok(Self::Template { left, center, right, style, height })
+             }
+             raw::FooterStyle::ProgressBar { character, colors } => {
+                 let character = character.unwrap_or(DEFAULT_PROGRESS_BAR_CHAR);
++                let style = TextStyle::colored(colors.resolve(palette)?);
+-                let style = TextStyle::colored({
+-            let background = colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+                 Ok(Self::ProgressBar { character, style })
+             }
+             raw::FooterStyle::Empty => Ok(Self::Empty),
+@@ -681,11 +631,7 @@ pub(crate) struct ExecutionOutputBlockStyle {
+ impl ExecutionOutputBlockStyle {
+     fn new(raw: &raw::ExecutionOutputBlockStyle, palette: &ColorPalette) -> Result<Self, ProcessingThemeError> {
+         let raw::ExecutionOutputBlockStyle { colors, status, padding } = raw;
++        let colors = colors.resolve(palette)?;
+-        let colors = {
+-            let background = colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        };
+         let style = TextStyle::colored(colors);
+         let padding = PaddingRect {
+             horizontal: padding.horizontal.unwrap_or_default(),
+@@ -706,26 +652,10 @@ pub(crate) struct ExecutionStatusBlockStyle {
+ impl ExecutionStatusBlockStyle {
+     fn new(raw: &raw::ExecutionStatusBlockStyle, palette: &ColorPalette) -> Result<Self, ProcessingThemeError> {
+         let raw::ExecutionStatusBlockStyle { running, success, failure, not_started } = raw;
++        let running_style = TextStyle::colored(running.resolve(palette)?);
++        let success_style = TextStyle::colored(success.resolve(palette)?);
++        let failure_style = TextStyle::colored(failure.resolve(palette)?);
++        let not_started_style = TextStyle::colored(not_started.resolve(palette)?);
+-        let running_style = TextStyle::colored({
+-            let background = running.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = running.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+-        let success_style = TextStyle::colored({
+-            let background = success.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = success.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+-        let failure_style = TextStyle::colored({
+-            let background = failure.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = failure.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+-        let not_started_style = TextStyle::colored({
+-            let background = not_started.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = not_started.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+         Ok(Self { running_style, success_style, failure_style, not_started_style })
+     }
+ }
+@@ -740,11 +670,7 @@ pub(crate) struct PtyOutputBlockStyle {
+ impl PtyOutputBlockStyle {
+     fn new(raw: &raw::PtyOutputBlockStyle, palette: &ColorPalette) -> Result<Self, ProcessingThemeError> {
+         let raw::PtyOutputBlockStyle { colors, standby, cursor } = raw;
++        let colors = colors.resolve(palette)?;
+-        let colors = {
+-            let background = colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        };
+         let style = TextStyle::colored(colors);
+         let standby = match standby {
+             Some(raw::PtyStandbyStyle::LargePlay) => PtyStandbyStyle::LargePlay,
+@@ -765,11 +691,7 @@ impl PtyCursorStyle {
+     fn new(raw: &raw::PtyCursorStyle, palette: &ColorPalette) -> Result<Self, ProcessingThemeError> {
+         let raw::PtyCursorStyle { symbol, highlight_colors } = raw;
+         let symbol = symbol.unwrap_or(DEFAULT_PTY_CURSOR_SYMBOL).to_string();
++        let highlight_style = TextStyle::colored(highlight_colors.resolve(palette)?);
+-        let highlight_style = TextStyle::colored({
+-            let background = highlight_colors.background.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = highlight_colors.foreground.clone().map(|color| color.resolve(palette)).transpose()?.flatten();
+-            Colors { foreground, background }
+-        });
+         Ok(Self { symbol, highlight_style })
+     }
+ }
+diff --git a/src/ui/execution/output.rs b/src/ui/execution/output.rs
+index 2156be9..4321581 100644
+--- a/src/ui/execution/output.rs
++++ b/src/ui/execution/output.rs
+@@ -69,10 +69,7 @@ impl SnippetOutputOperation {
+         alignment: Alignment,
+         font_size: u8,
+     ) -> Self {
++        let block_length = alignment.adjust_size(block_length);
+-        let block_length = match alignment {
+-            Alignment::Center { minimum_size, .. } => block_length.max(minimum_size),
+-            _ => block_length,
+-        };
+         Self { default_colors, style, block_length, alignment, handle, font_size }
+     }
+ }
+@@ -99,20 +96,11 @@ impl AsRenderOperations for SnippetOutputOperation {
+             let padding = self.style.padding;
+             let block_length =
+                 if has_margin { self.block_length.max(inner.max_line_length) } else { inner.max_line_length };
++            let vertical_padding = iter::repeat_n(" ", padding.vertical as usize).map(Line::from);
++            let lines = vertical_padding.clone().chain(inner.output_lines.iter().cloned()).chain(vertical_padding);
+             let style = TextStyle::default().size(self.font_size);
++            for mut line in lines {
++                line.apply_style(&style);
+-            let vertical_padding = iter::repeat_n(
+-                Line::from(Text::new(" ", TextStyle { size: 1.max(style.size), ..style })),
+-                padding.vertical as usize,
+-            );
+-            let output = inner.output_lines.iter().map(|line| {
+-                Line(line.0.iter().map(|chunk| {
+-                    let mut chunk = chunk.clone();
+-                    chunk.style.size = chunk.style.size.max(self.font_size.min(16));
+-                    chunk
+-                }).collect())
+-            });
+-            let lines = vertical_padding.clone().chain(output).chain(vertical_padding);
+-            for line in lines {
+                 let prefix = Text::new(" ".repeat(padding.horizontal as usize), style).into();
+                 operations.push(RenderOperation::RenderBlockLine(BlockLine {
+                     prefix,
+@@ -301,12 +289,13 @@ pub(crate) struct ExecIndicator {
+ impl ExecIndicator {
+     pub(crate) fn new<T: Into<WrappedSnippetHandle>>(handle: T, style: ExecIndicatorStyle) -> Self {
+         let ExecIndicatorStyle { theme, block_length, font_size, alignment } = style;
++        let block_length = alignment.adjust_size(block_length);
+         let separator_width = match &alignment {
+             Alignment::Left { .. } | Alignment::Right { .. } => SeparatorWidth::FitToWindow,
+             // We need a minimum here otherwise if the code/block length is too narrow, the separator is
+             // word-wrapped and looks bad.
++            Alignment::Center { .. } => {
++                SeparatorWidth::Fixed(block_length.max(MINIMUM_SEPARATOR_WIDTH * font_size as u16))
+-            Alignment::Center { minimum_size, .. } => {
+-                SeparatorWidth::Fixed(block_length.max(*minimum_size).max(MINIMUM_SEPARATOR_WIDTH * font_size as u16))
+             }
+         };
+         let handle = handle.into();
+diff --git a/src/ui/execution/pty.rs b/src/ui/execution/pty.rs
+index 415dfd7..5446e07 100644
+--- a/src/ui/execution/pty.rs
++++ b/src/ui/execution/pty.rs
+@@ -96,25 +96,13 @@ impl PtySnippetOutputOperation {
+ impl AsRenderOperations for PtySnippetOutputOperation {
+     fn as_render_operations(&self, dimensions: &WindowSize) -> Vec<RenderOperation> {
+         let mut inner = self.handle.0.lock().unwrap();
++        let dimensions = dimensions
++            .shrink_rows(dimensions.rows - dimensions.rows / self.font_size as u16)
++            .shrink_columns(dimensions.columns - dimensions.columns / self.font_size as u16);
++
++        if inner.update_size && inner.expected_size != dimensions && dimensions.rows > 0 {
++            inner.expected_size = dimensions;
++            inner.parser.screen_mut().set_size(dimensions.rows, dimensions.columns);
+-        let row_reduction = dimensions.rows - dimensions.rows / self.font_size as u16;
+-        let column_reduction = dimensions.columns - dimensions.columns / self.font_size as u16;
+-        let rows = dimensions.rows.saturating_sub(row_reduction);
+-        if inner.update_size && rows > 0 {
+-            let columns = dimensions.columns.saturating_sub(column_reduction);
+-            let height = dimensions.height.saturating_sub(
+-                ((dimensions.height as f64 / dimensions.rows as f64) * row_reduction as f64) as u16,
+-            );
+-            let width = dimensions.width.saturating_sub(
+-                ((dimensions.width as f64 / dimensions.columns as f64) * column_reduction as f64) as u16,
+-            );
+-            let previous = inner.expected_size;
+-            if previous.rows != rows || previous.columns != columns || previous.height != height || previous.width != width {
+-                inner.expected_size.rows = rows;
+-                inner.expected_size.height = height;
+-                inner.expected_size.columns = columns;
+-                inner.expected_size.width = width;
+-                inner.parser.screen_mut().set_size(rows, columns);
+-            }
+         }
+         if matches!(inner.state, State::Initial) {
+             let mut operations = Vec::new();
+@@ -221,8 +209,8 @@ impl OperationPollable {
+         let pty_size = PtySize {
+             rows: dimensions.rows,
+             cols: dimensions.columns,
++            pixel_width: dimensions.pixels_per_column() as u16,
++            pixel_height: dimensions.pixels_per_row() as u16,
+-            pixel_width: (dimensions.width as f64 / dimensions.columns as f64) as u16,
+-            pixel_height: (dimensions.height as f64 / dimensions.rows as f64) as u16,
+         };
+         let pair = pty_system.openpty(pty_size)?;
+         pair.slave.spawn_command(ctx.command.clone())?;
+diff --git a/src/ui/footer.rs b/src/ui/footer.rs
+index 08b3c71..43802f6 100644
+--- a/src/ui/footer.rs
++++ b/src/ui/footer.rs
+@@ -2,7 +2,7 @@ use crate::{
+     markdown::{
+         elements::{Line, Text},
+         parse::{MarkdownParser, ParseInlinesError},
++        text_style::{TextStyle, UndefinedPaletteColorError},
+-        text_style::{Colors, TextStyle, UndefinedPaletteColorError},
+     },
+     render::{
+         operation::{AsRenderOperations, ImagePosition, ImageRenderProperties, MarginProperties, RenderOperation},
+@@ -208,30 +208,15 @@ impl FooterLine {
+         let right_whitespace = starting_length - raw_text.len() - left_whitespace;
+         let parser = MarkdownParser::new(&arena);
+         let inlines = parser.parse_inlines(&reassembled)?;
++        let mut line = inlines.resolve(palette)?;
+-        let mut chunks = Vec::with_capacity(inlines.0.len() + 2);
+-        for chunk in inlines.0 {
+-            let background = chunk.style.colors.background.clone()
+-                .map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let foreground = chunk.style.colors.foreground.clone()
+-                .map(|color| color.resolve(palette)).transpose()?.flatten();
+-            let flags = chunk.style.flags | style.flags;
+-            let size = chunk.style.size.max(style.size);
+-            chunks.push(Text::new(chunk.content, TextStyle {
+-                flags, size,
+-                colors: Colors {
+-                    background: background.or(style.colors.background),
+-                    foreground: foreground.or(style.colors.foreground),
+-                },
+-            }));
+-        }
+-        let whitespace_style = TextStyle { flags: style.flags, size: 1.max(style.size), colors: style.colors };
+         if left_whitespace != 0 {
++            line.0.insert(0, " ".repeat(left_whitespace).into());
+-            chunks.insert(0, Text::new(" ".repeat(left_whitespace), whitespace_style));
+         }
+         if right_whitespace != 0 {
++            line.0.push(" ".repeat(right_whitespace).into());
+-            chunks.push(Text::new(" ".repeat(right_whitespace), whitespace_style));
+         }
++        line.apply_style(style);
++        Ok(Self(line))
+-        Ok(Self(Line(chunks)))
+     }
+ 
+     fn extract_variable<'a>(
+diff --git a/src/ui/modals.rs b/src/ui/modals.rs
+index ef180cc..c16bc2d 100644
+--- a/src/ui/modals.rs
++++ b/src/ui/modals.rs
+@@ -237,10 +237,7 @@ struct ContentRow {
+ impl ContentRow {
+     fn with_style(mut self, style: TextStyle) -> ContentRow {
+         for chunk in &mut self.content {
++            chunk.style.merge(&style);
+-            chunk.style.flags |= style.flags;
+-            chunk.style.size = chunk.style.size.max(style.size);
+-            chunk.style.colors.background = chunk.style.colors.background.or(style.colors.background);
+-            chunk.style.colors.foreground = chunk.style.colors.foreground.or(style.colors.foreground);
+         }
+         self
+     }
+diff --git a/src/ui/separator.rs b/src/ui/separator.rs
+index ec2e513..206084c 100644
+--- a/src/ui/separator.rs
++++ b/src/ui/separator.rs
+@@ -4,6 +4,7 @@ use crate::{
+         text_style::TextStyle,
+     },
+     render::{
++        layout::{Layout, Positioning},
+         operation::{AsRenderOperations, BlockLine, RenderOperation},
+         properties::WindowSize,
+     },
+@@ -29,9 +30,7 @@ pub(crate) struct RenderSeparator {
+ impl RenderSeparator {
+     pub(crate) fn new<S: Into<Line>>(heading: S, width: SeparatorWidth, font_size: u8) -> Self {
+         let mut heading: Line = heading.into();
++        heading.apply_style(&TextStyle::default().size(font_size));
+-        for chunk in &mut heading.0 {
+-            chunk.style.size = chunk.style.size.max(font_size.min(16));
+-        }
+         Self { heading, width, font_size }
+     }
+ }
+@@ -47,7 +46,10 @@ impl AsRenderOperations for RenderSeparator {
+         let character = "—";
+         let width = match self.width {
+             SeparatorWidth::Fixed(width) => {
++                let Positioning { max_line_length, .. } =
++                    Layout::new(Alignment::Center { minimum_margin: Margin::Fixed(0), minimum_size: 0 })
++                        .with_font_size(self.font_size)
++                        .compute(dimensions, width);
+-                let max_line_length = (width * self.font_size as u16).min(dimensions.columns);
+                 max_line_length.min(width) as usize
+             }
+             SeparatorWidth::FitToWindow => dimensions.columns as usize,

@@ -1,0 +1,287 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "ebtech_rust_algorithms_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "discovery",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 discovery owner removed; depth caller publication/callee low initialization.",
+      "baseline_defect": "Time, visit order, lowlink and active vertices are separately owned and partially initialized across roots and recursive calls.",
+      "criterion": "Own discovery state and initialization coherently across root/child discovery and SCC/BCC use.",
+      "acceptance": "Preserve single time increment, visit order, initial low value, stack order, SCC active-component check and component numbering. Initialization may remain at caller or callee if its complete contract is owned; no fixed visit-method requirement. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/connectivity.rs",
+          "symbol": "new,scc,bcc",
+          "detail": "Time, visit order, lowlink and active vertices are separately owned and partially initialized across roots and recursive calls.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "bcc_pending_edges",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 undirected edge-stack member dispersed.",
+      "baseline_defect": "BCC carries pending edge stack separately from related discovery and block-completion state.",
+      "criterion": "Keep the pending-edge lifecycle coherently associated with undirected discovery and component completion.",
+      "acceptance": "Preserve tree/back edge push rules, parent reverse-edge exclusion, paired edge block assignment, self-loop behavior and block pop condition. Algorithm-specific decisions may remain in BCC; no requirement to move all component assignment into a stack class. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/connectivity.rs",
+          "symbol": "bcc",
+          "detail": "BCC carries pending edge stack separately from related discovery and block-completion state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "adjacency_iterator",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 iterator graph association split.",
+      "baseline_defect": "Iterator borrows endpoint and successor arrays independently from the same graph.",
+      "criterion": "Give adjacency iteration a coherent topology/cursor association through construction and advancement.",
+      "acceptance": "Keep current edge, endpoint and next edge aligned, original order and exhaustion. A borrowed Graph reference is sufficient; no graph storage redesign. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/mod.rs",
+          "symbol": "adj_list,AdjListIterator::next",
+          "detail": "Iterator borrows endpoint and successor arrays independently from the same graph.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "euler_adjacency",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 shared per-vertex Euler cursors.",
+      "baseline_defect": "Euler manually clones first edges and coordinates them with graph endpoint/successor arrays.",
+      "criterion": "Use coherent adjacency progress through Euler descent and resumption.",
+      "acceptance": "Keep one shared progress position per vertex, edge consumed before descent and original edge order, including revisits. Construction need not reside in Graph if association remains owned. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/util.rs",
+          "symbol": "euler_path",
+          "detail": "Euler manually clones first edges and coordinates them with graph endpoint/successor arrays.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "euler_continuation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry explicit Euler activation stack.",
+      "baseline_defect": "Vertices and incoming edges are separately pushed/popped with a root-length offset.",
+      "criterion": "Keep each suspended Euler step and its return edge coherently associated.",
+      "acceptance": "Root has no incoming edge; exhausted vertex publishes its incoming edge in postorder, followed by final reversal. Recursion or a coherent stack abstraction is equally valid; no forced iterative algorithm. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/util.rs",
+          "symbol": "euler_path",
+          "detail": "Vertices and incoming edges are separately pushed/popped with a root-length offset.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dfs_progress",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 suspended DFS adjacency.",
+      "baseline_defect": "DFS stores endpoint/successor arrays and per-vertex cursors independently.",
+      "criterion": "Own DFS adjacency progress coherently across iterator construction, yield and resume.",
+      "acceptance": "Preserve root visit initialization, advancing cursor before yield, visit-once filtering, stack unwinding, order and exhaustion. Existing iterator collection or an encapsulated cursor view qualifies; no requirement that Graph manufacture all traversal state. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/util.rs",
+          "symbol": "dfs,DfsIterator::next",
+          "detail": "DFS stores endpoint/successor arrays and per-vertex cursors independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dinic_continuation",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry blocking-flow activation arrays.",
+      "baseline_defect": "Vertex/request/sent/incoming arrays must stay synchronized with an offset root frame.",
+      "criterion": "Own blocking-flow suspended activation state coherently across descent and completion.",
+      "acceptance": "Preserve sink returns request, other completion returns sent, root return and child return paired flow updates. Incoming edge association and parent accumulation must survive all exits; recursion qualifies. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/flow.rs",
+          "symbol": "dinic_augment",
+          "detail": "Vertex/request/sent/incoming arrays must stay synchronized with an offset root frame.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dinic_cursors",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 retained adjacency cursors.",
+      "baseline_defect": "Blocking flow passes raw endpoints, successor links and cursor vector separately.",
+      "criterion": "Keep blocking-flow adjacency progression coherently associated with topology and partial-return state.",
+      "acceptance": "Keep cursors per level-search phase; retain parent edge when its request is fully satisfied, otherwise advance after child completion; skip blocked/non-admissible edges and preserve original residual edge order. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/flow.rs",
+          "symbol": "dinic,dinic_augment",
+          "detail": "Blocking flow passes raw endpoints, successor links and cursor vector separately.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dinic_residual",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 uncosted residual search handoff.",
+      "baseline_defect": "Dinic search accepts graph and capacities independently despite paired network ownership.",
+      "criterion": "Use coherent network access for topology and residual capacity in Dinic search.",
+      "acceptance": "Preserve flow[e] < cap[e], BFS first distance and sink-unreachable termination. Restoring a FlowGraph method that accepts per-run flow is sufficient; no required cross-algorithm residual framework or change to preexisting public cap/cost vectors. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/flow.rs",
+          "symbol": "dinic,dinic_search",
+          "detail": "Dinic search accepts graph and capacities independently despite paired network ownership.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "costed_network",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 costed residual network handoff.",
+      "baseline_defect": "Costed search separately receives topology, capacity and signed costs belonging to the same network.",
+      "criterion": "Give minimum-cost search coherent access to the topology/capacity/cost association.",
+      "acceptance": "Keep original potential updates, selection tie behavior, strict relaxation and residual eligibility. Per-run flow/potentials may remain separate algorithm state; borrowing FlowGraph directly is valid. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/flow.rs",
+          "symbol": "mcf,mcf_search",
+          "detail": "Costed search separately receives topology, capacity and signed costs belonging to the same network.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "selected_predecessor",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry relaxation edge/capacity/price publication.",
+      "baseline_defect": "Vertex-indexed predecessor/capacity/price arrays are updated independently on relaxation.",
+      "criterion": "Keep selected predecessor identity and associated capacity/price coherent until route materialization.",
+      "acceptance": "Each replacement must select matching edge metadata. Capacity stored in final source is raw cap[e], not pre-subtracted residual; subtraction occurs only on final route before flow mutation. Edge-only predecessors with capacity/cost derived from an unchanged network also qualify; cached metadata is not required. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/flow.rs",
+          "symbol": "mcf_search",
+          "detail": "Vertex-indexed predecessor/capacity/price arrays are updated independently on relaxation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "selected_route",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry selected route crosses search/driver/augmentation.",
+      "baseline_defect": "Sink-to-source edges, path-indexed prices and bottleneck travel as independent output vectors/scalar.",
+      "criterion": "Own selected route association and available flow coherently through termination, augmentation and totals.",
+      "acceptance": "Keep predecessor termination, path order, empty-route stop, bottleneck minimum before mutation, paired forward/reverse update and signed cost accumulation. An integrated operation or route derived from predecessor/network data qualifies; no mandatory materialized route or charges vector. Existing Graph/FlowGraph/iterator ownership, restored recursion and encapsulated parallel storage are valid; no mandatory record per edge, per vertex or per frame. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires consumers to independently coordinate the same data association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/flow.rs",
+          "symbol": "mcf,mcf_search,mcf_augment",
+          "detail": "Sink-to-source edges, path-indexed prices and bottleneck travel as independent output vectors/scalar.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded_four_dimensions.v2",
+    "case_id": "ebtech--rust-algorithms--data_clumps",
+    "aggregation": "equal_weight_per_item",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "derivation": {
+      "basis": [
+        "synthesis_four_workspaces_balanced_v2_20261020/workspace_03/cases/ebtech--rust-algorithms/data_clumps/report.md",
+        "unpublished85_stage2_retry_20261023/cases/ebtech--rust-algorithms--data_clumps/revision_v1/review.json",
+        "tasks/ebtech_rust_algorithms_dc/expanded.diff",
+        "tasks/ebtech_rust_algorithms_dc/interaction_delta.diff",
+        "tasks/ebtech_rust_algorithms_dc/environment/smell.diff"
+      ],
+      "excluded_from_scoring": [
+        "The old ConnectivityData helper comment is deleted and adds no scoring obligation.",
+        "post.diff is empty.",
+        "The preexisting public capacity/cost vectors, graph edge-pair representation, and Johnson-potential algorithm are not newly injected defects.",
+        "Preserving results, compilation, tests, and public APIs are constraints, not independent structural credits."
+      ],
+      "historical_rubrics": "Read only after independent source review; no item copied as a checklist."
+    }
+  }
+}

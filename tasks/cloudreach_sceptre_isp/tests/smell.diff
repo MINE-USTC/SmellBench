@@ -1,0 +1,912 @@
+diff --git a/sceptre/config/reader.py b/sceptre/config/reader.py
+index 0d93e34..0bee7b3 100644
+--- a/sceptre/config/reader.py
++++ b/sceptre/config/reader.py
+@@ -36,6 +36,7 @@ from sceptre.exceptions import ConfigFileNotFoundError
+ from sceptre.helpers import sceptreise_path, logging_level, write_debug_file
+ from sceptre.stack import Stack
+ from sceptre.config import strategies
++from sceptre.plugin_runtime import PluginRuntime
+ 
+ ConfigAttributes = collections.namedtuple("Attributes", "required optional")
+ 
+@@ -130,7 +131,7 @@ REQUIRED_KEYS = STACK_GROUP_CONFIG_ATTRIBUTES.required.union(
+ )
+ 
+ 
+-class ConfigReader(object):
++class ConfigReader(PluginRuntime):
+     """
+     Parses YAML configuration files and produces Stack objects.
+ 
+@@ -180,46 +181,7 @@ class ConfigReader(object):
+         :param entry_point_groups: Names of entry point groups.
+         :type entry_point_groups: list
+         """
+-        self.logger.debug(
+-            "Adding yaml constructors for the entry point groups {0}".format(
+-                entry_point_groups
+-            )
+-        )
+-
+-        def constructor_factory(node_class):
+-            """
+-            Returns constructor that will initialise objects from a
+-            given node class.
+-
+-            :param node_class: Class representing the node.
+-            :type node_class: class
+-            :returns: Class initialiser.
+-            :rtype: func
+-            """
+-
+-            # This function signature is required by PyYAML
+-            def class_constructor(loader, node):
+-                return node_class(
+-                    loader.construct_object(self.resolve_node_tag(loader, node))
+-                )  # pragma: no cover
+-
+-            return class_constructor
+-
+-        for group in entry_point_groups:
+-            for entry_point in self._iterate_entry_points(group):
+-                # Retrieve name and class from entry point
+-                node_tag = "!" + entry_point.name
+-                node_class = entry_point.load()
+-
+-                # Add constructor to PyYAML loader
+-                yaml.SafeLoader.add_constructor(
+-                    node_tag, constructor_factory(node_class)
+-                )
+-                self.logger.debug(
+-                    "Added constructor for %s with node tag %s",
+-                    str(node_class),
+-                    node_tag,
+-                )
++        return self.register_yaml_constructors(entry_point_groups)
+ 
+     def resolve_node_tag(self, loader, node):
+         node = copy.copy(node)
+diff --git a/sceptre/hooks/__init__.py b/sceptre/hooks/__init__.py
+index 1a454fc..dc60938 100644
+--- a/sceptre/hooks/__init__.py
++++ b/sceptre/hooks/__init__.py
+@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, List
+ 
+ from sceptre.helpers import _call_func_on_values
+ from sceptre.resolvers import CustomYamlTagBase
++from sceptre.plugin_runtime import PluginRuntime
+ 
+ if TYPE_CHECKING:
+     from sceptre.stack import Stack
+@@ -26,7 +27,7 @@ class Hook(CustomYamlTagBase, metaclass=abc.ABCMeta):
+         pass  # pragma: no cover
+ 
+ 
+-class HookProperty(object):
++class HookProperty(PluginRuntime):
+     """
+     This is a descriptor class used to store an attribute that may contain
+     Hook objects. Used to setup Hooks when added as a attribute. Supports
+@@ -57,8 +58,7 @@ class HookProperty(object):
+         """
+ 
+         def setup(attr, key, value: Hook):
+-            attr[key] = clone = value.clone_for_stack(instance)
+-            clone.setup()
++            self.bind_hook_value(attr, key, value, instance)
+ 
+         _call_func_on_values(setup, value, Hook)
+         setattr(instance, self.name, value)
+@@ -75,10 +75,7 @@ def execute_hooks(hooks):
+     :return: A complex data structure without Resolver objects.
+     :rtype: dict or list
+     """
+-    if isinstance(hooks, list):
+-        for hook in hooks:
+-            if isinstance(hook, Hook):
+-                hook.run()
++    return PluginRuntime.execute_hooks(hooks)
+ 
+ 
+ def add_stack_hooks(func):
+diff --git a/sceptre/hooks/asg_scaling_processes.py b/sceptre/hooks/asg_scaling_processes.py
+index 0ea3c26..c13810f 100644
+--- a/sceptre/hooks/asg_scaling_processes.py
++++ b/sceptre/hooks/asg_scaling_processes.py
+@@ -27,29 +27,7 @@ class ASGScalingProcesses(Hook):
+         :raises: InvalidHookArgumentValueError, if not using resume or suspend.
+         """
+ 
+-        if not isinstance(self.argument, string_types):
+-            raise InvalidHookArgumentTypeError(
+-                'The argument "{0}" is the wrong type - asg_scaling_processes '
+-                "hooks require arguments of type string.".format(self.argument)
+-            )
+-        if "::" not in str(self.argument):
+-            raise InvalidHookArgumentSyntaxError(
+-                'Wrong syntax for the argument "{0}" - asg_scaling_processes '
+-                "hooks use:"
+-                "- !asg_scaling_processes <suspend|resume>::<process-name>".format(
+-                    self.argument
+-                )
+-            )
+-
+-        action, scaling_processes = self.argument.split("::")
+-
+-        if action not in ["resume", "suspend"]:
+-            raise InvalidHookArgumentValueError(
+-                'The argument "{0}" is invalid - valid arguments for '
+-                'asg_scaling_processes hooks are "resume" or "suspend".'.format(action)
+-            )
+-
+-        action += "_processes"
++        action, scaling_processes = self.scaling_parameters()
+ 
+         autoscaling_group_names = self._find_autoscaling_groups()
+         for autoscaling_group in autoscaling_group_names:
+diff --git a/sceptre/hooks/cmd.py b/sceptre/hooks/cmd.py
+index 84e6a19..0deeaa4 100644
+--- a/sceptre/hooks/cmd.py
++++ b/sceptre/hooks/cmd.py
+@@ -24,25 +24,6 @@ class Cmd(Hook):
+         """
+         envs = self.stack.connection_manager.create_session_environment_variables()
+ 
+-        command_to_run = None
+-        shell = None
+-
+-        if isinstance(self.argument, dict):
+-            command_to_run = self.argument.get("run")
+-            shell = self.argument.get("shell")
+-        else:
+-            command_to_run = self.argument
+-
+-        if not isinstance(command_to_run, str) or command_to_run == "":
+-            raise InvalidHookArgumentTypeError(
+-                "A cmd hook requires either a string argument or an object with "
+-                f"a `run` key and a string value. You gave `{self.argument!r}`."
+-            )
+-
+-        if shell is not None and not isinstance(shell, str) or shell == "":
+-            raise InvalidHookArgumentTypeError(
+-                "A cmd hook requires a `shell` key with a non-empty string. "
+-                f"You gave `{self.argument!r}`."
+-            )
++        command_to_run, shell = self.command_parameters()
+ 
+         subprocess.check_call(command_to_run, shell=True, env=envs, executable=shell)
+diff --git a/sceptre/plugin_runtime.py b/sceptre/plugin_runtime.py
+new file mode 100644
+index 0000000..9c4abe2
+--- /dev/null
++++ b/sceptre/plugin_runtime.py
+@@ -0,0 +1,301 @@
++"""Plugin runtime operations."""
++
++from contextlib import contextmanager
++
++from sceptre.helpers import _call_func_on_values, delete_keys_from_containers
++
++
++class PluginRuntime:
++    def resolved_items(self, container, resolver):
++        from sceptre.resolvers import Resolver
++
++        if isinstance(container, dict):
++            entries = container.items()
++        elif isinstance(container, list):
++            entries = enumerate(container)
++        else:
++            return
++        for key, value in entries:
++            if isinstance(value, Resolver):
++                yield container, key, value, resolver(container, key, value)
++            elif isinstance(value, (dict, list)):
++                yield from self.resolved_items(value, resolver)
++
++    def replace_value(self, owner, key, value, removals):
++        if value is None:
++            removals.append((owner, key))
++        else:
++            owner[key] = value
++
++    def clone_values(self, value, clone):
++        from sceptre.resolvers import Resolver
++
++        if isinstance(value, Resolver):
++            return clone(value)
++        if isinstance(value, list):
++            return [self.clone_values(item, clone) for item in value]
++        if isinstance(value, dict):
++            return {key: self.clone_values(item, clone) for key, item in value.items()}
++        return value
++
++    def resolve_container_entry(self, value, stack, key):
++        from sceptre.resolvers import RecursiveResolve
++
++        try:
++            return self.resolve_resolver_value(value), False
++        except RecursiveResolve:
++            return self.defer_value(value, stack, key), True
++
++    def defer_value(self, value, stack, key):
++        return self.ResolveLater(stack, self.name, key, lambda: value.resolve())
++
++    def bind_hook_value(self, container, key, value, stack):
++        container[key] = clone = value.clone_for_stack(stack)
++        clone.setup()
++
++    def command_parameters(self):
++        from sceptre.exceptions import InvalidHookArgumentTypeError
++
++        command = None
++        shell = None
++        if isinstance(self.argument, dict):
++            command = self.argument.get("run")
++            shell = self.argument.get("shell")
++        else:
++            command = self.argument
++        if not isinstance(command, str) or command == "":
++            raise InvalidHookArgumentTypeError(
++                "A cmd hook requires either a string argument or an object with "
++                f"a `run` key and a string value. You gave `{self.argument!r}`."
++            )
++        if shell is not None and not isinstance(shell, str) or shell == "":
++            raise InvalidHookArgumentTypeError(
++                "A cmd hook requires a `shell` key with a non-empty string. "
++                f"You gave `{self.argument!r}`."
++            )
++        return command, shell
++
++    def scaling_parameters(self):
++        from six import string_types
++        from sceptre.exceptions import (
++            InvalidHookArgumentTypeError, InvalidHookArgumentSyntaxError,
++            InvalidHookArgumentValueError,
++        )
++
++        if not isinstance(self.argument, string_types):
++            raise InvalidHookArgumentTypeError(
++                'The argument "{0}" is the wrong type - asg_scaling_processes '
++                "hooks require arguments of type string.".format(self.argument)
++            )
++        if "::" not in str(self.argument):
++            raise InvalidHookArgumentSyntaxError(
++                'Wrong syntax for the argument "{0}" - asg_scaling_processes '
++                "hooks use:"
++                "- !asg_scaling_processes <suspend|resume>::<process-name>".format(self.argument)
++            )
++        action, processes = self.argument.split("::")
++        if action not in ["resume", "suspend"]:
++            raise InvalidHookArgumentValueError(
++                'The argument "{0}" is invalid - valid arguments for '
++                'asg_scaling_processes hooks are "resume" or "suspend".'.format(action)
++            )
++        return action + "_processes", processes
++
++    def load_template_body(self):
++        handler_type = self.handler_config.get("type")
++        handler_class = self._get_handler_of_type(handler_type)
++        handler = handler_class(
++            name=self.name,
++            arguments={key: value for key, value in self.handler_config.items() if key != "type"},
++            sceptre_user_data=self.sceptre_user_data,
++            connection_manager=self.connection_manager,
++            stack_group_config=self.stack_group_config,
++        )
++        handler.validate()
++        body = handler.handle()
++        if isinstance(body, bytes):
++            body = body.decode("utf-8")
++        if not str(body).startswith("---"):
++            body = "---\n{}".format(body)
++        return body
++
++    def _get_handler_of_type(self, handler_type):
++        from sceptre.exceptions import TemplateHandlerNotFoundError
++
++        if not self._registry:
++            self._registry = {}
++            for entry_point in self._iterate_entry_points(
++                "sceptre.template_handlers", handler_type
++            ):
++                self._registry[entry_point.name] = entry_point.load()
++        if handler_type not in self._registry:
++            raise TemplateHandlerNotFoundError(
++                'Handler of type "{0}" not found'.format(handler_type)
++            )
++        return self._registry[handler_type]
++
++    def register_yaml_constructors(self, entry_point_groups):
++        from sceptre.config import reader
++
++        self.logger.debug(
++            "Adding yaml constructors for the entry point groups {0}".format(entry_point_groups)
++        )
++
++        def constructor_factory(node_class):
++            def class_constructor(loader, node):
++                return node_class(loader.construct_object(self.resolve_node_tag(loader, node)))
++            return class_constructor
++
++        for group in entry_point_groups:
++            for entry_point in self._iterate_entry_points(group):
++                node_tag = "!" + entry_point.name
++                node_class = entry_point.load()
++                reader.yaml.SafeLoader.add_constructor(node_tag, constructor_factory(node_class))
++                self.logger.debug(
++                    "Added constructor for %s with node tag %s", str(node_class), node_tag
++                )
++
++    def _clone_container_with_resolvers(self, container, stack):
++        return self.clone_values(container, lambda value: value.clone_for_stack(stack))
++
++    def resolve_resolver_value(self, resolver):
++        from sceptre.resolvers import RecursiveResolve
++        from sceptre.resolvers.placeholders import (
++            are_placeholders_enabled,
++            create_placeholder_value,
++        )
++
++        try:
++            return resolver.resolve()
++        except RecursiveResolve:
++            raise
++        except Exception:
++            if are_placeholders_enabled():
++                value = create_placeholder_value(resolver, self.placeholder_type)
++                self.logger.debug(
++                    "Error encountered while resolving the resolver. This is allowed for the current "
++                    f"operation. Resolving it to a placeholder value instead: {value}"
++                )
++                return value
++            raise
++
++    def _resolve_argument(self):
++        keys_to_delete = []
++        for owner, key, original, result in self.resolved_items(
++            self._argument, lambda owner, key, value: value.resolve()
++        ):
++            self.replace_value(owner, key, result, keys_to_delete)
++        delete_keys_from_containers(keys_to_delete)
++        self._argument_is_resolved = True
++
++    def _recursively_setup(self):
++        from sceptre.resolvers import Resolver
++
++        self.setup()
++
++        def setup_nested(container, key, obj):
++            obj._recursively_setup()
++
++        _call_func_on_values(setup_nested, self._argument, Resolver)
++
++    def _recursively_clone(self, stack):
++        argument = self.clone_values(
++            self._argument, lambda value: value._recursively_clone(stack)
++        )
++        return type(self)(argument, stack)
++
++    def clone_for_stack(self, stack):
++        clone = self._recursively_clone(stack)
++        clone._recursively_setup()
++        return clone
++
++    @staticmethod
++    def execute_hooks(hooks):
++        from sceptre.hooks import Hook
++
++        if isinstance(hooks, list):
++            for hook in hooks:
++                if isinstance(hook, Hook):
++                    hook.run()
++
++    def validate(self):
++        from jsonschema import validate, ValidationError
++        from sceptre.exceptions import TemplateHandlerArgumentsInvalidError
++
++        try:
++            validate(instance=self.arguments, schema=self.schema())
++        except ValidationError as error:
++            raise TemplateHandlerArgumentsInvalidError(error)
++
++    def _resolve_template_path(self, template_path):
++        from os import path
++        from sceptre.helpers import normalise_path
++
++        return path.join(
++            self.stack_group_config["project_path"],
++            "templates",
++            normalise_path(template_path),
++        )
++
++    @contextmanager
++    def downloaded_template(self, path, module, content):
++        temporary = module.tempfile.NamedTemporaryFile(prefix=path.stem)
++        if module.__name__.endswith(".http"):
++            self.logger.debug("Template file saved to: %s", temporary.name)
++        with temporary as source:
++            source.write(content)
++            source.seek(0)
++            source.read()
++            yield source.name
++
++    def render_template_source(self, source, suffix, jinja_suffixes, python_suffixes, helper):
++        if suffix in jinja_suffixes:
++            return self.render_jinja_file(source, helper)
++        if suffix in python_suffixes:
++            return helper.call_sceptre_handler(source, self.sceptre_user_data)
++
++    def render_jinja_file(self, path, helper):
++        return helper.render_jinja_template(
++            path,
++            {"sceptre_user_data": self.sceptre_user_data},
++            self.stack_group_config.get("j2_environment", {}),
++        )
++
++    def _get_retry_session(
++        self, retries, backoff_factor=0.3,
++        status_forcelist=(429, 500, 502, 503, 504), session=None,
++    ):
++        from sceptre.template_handlers import http
++
++        session = session or http.requests.Session()
++        retry = http.Retry(
++            total=retries, read=retries, connect=retries,
++            backoff_factor=backoff_factor, status_forcelist=status_forcelist,
++        )
++        adapter = http.HTTPAdapter(max_retries=retry)
++        session.mount("http://", adapter)
++        session.mount("https://", adapter)
++        return session
++
++    def _get_handler_option(self, name, default):
++        from sceptre.template_handlers.http import HANDLER_OPTION_KEY
++
++        if HANDLER_OPTION_KEY in self.stack_group_config:
++            option = self.stack_group_config.get(HANDLER_OPTION_KEY)
++            if name in option:
++                return option.get(name)
++        return default
++
++    def read_s3_template(self, path):
++        self.logger.debug("Downloading file from S3: %s", path)
++        bucket = path.parts[0]
++        key = "/".join(path.parts[1:])
++        try:
++            response = self.connection_manager.call(
++                service="s3", command="get_object",
++                kwargs={"Bucket": bucket, "Key": key},
++            )
++            return response["Body"].read()
++        except Exception as error:
++            self.logger.critical(error)
++            raise error
+diff --git a/sceptre/resolvers/__init__.py b/sceptre/resolvers/__init__.py
+index 06fd34f..2d748e9 100644
+--- a/sceptre/resolvers/__init__.py
++++ b/sceptre/resolvers/__init__.py
+@@ -8,6 +8,7 @@ from typing import Any, TYPE_CHECKING, Type, Union, TypeVar
+ from sceptre.exceptions import InvalidResolverArgumentError
+ from sceptre.helpers import _call_func_on_values, delete_keys_from_containers
+ from sceptre.logging import StackLoggerAdapter
++from sceptre.plugin_runtime import PluginRuntime
+ from sceptre.resolvers.placeholders import (
+     create_placeholder_value,
+     are_placeholders_enabled,
+@@ -25,7 +26,7 @@ class RecursiveResolve(Exception):
+     pass
+ 
+ 
+-class CustomYamlTagBase:
++class CustomYamlTagBase(PluginRuntime):
+     """A base class for custom Yaml Elements (i.e. hooks and resolvers).
+ 
+     This base class takes care of common functionality needed by subclasses:
+@@ -90,31 +91,13 @@ class CustomYamlTagBase:
+     def _resolve_argument(self):
+         """Resolves all argument resolvers recursively."""
+ 
+-        keys_to_delete = []
+-
+-        def resolve(containing_list_or_dict, key, obj: Resolver):
+-            result = obj.resolve()
+-            # If the resolver "resolves to nothing", then it should get deleted out of its container.
+-            if result is None:
+-                keys_to_delete.append((containing_list_or_dict, key))
+-            else:
+-                containing_list_or_dict[key] = result
+-
+-        _call_func_on_values(resolve, self._argument, Resolver)
+-        delete_keys_from_containers(keys_to_delete)
+-
+-        self._argument_is_resolved = True
++        return super()._resolve_argument()
+ 
+     def _recursively_setup(self):
+         """Ensures all nested resolvers in this resolver's argument are also setup when this
+         instance's setup method is called.
+         """
+-        self.setup()
+-
+-        def setup_nested(containing_list_or_dict, key, obj: Resolver):
+-            obj._recursively_setup()
+-
+-        _call_func_on_values(setup_nested, self._argument, Resolver)
++        return super()._recursively_setup()
+ 
+     def _recursively_clone(self: Self, stack: "stack.Stack") -> Self:
+         """Recursively clones the instance and its arguments.
+@@ -127,28 +110,13 @@ class CustomYamlTagBase:
+         they themselves are also independent and fully configured for the current stack.
+         """
+ 
+-        def recursively_clone_arguments(obj):
+-            if isinstance(obj, Resolver):
+-                return obj._recursively_clone(stack)
+-            if isinstance(obj, list):
+-                return [recursively_clone_arguments(item) for item in obj]
+-            elif isinstance(obj, dict):
+-                return {
+-                    key: recursively_clone_arguments(val) for key, val in obj.items()
+-                }
+-            return obj
+-
+-        argument = recursively_clone_arguments(self._argument)
+-        clone = type(self)(argument, stack)
+-        return clone
++        return super()._recursively_clone(stack)
+ 
+     def clone_for_stack(self: Self, stack: "stack.Stack") -> Self:
+         """
+         Obtains a clone of the current object, setup and ready for use for a given Stack instance.
+         """
+-        clone = self._recursively_clone(stack)
+-        clone._recursively_setup()
+-        return clone
++        return super().clone_for_stack(stack)
+ 
+     def setup(self):
+         """
+@@ -199,7 +167,7 @@ class Resolver(CustomYamlTagBase, metaclass=abc.ABCMeta):
+         raise InvalidResolverArgumentError(error_message)
+ 
+ 
+-class ResolvableProperty(abc.ABC):
++class ResolvableProperty(PluginRuntime, abc.ABC):
+     """
+     This is an abstract base class for a descriptor used to store an attribute that have values
+     associated with Resolver objects.
+@@ -280,23 +248,7 @@ class ResolvableProperty(abc.ABC):
+         :param resolver: The resolver to resolve.
+         :return: The resolved value (or placeholder, in certain circumstances)
+         """
+-        try:
+-            return resolver.resolve()
+-        except RecursiveResolve:
+-            # Recursive resolve issues shouldn't be masked by a placeholder.
+-            raise
+-        except Exception:
+-            if are_placeholders_enabled():
+-                placeholder_value = create_placeholder_value(
+-                    resolver, self.placeholder_type
+-                )
+-
+-                self.logger.debug(
+-                    "Error encountered while resolving the resolver. This is allowed for the current "
+-                    f"operation. Resolving it to a placeholder value instead: {placeholder_value}"
+-                )
+-                return placeholder_value
+-            raise
++        return super().resolve_resolver_value(resolver)
+ 
+     def __repr__(self) -> str:
+         return f"<{self.__class__.__name__}({self.name[1:]})>"
+@@ -339,36 +291,21 @@ class ResolvableContainerProperty(ResolvableProperty):
+         """
+         keys_to_delete = []
+ 
+-        def resolve(attr: Union[dict, list], key: Union[int, str], value: Resolver):
+-            # Update the container key's value with the resolved value, if possible...
++        container = getattr(stack, self.name)
++        for attr, key, original, resolution in self.resolved_items(
++            container,
++            lambda attr, key, value: self.resolve_container_entry(value, stack, key),
++        ):
++            result, deferred = resolution
++            if deferred:
++                attr[key] = result
++                continue
+             try:
+-                result = self.resolve_resolver_value(value)
+                 if result is None:
+-                    self.logger.debug(
+-                        f"Removing item {key} because resolver returned None."
+-                    )
+-                    # We gather up resolvers (and their immediate containers) that resolve to None,
+-                    # since that really means the resolver resolves to nothing. This is not common,
+-                    # but should be supported. We gather these rather than immediately remove them
+-                    # because this function is called in the context of looping over that attr, so
+-                    # we cannot alter its size until after the loop is complete.
+-                    keys_to_delete.append((attr, key))
+-                else:
+-                    attr[key] = result
++                    self.logger.debug(f"Removing item {key} because resolver returned None.")
++                self.replace_value(attr, key, result, keys_to_delete)
+             except RecursiveResolve:
+-                # It's possible that resolving the resolver might attempt to access another
+-                # resolvable property's value in this same container. In this case, we'll delay
+-                # resolution and instead return a ResolveLater so the value can be resolved outside
+-                # this recursion.
+-                attr[key] = self.ResolveLater(
+-                    stack,
+-                    self.name,
+-                    key,
+-                    lambda: value.resolve(),
+-                )
+-
+-        container = getattr(stack, self.name)
+-        _call_func_on_values(resolve, container, Resolver)
++                attr[key] = self.defer_value(original, stack, key)
+         delete_keys_from_containers(keys_to_delete)
+ 
+         return container
+@@ -394,16 +331,7 @@ class ResolvableContainerProperty(ResolvableProperty):
+         :return: The fully copied container with resolvers fully set up.
+         """
+ 
+-        def recurse(obj):
+-            if isinstance(obj, Resolver):
+-                return obj.clone_for_stack(stack)
+-            if isinstance(obj, list):
+-                return [recurse(item) for item in obj]
+-            elif isinstance(obj, dict):
+-                return {key: recurse(val) for key, val in obj.items()}
+-            return obj
+-
+-        return recurse(container)
++        return super()._clone_container_with_resolvers(container, stack)
+ 
+     def _resolve_deferred_resolvers(self, stack: "stack.Stack", container: T_Container):
+         def raise_if_not_resolved(attr, key, value):
+diff --git a/sceptre/template.py b/sceptre/template.py
+index dcb966f..cb9d92a 100644
+--- a/sceptre/template.py
++++ b/sceptre/template.py
+@@ -16,9 +16,10 @@ import sceptre.helpers
+ 
+ from sceptre.exceptions import TemplateHandlerNotFoundError
+ from sceptre.logging import StackLoggerAdapter
++from sceptre.plugin_runtime import PluginRuntime
+ 
+ 
+-class Template(object):
++class Template(PluginRuntime):
+     """
+     Template represents an AWS CloudFormation template. It is responsible for
+     loading, storing and optionally uploading local templates for use by
+@@ -84,22 +85,7 @@ class Template(object):
+         :rtype: str
+         """
+         if self._body is None:
+-            type = self.handler_config.get("type")
+-            handler_class = self._get_handler_of_type(type)
+-            handler = handler_class(
+-                name=self.name,
+-                arguments={k: v for k, v in self.handler_config.items() if k != "type"},
+-                sceptre_user_data=self.sceptre_user_data,
+-                connection_manager=self.connection_manager,
+-                stack_group_config=self.stack_group_config,
+-            )
+-            handler.validate()
+-            body = handler.handle()
+-            if isinstance(body, bytes):
+-                body = body.decode("utf-8")
+-            if not str(body).startswith("---"):
+-                body = "---\n{}".format(body)
+-            self._body = body
++            self._body = self.load_template_body()
+ 
+         return self._body
+ 
+@@ -257,17 +243,4 @@ class Template(object):
+         :return: Instantiated TemplateHandler
+         :rtype: class
+         """
+-        if not self._registry:
+-            self._registry = {}
+-
+-            for entry_point in self._iterate_entry_points(
+-                "sceptre.template_handlers", type
+-            ):
+-                self._registry[entry_point.name] = entry_point.load()
+-
+-        if type not in self._registry:
+-            raise TemplateHandlerNotFoundError(
+-                'Handler of type "{0}" not found'.format(type)
+-            )
+-
+-        return self._registry[type]
++        return super()._get_handler_of_type(type)
+diff --git a/sceptre/template_handlers/__init__.py b/sceptre/template_handlers/__init__.py
+index 12873a0..e3c4d98 100644
+--- a/sceptre/template_handlers/__init__.py
++++ b/sceptre/template_handlers/__init__.py
+@@ -7,10 +7,11 @@ from jsonschema import validate, ValidationError
+ 
+ from sceptre.exceptions import TemplateHandlerArgumentsInvalidError
+ from sceptre.logging import StackLoggerAdapter
++from sceptre.plugin_runtime import PluginRuntime
+ 
+ 
+ @six.add_metaclass(abc.ABCMeta)
+-class TemplateHandler:
++class TemplateHandler(PluginRuntime):
+     """
+     TemplateHandler is an abstract base class that should be inherited
+     by all Template Handlers.
+@@ -86,7 +87,4 @@ class TemplateHandler:
+         Validates if the current arguments are correct according to the schema. If this
+         does not raise an exception, the template handler's arguments are valid.
+         """
+-        try:
+-            validate(instance=self.arguments, schema=self.schema())
+-        except ValidationError as e:
+-            raise TemplateHandlerArgumentsInvalidError(e)
++        return PluginRuntime.validate(self)
+diff --git a/sceptre/template_handlers/file.py b/sceptre/template_handlers/file.py
+index 9db6605..516f660 100644
+--- a/sceptre/template_handlers/file.py
++++ b/sceptre/template_handlers/file.py
+@@ -41,14 +41,10 @@ class File(TemplateHandler):
+             if input_path.suffix in self.standard_template_extensions:
+                 with open(path) as template_file:
+                     return template_file.read()
+-            elif input_path.suffix in self.jinja_template_extensions:
+-                return helper.render_jinja_template(
+-                    path,
+-                    {"sceptre_user_data": self.sceptre_user_data},
+-                    self.stack_group_config.get("j2_environment", {}),
+-                )
+-            elif input_path.suffix in self.python_template_extensions:
+-                return helper.call_sceptre_handler(path, self.sceptre_user_data)
++            return self.render_template_source(
++                path, input_path.suffix, self.jinja_template_extensions,
++                self.python_template_extensions, helper,
++            )
+         except Exception as e:
+             helper.print_template_traceback(path)
+             raise e
+@@ -61,8 +57,4 @@ class File(TemplateHandler):
+         Note that os.path.join defers to an absolute path
+         if the input is absolute.
+         """
+-        return path.join(
+-            self.stack_group_config["project_path"],
+-            "templates",
+-            normalise_path(template_path),
+-        )
++        return super()._resolve_template_path(template_path)
+diff --git a/sceptre/template_handlers/http.py b/sceptre/template_handlers/http.py
+index e1387c7..95bbb8e 100644
+--- a/sceptre/template_handlers/http.py
++++ b/sceptre/template_handlers/http.py
+@@ -58,26 +58,13 @@ class Http(TemplateHandler):
+         )
+         try:
+             template = self._get_template(url, retries=retries, timeout=timeout)
+-            if (
+-                path.suffix
+-                in self.jinja_template_extensions + self.python_template_extensions
+-            ):
+-                file = tempfile.NamedTemporaryFile(prefix=path.stem)
+-                self.logger.debug("Template file saved to: %s", file.name)
+-                with file as f:
+-                    f.write(template)
+-                    f.seek(0)
+-                    f.read()
+-                    if path.suffix in self.jinja_template_extensions:
+-                        template = helper.render_jinja_template(
+-                            f.name,
+-                            {"sceptre_user_data": self.sceptre_user_data},
+-                            self.stack_group_config.get("j2_environment", {}),
+-                        )
+-                    elif path.suffix in self.python_template_extensions:
+-                        template = helper.call_sceptre_handler(
+-                            f.name, self.sceptre_user_data
+-                        )
++            import sys
++            if path.suffix in self.jinja_template_extensions + self.python_template_extensions:
++                with self.downloaded_template(path, sys.modules[__name__], template) as source:
++                    template = self.render_template_source(
++                        source, path.suffix, self.jinja_template_extensions,
++                        self.python_template_extensions, helper,
++                    )
+ 
+         except Exception as e:
+             helper.print_template_traceback(path)
+@@ -113,18 +100,9 @@ class Http(TemplateHandler):
+         Get a request session with retries.  Retry options are explained in the request libraries
+         https://urllib3.readthedocs.io/en/latest/reference/urllib3.util.html#module-urllib3.util.retry
+         """
+-        session = session or requests.Session()
+-        retry = Retry(
+-            total=retries,
+-            read=retries,
+-            connect=retries,
+-            backoff_factor=backoff_factor,
+-            status_forcelist=status_forcelist,
++        return super()._get_retry_session(
++            retries, backoff_factor, status_forcelist, session
+         )
+-        adapter = HTTPAdapter(max_retries=retry)
+-        session.mount("http://", adapter)
+-        session.mount("https://", adapter)
+-        return session
+ 
+     def _get_handler_option(self, name, default):
+         """
+@@ -134,9 +112,4 @@ class Http(TemplateHandler):
+         :param default: The default value if option is not set.
+         :rtype: int
+         """
+-        if HANDLER_OPTION_KEY in self.stack_group_config:
+-            option = self.stack_group_config.get(HANDLER_OPTION_KEY)
+-            if name in option:
+-                return option.get(name)
+-
+-        return default
++        return super()._get_handler_option(name, default)
+diff --git a/sceptre/template_handlers/s3.py b/sceptre/template_handlers/s3.py
+index 0725a23..c4d019e 100644
+--- a/sceptre/template_handlers/s3.py
++++ b/sceptre/template_handlers/s3.py
+@@ -48,22 +48,13 @@ class S3(TemplateHandler):
+ 
+         try:
+             template = self._get_template(path)
++            import sys
+             if path.suffix in jinja_template_suffix + python_template_suffix:
+-                file = tempfile.NamedTemporaryFile(prefix=path.stem)
+-                with file as f:
+-                    f.write(template)
+-                    f.seek(0)
+-                    f.read()
+-                    if path.suffix in jinja_template_suffix:
+-                        template = helper.render_jinja_template(
+-                            f.name,
+-                            {"sceptre_user_data": self.sceptre_user_data},
+-                            self.stack_group_config.get("j2_environment", {}),
+-                        )
+-                    elif path.suffix in python_template_suffix:
+-                        template = helper.call_sceptre_handler(
+-                            f.name, self.sceptre_user_data
+-                        )
++                with self.downloaded_template(path, sys.modules[__name__], template) as source:
++                    template = self.render_template_source(
++                        source, path.suffix, jinja_template_suffix,
++                        python_template_suffix, helper,
++                    )
+ 
+         except Exception as e:
+             helper.print_template_traceback(path)
+@@ -80,17 +71,4 @@ class S3(TemplateHandler):
+         :returns: The body of the CloudFormation template.
+         :rtype: str
+         """
+-        self.logger.debug("Downloading file from S3: %s", path)
+-        bucket = path.parts[0]
+-        key = "/".join(path.parts[1:])
+-
+-        try:
+-            response = self.connection_manager.call(
+-                service="s3",
+-                command="get_object",
+-                kwargs={"Bucket": bucket, "Key": key},
+-            )
+-            return response["Body"].read()
+-        except Exception as e:
+-            self.logger.critical(e)
+-            raise e
++        return self.read_s3_template(path)

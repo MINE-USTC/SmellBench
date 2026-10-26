@@ -1,0 +1,174 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "hello_rust_lychee_dce",
+  "rubric_status": "limited",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "terminal_registration",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expanded terminal transport registration.",
+      "baseline_defect": "Transport unconditionally returns Done; Chain traversal terminates there, so following WebsiteChecker registration is unreachable.",
+      "criterion": "Eliminate the permanently skipped default-chain registration.",
+      "acceptance": "Preserve plugins before default flow, quirks then credentials, one effective terminal HTTP stage and supported method fallback/GitHub/HTTPS/redirect behavior. Reconnecting WebsiteChecker as the sole equivalent terminal is valid; do not simply remove transport and expose stale duplicate retry/body logic. Equivalent concise cleanup may keep the active migration or reconnect an equivalent single live implementation; no required Transport type, RetrySchedule object or module layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live shared checker, request, scheduler or cache behavior based only on proximity to dead code is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website.rs",
+          "symbol": "check_website",
+          "detail": "Transport unconditionally returns Done; Chain traversal terminates there, so following WebsiteChecker registration is unreachable.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website/transport.rs",
+          "symbol": "Transport::handle",
+          "detail": "Transport unconditionally returns Done; Chain traversal terminates there, so following WebsiteChecker registration is unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "handler_closure",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expanded skipped-handler closure narrowed by retry migration.",
+      "baseline_defect": "Crate-private WebsiteChecker Handler is only registered after terminal transport; its implementation has no reachable role.",
+      "criterion": "Remove or meaningfully reconnect the dormant handler implementation, leaving no unused equivalent handler closure.",
+      "acceptance": "Retain WebsiteChecker initialization and active retry_request/check_default/check_response/clone_unwrap behavior used by Transport. Old expanded claim that the entire method family is dead no longer applies. Reusing handler in a single live chain while retiring the redundant route qualifies. Equivalent concise cleanup may keep the active migration or reconnect an equivalent single live implementation; no required Transport type, RetrySchedule object or module layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live shared checker, request, scheduler or cache behavior based only on proximity to dead code is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website.rs",
+          "symbol": "Handler<Request, Status> for WebsiteChecker",
+          "detail": "Crate-private WebsiteChecker Handler is only registered after terminal transport; its implementation has no reachable role.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website/transport.rs",
+          "symbol": "Transport::handle",
+          "detail": "Crate-private WebsiteChecker Handler is only registered after terminal transport; its implementation has no reachable role.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "retry_residue",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry producer exhausts budget or terminal status.",
+      "baseline_defect": "On scheduler return either retries==max or status success/nonretryable; legacy loop cannot reach increment/sleep/check_default.",
+      "criterion": "Remove unreachable legacy retry-attempt statements and redundant trailing retry control.",
+      "acceptance": "First request, cloning, retry counter and initial wait are live. Preserve max retry count, saturating exponential delay, classification including retryable fragment errors, response attempts and host throttling. Old while guard and terminal return can execute but are redundant, not themselves unreachable; equivalent cleanup must preserve returned Status. Equivalent concise cleanup may keep the active migration or reconnect an equivalent single live implementation; no required Transport type, RetrySchedule object or module layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live shared checker, request, scheduler or cache behavior based only on proximity to dead code is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website.rs",
+          "symbol": "retry_request",
+          "detail": "On scheduler return either retries==max or status success/nonretryable; legacy loop cannot reach increment/sleep/check_default.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website/transport.rs",
+          "symbol": "retry",
+          "detail": "On scheduler return either retries==max or status success/nonretryable; legacy loop cannot reach increment/sleep/check_default.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/retry.rs",
+          "symbol": "RetrySchedule::next_delay",
+          "detail": "On scheduler return either retries==max or status success/nonretryable; legacy loop cannot reach increment/sleep/check_default.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "taken_body_residue",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry response-body ownership migration.",
+      "baseline_defect": "take_fragment_input calls text.take before media/request eligibility returns; validate leaves text None on every normal return.",
+      "criterion": "Remove the obsolete second body/content-type branch after active validation.",
+      "acceptance": "Keep live host_pool execution, network errors, accepted Status and one fragment validation path. Fragment eligibility uses actual HTTP success, GET/nonempty fragment and options; accepted non2xx does not enable fragment check. Preserve missing/nonUTF8 Content-Type, HTML/Markdown and plain final-URL .md classification, original request URL for fragment lookup, and cache-clone behavior. Taking returned body must not empty host cached body. Equivalent concise cleanup may keep the active migration or reconnect an equivalent single live implementation; no required Transport type, RetrySchedule object or module layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live shared checker, request, scheduler or cache behavior based only on proximity to dead code is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website.rs",
+          "symbol": "check_response",
+          "detail": "take_fragment_input calls text.take before media/request eligibility returns; validate leaves text None on every normal return.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website/fragments.rs",
+          "symbol": "validate",
+          "detail": "take_fragment_input calls text.take before media/request eligibility returns; validate leaves text None on every normal return.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/ratelimit/mod.rs",
+          "symbol": "CacheableResponse::take_fragment_input",
+          "detail": "take_fragment_input calls text.take before media/request eligibility returns; validate leaves text None on every normal return.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fragment_helper_closure",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Original exclusive HTML helper after new active fragment path.",
+      "baseline_defect": "check_html_fragment is referenced only inside unreachable second-body branch.",
+      "criterion": "Remove the exclusive unused fragment helper and orphan imports, or reuse it in the sole equivalent live fragment path.",
+      "acceptance": "Keep shared FragmentChecker, supported HTML/Markdown semantics and error mapping; successful fragment preserves incoming status, invalid fragment updates status and checker errors propagate. No requirement to retain take_fragment_input name or owned-versus-borrowed representation if supported effects remain equivalent. Equivalent concise cleanup may keep the active migration or reconnect an equivalent single live implementation; no required Transport type, RetrySchedule object or module layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Deleting live shared checker, request, scheduler or cache behavior based only on proximity to dead code is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website.rs",
+          "symbol": "check_html_fragment",
+          "detail": "check_html_fragment is referenced only inside unreachable second-body branch.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-lib/src/checker/website/fragments.rs",
+          "symbol": "validate",
+          "detail": "check_html_fragment is referenced only inside unreachable second-body branch.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "hello_rust_lychee_dce",
+    "rubric_status": "limited",
+    "aggregation": "Equal weight for each item; score is the fraction of satisfied items.",
+    "limitation": "The frozen patch creates one HTTP-lifecycle retirement family with five separable dead artifacts. Additional points for live GitHub, HTTPS, authentication, method, cache, or status behavior would score preservation rather than injected dead-code removal.",
+    "excluded_from_scoring": [
+      "Unchanged post.diff",
+      "Compilation and test passage alone",
+      "Preservation of pre-existing GitHub, HTTPS, authentication, configured-method, cache and redirect behavior alone",
+      "The active first request, scheduler, response acquisition, response decoder and fragment validation"
+    ]
+  }
+}

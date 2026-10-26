@@ -1,0 +1,286 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "mfontanini_presenterm_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "text_rendering",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion text/background; retry prefix dispatch.",
+      "baseline_defect": "TextDrawer uses RenderSurface requiring geometry and protocols.",
+      "criterion": "Make text rendering available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Keep zero-width prefix silent, initial prefix repeats, wrapped prefix obeys repeat flag else fills width/font_size spaces with optional background first. Styled chunks restore colors only nondefault style; prefix does not inherit that restoration. Padding saturates line remainder then adds right padding, emits no commands if zero. Same focused text capability may include these coherent policies. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/render/text.rs",
+          "symbol": "draw_surface,print_block_background",
+          "detail": "TextDrawer uses RenderSurface requiring geometry and protocols.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "pure_pixel_conversion",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round1 pixel blending.",
+      "baseline_defect": "Pure alpha conversion is a method of terminal+geometry interface.",
+      "criterion": "Make pure pixel conversion available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Alpha0\u2192None, partial blends only supplied RGB background using inverse alpha, other backgrounds retain RGB, opaque returns RGB. No live terminal colors or scaler needed; pure function is sufficient. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/surface.rs",
+          "symbol": "pixel_color",
+          "detail": "Pure alpha conversion is a method of terminal+geometry interface.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ascii_cell_output",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round1 ASCII and retry split color/glyph decisions.",
+      "baseline_defect": "Raster output requires all RenderSurface defaults.",
+      "criterion": "Make ascii cell output available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Preserve resampling, two pixels per terminal row and odd lower row as transparent; top wins glyph and foreground, bottom supplies background when top exists, otherwise default background. Both transparent MoveRight1, every ASCII row MoveDown then MoveLeft(columns). Narrow cell helper valid without geometry/other protocols. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/image/protocols/ascii.rs",
+          "symbol": "print_surface",
+          "detail": "Raster output requires all RenderSurface defaults.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_geometry",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Initial sizing and custom ScaleImage.",
+      "baseline_defect": "ImageSize policy joins output capability unnecessarily.",
+      "criterion": "Make image geometry available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Specific exact, ShrinkIfNeeded custom fit_image_to_rect, WidthScaled uses ceil(columns*(1-ratio)) shrunk width and custom scale_image with original window. Preserve supplied scaler, relative starting cursor; pure geometry needs no terminal or protocol. Replaces duplicate old03/10 scoring. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/surface.rs",
+          "symbol": "image_dimensions",
+          "detail": "ImageSize policy joins output capability unnecessarily.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_cursor_recovery",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2 image restoration and stage2 color recovery.",
+      "baseline_defect": "Cursor and color completion is tied to all rendering services.",
+      "criterion": "Make image cursor recovery available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Only after successful PrintImage: restore uses original absolute row and start column; else MoveToRow(starting_row+rows). SetColors after successful move, not on failed movement. Geometry may supply rows but output capability need not implement ScaleImage. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/surface.rs",
+          "symbol": "finish_image",
+          "detail": "Cursor and color completion is tied to all rendering services.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "protocol_payload_output",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round1 transport consumers/local resources/GIF.",
+      "baseline_defect": "Kitty transport internals require RenderSurface though narrow output suffices.",
+      "criterion": "Make protocol payload output available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Keep local path UTF8 admission/base64, frame actions and tmux handling at protocol owner. Output PrintText default style, propagate first failure; no scaler/background/viewport obligations. Shared neutral payload output may serve all protocols. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/image/protocols/kitty.rs",
+          "symbol": "print_local,print_gif,print_image",
+          "detail": "Kitty transport internals require RenderSurface though narrow output suffices.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "kitty_continuation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 chunks; retry first-versus-continuation reconstruction.",
+      "baseline_defect": "Chunk default and broad trait couple Kitty options to unrelated clients.",
+      "criterion": "Make kitty continuation available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Base64 chunks4096; first retains complete options+Direct and MoreData, later GIF only TransmitFrame+MoreData, still continuations onlyMoreData. Empty payload emits nothing, first callback before output and stop after failed command. Shared traversal with iTerm legal and not evidence of unresolved ISP by itself. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/image/protocols/kitty.rs",
+          "symbol": "print_remote",
+          "detail": "Chunk default and broad trait couple Kitty options to unrelated clients.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "kitty_placeholder_output",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry shares cell and row movement defaults.",
+      "baseline_defect": "Placeholder output bound includes image sizing and unrelated protocols.",
+      "criterion": "Make kitty placeholder output available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Retain max(rows,columns)>=DIACRITICS.len rejection, image-ID RGB and row/column/last-byte diacritics; MoveLeft every row, MoveDown except final. A cell/movement capability shared with ASCII is valid; preserve differing final-row policies. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/image/protocols/kitty.rs",
+          "symbol": "print_unicode_placeholders",
+          "detail": "Placeholder output bound includes image sizing and unrelated protocols.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "iterm_framing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 actual iTerm framing and multipart.",
+      "baseline_defect": "Universal surface owns iTerm protocol.",
+      "criterion": "Make iterm framing available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Preserve tmux/non-tmux escape delimiters, Single full File payload, Multipart header then32KiB base64 FilePart chunks thenFileEnd even empty payload; first output error stops subsequent delimiters, no extra flush. Shared neutral traversal allowed. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/surface.rs",
+          "symbol": "print_iterm",
+          "detail": "Universal surface owns iTerm protocol.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sixel_encoding",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 sixel encoder/flush.",
+      "baseline_defect": "Universal surface owns protocol-specific resize/encode decisions.",
+      "criterion": "Make sixel encoding available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Flush before dimensions/resize/encode; width=min(column_width*columns,1000), height=row_height*rows, Triangle resize, RGBA bytes/default EncodeOptions, encoding error mapping, then default-style payload. No unrelated ScaleImage implementation required; native sizing calculation can remain protocol-local. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/surface.rs",
+          "symbol": "print_sixel",
+          "detail": "Universal surface owns protocol-specific resize/encode decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "viewport_updates",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2 engine viewport.",
+      "baseline_defect": "Viewport command lifecycle inherits graphics/scaling.",
+      "criterion": "Make viewport updates available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "SetCursorBoundaries saturating(rows+start_row) before BeginUpdate, MoveTo only nonzero origin; operations then EndUpdate then Flush before overflow validation. On error no invented cleanup/finally commands. Capability only command output suffices. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/surface.rs",
+          "symbol": "begin_viewport,end_viewport",
+          "detail": "Viewport command lifecycle inherits graphics/scaling.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "column_borders",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2 grid and stage2 restoration.",
+      "baseline_defect": "Grid drawing depends on broad surface and scaler adapter.",
+      "criterion": "Make column borders available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "Rows start..=max inclusive, MoveToRow even empty border list, each border column MoveToColumn then \u2502 style; restore colors after loop even no columns/range empty, unless earlier error. Do not impose image clipping on grid. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/terminal/surface.rs",
+          "symbol": "draw_column_borders",
+          "detail": "Grid drawing depends on broad surface and scaler adapter.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "transition_frame_replay",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2 transition family.",
+      "baseline_defect": "Command replay constructs default scaler and broad adapter.",
+      "criterion": "Make transition frame replay available through only the capabilities actually used, without the universal RenderSurface obligation.",
+      "acceptance": "BeginUpdate then ordered commands thenEndUpdate/Flush; stop on first command error. No image registration, encoding or geometry requirement; coherent frame helper may be shared with viewport completion. Existing narrow TerminalIo, ScaleImage and PrintImage implementations remain valid. Cohesive helpers/free functions or narrower traits qualify; no prescribed trait count or name. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming RenderSurface or wrapping a dummy scaler while retaining the broad internal bound is insufficient; unchanged external narrow entry points alone do not repair internal coupling."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/presenter.rs",
+          "symbol": "render_frame",
+          "detail": "Command replay constructs default scaler and broad adapter.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "mfontanini_presenterm_isp",
+    "rubric_status": "ready",
+    "aggregation": "equal_weight"
+  }
+}

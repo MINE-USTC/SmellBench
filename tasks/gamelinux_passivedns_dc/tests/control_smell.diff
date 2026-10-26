@@ -1,0 +1,825 @@
+diff --git a/src/dns.c b/src/dns.c
+index aba779d..063d98d 100644
+--- a/src/dns.c
++++ b/src/dns.c
+@@ -92,6 +92,24 @@ static void rec_time_touch(pdns_record *rec)
+     rec_time_push(rec);
+ }
+ 
++static pdns_record *record_values(uint64_t dnshash,
++                             unsigned char *domain_name,
++                             time_t seen_sec, long seen_usec, uint32_t af,
++                             struct in6_addr client_ip, struct in6_addr server_ip,
++                             uint8_t server_ttl, const u_char *client_mac,
++                             const u_char *server_mac, uint8_t proto);
++static pdns_asset *update_asset_values(pdns_record *pr,
++                              time_t seen_sec, long seen_usec, uint32_t af,
++                              struct in6_addr client_ip, struct in6_addr server_ip,
++                              uint8_t server_ttl, uint16_t vlan, uint8_t proto,
++                              uint16_t client_port, uint16_t server_port,
++                              time_t query_sec, long query_usec,
++                              int64_t elapsed_seconds,
++                              uint16_t answer_type, uint16_t answer_class,
++                              uint32_t answer_ttl, unsigned char *rdomain_name,
++                              size_t alen, uint16_t qtype, uint16_t qid,
++                              uint16_t rc);
++
+ static pdns_record *next_expirable(time_t expire_t);
+ 
+ uint64_t hash(unsigned char *str)
+@@ -825,6 +843,7 @@ static int log_json_answer(packetinfo *pi, ldns_rr *qrr, ldns_pkt *dns_pkt)
+     uint32_t ttl = 0;
+     uint64_t dnshash;
+     pdns_record *pr;
++    pdns_asset *fresh_asset;
+     ldns_rr fake;
+ 
+     if (qrr == NULL || pi == NULL || pi->cxt == NULL)
+@@ -916,7 +935,11 @@ static int log_json_answer(packetinfo *pi, ldns_rr *qrr, ldns_pkt *dns_pkt)
+     }
+ 
+     dnshash = hash((unsigned char *)qname);
+-    pr = get_pdns_record(dnshash, pi, (unsigned char *)qname);
++    pr = record_values(dnshash, (unsigned char *)qname,
++                         pi->pheader->ts.tv_sec, pi->pheader->ts.tv_usec,
++                         pi->cxt->af, pi->cxt->s_ip, pi->cxt->d_ip, pi->s_ttl,
++                         pi->eth_hdr ? pi->eth_hdr->ether_dst : NULL,
++                         pi->eth_hdr ? pi->eth_hdr->ether_src : NULL, pi->proto);
+     free(qname);
+     if (pr == NULL) {
+         free(joined);
+@@ -926,8 +949,23 @@ static int log_json_answer(packetinfo *pi, ldns_rr *qrr, ldns_pkt *dns_pkt)
+     fake._rr_type = atype;
+     fake._rr_class = LDNS_RR_CLASS_IN;
+     fake._ttl = ttl;
+-    update_pdns_record_asset(pi, pr, &fake, joined, jlen,
++    fresh_asset = update_asset_values(pr, pi->pheader->ts.tv_sec, pi->pheader->ts.tv_usec,
++                        pi->cxt->af, pi->cxt->s_ip, pi->cxt->d_ip, pi->s_ttl,
++                        pi->vlan, pi->proto, ntohs(pi->cxt->s_port),
++                        ntohs(pi->cxt->d_port), pi->cxt->query_time != 0 ? pi->cxt->query_time : pi->cxt->start_time,
++                        pi->cxt->query_time != 0 ? pi->cxt->query_usec : pi->cxt->start_usec,
++                        (int64_t)pi->pheader->ts.tv_sec -
++                            (int64_t)(pi->cxt->query_time != 0 ?
++                                      pi->cxt->query_time : pi->cxt->start_time),
++                        fake._rr_type, fake._rr_class, fake._ttl, joined, jlen,
+                              qtype, (uint16_t)ldns_pkt_id(dns_pkt), rcode);
++    if (fresh_asset != NULL) {
++        if (pi->eth_hdr != NULL) {
++            memcpy(fresh_asset->cmac, pi->eth_hdr->ether_dst, 6 * sizeof(u_char));
++            memcpy(fresh_asset->smac, pi->eth_hdr->ether_src, 6 * sizeof(u_char));
++        }
++        print_passet(pr, fresh_asset, fresh_asset->rr, NULL, 0);
++    }
+     free(joined);
+     return 0;
+ }
+@@ -975,6 +1013,7 @@ int cache_dns_objects(packetinfo *pi, ldns_rdf *rdf_data,
+     uint64_t dnshash;
+     ldns_status status;
+     pdns_record *pr = NULL;
++    pdns_asset *fresh_asset;
+     ldns_rr_list *dns_answer_domains;
+     unsigned char *domain_name = 0;
+ 
+@@ -1023,7 +1062,11 @@ int cache_dns_objects(packetinfo *pi, ldns_rdf *rdf_data,
+             dnshash = hash(domain_name);
+             dlog("[D] Hash: %lu\n", dnshash);
+             /* Check if the node exists, if not, make it */
+-            pr = get_pdns_record(dnshash, pi, domain_name);
++            pr = record_values(dnshash, domain_name,
++                         pi->pheader->ts.tv_sec, pi->pheader->ts.tv_usec,
++                         pi->cxt->af, pi->cxt->s_ip, pi->cxt->d_ip, pi->s_ttl,
++                         pi->eth_hdr ? pi->eth_hdr->ether_dst : NULL,
++                         pi->eth_hdr ? pi->eth_hdr->ether_src : NULL, pi->proto);
+             if (pr == NULL) {
+                 free(domain_name);
+                 return -1;
+@@ -1259,7 +1302,11 @@ int cache_dns_objects(packetinfo *pi, ldns_rdf *rdf_data,
+             dnshash = hash(domain_name);
+             dlog("[D] Hash: %lu\n", dnshash);
+             /* Check if the node exists, if not, make it */
+-            pr = get_pdns_record(dnshash, pi, domain_name);
++            pr = record_values(dnshash, domain_name,
++                         pi->pheader->ts.tv_sec, pi->pheader->ts.tv_usec,
++                         pi->cxt->af, pi->cxt->s_ip, pi->cxt->d_ip, pi->s_ttl,
++                         pi->eth_hdr ? pi->eth_hdr->ether_dst : NULL,
++                         pi->eth_hdr ? pi->eth_hdr->ether_src : NULL, pi->proto);
+         }
+         if (pr == NULL) {
+             free(rdomain_name);
+@@ -1267,8 +1314,23 @@ int cache_dns_objects(packetinfo *pi, ldns_rdf *rdf_data,
+         }
+ 
+         /* Update the pdns record with the pdns asset */
+-        update_pdns_record_asset(pi, pr, rr, (unsigned char*)rdomain_name,
++        fresh_asset = update_asset_values(pr, pi->pheader->ts.tv_sec, pi->pheader->ts.tv_usec,
++                        pi->cxt->af, pi->cxt->s_ip, pi->cxt->d_ip, pi->s_ttl,
++                        pi->vlan, pi->proto, ntohs(pi->cxt->s_port),
++                        ntohs(pi->cxt->d_port), pi->cxt->query_time != 0 ? pi->cxt->query_time : pi->cxt->start_time,
++                        pi->cxt->query_time != 0 ? pi->cxt->query_usec : pi->cxt->start_usec,
++                        (int64_t)pi->pheader->ts.tv_sec -
++                            (int64_t)(pi->cxt->query_time != 0 ?
++                                      pi->cxt->query_time : pi->cxt->start_time),
++                        rr->_rr_type, rr->_rr_class, rr->_ttl, (unsigned char*)rdomain_name,
+                                  strlen(rdomain_name), 0, 0, 0);
++        if (fresh_asset != NULL) {
++            if (pi->eth_hdr != NULL) {
++                memcpy(fresh_asset->cmac, pi->eth_hdr->ether_dst, 6 * sizeof(u_char));
++                memcpy(fresh_asset->smac, pi->eth_hdr->ether_src, 6 * sizeof(u_char));
++            }
++            print_passet(pr, fresh_asset, fresh_asset->rr, NULL, 0);
++        }
+ 
+         /* If CNAME, free domain_name, and cp rdomain_name to domain_name */
+         if (ldns_rr_get_type(rr) == LDNS_RR_TYPE_CNAME) {
+@@ -1284,7 +1346,11 @@ int cache_dns_objects(packetinfo *pi, ldns_rdf *rdf_data,
+                 strncpy((char *)domain_name, (char *)rdomain_name, len);
+                 dnshash = hash(domain_name);
+                 dlog("[D] Hash: %lu\n", dnshash);
+-                pr = get_pdns_record(dnshash, pi, domain_name);
++                pr = record_values(dnshash, domain_name,
++                         pi->pheader->ts.tv_sec, pi->pheader->ts.tv_usec,
++                         pi->cxt->af, pi->cxt->s_ip, pi->cxt->d_ip, pi->s_ttl,
++                         pi->eth_hdr ? pi->eth_hdr->ether_dst : NULL,
++                         pi->eth_hdr ? pi->eth_hdr->ether_src : NULL, pi->proto);
+             }
+         }
+ 
+@@ -1295,60 +1361,42 @@ int cache_dns_objects(packetinfo *pi, ldns_rdf *rdf_data,
+     return 0;
+ }
+ 
+-static void asset_json_meta(pdns_asset *passet, packetinfo *pi,
+-                            uint16_t qtype, uint16_t qid, uint16_t rc)
++static int64_t asset_latency(int64_t elapsed_seconds,
++                          long reply_usec, long query_usec)
+ {
+-    passet->qtype = qtype;
+-    passet->qid = qid;
+-    passet->rc = rc;
+-    passet->vlan = pi->vlan;
+-    passet->aproto = pi->proto;
+-    if (pi->cxt == NULL || pi->pheader == NULL)
+-        return;
+-    passet->cport = ntohs(pi->cxt->s_port);
+-    passet->sport = ntohs(pi->cxt->d_port);
+-    /* qtm is the DNS query to this answer. A missing query time
+-     * falls back to the first packet, which is the query on UDP. */
+-    {
+-        time_t qsec = pi->cxt->query_time != 0 ? pi->cxt->query_time
+-                                               : pi->cxt->start_time;
+-        long qusec = pi->cxt->query_time != 0 ? pi->cxt->query_usec
+-                                              : pi->cxt->start_usec;
+-        int64_t sec = (int64_t)pi->pheader->ts.tv_sec - (int64_t)qsec;
+-        int64_t usec = (int64_t)pi->pheader->ts.tv_usec - (int64_t)qusec;
+-        int64_t delta = sec * 1000000 + usec;
+-
+-        if (passet->qts.tv_sec == 0 && passet->qts.tv_usec == 0) {
+-            passet->qts.tv_sec = qsec;
+-            passet->qts.tv_usec = qusec;
+-        }
+-        if (delta < 0)
+-            delta = 0;
+-        passet->qtm_usec = (uint64_t)delta;
+-    }
++    return elapsed_seconds * 1000000 +
++           ((int64_t)reply_usec - (int64_t)query_usec);
+ }
+ 
+-void update_pdns_record_asset(packetinfo *pi, pdns_record *pr,
+-                              ldns_rr *rr, unsigned char *rdomain_name,
++static pdns_asset *update_asset_values(pdns_record *pr,
++                              time_t seen_sec, long seen_usec, uint32_t af,
++                              struct in6_addr client_ip, struct in6_addr server_ip,
++                              uint8_t server_ttl, uint16_t vlan, uint8_t proto,
++                              uint16_t client_port, uint16_t server_port,
++                              time_t query_sec, long query_usec,
++                              int64_t elapsed_seconds,
++                              uint16_t answer_type, uint16_t answer_class,
++                              uint32_t answer_ttl, unsigned char *rdomain_name,
+                               size_t alen, uint16_t qtype, uint16_t qid,
+                               uint16_t rc)
+ {
+     pdns_asset *passet = pr->passet;
+     pdns_asset *head = passet;
+     ldns_rr *prr = NULL;
++    int64_t latency;
+ 
+     if (rdomain_name == NULL || alen > UINT32_MAX)
+-        return;
++        return NULL;
+ 
+-    dlog("Searching: %u, %s, %s\n", rr->_rr_type, pr->qname, rdomain_name);
++    dlog("Searching: %u, %s, %s\n", answer_type, pr->qname, rdomain_name);
+ 
+     while (passet != NULL)
+     {
+         /* If found, update */
+         dlog("Matching: %u, %s, %s\n",passet->rr->_rr_type, pr->qname,
+              passet->answer);
+-        dlog("[*] RR:%u, %u\n", passet->rr->_rr_type, rr->_rr_type);
+-        if (passet->rr->_rr_type == rr->_rr_type) {
++        dlog("[*] RR:%u, %u\n", passet->rr->_rr_type, answer_type);
++        if (passet->rr->_rr_type == answer_type) {
+             dlog("[*] rr match\n");
+             dlog("r:%s == a:%s\n", rdomain_name, passet->answer);
+             if (passet->qtype == qtype && passet->rc == rc &&
+@@ -1358,19 +1406,32 @@ void update_pdns_record_asset(packetinfo *pi, pdns_record *pr,
+                 /* We have this, update and if its over 24h since last print -
+                    print it, then return */
+                 passet->seen++;
+-		memcpy( &passet->last_seen, &pi->pheader->ts, sizeof( struct timeval ) );
+-                passet->af        = pi->cxt->af;
+-                passet->cip       = pi->cxt->s_ip; /* This should always be the client IP */
+-                passet->sip       = pi->cxt->d_ip; /* This should always be the server IP */
+-                passet->sip_ttl   = pi->s_ttl;
+-                asset_json_meta(passet, pi, qtype, qid, rc);
+-                if (rr->_ttl > passet->rr->_ttl)
+-                        passet->rr->_ttl = rr->_ttl;   /* Catch the highest TTL seen */
++                passet->last_seen.tv_sec = seen_sec;
++                passet->last_seen.tv_usec = seen_usec;
++                passet->af        = af;
++                passet->cip       = client_ip; /* This should always be the client IP */
++                passet->sip       = server_ip; /* This should always be the server IP */
++                passet->sip_ttl   = server_ttl;
++                passet->qtype = qtype;
++                passet->qid = qid;
++                passet->rc = rc;
++                passet->vlan = vlan;
++                passet->aproto = proto;
++                passet->cport = client_port;
++                passet->sport = server_port;
++                if (passet->qts.tv_sec == 0 && passet->qts.tv_usec == 0) {
++                    passet->qts.tv_sec = query_sec;
++                    passet->qts.tv_usec = query_usec;
++                }
++                latency = asset_latency(elapsed_seconds, seen_usec, query_usec);
++                passet->qtm_usec = latency < 0 ? 0 : (uint64_t)latency;
++                if (answer_ttl > passet->rr->_ttl)
++                        passet->rr->_ttl = answer_ttl;   /* Catch the highest TTL seen */
+                 dlog("[*] DNS asset updated...\n");
+                 if ((passet->last_seen.tv_sec -
+                         passet->last_print.tv_sec) >= config.dnsprinttime)
+                     print_passet(pr, passet, passet->rr, NULL, 0);
+-                return;
++                return NULL;
+             }
+         }
+         passet = passet->next;
+@@ -1383,7 +1444,7 @@ void update_pdns_record_asset(packetinfo *pi, pdns_record *pr,
+             expire_dns_records(sizeof(pdns_asset) + sizeof(ldns_rr) + alen + 1);
+             expire_keep = NULL;
+             if (!mem_charge(sizeof(pdns_asset) + sizeof(ldns_rr) + alen + 1))
+-                return;
++                return NULL;
+         }
+         passet = (pdns_asset*) calloc(1, sizeof(pdns_asset));
+         prr = (ldns_rr*) calloc(1, sizeof(ldns_rr));
+@@ -1391,16 +1452,16 @@ void update_pdns_record_asset(packetinfo *pi, pdns_record *pr,
+             free(passet);
+             free(prr);
+             mem_refund(sizeof(pdns_asset) + sizeof(ldns_rr) + alen + 1);
+-            return;
++            return NULL;
+         }
+         dlog("[*] Allocated a new dns asset...\n");
+         /* Type, class and TTL are values. The ldns packet that owns the
+          * name and rdata is freed when this function returns. */
+         prr->_owner = NULL;
+-        prr->_ttl = rr->_ttl;
++        prr->_ttl = answer_ttl;
+         prr->_rd_count = 0;
+-        prr->_rr_type = rr->_rr_type;
+-        prr->_rr_class = rr->_rr_class;
++        prr->_rr_type = answer_type;
++        prr->_rr_class = answer_class;
+         prr->_rdata_fields = NULL;
+         passet->seen = 1;
+         passet->rr = prr;
+@@ -1409,7 +1470,7 @@ void update_pdns_record_asset(packetinfo *pi, pdns_record *pr,
+             free(prr);
+             free(passet);
+             mem_refund(sizeof(pdns_asset) + sizeof(ldns_rr) + alen + 1);
+-            return;
++            return NULL;
+         }
+         memcpy(passet->answer, rdomain_name, alen);
+         passet->answer_len = (uint32_t)alen;
+@@ -1427,17 +1488,27 @@ void update_pdns_record_asset(packetinfo *pi, pdns_record *pr,
+         passet->next = NULL;
+ 
+     /* Populate new values */
+-    memcpy( &passet->first_seen, &pi->pheader->ts, sizeof( struct timeval ) );
+-    memcpy( &passet->last_seen, &pi->pheader->ts, sizeof( struct timeval ) );
+-    passet->af = pi->cxt->af;
+-    passet->cip = pi->cxt->s_ip; /* This should always be the client IP */
+-    passet->sip = pi->cxt->d_ip; /* This should always be the server IP */
+-    passet->sip_ttl = pi->s_ttl;
+-    asset_json_meta(passet, pi, qtype, qid, rc);
+-    if (pi-> eth_hdr) {
+-        memcpy(passet->cmac, pi->eth_hdr->ether_dst, 6 * sizeof(u_char));
+-        memcpy(passet->smac, pi->eth_hdr->ether_src, 6 * sizeof(u_char));
+-    }
++    passet->first_seen.tv_sec = seen_sec;
++    passet->first_seen.tv_usec = seen_usec;
++    passet->last_seen.tv_sec = seen_sec;
++    passet->last_seen.tv_usec = seen_usec;
++    passet->af = af;
++    passet->cip = client_ip; /* This should always be the client IP */
++    passet->sip = server_ip; /* This should always be the server IP */
++    passet->sip_ttl = server_ttl;
++    passet->qtype = qtype;
++    passet->qid = qid;
++    passet->rc = rc;
++    passet->vlan = vlan;
++    passet->aproto = proto;
++    passet->cport = client_port;
++    passet->sport = server_port;
++    if (passet->qts.tv_sec == 0 && passet->qts.tv_usec == 0) {
++        passet->qts.tv_sec = query_sec;
++        passet->qts.tv_usec = query_usec;
++    }
++    latency = asset_latency(elapsed_seconds, seen_usec, query_usec);
++    passet->qtm_usec = latency < 0 ? 0 : (uint64_t)latency;
+     passet->prev = NULL;
+ 
+     dlog("[D] Adding: %u, %s, %s\n",passet->rr->_rr_type, pr->qname,
+@@ -1445,7 +1516,34 @@ void update_pdns_record_asset(packetinfo *pi, pdns_record *pr,
+ 
+     pr->passet = passet;
+ 
+-    print_passet(pr, passet, passet->rr, NULL, 0);
++    return passet;
++}
++
++void update_pdns_record_asset(packetinfo *pi, pdns_record *pr,
++                              ldns_rr *rr, unsigned char *rdomain_name,
++                              size_t alen, uint16_t qtype, uint16_t qid,
++                              uint16_t rc)
++{
++    pdns_asset *fresh_asset;
++    if (rdomain_name == NULL || alen > UINT32_MAX)
++        return;
++    fresh_asset = update_asset_values(pr, pi->pheader->ts.tv_sec, pi->pheader->ts.tv_usec,
++                        pi->cxt->af, pi->cxt->s_ip, pi->cxt->d_ip, pi->s_ttl,
++                        pi->vlan, pi->proto, ntohs(pi->cxt->s_port),
++                        ntohs(pi->cxt->d_port), pi->cxt->query_time != 0 ? pi->cxt->query_time : pi->cxt->start_time,
++                        pi->cxt->query_time != 0 ? pi->cxt->query_usec : pi->cxt->start_usec,
++                        (int64_t)pi->pheader->ts.tv_sec -
++                            (int64_t)(pi->cxt->query_time != 0 ?
++                                      pi->cxt->query_time : pi->cxt->start_time),
++                        rr->_rr_type, rr->_rr_class, rr->_ttl, rdomain_name, alen,
++                        qtype, qid, rc);
++    if (fresh_asset != NULL) {
++        if (pi->eth_hdr != NULL) {
++            memcpy(fresh_asset->cmac, pi->eth_hdr->ether_dst, 6 * sizeof(u_char));
++            memcpy(fresh_asset->smac, pi->eth_hdr->ether_src, 6 * sizeof(u_char));
++        }
++        print_passet(pr, fresh_asset, fresh_asset->rr, NULL, 0);
++    }
+ }
+ 
+ const char *u_ntop(const struct in6_addr ip_addr, int af, char *dest)
+@@ -1613,46 +1711,54 @@ static int json_add_time(outbuf *o, const struct timeval *tv)
+                    tm.tm_hour, tm.tm_min, tm.tm_sec, (long)tv->tv_usec);
+ }
+ 
+-static int build_v2_json(outbuf *o, pdns_record *l, pdns_asset *p,
+-                         const char *client, const char *server)
++static int build_v2_json(outbuf *o,
++                         const unsigned char *query_name, uint16_t query_type,
++                         uint16_t answer_type, uint16_t query_id, uint16_t response_code,
++                         const unsigned char *answer, uint32_t answer_length,
++                         uint32_t ttl, uint64_t seen,
++                         time_t first_sec, long first_usec,
++                         time_t last_sec, long last_usec,
++                         uint8_t proto,
++                         uint16_t client_port, uint16_t server_port, uint16_t vlan,
++                         uint64_t query_elapsed, const char *client, const char *server)
+ {
+     char rcbuf[32];
+     char *qtype = NULL;
+     char *atype = NULL;
+     struct timeval pts;
+     struct timespec now;
+-    const struct timeval *fts;
+-    uint8_t proto;
++    struct timeval fts;
++    struct timeval lts;
+     int first = 1;
+     int mixed = 0;
+     int rc = -1;
+ 
+-    if (l == NULL || p == NULL || p->rr == NULL || p->answer == NULL)
++    if (answer == NULL)
+         return -1;
+-    qtype = ldns_rr_type2str((ldns_rr_type)p->qtype);
+-    atype = ldns_rr_type2str((ldns_rr_type)p->rr->_rr_type);
++    qtype = ldns_rr_type2str((ldns_rr_type)query_type);
++    atype = ldns_rr_type2str((ldns_rr_type)answer_type);
+     if (qtype == NULL || atype == NULL)
+         goto json_done;
+-    rcode_text(p->rc, rcbuf, sizeof(rcbuf));
++    rcode_text(response_code, rcbuf, sizeof(rcbuf));
+     if (clock_gettime(CLOCK_REALTIME, &now) != 0)
+         goto json_done;
+     pts.tv_sec = now.tv_sec;
+     pts.tv_usec = now.tv_nsec / 1000;
+-    fts = &p->first_seen;
+-    if (p->qts.tv_sec != 0 || p->qts.tv_usec != 0)
+-        fts = &p->qts;
+-    proto = p->aproto ? p->aproto : l->proto;
++    fts.tv_sec = first_sec;
++    fts.tv_usec = first_usec;
++    lts.tv_sec = last_sec;
++    lts.tv_usec = last_usec;
+ 
+-    if (out_add(o, "{\"query\":") != 0 || json_add_str(o, (char *)l->qname) != 0)
++    if (out_add(o, "{\"query\":") != 0 || json_add_str(o, (char *)query_name) != 0)
+         goto json_done;
+     if (out_add(o, ",\"qtype\":") != 0 || json_add_str(o, qtype) != 0)
+         goto json_done;
+     if (out_add(o, ",\"answer\":[") != 0)
+         goto json_done;
+-    if (p->answer_len < 4)
++    if (answer_length < 4)
+         goto json_done;
+     {
+-        const unsigned char *raw = p->answer;
++        const unsigned char *raw = answer;
+         uint32_t count = 0;
+         uint32_t ai;
+         size_t off = 4;
+@@ -1664,7 +1770,7 @@ static int build_v2_json(outbuf *o, pdns_record *l, pdns_asset *p,
+             uint32_t plen = 0;
+             const unsigned char *data = NULL;
+ 
+-            if (pack_next(raw, p->answer_len, &off, &typ, &data, &plen) != 0)
++            if (pack_next(raw, answer_length, &off, &typ, &data, &plen) != 0)
+                 goto json_done;
+             if (ai == 0)
+                 first_type = typ;
+@@ -1683,7 +1789,7 @@ static int build_v2_json(outbuf *o, pdns_record *l, pdns_asset *p,
+      * carries atypes, parallel to answer, so the loader can tell a
+      * CNAME from an A. A one-type line does not gain this field. */
+     if (mixed) {
+-        const unsigned char *raw = p->answer;
++        const unsigned char *raw = answer;
+         uint32_t count = 0;
+         uint32_t ai;
+         size_t off = 4;
+@@ -1698,7 +1804,7 @@ static int build_v2_json(outbuf *o, pdns_record *l, pdns_asset *p,
+             const unsigned char *data = NULL;
+             char *tname;
+ 
+-            if (pack_next(raw, p->answer_len, &off, &typ, &data, &plen) != 0)
++            if (pack_next(raw, answer_length, &off, &typ, &data, &plen) != 0)
+                 goto json_done;
+             tname = ldns_rr_type2str((ldns_rr_type)typ);
+             if (tname == NULL)
+@@ -1717,27 +1823,27 @@ static int build_v2_json(outbuf *o, pdns_record *l, pdns_asset *p,
+         if (out_add(o, "]") != 0)
+             goto json_done;
+     }
+-    if (out_add(o, ",\"qid\":%u,\"rc\":", p->qid) != 0 ||
++    if (out_add(o, ",\"qid\":%u,\"rc\":", query_id) != 0 ||
+             json_add_str(o, rcbuf) != 0)
+         goto json_done;
+     if (out_add(o, ",\"ttl\":%u,\"cnt\":%" PRIu64 ",",
+-                p->rr->_ttl, p->seen) != 0)
++                ttl, seen) != 0)
+         goto json_done;
+-    if (out_add(o, "\"fts\":") != 0 || json_add_time(o, fts) != 0)
++    if (out_add(o, "\"fts\":") != 0 || json_add_time(o, &fts) != 0)
+         goto json_done;
+-    if (out_add(o, ",\"lts\":") != 0 || json_add_time(o, &p->last_seen) != 0)
++    if (out_add(o, ",\"lts\":") != 0 || json_add_time(o, &lts) != 0)
+         goto json_done;
+     if (out_add(o, ",\"pts\":") != 0 || json_add_time(o, &pts) != 0)
+         goto json_done;
+     if (out_add(o, ",\"src_ip\":") != 0 || json_add_str(o, client) != 0)
+         goto json_done;
+-    if (out_add(o, ",\"src_port\":%u,\"dst_ip\":", p->cport) != 0 ||
++    if (out_add(o, ",\"src_port\":%u,\"dst_ip\":", client_port) != 0 ||
+             json_add_str(o, server) != 0)
+         goto json_done;
+     if (out_add(o, ",\"dst_port\":%u,\"proto\":%u,\"vlan\":%u,\"qtm\":%llu.%06llu}",
+-                p->sport, proto, p->vlan,
+-                (unsigned long long)(p->qtm_usec / 1000000ull),
+-                (unsigned long long)(p->qtm_usec % 1000000ull)) != 0)
++                server_port, proto, vlan,
++                (unsigned long long)(query_elapsed / 1000000ull),
++                (unsigned long long)(query_elapsed % 1000000ull)) != 0)
+         goto json_done;
+     rc = 0;
+ 
+@@ -1792,8 +1898,14 @@ void write_log_line(int fd, const char *line)
+     }
+ }
+ 
+-void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+-                  ldns_rdf *lname, uint16_t rcode)
++static void print_values(pdns_record *l, pdns_asset *p, ldns_rr *rr,
++                  ldns_rdf *lname, uint16_t rcode,
++                  time_t record_sec, long record_usec,
++                  time_t asset_sec, long asset_usec,
++                  uint32_t af, struct in6_addr client_ip,
++                  struct in6_addr server_ip, uint8_t server_ttl,
++                  const u_char *client_mac, const u_char *server_mac,
++                  const unsigned char *query_name, uint8_t record_proto)
+ {
+     FILE *fd = NULL;
+     int raw = -1;
+@@ -1808,7 +1920,6 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+     outbuf ob;
+     int text_line = 0;
+     uint8_t is_err_record = 0;
+-    uint8_t server_ttl = 0;
+ 
+     memset(&ob, 0, sizeof(ob));
+ 
+@@ -1859,19 +1970,21 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+         raw = config.logfile_raw;
+     }
+ 
+-    if (is_err_record) {
+-        u_ntop(l->sip, l->af, ip_addr_s);
+-        u_ntop(l->cip, l->af, ip_addr_c);
+-        server_ttl = l->sip_ttl;
+-    }
+-    else {
+-        u_ntop(p->sip, p->af, ip_addr_s);
+-        u_ntop(p->cip, p->af, ip_addr_c);
+-        server_ttl = p->sip_ttl;
+-    }
++    u_ntop(server_ip, af, ip_addr_s);
++    u_ntop(client_ip, af, ip_addr_c);
+ 
+     if (config.log_format == PDNS_LOG_JSON && p != NULL) {
+-        if (build_v2_json(&ob, l, p, ip_addr_c, ip_addr_s) != 0) {
++        if (build_v2_json(&ob, query_name, p->qtype,
++                          p->rr->_rr_type, p->qid, p->rc, p->answer, p->answer_len,
++                          p->rr->_ttl, p->seen,
++                          p->qts.tv_sec != 0 || p->qts.tv_usec != 0 ?
++                              p->qts.tv_sec : p->first_seen.tv_sec,
++                          p->qts.tv_sec != 0 || p->qts.tv_usec != 0 ?
++                              p->qts.tv_usec : p->first_seen.tv_usec,
++                          asset_sec, asset_usec,
++                          p->aproto ? p->aproto : record_proto,
++                          p->cport, p->sport, p->vlan,
++                          p->qtm_usec, ip_addr_c, ip_addr_s) != 0) {
+             text_line = 1;
+             goto print_free;
+         }
+@@ -1887,7 +2000,7 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+     if (!proto || !rr_class || !rr_type || !rr_rcode)
+         goto print_free;
+ 
+-    switch (l->proto) {
++    switch (record_proto) {
+         case IP_PROTO_TCP:
+             snprintf(proto, 4, "tcp");
+             break;
+@@ -1895,7 +2008,7 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+             snprintf(proto, 4, "udp");
+             break;
+         default:
+-            snprintf(proto, 4, "%d", l->proto);
++            snprintf(proto, 4, "%d", record_proto);
+             break;
+     }
+ 
+@@ -2058,7 +2171,7 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+         if (config.fieldsf & FIELD_TIMESTAMP_YMDHMS) {
+             struct tm *tmpTime;
+             char timestr[200];
+-            tmpTime = localtime(&l->last_seen.tv_sec);
++            tmpTime = localtime(&record_sec);
+             strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", tmpTime);
+             json_timestamp_ymdhms = json_string(timestr);
+             json_object_set(jdata, JSON_TIMESTAMP, json_timestamp_ymdhms);
+@@ -2067,14 +2180,14 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+ 
+         /* Print timestamp(s) */
+         if (config.fieldsf & FIELD_TIMESTAMP_S) {
+-            json_timestamp_s = json_integer(l->last_seen.tv_sec);
++            json_timestamp_s = json_integer(record_sec);
+             json_object_set(jdata, JSON_TIMESTAMP_S, json_timestamp_s);
+             json_decref(json_timestamp_s);
+         }
+ 
+         /* Print timestamp(ms) */
+         if (config.fieldsf & FIELD_TIMESTAMP_MS) {
+-            json_timestamp_ms = json_integer(l->last_seen.tv_usec);
++            json_timestamp_ms = json_integer(record_usec);
+             json_object_set(jdata, JSON_TIMESTAMP_MS, json_timestamp_ms);
+             json_decref(json_timestamp_ms);
+         }
+@@ -2122,14 +2235,14 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+ 
+         /* Print query */
+         if (config.fieldsf & FIELD_QUERY) {
+-            json_query = json_string((const char *)l->qname);
++            json_query = json_string((const char *)query_name);
+             json_object_set(jdata, JSON_QUERY, json_query);
+             json_decref(json_query);
+         }
+ 
+         /* Print query length */
+         if (config.fieldsf & FIELD_QUERY_LEN) {
+-            json_query_len = json_integer(strlen(l->qname));
++            json_query_len = json_integer(strlen(query_name));
+             json_object_set(jdata, JSON_QUERY_LEN, json_query_len);
+             json_decref(json_query_len);
+         }
+@@ -2212,31 +2325,31 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+         if ((config.fieldsf & FIELD_TIMESTAMP_YMDHMS)) {
+             struct tm *tmpTime;
+             char timestr[200];
+-            tmpTime = localtime(&l->last_seen.tv_sec);
++            tmpTime = localtime(&record_sec);
+             strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", tmpTime);
+             if (is_err_record)
+-                PADD("%s.%06lu", timestr, l->last_seen.tv_usec);
++                PADD("%s.%06lu", timestr, record_usec);
+             else
+-                PADD("%s.%06lu", timestr, p->last_seen.tv_usec);
++                PADD("%s.%06lu", timestr, asset_usec);
+         }
+         else if ((config.fieldsf & FIELD_TIMESTAMP_S) &&
+                  (config.fieldsf & FIELD_TIMESTAMP_MS)) {
+             if (is_err_record)
+-                PADD("%lu.%06lu", l->last_seen.tv_sec, l->last_seen.tv_usec);
++                PADD("%lu.%06lu", record_sec, record_usec);
+             else
+-                PADD("%lu.%06lu", p->last_seen.tv_sec, p->last_seen.tv_usec);
++                PADD("%lu.%06lu", asset_sec, asset_usec);
+         }
+         else if (config.fieldsf & FIELD_TIMESTAMP_S) {
+             if (is_err_record)
+-                PADD("%lu", l->last_seen.tv_sec);
++                PADD("%lu", record_sec);
+             else
+-                PADD("%lu", p->last_seen.tv_sec);
++                PADD("%lu", asset_sec);
+         }
+         else if (config.fieldsf & FIELD_TIMESTAMP_MS) {
+             if (is_err_record)
+-                PADD("%06lu", l->last_seen.tv_usec);
++                PADD("%06lu", record_usec);
+             else
+-                PADD("%06lu", p->last_seen.tv_usec);
++                PADD("%06lu", asset_usec);
+         }
+ 
+         /* Print hostname */
+@@ -2258,8 +2371,8 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+             if (ob.len != 0)
+                 PADD("%s", d);
+             PADD("%02x:%02x:%02x:%02x:%02x:%02x",
+-                p->cmac[0], p->cmac[1], p->cmac[2],
+-                p->cmac[3], p->cmac[4], p->cmac[5]);
++                client_mac[0], client_mac[1], client_mac[2],
++                client_mac[3], client_mac[4], client_mac[5]);
+         }
+ 
+         /* Print server IP */
+@@ -2280,8 +2393,8 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+             if (ob.len != 0)
+                 PADD("%s", d);
+             PADD("%02x:%02x:%02x:%02x:%02x:%02x",
+-                p->smac[0], p->smac[1], p->smac[2],
+-                p->smac[3], p->smac[4], p->smac[5]);
++                server_mac[0], server_mac[1], server_mac[2],
++                server_mac[3], server_mac[4], server_mac[5]);
+         }
+ 
+         /* Print protocol */
+@@ -2302,14 +2415,14 @@ void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
+         if (config.fieldsf & FIELD_QUERY) {
+             if (ob.len != 0)
+                 PADD("%s", d);
+-            PADD("%s", l->qname);
++            PADD("%s", query_name);
+         }
+ 
+         /* Print query length */
+         if (config.fieldsf & FIELD_QUERY_LEN) {
+             if (ob.len != 0)
+                 PADD("%s", d);
+-            PADD("%zd", strlen(l->qname));
++            PADD("%zd", strlen(query_name));
+         }
+ 
+         /* Print type */
+@@ -2408,8 +2521,33 @@ print_free:
+ 
+ }
+ 
+-pdns_record *get_pdns_record(uint64_t dnshash, packetinfo *pi,
+-                             unsigned char *domain_name)
++void print_passet(pdns_record *l, pdns_asset *p, ldns_rr *rr,
++                  ldns_rdf *lname, uint16_t rcode)
++{
++    if (config.log_format == PDNS_LOG_JSON && p != NULL &&
++            (l == NULL || p->rr == NULL || p->answer == NULL))
++        return;
++    if (p == NULL) {
++        print_values(l, p, rr, lname, rcode,
++                     l->last_seen.tv_sec, l->last_seen.tv_usec, 0, 0,
++                     l->af, l->cip, l->sip, l->sip_ttl, NULL, NULL,
++                     l->qname, l->proto);
++    }
++    else {
++        print_values(l, p, rr, lname, rcode,
++                     l->last_seen.tv_sec, l->last_seen.tv_usec,
++                     p->last_seen.tv_sec, p->last_seen.tv_usec,
++                     p->af, p->cip, p->sip, p->sip_ttl, p->cmac, p->smac,
++                     l->qname, l->proto);
++    }
++}
++
++static pdns_record *record_values(uint64_t dnshash,
++                             unsigned char *domain_name,
++                             time_t seen_sec, long seen_usec, uint32_t af,
++                             struct in6_addr client_ip, struct in6_addr server_ip,
++                             uint8_t server_ttl, const u_char *client_mac,
++                             const u_char *server_mac, uint8_t proto)
+ {
+     pdns_record *pdnsr = dbucket[dnshash];
+     pdns_record *head = pdnsr;
+@@ -2421,15 +2559,16 @@ pdns_record *get_pdns_record(uint64_t dnshash, packetinfo *pi,
+         if (strcmp((const char *)domain_name,
+                 (const char *)pdnsr->qname) == 0) {
+             /* match :) */
+-            memcpy( &pdnsr->last_seen, &pi->pheader->ts, sizeof( struct timeval ) );
++            pdnsr->last_seen.tv_sec = seen_sec;
++            pdnsr->last_seen.tv_usec = seen_usec;
+             rec_time_touch(pdnsr);
+-            pdnsr->af = pi->cxt->af;
+-            pdnsr->cip = pi->cxt->s_ip; /* This should always be the client IP */
+-            pdnsr->sip = pi->cxt->d_ip; /* This should always be the server IP */
+-            pdnsr->sip_ttl = pi->s_ttl;
+-            if (pi->eth_hdr){
+-                memcpy(pdnsr->cmac, pi->eth_hdr->ether_dst, 6 * sizeof(u_char));
+-                memcpy(pdnsr->smac, pi->eth_hdr->ether_src, 6 * sizeof(u_char));
++            pdnsr->af = af;
++            pdnsr->cip = client_ip; /* This should always be the client IP */
++            pdnsr->sip = server_ip; /* This should always be the server IP */
++            pdnsr->sip_ttl = server_ttl;
++            if (client_mac != NULL){
++                memcpy(pdnsr->cmac, client_mac, 6 * sizeof(u_char));
++                memcpy(pdnsr->smac, server_mac, 6 * sizeof(u_char));
+             }
+             return pdnsr;
+         }
+@@ -2465,27 +2604,39 @@ pdns_record *get_pdns_record(uint64_t dnshash, packetinfo *pi,
+         head->prev = pdnsr;
+ 
+     /* Populate new values */
+-    memcpy( &pdnsr->first_seen, &pi->pheader->ts, sizeof( struct timeval ) );
+-    memcpy( &pdnsr->last_seen, &pi->pheader->ts, sizeof( struct timeval ) );
+-    pdnsr->af = pi->cxt->af;
++    pdnsr->first_seen.tv_sec = seen_sec;
++    pdnsr->first_seen.tv_usec = seen_usec;
++    pdnsr->last_seen.tv_sec = seen_sec;
++    pdnsr->last_seen.tv_usec = seen_usec;
++    pdnsr->af = af;
+     pdnsr->nxflag = 0;
+-    pdnsr->cip = pi->cxt->s_ip; /* This should always be the client IP */
+-    pdnsr->sip = pi->cxt->d_ip; /* This should always be the server IP */
+-    pdnsr->sip_ttl = pi->s_ttl;
+-    if (pi->eth_hdr) {
+-        memcpy(pdnsr->cmac, pi->eth_hdr->ether_dst, 6 * sizeof(u_char));
+-        memcpy(pdnsr->smac, pi->eth_hdr->ether_src, 6 * sizeof(u_char));
++    pdnsr->cip = client_ip; /* This should always be the client IP */
++    pdnsr->sip = server_ip; /* This should always be the server IP */
++    pdnsr->sip_ttl = server_ttl;
++    if (client_mac != NULL) {
++        memcpy(pdnsr->cmac, client_mac, 6 * sizeof(u_char));
++        memcpy(pdnsr->smac, server_mac, 6 * sizeof(u_char));
+     }
+     pdnsr->next = head;
+     pdnsr->prev = NULL;
+     pdnsr->passet = NULL;
+-    pdnsr->proto = pi->proto;
++    pdnsr->proto = proto;
+ 
+     dbucket[dnshash] = pdnsr;
+     rec_time_push(pdnsr);
+     return pdnsr;
+ }
+ 
++pdns_record *get_pdns_record(uint64_t dnshash, packetinfo *pi,
++                             unsigned char *domain_name)
++{
++    return record_values(dnshash, domain_name,
++                         pi->pheader->ts.tv_sec, pi->pheader->ts.tv_usec,
++                         pi->cxt->af, pi->cxt->s_ip, pi->cxt->d_ip, pi->s_ttl,
++                         pi->eth_hdr ? pi->eth_hdr->ether_dst : NULL,
++                         pi->eth_hdr ? pi->eth_hdr->ether_src : NULL, pi->proto);
++}
++
+ static int mem_needs_room(size_t need)
+ {
+     /* mem_charge never stores more than the limit, so a failed

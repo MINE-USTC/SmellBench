@@ -1,288 +1,144 @@
-# SmellBench: Towards Fine-Grained Evaluation of Code Agents on Refactoring Tasks
+# SmellBench — Preview
 
-This repository provides the benchmark for **SmellBench**, designed to evaluate whether code agents can detect and refactor bad code (code smells).
+**Towards Fine-Grained Evaluation of Code Agents on Refactoring Tasks**
 
-## Dataset Format
+SmellBench evaluates behavior-preserving, repository-level refactoring. Each task starts from a real open-source repository with injected code smells and asks an agent to reorganize the affected code without changing its intended behavior. Repository-native tests check functional preservation; case-specific rubrics assess structural repair beyond test passing.
 
-Each instance in **SmellBench** represents a validated code smell injection case constructed from a real-world open-source repository.
+This `preview` branch contains **95 Harbor-style task packages from 47 repositories**, covering **5 languages, 7 smell categories, and 1,570 rubric criteria**. It replaces the previous code tree on this branch only. Earlier contents remain available in Git history and on the original branch.
 
-Each sample contains:
+> Preview status: the packages are a snapshot of the evaluation task collection, not a claim that every environment builds on every machine. No full Docker/Harbor evaluation was rerun for this publication. Some task metadata retains assembly/runtime-validation flags. The result tables below describe recorded experimental runs, not a new certification of this snapshot.
 
-* Repository metadata
-* Code smell type and difficulty
-* Injected code smell information
-* Target function and test cases
-* Ground-truth refactored code (as a reversal diff)
-* Detailed smell analysis
+## Benchmark construction
 
-Below is a complete example of a single data instance.
+The benchmark uses seed repository selection followed by multi-stage smell injection:
 
----
+1. **Smell propagation** expands a structural defect across related functions, classes, and files.
+2. **Smell entanglement** introduces intertwined responsibilities and dependencies that require coherent reconstruction rather than isolated local edits.
+3. **Verification and review** combine repository-native tests, injection-artifact cleanup, and case review.
 
-### Full JSON Structure (Single Sample)
+The reference repair is derived from the original clean code. Agents may use equivalent designs: matching the reference patch text or file set is not an evaluation requirement.
 
-```json
-{
-  "instance_id": "click-feature_envy-abbada6d83f399a175bfbf64b8a402e5",
-  "type": "feature_envy",
-  "difficulty": "hard",
-  "target_file": "src/click/core.py",
-  "hint_targeted": "The `finalize_context` method in the `_ParseResultAdapter` class (src/click/parser.py) exhibits feature envy - please address this code smell.",
-  "hint_guided": "Can you resolve the feature envy code smell present in src/click/parser.py?",
-  "smell_function": [
-    "src/click/parser.py",
-    "_ParseResultAdapter",
-    "finalize_context"
-  ],
-  "test_functions": [
-    ["src/click/parser.py", "_ParseResultAdapter", "finalize_context"]
-  ],
-  "testsuites": [
-    "tests/test_shell_completion.py::test_full_complete[...]"
-  ],
-  "smell_content": "diff --git a/src/click/_utils.py b/src/click/_utils.py\n...",
-  "gt_content": "diff --git a/src/click/_utils.py b/src/click/_utils.py\n...",
-  "hash": "abbada6d83f399a175bfbf64b8a402e5",
-  "commit_hash": "1d038f270701498433cb432f54db89f95f07a845",
-  "project_name": "click",
-  "settings": {
-    "src_path": "src/click",
-    "commit_id": "1d038f270701498433cb432f54db89f95f07a845",
-    "test_cmd": "",
-    "envs": {
-      "PYTHONPATH": "src"
-    },
-    "env_name": "click-dev"
-  },
-  "smell_analysis": "## Individual Change Analysis\n..."
-}
+## Dataset statistics
+
+| Smell category | Tasks |
+| --- | ---: |
+| Data Clumps | 14 |
+| Dead Code Elimination | 18 |
+| Deeply Inlined Method | 17 |
+| Feature Envy | 13 |
+| God Classes | 6 |
+| Interface Segregation | 16 |
+| Shotgun Surgery | 11 |
+| **Total** | **95** |
+
+| Primary language | Tasks |
+| --- | ---: |
+| C | 18 |
+| Go | 18 |
+| Python | 19 |
+| Rust | 22 |
+| TypeScript | 18 |
+
+Counts above are **tasks**, not repositories. There are 1,570 rubric items in this snapshot (16.53 per task on average).
+
+## Task layout
+
+```text
+tasks/<task_id>/
+├── instruction.md                 # Agent-facing refactoring request
+├── task.toml                      # Pinned repository, resources, timeouts and metadata
+├── environment/
+│   ├── Dockerfile                 # Build repository environment and inject the smell
+│   └── smell.diff                 # Clean-to-injected patch
+├── solution/
+│   ├── gt.patch                   # Reference repair from injected to clean code
+│   └── solve.sh                   # Reference execution entry point
+└── tests/
+    ├── test.sh                    # Patch extraction, native tests and rubric Judge
+    ├── rubrics.json               # Case-specific structural criteria
+    ├── judge_prompt.md            # Judge instructions
+    ├── patch_policy.sh            # Agent patch processing policy
+    ├── native_test_command.sh     # Repository-specific test command
+    ├── run_unit_tests.sh          # Test execution wrapper
+    ├── native_test_score.py       # Native test outcome parsing
+    ├── task_instruction.md        # Verifier-side request copy
+    ├── smell.diff                 # Verifier-side injected patch
+    └── control_smell.diff         # Control patch used by the verification workflow
 ```
 
----
-
-### Field Description
-
-#### Top-level Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `instance_id` | string | Unique identifier (format: `{project}-{type}-{hash}`) |
-| `type` | string | Code smell category (see supported types below) |
-| `difficulty` | string | Difficulty level: `easy`, `medium`, or `hard` |
-| `hint_targeted` | string | Targeted hint identifying the specific smell location |
-| `hint_guided` | string | Guided hint for refactoring without specific location |
-| `smell_function` | list | Location of smelly code: `[file_path, class_name, method_name]` |
-| `test_functions` | list | Related test functions as `[file, class, method]` tuples |
-| `testsuites` | list | Test suite identifiers for validation |
-| `smell_content` | string | Git diff showing the code smell introduction |
-| `gt_content` | string | Git diff showing the ground truth refactoring |
-| `hash` | string | Unique hash identifier |
-| `commit_hash` | string | Git commit hash of the original code |
-| `project_name` | string | Source project name |
-| `settings` | dict | Project settings (src_path, env_vars, etc.) |
-| `smell_analysis` | string | Detailed analysis of the code smell |
----
+The task files are copied without modifying test commands, source patches, reference repairs, or rubrics. Build the task using its Dockerfile and pinned revision; do not apply `smell.diff` twice. The reference patch is a repair patch for the injected state, not a patch to apply to the clean upstream checkout. Keep `solution/` and verifier-only material outside the agent-visible repository.
 
-### Dataset Statistics
-
-| Metric | Count |
-|--------|-------|
-| **Total Instances** | 147 |
-| **Total Evaluation Cases** | 294 |
-| **Code Smell Types** | 7 |
-| **Source Projects** | 7 |
-| **Difficulty Levels**| 3 |
-| **Instruction Types** | 2 (targeted, guided) |
+## Running and configuring evaluation
 
-> **Note:** Each instance includes two different instruction types (`hint_targeted` and `hint_guided`), resulting in 147 × 2 = 294 unique evaluation cases.
+Use a compatible [Harbor](https://github.com/laude-institute/harbor) installation with Docker/container execution available. Select `tasks/` as the local dataset, or a single `tasks/<task_id>/` directory for a smoke test. Consult your installed Harbor version's CLI help for the supported agent and environment options; this branch does not bundle the experiment harness or its service-specific launch configuration.
 
-#### By Code Smell Type
+The verifier requires Bash, Python, Git, jq, curl, and each repository's native toolchain, supplied by the task environment. Image builds need access to upstream repositories and dependency registries. Configure these variables **in the verifier environment**, without committing credentials:
 
-| Type | Count |
-|------|-------|
-| feature_envy | 21 |
-| data_clumps | 21 |
-| dead_code_elimination | 21 |
-| deeply_inlined_method | 21 |
-| god_classes | 21 |
-| interface_segregation | 21 |
-| shotgun_surgery | 21 |
+| Variable | Purpose |
+| --- | --- |
+| `JUDGE_BASE_URL` | OpenAI-compatible API base URL; the verifier appends `/chat/completions` |
+| `JUDGE_MODEL` | Judge model identifier |
+| `JUDGE_API_KEY` | Runtime authentication secret |
+| `JUDGE_MAX_COMPLETION_TOKENS` | Optional Judge output limit; inspect `tests/test.sh` for its default |
+| `JUDGE_TIMEOUT` | Optional per-request timeout |
 
-## Project Structure
+Missing Judge configuration is **not** a native-test-only evaluation mode: inspect the verifier's recorded configuration/error status. Judge requests include task text, rubric criteria, patches and test logs; only use an endpoint authorized to receive that material.
 
-```
-├── prepare_smell_cases.py    # Main entry point for one-click pipeline
-├── smell_benchmark.py        # Core script for smell injection and test validation
-├── collect_smell_codes.py    # Collect all smell codes into a single JSON file
-├── prepare_harbor_tasks.py   # Download SmellBench from HuggingFace and generate Harbor tasks
-├── smell_type.json           # Code smell types and injection strategies
-├── repo_list.json            # Repository metadata (URLs, commit IDs, setup commands)
-├── testunits.py              # Test utilities for validating injected smells
-├── Dockerfile                # Docker configuration for reproducible environment
-├── ast_analyzers.py          # AST-based code analysis module
-├── harbor_adapter/           # Adapter for Harbor-compatible benchmark format
-└── output/
-    └── smell_codes.json      # Generated benchmark dataset
-```
+Task environment variables prefixed `CC_FORBIDDEN_REPO_` identify protected source repositories for a compatible harness guard. These variables alone do not enforce network restrictions. The experimental rule-based and LLM-based source-access safeguards require corresponding harness integration, which is not provided in this task-only preview.
 
----
+## Evaluation metrics
 
-# Benchmark Pipeline
+The structural rubrics cover four dimensions:
 
-## Option 1: One-Click Reproducibility (Docker Environment)
+| Dimension | Abbreviation | Focus |
+| --- | --- | --- |
+| Smell elimination | SE | Remove the targeted structural defect |
+| Responsibility allocation | RA | Give related operations and data coherent ownership |
+| Cross-file coordination | CF | Update collaborating components and dependencies consistently |
+| Extensibility | EX | Localize future changes through appropriate abstractions |
 
-If you have a Docker environment available, you can use the one-click reproducibility approach:
+**TPR** is the mean task-level repository-native test pass rate. It is not limited to Python/pytest tests.
 
-```bash
-python -u prepare_smell_cases.py --agent anthropic/claude-sonnet-4.5
-```
+**Solved** is binary per evaluated task: all valid rubric criteria must pass. Report the mean over evaluated tasks, excluding missing evaluations rather than treating them as failures. A dimension likewise receives 1 only when all its valid criteria pass; tasks without valid criteria in that dimension are excluded from its denominator.
 
-This script automatically executes the entire pipeline for all predefined repositories, including:
+**Important:** the packaged verifier's scalar reward and `macro_score` describe rubric-item satisfaction and are not automatically the paper's binary Solved metric. Derive Solved from the recorded valid rubric verdicts. Preserve invalid/missing-result diagnostics. Native test results are reported separately and do not contribute to the structural reward in this snapshot.
 
-- Repository cloning
-- Environment setup
-- Candidate Discovery
-- Smell injection
-- Quality Verification
-- Benchmark construction
----
+## Recorded overall results
 
-## Quick Test
+Percentages below reproduce the recorded evaluation summary. Each configuration was run once per task. OpenHands–Opus 5 currently has 94 available evaluations; Claude Code–Kimi-K3 has 94 completed evaluations. Other configurations have 95. Dimension denominators can be smaller because only tasks with valid criteria in that dimension are included.
 
-To quickly test the overall pipeline without running the full benchmark:
+| Harness | Model | N | TPR | Solved | SE | RA | CF | EX |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| OpenHands | GPT-6 Astra | 95 | 99.99 | 68.42 | 82.67 | 75.86 | 79.75 | 90.32 |
+| OpenHands | Opus 5 | 94 | 98.29 | 68.09 | 82.43 | 80.00 | 85.53 | 85.00 |
+| OpenHands | Kimi-K3 | 95 | 97.89 | 48.42 | 64.86 | 62.79 | 67.95 | 75.41 |
+| OpenHands | DeepSeek-4.1 Flash | 95 | 97.34 | 45.26 | 61.84 | 55.68 | 70.00 | 80.95 |
+| OpenHands | GLM-5.3 | 95 | 100.00 | 53.68 | 72.97 | 66.28 | 74.36 | 75.41 |
+| OpenHands | GLM-5.2 | 95 | 96.75 | 31.58 | 47.30 | 43.53 | 50.65 | 58.33 |
+| Claude Code | GPT-6 Astra | 95 | 99.99 | 69.47 | 87.84 | 84.88 | 88.46 | 86.89 |
+| Claude Code | Opus 5 | 95 | 99.91 | 64.21 | 74.67 | 75.29 | 79.22 | 88.33 |
+| Claude Code | Kimi-K3 | 94 | 99.98 | 47.87 | 61.64 | 59.30 | 76.92 | 73.77 |
+| Claude Code | DeepSeek-4.1 Flash | 95 | 100.00 | 45.26 | 59.46 | 56.98 | 66.67 | 72.13 |
+| Claude Code | GLM-5.3 | 95 | 99.99 | 51.58 | 72.97 | 59.30 | 75.64 | 78.69 |
+| Claude Code | GLM-5.2 | 95 | 99.91 | 33.68 | 44.59 | 45.88 | 57.14 | 60.00 |
 
-```bash
-python -u prepare_smell_cases.py --project-name click --agent mock
-```
+### Findings
 
----
+- **Passing tests does not establish structural repair.** Mean TPR ranges from 96.75% to 100%, while Solved ranges from 31.58% to 69.47%.
+- **The strongest recorded configuration still leaves substantial headroom.** GPT-6 Astra with Claude Code solves 69.47%; success requires satisfying every valid structural criterion, not just obtaining a high average rubric score.
+- **Model differences remain visible despite near-ceiling tests.** GLM-5.3 exceeds GLM-5.2 by 22.10 percentage points under OpenHands and 17.90 points under Claude Code (using displayed rounded values).
+- **Repair scope matters, but file coverage is not sufficient.** In the Claude Code analysis, GPT-6 Astra solves 81.25% of tasks in the smallest reference-patch bucket versus 46.67% in the largest. GLM-5.3 has higher mean reference-file recall than Opus 5 (87.18% vs. 86.50%) but lower Solved (51.58% vs. 64.21%). These are descriptive associations, not causal findings or reference-match requirements.
 
-## Option 2: Local Execution (Without Docker)
+## Reproducibility and limitations
 
-If you don't have Docker available, follow these steps to run the benchmark locally:
+- Experimental outcomes depend on the task/rubric snapshot, model version, harness configuration, and Judge. Freeze these before comparing runs; do not assume this preview's files are identical to every historical evaluation snapshot.
+- Multiple tasks share repositories; a single run per configuration does not establish statistical significance or independent samples.
+- Native tests cover existing behavior but are not an exhaustive behavioral equivalence proof. Reference file coverage is not a correctness metric.
+- Private model traces, credentials, service configuration, and the attached draft manuscript are not included in this task release.
+- Repository URLs and pinned commits are recorded in each task's metadata. Upstream repositories and copied code fragments retain their original license and attribution requirements. This preview does not grant a new blanket license to third-party code.
 
-### Step 1: Install Code Agent CLI
+## Reference
 
-Install the code agent CLI of your choice (e.g., Claude Code, Qwen Code):
+**SmellBench: Towards Fine-Grained Evaluation of Code Agents on Refactoring Tasks.**
 
-```bash
-# Example: Install Claude Code
-npm install -g @anthropic-ai/claude-code
-```
-
-### Step 2: Install Python Dependencies
-
-```bash
-pip install -r repo_requirements.txt
-```
-
-### Step 3: Run Smell Benchmark
-
-Execute the benchmark for each repository:
-
-```bash
-# Run for a single repository
-python -u smell_benchmark.py --project-name click --agent claude_code/mock
-```
-
-### Step 4: Collect All Smell Codes
-
-After running the benchmark for all repositories, collect the results into a single file:
-
-```bash
-python -u collect_smell_codes.py
-```
-
-This will generate `output/smell_codes.json` containing all smell codes from all repositories.
-
----
-
-# Evaluation
-
-We support evaluation on [Harbor](https://github.com/harbor-framework/harbor), a framework for benchmarking code agents.
-
-## Quick Start: One-Click Harbor Dataset Generation
-
-For users who want to quickly experience and inspect the benchmark, we provide a one-click script that automatically downloads the SmellBench dataset from HuggingFace and generates Harbor-compatible tasks.
-
-**Dataset URL:** [https://huggingface.co/datasets/critical88/SmellBench](https://huggingface.co/datasets/critical88/SmellBench)
-
-### Prerequisites
-
-```bash
-pip install datasets
-```
-
-### Usage
-
-```bash
-# Download dataset only (saves to smell_codes.json)
-python prepare_harbor_tasks.py
-
-# Download and generate Harbor tasks
-python prepare_harbor_tasks.py --task-dir ./output/harbor_tasks
-
-# With additional options
-python prepare_harbor_tasks.py \
-    --task-dir ./output/harbor_tasks \
-    --hint-type targeted \
-    --difficulty medium \
-    --limit 10 \
-    --overwrite
-```
-
-### Options
-
-| Option | Description |
-|--------|-------------|
-| `--output, -o` | Output path for smell_codes.json (default: `smell_codes.json`) |
-| `--task-dir` | Output directory for Harbor tasks (if omitted, only downloads dataset) |
-| `--hint-type` | Hint type: `targeted`, `guided`, or empty for both (default: both) |
-| `--limit` | Max number of instances to convert |
-| `--difficulty` | Filter by difficulty: `easy`, `medium`, `hard`, `expert` |
-| `--overwrite` | Overwrite existing task directories |
-| `--model-name` | LLM judge model name (default: `anthropic/claude-sonnet-4-5-20250929`) |
-| `--skip-judge` | Skip LLM-as-judge evaluation |
-
-## Generating Harbor-Style Benchmark (Manual)
-
-After successfully generating `output/smell_codes.json`, follow these steps to create a Harbor-compatible dataset:
-
-### Step 1: Navigate to harbor_adapter
-
-```bash
-cd harbor_adapter
-```
-
-### Step 2: Generate Harbor Dataset
-
-```bash
-python -u run_adapter.py --task-dir <task-dir>
-```
-
-This will convert the smell codes into Harbor-style benchmark format in the `task-dir/` directory.
-
-### Step 3: Run Evaluation with Harbor
-
-Clone the Harbor repository and follow the instructions:
-
-```bash
-git clone https://github.com/harbor-framework/harbor.git
-cd harbor
-# Follow Harbor's README to configure and run the evaluation
-```
-
-For detailed Harbor configuration and usage, please refer to the [Harbor documentation](https://github.com/harbor-framework/harbor).
-
----
-
-<!-- # Citation
-
-If you use this benchmark, please cite:
-
-```bibtex
-@dataset{smellbench_2026,
-  title={SmellBench: A Benchmark for Code Smell Detection and Refactoring},
-  year={2026}
-}
-``` -->
+Publication metadata and a finalized citation will be added when available.

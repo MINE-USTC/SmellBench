@@ -1,0 +1,978 @@
+diff --git a/backend/src/maintainability.rs b/backend/src/maintainability.rs
+index 711e9e4..418418f 100644
+--- a/backend/src/maintainability.rs
++++ b/backend/src/maintainability.rs
+@@ -16,6 +16,8 @@ use ruff_python_ast::{
+ };
+ use std::collections::HashSet;
+ 
++use crate::raw::RawCounts;
++
+ /// Halstead metrics needed for MI calculation
+ /// Note: operands_seen tracks (context, operand) pairs like radon does
+ #[derive(Debug, Clone, Default)]
+@@ -463,6 +465,26 @@ impl<'a> Visitor<'a> for HalsteadVisitor {
+     }
+ }
+ 
++fn mi_compute(halstead_volume: f64, complexity: u32, lloc: usize, comments_percent: f64) -> f64 {
++    if halstead_volume <= 0.0 || lloc == 0 {
++        return 100.0;
++    }
++
++    let lloc_f = lloc as f64;
++    let complexity_f = complexity as f64;
++
++    let sloc_scale = lloc_f.ln();
++    let volume_scale = halstead_volume.ln();
++    let comments_scale = (2.46 * comments_percent.to_radians()).sqrt();
++
++    // Non-normalized MI
++    let nn_mi = 171.0 - 5.2 * volume_scale - 0.23 * complexity_f - 16.2 * sloc_scale
++        + 50.0 * comments_scale.sin();
++
++    // Normalize to 0-100
++    (nn_mi * 100.0 / 171.0).clamp(0.0, 100.0)
++}
++
+ #[derive(Eq, PartialEq, Hash, Clone, Copy)]
+ pub enum MIRank {
+     A,
+@@ -491,21 +513,35 @@ pub fn mi_rank(score: f64) -> MIRank {
+     }
+ }
+ 
++/// Public API for parallel module - returns (MI value, rank string).
++/// Uses &'static str for rank to avoid allocations.
++pub fn analyze(parsed: &ruff_python_parser::Parsed<ModModule>, raw: RawCounts) -> (f64, MIRank) {
++    // Calculate comment percentage
++    let comment_lines = raw.comments + raw.multi;
++    let comments_percent = if raw.sloc > 0 {
++        (comment_lines as f64 / raw.sloc as f64) * 100.0
++    } else {
++        0.0
++    };
++
+-pub(crate) fn module_volume(parsed: &ruff_python_parser::Parsed<ModModule>) -> f64 {
+     // Calculate Halstead volume
+     let mut halstead = HalsteadVisitor::new();
+     for stmt in parsed.suite() {
+         halstead.visit_stmt(stmt);
+     }
++    let volume = halstead.metrics.volume();
+-    halstead.metrics.volume()
+-}
+ 
+-pub(crate) fn module_complexity(parsed: &ruff_python_parser::Parsed<ModModule>) -> u32 {
+     // Calculate cyclomatic complexity
+     let mut complexity = ComplexityVisitor::new();
+     for stmt in parsed.suite() {
+         complexity.visit_stmt(stmt);
+     }
+     // Use radon-compatible total_complexity calculation
++    let total_complexity = complexity.total_complexity();
++
++    // Compute MI
++    let mi = mi_compute(volume, total_complexity, raw.lloc, comments_percent);
++    let rank = mi_rank(mi);
++
++    (mi, rank)
+-    complexity.total_complexity()
+ }
+diff --git a/backend/src/storage.rs b/backend/src/storage.rs
+index ab9c884..0065578 100644
+--- a/backend/src/storage.rs
++++ b/backend/src/storage.rs
+@@ -142,6 +142,47 @@ pub struct MetricRow {
+     pub classname: Option<String>,
+ }
+ 
++impl MetricRow {
++    /// Convert this row to a Python dictionary.
++    fn to_py_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
++        let dict = PyDict::new(py);
++        dict.set_item("revision", &self.revision)?;
++        dict.set_item("revision_date", self.revision_date)?;
++        dict.set_item("revision_author", &self.revision_author)?;
++        dict.set_item("revision_message", &self.revision_message)?;
++        dict.set_item("path", &self.path)?;
++        dict.set_item("path_type", &self.path_type)?;
++        dict.set_item("loc", self.loc)?;
++        dict.set_item("sloc", self.sloc)?;
++        dict.set_item("lloc", self.lloc)?;
++        dict.set_item("comments", self.comments)?;
++        dict.set_item("multi", self.multi)?;
++        dict.set_item("blank", self.blank)?;
++        dict.set_item("single_comments", self.single_comments)?;
++        dict.set_item("complexity", self.complexity)?;
++        dict.set_item("real_complexity", self.real_complexity)?;
++        dict.set_item("h1", self.h1)?;
++        dict.set_item("h2", self.h2)?;
++        dict.set_item("N1", self.n1)?;
++        dict.set_item("N2", self.n2)?;
++        dict.set_item("vocabulary", self.vocabulary)?;
++        dict.set_item("length", self.length)?;
++        dict.set_item("volume", self.volume)?;
++        dict.set_item("difficulty", self.difficulty)?;
++        dict.set_item("effort", self.effort)?;
++        dict.set_item("cognitive_complexity", self.cognitive_complexity)?;
++        dict.set_item("mi", self.mi)?;
++        if let Some(mi_val) = self.mi {
++            dict.set_item("rank", mi_rank(mi_val).to_string())?;
++        }
++        dict.set_item("lineno", self.lineno)?;
++        dict.set_item("endline", self.endline)?;
++        dict.set_item("is_method", self.is_method)?;
++        dict.set_item("classname", &self.classname)?;
++        Ok(dict.into())
++    }
++}
++
+ /// Builder for accumulating metric rows before writing to parquet.
+ pub struct MetricsBuilder {
+     revision: StringBuilder,
+@@ -724,6 +765,10 @@ impl IndexState {
+         }
+     }
+ 
++    /// Get all rows (loaded + new)
++    fn all_rows(&self) -> impl Iterator<Item = &MetricRow> {
++        self.loaded_rows.iter().chain(self.new_rows.iter())
++    }
+ }
+ 
+ /// Load rows from a parquet file into MetricRow structs
+@@ -1039,50 +1084,12 @@ impl WilyIndex {
+             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Lock poisoned: {}", e))
+         })?;
+ 
++        if builder.is_empty() {
+-        if builder.row_count == 0 {
+             // Nothing to write
+             return Ok(false);
+         }
+ 
++        let batch = builder.finish();
+-        let batch = {
+-
+-        let schema = Arc::new(metrics_schema());
+-
+-        let columns: Vec<ArrayRef> = vec![
+-            Arc::new(builder.revision.finish()),
+-            Arc::new(builder.revision_date.finish()),
+-            Arc::new(builder.revision_author.finish()),
+-            Arc::new(builder.revision_message.finish()),
+-            Arc::new(builder.path.finish()),
+-            Arc::new(builder.path_type.finish()),
+-            Arc::new(builder.loc.finish()),
+-            Arc::new(builder.sloc.finish()),
+-            Arc::new(builder.lloc.finish()),
+-            Arc::new(builder.comments.finish()),
+-            Arc::new(builder.multi.finish()),
+-            Arc::new(builder.blank.finish()),
+-            Arc::new(builder.single_comments.finish()),
+-            Arc::new(builder.complexity.finish()),
+-            Arc::new(builder.real_complexity.finish()),
+-            Arc::new(builder.h1.finish()),
+-            Arc::new(builder.h2.finish()),
+-            Arc::new(builder.n1.finish()),
+-            Arc::new(builder.n2.finish()),
+-            Arc::new(builder.vocabulary.finish()),
+-            Arc::new(builder.length.finish()),
+-            Arc::new(builder.volume.finish()),
+-            Arc::new(builder.difficulty.finish()),
+-            Arc::new(builder.effort.finish()),
+-            Arc::new(builder.cognitive_complexity.finish()),
+-            Arc::new(builder.mi.finish()),
+-            Arc::new(builder.lineno.finish()),
+-            Arc::new(builder.endline.finish()),
+-            Arc::new(builder.is_method.finish()),
+-            Arc::new(builder.classname.finish()),
+-        ];
+-
+-        RecordBatch::try_new(schema, columns).expect("Failed to create RecordBatch")
+-        };
+         append_parquet(&self.output_path, batch)
+             .map_err(PyErr::new::<pyo3::exceptions::PyIOError, _>)?;
+ 
+@@ -1098,7 +1105,7 @@ impl WilyIndex {
+         })?;
+         // TODO: Decide if we want to filter by path_type as well
+         let mut matching_rows: Vec<_> = state
++            .all_rows()
+-            .loaded_rows.iter().chain(state.new_rows.iter())
+             .filter(|row| row.path == path)
+             .cloned()
+             .collect();
+@@ -1109,42 +1116,7 @@ impl WilyIndex {
+         // TODO: There is a more pragmatic way to do this, using PyList::new(py, enumerables)
+         let list = PyList::empty(py);
+         for row in matching_rows {
++            list.append(row.to_py_dict(py)?)?;
+-            let dict = PyDict::new(py);
+-            dict.set_item("revision", &row.revision)?;
+-            dict.set_item("revision_date", row.revision_date)?;
+-            dict.set_item("revision_author", &row.revision_author)?;
+-            dict.set_item("revision_message", &row.revision_message)?;
+-            dict.set_item("path", &row.path)?;
+-            dict.set_item("path_type", &row.path_type)?;
+-            dict.set_item("loc", row.loc)?;
+-            dict.set_item("sloc", row.sloc)?;
+-            dict.set_item("lloc", row.lloc)?;
+-            dict.set_item("comments", row.comments)?;
+-            dict.set_item("multi", row.multi)?;
+-            dict.set_item("blank", row.blank)?;
+-            dict.set_item("single_comments", row.single_comments)?;
+-            dict.set_item("complexity", row.complexity)?;
+-            dict.set_item("real_complexity", row.real_complexity)?;
+-            dict.set_item("h1", row.h1)?;
+-            dict.set_item("h2", row.h2)?;
+-            dict.set_item("N1", row.n1)?;
+-            dict.set_item("N2", row.n2)?;
+-            dict.set_item("vocabulary", row.vocabulary)?;
+-            dict.set_item("length", row.length)?;
+-            dict.set_item("volume", row.volume)?;
+-            dict.set_item("difficulty", row.difficulty)?;
+-            dict.set_item("effort", row.effort)?;
+-            dict.set_item("cognitive_complexity", row.cognitive_complexity)?;
+-            dict.set_item("mi", row.mi)?;
+-            if let Some(mi_val) = row.mi {
+-                dict.set_item("rank", if mi_val > 19.0 { "A" } else if mi_val > 9.0 { "B" } else { "C" })?;
+-            }
+-            dict.set_item("lineno", row.lineno)?;
+-            dict.set_item("endline", row.endline)?;
+-            dict.set_item("is_method", row.is_method)?;
+-            dict.set_item("classname", &row.classname)?;
+-            let encoded: Py<PyDict> = dict.into();
+-            list.append(encoded)?;
+         }
+         Ok(list.into())
+     }
+@@ -1156,7 +1128,7 @@ impl WilyIndex {
+         })?;
+ 
+         // Collect all rows into a vec for the iterator
++        let all_rows: Vec<MetricRow> = state.all_rows().cloned().collect();
+-        let all_rows: Vec<MetricRow> = state.loaded_rows.iter().chain(state.new_rows.iter()).cloned().collect();
+         Ok(WilyIndexIterator {
+             rows: all_rows,
+             index: 0,
+@@ -1261,12 +1233,6 @@ impl WilyIndex {
+                     } else {
+                         None
+                     };
+-                    let comment_adjustment = raw.map(|counts| {
+-                        let percent = if counts.sloc > 0 {
+-                            ((counts.comments + counts.multi) as f64 / counts.sloc as f64) * 100.0
+-                        } else { 0.0 };
+-                        50.0 * (2.46 * percent.to_radians()).sqrt().sin()
+-                    });
+ 
+                     let (cyclomatic_total, cyclomatic_functions, cyclomatic_classes) =
+                         if include_cyclomatic {
+@@ -1365,15 +1331,11 @@ impl WilyIndex {
+                         (None, Vec::new())
+                     };
+                     let mi = if include_maintainability {
++                        let (mi_val, rank) = maintainability::analyze(
++                            &parsed,
++                            raw.expect("Raw metrics required for maintainability"),
++                        );
++                        Some((mi_val, rank))
+-                        let counts = raw.expect("Raw metrics required for maintainability");
+-                        let volume = maintainability::module_volume(&parsed);
+-                        let complexity = maintainability::module_complexity(&parsed);
+-                        let score = if volume <= 0.0 || counts.lloc == 0 { 100.0 } else {
+-                            let value = 171.0 - 5.2 * volume.ln() - 0.23 * complexity as f64
+-                                - 16.2 * (counts.lloc as f64).ln() + comment_adjustment.unwrap();
+-                            (value * 100.0 / 171.0).clamp(0.0, 100.0)
+-                        };
+-                        Some((score, mi_rank(score)))
+                     } else {
+                         None
+                     };
+@@ -1742,11 +1704,6 @@ impl WilyIndex {
+                     } else {
+                         None
+                     };
+-                    let comment_percent = raw.map(|counts| {
+-                        if counts.sloc > 0 {
+-                            ((counts.comments + counts.multi) as f64 / counts.sloc as f64) * 100.0
+-                        } else { 0.0 }
+-                    });
+ 
+                     let (cyclomatic_total, cyclomatic_functions, cyclomatic_classes) =
+                         if include_cyclomatic {
+@@ -1868,16 +1825,11 @@ impl WilyIndex {
+                     };
+ 
+                     let mi = if include_maintainability {
++                        let (mi_val, rank) = maintainability::analyze(
++                            &parsed,
++                            raw.expect("Raw metrics required for maintainability"),
++                        );
++                        Some((mi_val, rank))
+-                        let counts = raw.expect("Raw metrics required for maintainability");
+-                        let volume = maintainability::module_volume(&parsed);
+-                        let complexity = maintainability::module_complexity(&parsed);
+-                        let score = if volume <= 0.0 || counts.lloc == 0 { 100.0 } else {
+-                            let comments = (2.46 * comment_percent.unwrap().to_radians()).sqrt();
+-                            let value = 171.0 - 5.2 * volume.ln() - 0.23 * complexity as f64
+-                                - 16.2 * (counts.lloc as f64).ln() + 50.0 * comments.sin();
+-                            (value * 100.0 / 171.0).clamp(0.0, 100.0)
+-                        };
+-                        Some((score, mi_rank(score)))
+                     } else {
+                         None
+                     };
+@@ -2181,41 +2133,7 @@ impl WilyIndexIterator {
+         if self.index < self.rows.len() {
+             let row = &self.rows[self.index];
+             self.index += 1;
++            Ok(Some(row.to_py_dict(py)?))
+-            let dict = PyDict::new(py);
+-            dict.set_item("revision", &row.revision)?;
+-            dict.set_item("revision_date", row.revision_date)?;
+-            dict.set_item("revision_author", &row.revision_author)?;
+-            dict.set_item("revision_message", &row.revision_message)?;
+-            dict.set_item("path", &row.path)?;
+-            dict.set_item("path_type", &row.path_type)?;
+-            dict.set_item("loc", row.loc)?;
+-            dict.set_item("sloc", row.sloc)?;
+-            dict.set_item("lloc", row.lloc)?;
+-            dict.set_item("comments", row.comments)?;
+-            dict.set_item("multi", row.multi)?;
+-            dict.set_item("blank", row.blank)?;
+-            dict.set_item("single_comments", row.single_comments)?;
+-            dict.set_item("complexity", row.complexity)?;
+-            dict.set_item("real_complexity", row.real_complexity)?;
+-            dict.set_item("h1", row.h1)?;
+-            dict.set_item("h2", row.h2)?;
+-            dict.set_item("N1", row.n1)?;
+-            dict.set_item("N2", row.n2)?;
+-            dict.set_item("vocabulary", row.vocabulary)?;
+-            dict.set_item("length", row.length)?;
+-            dict.set_item("volume", row.volume)?;
+-            dict.set_item("difficulty", row.difficulty)?;
+-            dict.set_item("effort", row.effort)?;
+-            dict.set_item("cognitive_complexity", row.cognitive_complexity)?;
+-            dict.set_item("mi", row.mi)?;
+-            if let Some(mi_val) = row.mi {
+-                dict.set_item("rank", if mi_val > 19.0 { "A" } else if mi_val > 9.0 { "B" } else { "C" })?;
+-            }
+-            dict.set_item("lineno", row.lineno)?;
+-            dict.set_item("endline", row.endline)?;
+-            dict.set_item("is_method", row.is_method)?;
+-            dict.set_item("classname", &row.classname)?;
+-            Ok(Some(dict.into()))
+         } else {
+             Ok(None)
+         }
+diff --git a/src/wily/archivers/filesystem.py b/src/wily/archivers/filesystem.py
+index 5e6711d..a1a88fc 100644
+--- a/src/wily/archivers/filesystem.py
++++ b/src/wily/archivers/filesystem.py
+@@ -37,8 +37,20 @@ class FilesystemArchiver(BaseArchiver):
+         :param max_revisions: the maximum number of revisions.
+         :return: A list of revisions.
+         """
++        mtime = os.path.getmtime(path)
++        key = hashlib.sha1(str(mtime).encode()).hexdigest()[:7]  # noqa: S324
++        return [
++            RevisionInfo(
++                key=key,
++                author_name="Local User",  # Don't want to leak local data
++                author_email="-",  # as above
++                date=int(mtime),
++                message="None",
++                added_files=[],
++                modified_files=[],
++                deleted_files=[],
++            )
++        ]
+-        from wily.commands.index import _local_revision_source
+-        return _local_revision_source(self, path, max_revisions)
+ 
+     def checkout(self, revision: RevisionInfo, options: dict[Any, Any]) -> None:
+         """
+diff --git a/src/wily/archivers/git.py b/src/wily/archivers/git.py
+index c7881bc..c4027d4 100644
+--- a/src/wily/archivers/git.py
++++ b/src/wily/archivers/git.py
+@@ -73,8 +73,10 @@ class GitArchiver(BaseArchiver):
+ 
+         :return: A list of revisions.
+         """
++        if self.repo.is_dirty():
++            raise DirtyGitRepositoryError(self.repo.untracked_files)
++
++        return get_revisions(self.repo_path, max_revisions)
+-        from wily.commands.build import _source_revisions
+-        return _source_revisions(self, path, max_revisions)
+ 
+     def checkout(self, revision: RevisionInfo, options: dict[Any, Any]) -> None:
+         """
+@@ -91,8 +93,12 @@ class GitArchiver(BaseArchiver):
+ 
+         For git, will checkout HEAD on the original branch when finishing
+         """
++        try:
++            checkout_branch(self.repo_path, self.current_branch)
++        except ValueError:
++            # If branch checkout fails, try as a revision (for detached HEAD)
++            checkout_revision(self.repo_path, self.current_branch)
++        self.repo.close()
+-        from wily.commands.build import _finish_revision_source
+-        return _finish_revision_source(self)
+ 
+     def find(self, search: str) -> RevisionInfo:
+         """
+@@ -102,5 +108,8 @@ class GitArchiver(BaseArchiver):
+ 
+         :return: An instance of revision.
+         """
++        # Use Rust backend to find the revision by SHA prefix
++        rev_data = find_revision(self.repo_path, search)
++        if rev_data is None:
++            raise ValueError(f"Revision not found: {search}")
++        return rev_data
+-        from wily.commands.rank import _find_revision_source
+-        return _find_revision_source(self, search)
+diff --git a/src/wily/cache.py b/src/wily/cache.py
+index 198c674..8dc9ca9 100644
+--- a/src/wily/cache.py
++++ b/src/wily/cache.py
+@@ -22,8 +22,7 @@ def exists(config: WilyConfig) -> bool:
+ 
+     :return: Whether the .wily directory exists
+     """
++    return pathlib.Path(config.cache_path).exists() and pathlib.Path(config.cache_path).is_dir()
+-    from wily.commands.index import _cache_available
+-    return _cache_available(config)
+ 
+ 
+ def create(config: WilyConfig) -> str:
+@@ -33,8 +32,12 @@ def create(config: WilyConfig) -> str:
+     :param config: The configuration
+     :return: The path to the cache
+     """
++    if exists(config):
++        logger.debug("Wily cache exists, skipping")
++        return config.cache_path
++    logger.debug("Creating wily cache %s", config.cache_path)
++    pathlib.Path(config.cache_path).mkdir(parents=True, exist_ok=True)
++    return config.cache_path
+-    from wily.commands.build import _create_revision_cache
+-    return _create_revision_cache(config)
+ 
+ 
+ def clean(config: WilyConfig) -> None:
+@@ -43,8 +46,11 @@ def clean(config: WilyConfig) -> None:
+ 
+     :param config: The configuration
+     """
++    if not exists(config):
++        logger.debug("Wily cache does not exist, skipping")
++        return
++    shutil.rmtree(config.cache_path)
++    logger.debug("Deleted wily cache")
+-    from wily.commands.index import _remove_cached_history
+-    return _remove_cached_history(config)
+ 
+ 
+ def list_archivers(config: WilyConfig) -> list[str]:
+@@ -55,11 +61,14 @@ def list_archivers(config: WilyConfig) -> list[str]:
+ 
+     :return: A list of archiver names
+     """
++    root = pathlib.Path(config.cache_path)
++    result = []
++    for name in ALL_ARCHIVERS.keys():
++        if (root / name).exists():
++            result.append(name)
++    return result
+-    from wily.commands.index import _cached_archivers
+-    return _cached_archivers(config)
+ 
+ 
+ def get_default_metrics_path(config: WilyConfig, archiver: str) -> str:
+     """Get the default path to the metrics parquet file."""
++    return str(pathlib.Path(config.cache_path) / archiver / "metrics.parquet")
+-    from wily.commands.graph import _archiver_metrics_path
+-    return _archiver_metrics_path(config, archiver)
+diff --git a/src/wily/commands/build.py b/src/wily/commands/build.py
+index 0a2f89d..b27f0b9 100644
+--- a/src/wily/commands/build.py
++++ b/src/wily/commands/build.py
+@@ -69,11 +69,7 @@ def analyze_revision_with_index(
+         # Skip this version
+         return 0
+ 
++    archiver_instance.checkout(revision, config.checkout_options)
+-    if type(archiver_instance) is GitArchiver:
+-        from wily.archivers import git as git_source
+-        git_source.checkout_revision(archiver_instance.repo_path, revision["key"])
+-    else:
+-        archiver_instance.checkout(revision, config.checkout_options)
+ 
+     # Analyze and accumulate in index
+     return index.analyze_revision(
+@@ -97,35 +93,17 @@ def build(config: WilyConfig, archiver: Archiver, operators: list[Operator]) ->
+     try:
+         logger.debug("Using %s archiver module", archiver.name)
+         archiver_instance = archiver.archiver_cls(config)
++        revisions = archiver_instance.revisions(config.path, config.max_revisions)
+-        if type(archiver_instance) is GitArchiver:
+-            from wily.archivers import git as git_source
+-            if archiver_instance.repo.is_dirty():
+-                raise git_source.DirtyGitRepositoryError(archiver_instance.repo.untracked_files)
+-            revisions = git_source.get_revisions(archiver_instance.repo_path, config.max_revisions)
+-        else:
+-            revisions = archiver_instance.revisions(config.path, config.max_revisions)
+     except InvalidGitRepositoryError:
+         logger.info("Defaulting back to the filesystem archiver, not a valid git repo")
+         archiver_instance = FilesystemArchiver(config)
++        revisions = archiver_instance.revisions(config.path, config.max_revisions)
+-        from wily.archivers import filesystem as local_source
+-        mtime = local_source.os.path.getmtime(config.path)
+-        revisions = [RevisionInfo(
+-            key=local_source.hashlib.sha1(str(mtime).encode()).hexdigest()[:7],
+-            author_name="Local User", author_email="-", date=int(mtime), message="None",
+-            added_files=[], modified_files=[], deleted_files=[],
+-        )]
+     except Exception as e:
+         message = getattr(e, "message", f"{type(e)} - {e}")
+         logger.error("Failed to setup archiver: '%s'", message)
+         sys.exit(1)
+ 
++    create_cache(config)  # Ensure cache directory exists
+-    from wily import cache
+-    cache_root = pathlib.Path(config.cache_path)
+-    if cache_root.exists() and cache_root.is_dir():
+-        cache.logger.debug("Wily cache exists, skipping")
+-    else:
+-        cache.logger.debug("Creating wily cache %s", config.cache_path)
+-        pathlib.Path(config.cache_path).mkdir(parents=True, exist_ok=True)
+ 
+     logger.info(
+         "Found %s revisions from '%s' archiver in '%s'.",
+@@ -135,14 +113,7 @@ def build(config: WilyConfig, archiver: Archiver, operators: list[Operator]) ->
+     )
+ 
+     if not revisions:
++        archiver_instance.finish()
+-        if type(archiver_instance) is GitArchiver:
+-            try:
+-                git_source.checkout_branch(archiver_instance.repo_path, archiver_instance.current_branch)
+-            except ValueError:
+-                git_source.checkout_revision(archiver_instance.repo_path, archiver_instance.current_branch)
+-            archiver_instance.repo.close()
+-        else:
+-            archiver_instance.finish()
+         logger.debug("No new revisions to index, exiting.")
+         return
+ 
+@@ -186,48 +157,4 @@ def build(config: WilyConfig, archiver: Archiver, operators: list[Operator]) ->
+         logger.error("Failed to build cache: %s: '%s'", type(e), e)
+         raise e
+     finally:
++        archiver_instance.finish()
+-        if type(archiver_instance) is GitArchiver:
+-            try:
+-                git_source.checkout_branch(archiver_instance.repo_path, archiver_instance.current_branch)
+-            except ValueError:
+-                git_source.checkout_revision(archiver_instance.repo_path, archiver_instance.current_branch)
+-            archiver_instance.repo.close()
+-        else:
+-            archiver_instance.finish()
+-
+-
+-def _requested_operators(operators):
+-    from wily import operators as registry
+-    resolved = [registry.resolve_operator(operator) for operator in iter(operators)]
+-    has_maintainability = any(op.name == "maintainability" for op in resolved)
+-    has_raw = any(op.name == "raw" for op in resolved)
+-    if has_maintainability and not has_raw:
+-        resolved.insert(0, registry.resolve_operator("raw"))
+-    return resolved
+-
+-
+-def _create_revision_cache(config):
+-    from wily import cache
+-    if pathlib.Path(config.cache_path).exists() and pathlib.Path(config.cache_path).is_dir():
+-        cache.logger.debug("Wily cache exists, skipping")
+-        return config.cache_path
+-    cache.logger.debug("Creating wily cache %s", config.cache_path)
+-    pathlib.Path(config.cache_path).mkdir(parents=True, exist_ok=True)
+-    return config.cache_path
+-
+-
+-def _finish_revision_source(self):
+-    from wily.archivers import git as git_source
+-    from wily.commands.rank import _restore_source_branch
+-    try:
+-        _restore_source_branch(self)
+-    except ValueError:
+-        git_source.checkout_revision(self.repo_path, self.current_branch)
+-    self.repo.close()
+-
+-
+-def _source_revisions(self, path, max_revisions):
+-    from wily.archivers import git as git_source
+-    if self.repo.is_dirty():
+-        raise git_source.DirtyGitRepositoryError(self.repo.untracked_files)
+-    return git_source.get_revisions(self.repo_path, max_revisions)
+diff --git a/src/wily/commands/diff.py b/src/wily/commands/diff.py
+index abfd9a8..731ca29 100644
+--- a/src/wily/commands/diff.py
++++ b/src/wily/commands/diff.py
+@@ -456,10 +456,3 @@ def diff(
+         print(json_module.dumps(json_results, indent=2))
+     else:
+         _format_table_output(diffs, resolved_metrics, changes_only, wrap, table_style)
+-
+-
+-def _revision_metric(revision, operator, path, key):
+-    if ":" in path:
+-        part, entry = path.split(":")
+-        return revision[operator][part]["detailed"][entry][key]
+-    return revision[operator][path]["total"][key]
+diff --git a/src/wily/commands/graph.py b/src/wily/commands/graph.py
+index 58f3d9b..7c04df2 100644
+--- a/src/wily/commands/graph.py
++++ b/src/wily/commands/graph.py
+@@ -207,7 +207,3 @@ def graph(
+         filename=filename,
+         include_plotlyjs=plotlyjs,  # type: ignore
+     )
+-
+-
+-def _archiver_metrics_path(config, archiver):
+-    return str(Path(config.cache_path) / archiver / "metrics.parquet")
+diff --git a/src/wily/commands/index.py b/src/wily/commands/index.py
+index 73216ad..91769ae 100644
+--- a/src/wily/commands/index.py
++++ b/src/wily/commands/index.py
+@@ -9,6 +9,7 @@ from pathlib import Path
+ 
+ from wily import MAX_MESSAGE_WIDTH, format_date, format_revision, logger
+ from wily.backend import WilyIndex
++from wily.cache import get_default_metrics_path, list_archivers
+ from wily.config.types import WilyConfig
+ from wily.defaults import DEFAULT_TABLE_STYLE
+ from wily.helper import print_table
+@@ -28,8 +29,6 @@ def index(
+     :param wrap: Wrap long lines
+     :param table_style: Table box style
+     """
+-    from wily.cache import get_default_metrics_path, list_archivers
+-
+     logger.debug("Running index command")
+     logger.info("--------Configuration---------")
+     logger.info("Path: %s", config.path)
+@@ -38,16 +37,14 @@ def index(
+     logger.info("")
+     logger.info("-----------History------------")
+ 
++    archivers = list_archivers(config)
+-    from wily.archivers import ALL_ARCHIVERS
+-    root = Path(config.cache_path)
+-    archivers = [name for name in ALL_ARCHIVERS if (root / name).exists()]
+     if not archivers:
+         logger.error("No wily cache found. Run 'wily build' first.")
+         sys.exit(1)
+ 
+     data: list[tuple[str, ...]] = []
+     for archiver in archivers:
++        parquet_path = get_default_metrics_path(config, archiver)
+-        parquet_path = str(Path(config.cache_path) / archiver / "metrics.parquet")
+         if not Path(parquet_path).exists():
+             continue
+ 
+@@ -95,44 +92,3 @@ def index(
+         headers = ("Revision", "Author", "Date")
+ 
+     print_table(headers=headers, data=data, wrap=wrap, table_style=table_style)
+-
+-
+-def _cached_archivers(config):
+-    from wily.archivers import ALL_ARCHIVERS
+-    root = Path(config.cache_path)
+-    return [name for name in ALL_ARCHIVERS.keys() if (root / name).exists()]
+-
+-
+-def _cache_available(config):
+-    return Path(config.cache_path).exists() and Path(config.cache_path).is_dir()
+-
+-
+-def _local_revision_source(self, path, max_revisions):
+-    from wily.archivers import filesystem as source
+-    mtime = source.os.path.getmtime(path)
+-    key = source.hashlib.sha1(str(mtime).encode()).hexdigest()[:7]
+-    return [source.RevisionInfo(key=key, author_name="Local User", author_email="-", date=int(mtime), message="None", added_files=[], modified_files=[], deleted_files=[])]
+-
+-
+-def _configure_inputs(self, _cache_path):
+-    if isinstance(self.operators, str):
+-        self.operators = self._parse_to_list(self.operators)
+-    if self.targets is None or "":
+-        self.targets = [self.path]
+-    self._cache_path = _cache_path
+-
+-
+-def _configuration_cache_path(self):
+-    from wily.config import types as config_types
+-    if not self._cache_path:
+-        self._cache_path = config_types.generate_cache_path(config_types.pathlib.Path(self.path).absolute())
+-    return self._cache_path
+-
+-
+-def _remove_cached_history(config):
+-    from wily import cache
+-    if not (Path(config.cache_path).exists() and Path(config.cache_path).is_dir()):
+-        cache.logger.debug("Wily cache does not exist, skipping")
+-        return
+-    cache.shutil.rmtree(config.cache_path)
+-    cache.logger.debug("Deleted wily cache")
+diff --git a/src/wily/commands/rank.py b/src/wily/commands/rank.py
+index de58173..c8340e0 100644
+--- a/src/wily/commands/rank.py
++++ b/src/wily/commands/rank.py
+@@ -148,28 +148,3 @@ def rank(
+ 
+     headers = ("File", resolved_metric.description)
+     print_table(headers=headers, data=data, wrap=wrap, table_style=table_style)
+-
+-
+-def _registry_operator(name):
+-    from wily import operators as registry
+-    if name.lower() in registry.ALL_OPERATORS:
+-        return registry.ALL_OPERATORS[name.lower()]
+-    raise ValueError(f"Operator {name} not recognised.")
+-
+-
+-def _find_revision_source(self, search):
+-    from wily.archivers import git as git_source
+-    revision = git_source.find_revision(self.repo_path, search)
+-    if revision is None:
+-        raise ValueError(f"Revision not found: {search}")
+-    return revision
+-
+-
+-def _restore_source_branch(source):
+-    from wily.archivers import git as git_source
+-    git_source.checkout_branch(source.repo_path, source.current_branch)
+-
+-
+-def _matching_metric_entries(name):
+-    from wily import operators as registry
+-    return [(operator, candidate) for operator, candidate in registry.ALL_METRICS if candidate.name == name]
+diff --git a/src/wily/commands/report.py b/src/wily/commands/report.py
+index 0605d6b..93c3995 100644
+--- a/src/wily/commands/report.py
++++ b/src/wily/commands/report.py
+@@ -63,9 +63,34 @@ def report(
+ 
+     logger.debug("Running report command")
+ 
++    # Build metric metadata for display styling
++    metric_metas = []
++    for operator, metric in resolved_metrics:
++        key = metric.name
++        # Set the delta styles depending on the metric type
++        if metric.measure == MetricType.AimHigh:
++            increase_style = STYLE_GREEN
++            decrease_style = STYLE_RED
++        elif metric.measure == MetricType.AimLow:
++            increase_style = STYLE_RED
++            decrease_style = STYLE_GREEN
++        elif metric.measure == MetricType.Informational:
++            increase_style = STYLE_YELLOW
++            decrease_style = STYLE_YELLOW
++        else:
++            increase_style = STYLE_YELLOW
++            decrease_style = STYLE_YELLOW
++        metric_meta = {
++            "key": key,
++            "operator": operator.name,
++            "increase_style": increase_style,
++            "decrease_style": decrease_style,
++            "title": metric.description,
++            "type": metric.metric_type,
++        }
++        metric_metas.append(metric_meta)
++
++    archivers = list_archivers(config)
+-    from wily.archivers import ALL_ARCHIVERS
+-    cache_root = pathlib.Path(config.cache_path)
+-    archivers = [name for name in ALL_ARCHIVERS if (cache_root / name).exists()]
+ 
+     if not archivers:
+         logger.error("No wily cache found. Run 'wily build' first.")
+@@ -80,7 +105,7 @@ def report(
+             continue
+ 
+         # Use WilyIndex to query data for the path
++        operator_names = [meta["operator"] for meta in metric_metas]
+-        operator_names = [operator.name for operator, metric in resolved_metrics]
+         with WilyIndex(str(parquet_path), operator_names) as index:
+             # Check if this is a granular query (e.g., "file.py:function_name")
+             is_granular = ":" in path
+@@ -100,37 +125,33 @@ def report(
+                 deltas = []
+                 vals: list[str | Text] = []
+ 
++                for meta in metric_metas:
+-                for operator, metric in resolved_metrics:
+                     try:
++                        val = row.get(meta["key"])
+-                        val = row.get(metric.name)
+                         if val is None:
+                             k: str | Text = "N/A"
+                             delta = 0
++                        elif meta["type"] in (int, float):
+-                        elif metric.metric_type in (int, float):
+                             # Ensure val is numeric
+                             if not isinstance(val, (int, float)):
+                                 k = f"{val}"
+                                 delta = 0
+                             else:
++                                last_val = last.get(meta["key"])
+-                                last_val = last.get(metric.name)
+                                 if last_val is not None and isinstance(last_val, (int, float)):
+                                     delta = val - last_val
+                                 else:
+                                     delta = 0
++                                last[meta["key"]] = val
+-                                last[metric.name] = val
+ 
+                                 # Build a Rich Text object with styled delta
+                                 cell = Text(f"{val:n} (")
+                                 if delta == 0:
+                                     cell.append(str(delta))
+                                 elif delta < 0:
++                                    cell.append(f"{delta:n}", style=meta["decrease_style"])
+-                                    measure = metric.measure
+-                                    style = STYLE_RED if measure == MetricType.AimHigh else STYLE_GREEN if measure == MetricType.AimLow else STYLE_YELLOW
+-                                    cell.append(f"{delta:n}", style=style)
+                                 else:
++                                    cell.append(f"+{delta:n}", style=meta["increase_style"])
+-                                    measure = metric.measure
+-                                    style = STYLE_GREEN if measure == MetricType.AimHigh else STYLE_RED if measure == MetricType.AimLow else STYLE_YELLOW
+-                                    cell.append(f"+{delta:n}", style=style)
+                                 cell.append(")")
+                                 k = cell
+                         else:
+@@ -172,7 +193,7 @@ def report(
+         logger.error("No data found for %s.", path)
+         return
+ 
++    descriptions = [meta["title"] for meta in metric_metas]
+-    descriptions = [metric.description for operator, metric in resolved_metrics]
+     if include_message:
+         headers = (_("Revision"), _("Message"), _("Author"), _("Date"), *descriptions)
+     else:
+@@ -256,14 +277,3 @@ def _render_html_report(output: Path, headers: tuple, data: list) -> None:
+         pass
+ 
+     logger.info("wily report was saved to %s", report_path)
+-
+-
+-def _registry_metric(metric):
+-    from wily import operators as registry
+-    if "." in metric:
+-        _, metric = metric.split(".")
+-    from wily.commands.rank import _matching_metric_entries
+-    matches = _matching_metric_entries(metric)
+-    if not matches:
+-        raise ValueError(f"Metric {metric} not recognised.")
+-    return matches[0]
+diff --git a/src/wily/config/types.py b/src/wily/config/types.py
+index edb28ae..6a87260 100644
+--- a/src/wily/config/types.py
++++ b/src/wily/config/types.py
+@@ -31,14 +31,18 @@ class WilyConfig:
+ 
+     def __post_init__(self, _cache_path):
+         """Parse operators string to list and clone targets as a list of path."""
++        if isinstance(self.operators, str):
++            self.operators = self._parse_to_list(self.operators)
++        if self.targets is None or "":
++            self.targets = [self.path]
++        self._cache_path = _cache_path  # type: ignore
+-        from wily.commands.index import _configure_inputs
+-        return _configure_inputs(self, _cache_path)
+ 
+     @property
+     def cache_path(self):
+         """Path to the cache."""
++        if not self._cache_path:  # type: ignore
++            self._cache_path = generate_cache_path(pathlib.Path(self.path).absolute())  # type: ignore
++        return self._cache_path  # type: ignore
+-        from wily.commands.index import _configuration_cache_path
+-        return _configuration_cache_path(self)
+ 
+     @cache_path.setter
+     def cache_path(self, value):
+diff --git a/src/wily/operators.py b/src/wily/operators.py
+index 8c0e1bd..4a2d295 100644
+--- a/src/wily/operators.py
++++ b/src/wily/operators.py
+@@ -190,8 +190,10 @@ def resolve_operator(name: str) -> Operator:
+     :param name: The name of the operator
+     :return: The operator type
+     """
++    if name.lower() in ALL_OPERATORS:
++        return ALL_OPERATORS[name.lower()]
++    else:
++        raise ValueError(f"Operator {name} not recognised.")
+-    from wily.commands.rank import _registry_operator
+-    return _registry_operator(name)
+ 
+ 
+ def resolve_operators(operators: Iterable[Operator | str]) -> list[Operator]:
+@@ -201,8 +203,13 @@ def resolve_operators(operators: Iterable[Operator | str]) -> list[Operator]:
+     Automatically includes 'raw' if 'maintainability' is requested, since
+     the maintainability index calculation depends on raw metrics.
+     """
++    resolved = [resolve_operator(operator) for operator in iter(operators)]
++    # Maintainability depends on raw metrics (LOC, SLOC, comments)
++    has_maintainability = any(op.name == "maintainability" for op in resolved)
++    has_raw = any(op.name == "raw" for op in resolved)
++    if has_maintainability and not has_raw:
++        resolved.insert(0, resolve_operator("raw"))
++    return resolved
+-    from wily.commands.build import _requested_operators
+-    return _requested_operators(operators)
+ 
+ 
+ @lru_cache(maxsize=128)
+@@ -214,8 +221,14 @@ def resolve_metric(metric: str) -> Metric:
+ @lru_cache(maxsize=128)
+ def resolve_metric_as_tuple(metric: str) -> tuple[Operator, Metric]:
+     """Resolve metric key to a given target."""
++    if "." in metric:
++        _, metric = metric.split(".")
++
++    r = [(operator, match) for operator, match in ALL_METRICS if match.name == metric]
++    if not r or len(r) == 0:
++        raise ValueError(f"Metric {metric} not recognised.")
++    else:
++        return r[0]
+-    from wily.commands.report import _registry_metric
+-    return _registry_metric(metric)
+ 
+ 
+ def get_metric(revision: dict[Any, Any], operator: str, path: str, key: str) -> Any:
+@@ -228,5 +241,9 @@ def get_metric(revision: dict[Any, Any], operator: str, path: str, key: str) ->
+     :param key: The key of the data
+     :return: Data from the cache
+     """
++    if ":" in path:
++        part, entry = path.split(":")
++        val = revision[operator][part]["detailed"][entry][key]
++    else:
++        val = revision[operator][path]["total"][key]
++    return val
+-    from wily.commands.diff import _revision_metric
+-    return _revision_metric(revision, operator, path, key)

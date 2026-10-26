@@ -1,0 +1,1164 @@
+diff --git a/src/docker/custom.rs b/src/docker/custom.rs
+index 8502fca..7cc2e0c 100644
+--- a/src/docker/custom.rs
++++ b/src/docker/custom.rs
+@@ -88,95 +88,7 @@ impl<'a> Dockerfile<'a> {
+         build_args: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+         msg_info: &mut MessageInfo,
+     ) -> Result<String> {
+-        let uses_zig = options.command_variant.uses_zig();
+-        let mut docker_build = options.engine.command();
+-        docker_build.invoke_build_command();
+-        docker_build.disable_scan_suggest();
+-        self.runs_with()
+-            .specify_platform(&options.engine, &mut docker_build);
+-
+-        docker_build.progress(None)?;
+-        docker_build.verbose(msg_info.verbosity);
+-        docker_build.cross_labels(options.target.triple(), self.runs_with().target.triple());
+-
+-        docker_build.args([
+-            "--label",
+-            &format!(
+-                "{}.workspace_root={}",
+-                crate::CROSS_LABEL_DOMAIN,
+-                paths.workspace_root().to_utf8()?
+-            ),
+-        ]);
+-
+-        let image_name = self.image_name(options.target.target(), &paths.metadata)?;
+-        docker_build.args(["--tag", &image_name]);
+-
+-        for (key, arg) in build_args {
+-            docker_build.args(["--build-arg", &format!("{}={}", key.as_ref(), arg.as_ref())]);
+-        }
+-
+-        if let Some(arch) = options.target.target().deb_arch() {
+-            docker_build.args(["--build-arg", &format!("CROSS_DEB_ARCH={arch}")]);
+-        }
+-
+-        let path = match self {
+-            Dockerfile::File { path, .. } => {
+-                paths.metadata.workspace_root.join(PathBuf::from(path))
+-            }
+-            Dockerfile::Custom { content, .. } => {
+-                let target_dir = paths
+-                    .metadata
+-                    .target_directory
+-                    .join(options.target.to_string());
+-                create_target_dir(&target_dir)?;
+-                let path = target_dir.join(format!("Dockerfile.{}-custom", &options.target));
+-                {
+-                    let mut file = file::write_file(&path, true)?;
+-                    file.write_all(content.as_bytes())?;
+-                }
+-                path
+-            }
+-        };
+-
+-        if matches!(self, Dockerfile::File { .. }) {
+-            if let Ok(cross_base_image) =
+-                self::get_image_name(&options.config, &options.target, uses_zig)
+-            {
+-                docker_build.args([
+-                    "--build-arg",
+-                    &format!("CROSS_BASE_IMAGE={cross_base_image}"),
+-                ]);
+-            }
+-        }
+-
+-        docker_build.args(["--file".into(), path]);
+-
+-        if let Some(build_opts) = options.config.build_opts() {
+-            docker_build.args(Engine::parse_opts(&build_opts)?);
+-        }
+-
+-        let has_output = options
+-            .config
+-            .build_opts()
+-            .is_some_and(|opts| opts.contains("--load") || opts.contains("--output"));
+-        if options.engine.kind.is_docker() && !has_output {
+-            docker_build.args(["--output", "type=docker"]);
+-        };
+-
+-        if let Some(context) = self.context() {
+-            docker_build.arg(context);
+-        } else {
+-            docker_build.arg(paths.host_root());
+-        }
+-
+-        // FIXME: Inspect the error message, while still inheriting stdout on verbose mode to
+-        // conditionally apply this suggestion and note. This could then inspect if a help string is emitted,
+-        // if the daemon is not running, etc.
+-        docker_build
+-            .run(msg_info, true)
+-            .engine_warning(&options.engine)
+-            .buildkit_warning()?;
+-        Ok(image_name)
++        options.build_dockerfile(self, paths, build_args, msg_info)
+     }
+ 
+     pub fn image_name(
+@@ -315,3 +227,97 @@ mod tests {
+         assert_eq!(docker_tag_name("foo-123-"), s!("foo-123"));
+     }
+ }
++
++impl DockerOptions {
++    pub(crate) fn build_dockerfile(&self, dockerfile: &Dockerfile<'_>, paths: &DockerPaths, build_args: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>, msg_info: &mut MessageInfo) -> Result<String> {
++        let uses_zig = self.command_variant.uses_zig();
++        let mut docker_build = self.engine.command();
++        docker_build.invoke_build_command();
++        docker_build.disable_scan_suggest();
++        dockerfile.runs_with()
++            .specify_platform(&self.engine, &mut docker_build);
++
++        docker_build.progress(None)?;
++        docker_build.verbose(msg_info.verbosity);
++        docker_build.cross_labels(self.target.triple(), dockerfile.runs_with().target.triple());
++
++        docker_build.args([
++            "--label",
++            &format!(
++                "{}.workspace_root={}",
++                crate::CROSS_LABEL_DOMAIN,
++                paths.workspace_root().to_utf8()?
++            ),
++        ]);
++
++        let image_name = dockerfile.image_name(self.target.target(), &paths.metadata)?;
++        docker_build.args(["--tag", &image_name]);
++
++        for (key, arg) in build_args {
++            docker_build.args(["--build-arg", &format!("{}={}", key.as_ref(), arg.as_ref())]);
++        }
++
++        if let Some(arch) = self.target.target().deb_arch() {
++            docker_build.args(["--build-arg", &format!("CROSS_DEB_ARCH={arch}")]);
++        }
++
++        let path = match dockerfile {
++            Dockerfile::File { path, .. } => {
++                paths.metadata.workspace_root.join(PathBuf::from(path))
++            }
++            Dockerfile::Custom { content, .. } => {
++                let target_dir = paths
++                    .metadata
++                    .target_directory
++                    .join(self.target.to_string());
++                create_target_dir(&target_dir)?;
++                let path = target_dir.join(format!("Dockerfile.{}-custom", &self.target));
++                {
++                    let mut file = file::write_file(&path, true)?;
++                    file.write_all(content.as_bytes())?;
++                }
++                path
++            }
++        };
++
++        if matches!(dockerfile, Dockerfile::File { .. }) {
++            if let Ok(cross_base_image) =
++                get_image_name(&self.config, &self.target, uses_zig)
++            {
++                docker_build.args([
++                    "--build-arg",
++                    &format!("CROSS_BASE_IMAGE={cross_base_image}"),
++                ]);
++            }
++        }
++
++        docker_build.args(["--file".into(), path]);
++
++        if let Some(build_opts) = self.config.build_opts() {
++            docker_build.args(Engine::parse_opts(&build_opts)?);
++        }
++
++        let has_output = self
++            .config
++            .build_opts()
++            .is_some_and(|opts| opts.contains("--load") || opts.contains("--output"));
++        if self.engine.kind.is_docker() && !has_output {
++            docker_build.args(["--output", "type=docker"]);
++        };
++
++        if let Some(context) = dockerfile.context() {
++            docker_build.arg(context);
++        } else {
++            docker_build.arg(paths.host_root());
++        }
++
++        // FIXME: Inspect the error message, while still inheriting stdout on verbose mode to
++        // conditionally apply this suggestion and note. This could then inspect if a help string is emitted,
++        // if the daemon is not running, etc.
++        docker_build
++            .run(msg_info, true)
++            .engine_warning(&self.engine)
++            .buildkit_warning()?;
++        Ok(image_name)
++    }
++}
+diff --git a/src/docker/local.rs b/src/docker/local.rs
+index 5720253..fb755a4 100644
+--- a/src/docker/local.rs
++++ b/src/docker/local.rs
+@@ -33,7 +33,13 @@ pub(crate) fn run(
+     args: &[String],
+     msg_info: &mut MessageInfo,
+ ) -> Result<Option<ExitStatus>> {
+-    let engine = &options.engine;
++    options.run_local(paths, args, msg_info)
++}
++
++impl DockerOptions {
++    pub(crate) fn run_local(self, paths: DockerPaths, args: &[String],  msg_info: &mut MessageInfo) -> Result<Option<ExitStatus>> {
++        let mut options = self;
++    let engine = options.engine.clone();
+     let toolchain_dirs = paths.directories.toolchain_directories();
+     let package_dirs = paths.directories.package_directories();
+ 
+@@ -137,9 +143,8 @@ pub(crate) fn run(
+         docker.arg("-i");
+     }
+ 
+-    let mut image_name = options.image.name.clone();
+     if options.needs_custom_image() {
+-        image_name = options
++        options
+             .custom_image_build(&paths, msg_info)
+             .wrap_err("when building custom image")?;
+     }
+@@ -149,7 +154,7 @@ pub(crate) fn run(
+         return Ok(None);
+     }
+     let status = docker
+-        .arg(&image_name)
++        .arg(&options.image.name)
+         .add_build_command(toolchain_dirs, &cmd)
+         .run_and_get_status(msg_info, false);
+ 
+@@ -165,4 +170,6 @@ pub(crate) fn run(
+     }
+ 
+     status.map(Some)
++
++    }
+ }
+diff --git a/src/docker/remote.rs b/src/docker/remote.rs
+index 82fb82c..0f4c658 100644
+--- a/src/docker/remote.rs
++++ b/src/docker/remote.rs
+@@ -374,61 +374,7 @@ impl ContainerDataVolume<'_, '_, '_> {
+         Ok(())
+     }
+ 
+-    #[track_caller]
+-    fn copy_mount(
+-        &self,
+-        src: &Path,
+-        reldst: &str,
+-        mount_prefix: &str,
+-        volume: &VolumeId,
+-        copy_cache: bool,
+-        msg_info: &mut MessageInfo,
+-    ) -> Result<()> {
+-        let copy_all = |info: &mut MessageInfo| {
+-            if copy_cache {
+-                self.copy_files(&src.join("."), reldst, mount_prefix, info)
+-            } else {
+-                self.copy_files_nocache(&src.join("."), reldst, mount_prefix, true, info)
+-            }
+-        };
+-        match volume {
+-            VolumeId::Keep(_) => {
+-                let parent = temp::dir()?;
+-                file::create_dir_all(&parent)?;
+-
+-                let toolchain = &self.toolchain_dirs.toolchain();
+-                let filename = toolchain.unique_mount_identifier(src)?;
+-                let fingerprint = parent.join(filename);
+-                let current = Fingerprint::read_dir(src, copy_cache)?;
+-                // need to check if the container path exists, otherwise we might
+-                // have stale data: the persistent volume was deleted & recreated.
+-                if fingerprint.exists()
+-                    && self.container_path_exists(reldst, mount_prefix, msg_info)?
+-                {
+-                    let previous = Fingerprint::read_file(&fingerprint)?;
+-                    let (to_copy, to_remove) = previous.difference(&current);
+-                    if !to_copy.is_empty() {
+-                        self.copy_file_list(src, reldst, mount_prefix, &to_copy, msg_info)?;
+-                    }
+-                    if !to_remove.is_empty() {
+-                        self.remove_file_list(reldst, mount_prefix, &to_remove, msg_info)?;
+-                    }
+-
+-                    // write fingerprint afterwards, in case any failure so we
+-                    // ensure any changes will be made on subsequent runs
+-                    current.write_file(&fingerprint)?;
+-                } else {
+-                    current.write_file(&fingerprint)?;
+-                    copy_all(msg_info)?;
+-                }
+-            }
+-            VolumeId::Discard => {
+-                copy_all(msg_info)?;
+-            }
+-        }
+ 
+-        Ok(())
+-    }
+ }
+ 
+ fn is_cachedir_tag(path: &Path) -> Result<bool> {
+@@ -548,71 +494,10 @@ fn is_cargo_json_message(line: &str) -> bool {
+ }
+ 
+ fn parse_artifact_filenames(json_output: &str) -> Vec<String> {
+-    let mut filenames = Vec::new();
+-    for line in json_output.lines() {
+-        let line = line.trim();
+-        if line.is_empty() {
+-            continue;
+-        }
+-        if let Ok(artifact) = serde_json::from_str::<CargoCompilerArtifact>(line) {
+-            if artifact.reason == "compiler-artifact" && is_workspace_artifact(&artifact) {
+-                for f in artifact.filenames {
+-                    if is_intermediate_artifact(&f) {
+-                        continue;
+-                    }
+-                    if !filenames.contains(&f) {
+-                        filenames.push(f);
+-                    }
+-                }
+-                // Executables are final products even when cargo places
+-                // them under `deps/` (e.g. test binaries).
+-                if let Some(exe) = artifact.executable {
+-                    if !filenames.contains(&exe) {
+-                        filenames.push(exe);
+-                    }
+-                }
+-            }
+-        }
+-    }
+-    filenames
++    DockerOptions::artifact_candidates(json_output).collect()
+ }
+ 
+-fn copy_artifacts_from_container(
+-    engine: &Engine,
+-    container_id: &str,
+-    artifact_files: &[String],
+-    host_target_dir: &Path,
+-    mount_target_dir: &str,
+-    msg_info: &mut MessageInfo,
+-) -> Result<()> {
+-    for artifact_path in artifact_files {
+-        let artifact_path = artifact_path.trim();
+-        if artifact_path.is_empty() {
+-            continue;
+-        }
+-
+-        let relative = if let Some(pos) = artifact_path.find(mount_target_dir) {
+-            &artifact_path[pos + mount_target_dir.len()..]
+-        } else {
+-            msg_info.warn(format_args!(
+-                "artifact path {artifact_path} does not start with {mount_target_dir}, skipping"
+-            ))?;
+-            continue;
+-        };
+-
+-        let host_path = host_target_dir.join(relative.trim_start_matches('/'));
+ 
+-        if let Some(parent) = host_path.parent() {
+-            fs::create_dir_all(parent)?;
+-        }
+-
+-        subcommand_or_exit(engine, "cp")?
+-            .arg(format!("{container_id}:{artifact_path}"))
+-            .arg(&host_path)
+-            .run_and_get_status(msg_info, false)?;
+-    }
+-    Ok(())
+-}
+ 
+ #[derive(Debug)]
+ struct Fingerprint {
+@@ -685,21 +570,7 @@ impl Fingerprint {
+     }
+ 
+     // returns to_copy (added + modified) and to_remove (removed).
+-    fn difference<'a, 'b>(&'a self, current: &'b Fingerprint) -> (Vec<&'b str>, Vec<&'a str>) {
+-        let to_copy: Vec<&str> = current
+-            .map
+-            .iter()
+-            .filter(|(k, v1)| self.map.get(*k).is_none_or(|v2| v1 != &v2))
+-            .map(|(k, _)| k.as_str())
+-            .collect();
+-        let to_remove: Vec<&str> = self
+-            .map
+-            .iter()
+-            .filter(|(k, _)| !current.map.contains_key(*k))
+-            .map(|(k, _)| k.as_str())
+-            .collect();
+-        (to_copy, to_remove)
+-    }
++
+ }
+ 
+ impl QualifiedToolchain {
+@@ -747,8 +618,88 @@ pub(crate) fn run(
+     subcommand: Option<crate::Subcommand>,
+     msg_info: &mut MessageInfo,
+ ) -> Result<Option<ExitStatus>> {
+-    let engine = &options.engine;
+-    let target = &options.target;
++    options.run_remote(paths, args, subcommand, msg_info)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::{is_cargo_json_message, parse_artifact_filenames};
++
++    #[test]
++    fn cargo_json_message_detection() {
++        assert!(is_cargo_json_message(
++            r#"{"reason":"compiler-artifact","package_id":"path+file:///project/hello","target":{"kind":["bin"],"name":"hello"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/hello"],"executable":"/project/target/debug/hello"}"#
++        ));
++        assert!(is_cargo_json_message(
++            r#"{"reason":"build-finished","success":true}"#
++        ));
++        assert!(is_cargo_json_message(
++            r#"{"reason":"compiler-message","message":{"level":"warning","message":"unused"}}"#
++        ));
++        assert!(!is_cargo_json_message("Hello, world!"));
++        assert!(!is_cargo_json_message(""));
++        assert!(!is_cargo_json_message("not json at all"));
++        assert!(!is_cargo_json_message(r#"{"without":"a reason key"}"#));
++        assert!(!is_cargo_json_message("   "));
++    }
++
++    #[test]
++    fn parse_workspace_artifacts() {
++        let json = r#"{"reason":"compiler-artifact","package_id":"path+file:///project/hello","target":{"kind":["bin"],"name":"hello"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/hello","/project/target/debug/hello.d"],"executable":"/project/target/debug/hello"}"#;
++        let out = parse_artifact_filenames(json);
++        assert_eq!(
++            out,
++            vec![
++                "/project/target/debug/hello",
++                "/project/target/debug/hello.d",
++            ]
++        );
++    }
++
++    #[test]
++    fn parse_skips_deps_artifacts_keeps_executable() {
++        let json = concat!(
++            r#"{"reason":"compiler-artifact","package_id":"path+file:///project/lib","target":{"kind":["lib"],"name":"lib"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/deps/liblib-abc123.rlib","/project/target/debug/deps/liblib-abc123.rmeta","/project/target/debug/deps/liblib-abc123.d"],"executable":null}"#,
++            "\n",
++            r#"{"reason":"compiler-artifact","package_id":"path+file:///project/app","target":{"kind":["bin"],"name":"app"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/app","/project/target/debug/deps/app-def456"],"executable":"/project/target/debug/app"}"#,
++            "\n",
++            r#"{"reason":"compiler-artifact","package_id":"path+file:///project/itest","target":{"kind":["test"],"name":"itest"},"profile":{"test":true,"opt_level":"s"},"features":[],"filenames":["/project/target/debug/deps/itest-789abc"],"executable":"/project/target/debug/deps/itest-789abc"}"#,
++        );
++        let out = parse_artifact_filenames(json);
++        assert_eq!(
++            out,
++            vec![
++                "/project/target/debug/deps/liblib-abc123.d",
++                "/project/target/debug/app",
++                "/project/target/debug/deps/app-def456",
++                "/project/target/debug/deps/itest-789abc"
++            ]
++        );
++    }
++
++    #[test]
++    fn parse_skips_program_output_and_non_workspace() {
++        let json = concat!(
++            "Hello, world!\n",
++            r#"{"reason":"compiler-artifact","package_id":"registry+https://github.com/rust-lang/crates.io-index#serde@1.0.0","target":{"kind":["lib"],"name":"serde"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/deps/libserde.rlib"],"executable":null}"#,
++            "\n",
++            r#"{"reason":"build-finished","success":true}"#,
++        );
++        assert!(parse_artifact_filenames(json).is_empty());
++    }
++
++    #[test]
++    fn parse_skips_empty_input() {
++        assert!(parse_artifact_filenames("").is_empty());
++        assert!(parse_artifact_filenames("\n  \n").is_empty());
++    }
++}
++
++impl DockerOptions {
++    pub(crate) fn run_remote(self, paths: DockerPaths, args: &[String], subcommand: Option<crate::Subcommand>, msg_info: &mut MessageInfo) -> Result<Option<ExitStatus>> {
++        let mut options = self;
++    let engine = options.engine.clone();
++    let target = options.target.clone();
+     let toolchain_dirs = paths.directories.toolchain_directories();
+     let package_dirs = paths.directories.package_directories();
+ 
+@@ -783,7 +734,7 @@ pub(crate) fn run(
+     let toolchain_id = toolchain_dirs.unique_toolchain_identifier()?;
+     let container_id = toolchain_dirs.unique_container_identifier(target.target())?;
+     let volume = {
+-        let existing = DockerVolume::existing(engine, toolchain_dirs.toolchain(), msg_info)?;
++        let existing = DockerVolume::existing(&engine, toolchain_dirs.toolchain(), msg_info)?;
+         if existing.iter().any(|v| v == &toolchain_id) {
+             VolumeId::Keep(toolchain_id)
+         } else {
+@@ -798,7 +749,7 @@ pub(crate) fn run(
+         }
+     };
+ 
+-    let container = DockerContainer::new(engine, &container_id);
++    let container = DockerContainer::new(&engine, &container_id);
+     let state = container.state(msg_info)?;
+     if !state.is_stopped() {
+         msg_info.warn(format_args!("container {container_id} was running."))?;
+@@ -836,7 +787,7 @@ pub(crate) fn run(
+         .wrap_err("could not determine mount points")?;
+ 
+     docker
+-        .add_seccomp(engine.kind, target, &paths.metadata)
++        .add_seccomp(engine.kind, &target, &paths.metadata)
+         .wrap_err("when copying seccomp profile")?;
+ 
+     // Prevent `bin` from being mounted inside the Docker container.
+@@ -856,15 +807,13 @@ pub(crate) fn run(
+         docker.arg("-t");
+     }
+ 
+-    let mut image_name = options.image.name.clone();
+-
+     if options.needs_custom_image() {
+-        image_name = options
++        options
+             .custom_image_build(&paths, msg_info)
+             .wrap_err("when building custom image")?;
+     }
+ 
+-    docker.arg(&image_name);
++    docker.arg(&options.image.name);
+ 
+     if !is_tty {
+         // ensure the process never exits until we stop it
+@@ -880,12 +829,12 @@ pub(crate) fn run(
+     docker.run_and_get_status(msg_info, true)?;
+ 
+     // 4. copy all mounted volumes over
+-    let data_volume = ContainerDataVolume::new(engine, &container_id, toolchain_dirs);
++    let data_volume = ContainerDataVolume::new(&engine, &container_id, toolchain_dirs);
+     let copy_cache = env::var("CROSS_REMOTE_COPY_CACHE")
+         .map(|s| bool_from_envvar(&s))
+         .unwrap_or_default();
+     let copy = |src, reldst: &str, info: &mut MessageInfo| {
+-        data_volume.copy_mount(src, reldst, mount_prefix, &volume, copy_cache, info)
++        options.synchronize_mount(&data_volume, src, reldst, mount_prefix, &volume, copy_cache, info)
+     };
+     if let VolumeId::Discard = volume {
+         data_volume
+@@ -1061,7 +1010,7 @@ symlink_recurse \"${{prefix}}\"
+     for (src, dst) in to_symlink {
+         symlink.push(format!("ln -s \"{src}\" \"{dst}\"",));
+     }
+-    subcommand_or_exit(engine, "exec")?
++    subcommand_or_exit(&engine, "exec")?
+         .arg(&container_id)
+         .args(["sh", "-c", &symlink.join("\n")])
+         .run_and_get_status(msg_info, false)
+@@ -1102,26 +1051,21 @@ symlink_recurse \"${{prefix}}\"
+         && data_volume.container_path_exists(&mount_target_dir, mount_prefix, msg_info)?
+     {
+         if produces_artifacts && !copy_full_target_dir {
+-            let artifact_files = parse_artifact_filenames(&command_stdout);
+-
+-            if !artifact_files.is_empty() {
+-                copy_artifacts_from_container(
+-                    engine,
+-                    &container_id,
+-                    &artifact_files,
+-                    &host_target_dir,
+-                    &mount_target_dir,
+-                    msg_info,
+-                )?;
+-            } else {
+-                subcommand_or_exit(engine, "cp")?
++            if !options.publish_artifacts(
++                &container_id,
++                &command_stdout,
++                &host_target_dir,
++                &mount_target_dir,
++                msg_info,
++            )? {
++                subcommand_or_exit(&engine, "cp")?
+                     .arg("-a")
+                     .arg(format!("{container_id}:{mount_target_dir}"))
+                     .arg(host_root_dir)
+                     .run_and_get_status(msg_info, false)?;
+             }
+         } else {
+-            subcommand_or_exit(engine, "cp")?
++            subcommand_or_exit(&engine, "cp")?
+                 .arg("-a")
+                 .arg(format!("{container_id}:{mount_target_dir}"))
+                 .arg(host_root_dir)
+@@ -1132,78 +1076,108 @@ symlink_recurse \"${{prefix}}\"
+     ChildContainer::finish_static(is_tty, msg_info);
+ 
+     Ok(Some(status))
++
++    }
+ }
+ 
+-#[cfg(test)]
+-mod tests {
+-    use super::{is_cargo_json_message, parse_artifact_filenames};
++impl DockerOptions {
++    #[track_caller]
++    fn synchronize_mount(&self, data_volume: &ContainerDataVolume<'_, '_, '_>, src: &Path, reldst: &str, mount_prefix: &str, volume: &VolumeId, copy_cache: bool, msg_info: &mut MessageInfo) -> Result<()> {
++        let copy_all = |info: &mut MessageInfo| {
++            if copy_cache {
++                data_volume.copy_files(&src.join("."), reldst, mount_prefix, info)
++            } else {
++                data_volume.copy_files_nocache(&src.join("."), reldst, mount_prefix, true, info)
++            }
++        };
++        match volume {
++            VolumeId::Keep(_) => {
++                let parent = temp::dir()?;
++                file::create_dir_all(&parent)?;
+ 
+-    #[test]
+-    fn cargo_json_message_detection() {
+-        assert!(is_cargo_json_message(
+-            r#"{"reason":"compiler-artifact","package_id":"path+file:///project/hello","target":{"kind":["bin"],"name":"hello"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/hello"],"executable":"/project/target/debug/hello"}"#
+-        ));
+-        assert!(is_cargo_json_message(
+-            r#"{"reason":"build-finished","success":true}"#
+-        ));
+-        assert!(is_cargo_json_message(
+-            r#"{"reason":"compiler-message","message":{"level":"warning","message":"unused"}}"#
+-        ));
+-        assert!(!is_cargo_json_message("Hello, world!"));
+-        assert!(!is_cargo_json_message(""));
+-        assert!(!is_cargo_json_message("not json at all"));
+-        assert!(!is_cargo_json_message(r#"{"without":"a reason key"}"#));
+-        assert!(!is_cargo_json_message("   "));
+-    }
++                let toolchain = &data_volume.toolchain_dirs.toolchain();
++                let filename = toolchain.unique_mount_identifier(src)?;
++                let fingerprint = parent.join(filename);
++                let current = Fingerprint::read_dir(src, copy_cache)?;
++                // need to check if the container path exists, otherwise we might
++                // have stale data: the persistent volume was deleted & recreated.
++                if fingerprint.exists()
++                    && data_volume.container_path_exists(reldst, mount_prefix, msg_info)?
++                {
++                    let mut previous = Fingerprint::read_file(&fingerprint)?;
++                    let mut to_copy = Vec::new();
++                    for (path, modified) in &current.map {
++                        if previous.map.remove(path).is_none_or(|old| old != *modified) {
++                            to_copy.push(path.as_str());
++                        }
++                    }
++                    let to_remove: Vec<&str> = previous.map.keys().map(String::as_str).collect();
++                    if !to_copy.is_empty() {
++                        data_volume.copy_file_list(src, reldst, mount_prefix, &to_copy, msg_info)?;
++                    }
++                    if !to_remove.is_empty() {
++                        data_volume.remove_file_list(reldst, mount_prefix, &to_remove, msg_info)?;
++                    }
+ 
+-    #[test]
+-    fn parse_workspace_artifacts() {
+-        let json = r#"{"reason":"compiler-artifact","package_id":"path+file:///project/hello","target":{"kind":["bin"],"name":"hello"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/hello","/project/target/debug/hello.d"],"executable":"/project/target/debug/hello"}"#;
+-        let out = parse_artifact_filenames(json);
+-        assert_eq!(
+-            out,
+-            vec![
+-                "/project/target/debug/hello",
+-                "/project/target/debug/hello.d",
+-            ]
+-        );
+-    }
++                    // write fingerprint afterwards, in case any failure so we
++                    // ensure any changes will be made on subsequent runs
++                    current.write_file(&fingerprint)?;
++                } else {
++                    current.write_file(&fingerprint)?;
++                    copy_all(msg_info)?;
++                }
++            }
++            VolumeId::Discard => {
++                copy_all(msg_info)?;
++            }
++        }
+ 
+-    #[test]
+-    fn parse_skips_deps_artifacts_keeps_executable() {
+-        let json = concat!(
+-            r#"{"reason":"compiler-artifact","package_id":"path+file:///project/lib","target":{"kind":["lib"],"name":"lib"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/deps/liblib-abc123.rlib","/project/target/debug/deps/liblib-abc123.rmeta","/project/target/debug/deps/liblib-abc123.d"],"executable":null}"#,
+-            "\n",
+-            r#"{"reason":"compiler-artifact","package_id":"path+file:///project/app","target":{"kind":["bin"],"name":"app"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/app","/project/target/debug/deps/app-def456"],"executable":"/project/target/debug/app"}"#,
+-            "\n",
+-            r#"{"reason":"compiler-artifact","package_id":"path+file:///project/itest","target":{"kind":["test"],"name":"itest"},"profile":{"test":true,"opt_level":"s"},"features":[],"filenames":["/project/target/debug/deps/itest-789abc"],"executable":"/project/target/debug/deps/itest-789abc"}"#,
+-        );
+-        let out = parse_artifact_filenames(json);
+-        assert_eq!(
+-            out,
+-            vec![
+-                "/project/target/debug/deps/liblib-abc123.d",
+-                "/project/target/debug/app",
+-                "/project/target/debug/deps/app-def456",
+-                "/project/target/debug/deps/itest-789abc"
+-            ]
+-        );
++        Ok(())
+     }
++    fn publish_artifacts(&self, container_id: &str, json_output: &str, host_target_dir: &Path, mount_target_dir: &str, msg_info: &mut MessageInfo) -> Result<bool> {
++    let mut discovered = false;
++    for artifact_path in Self::artifact_candidates(json_output) {
++        discovered = true;
++        let artifact_path = artifact_path.trim();
++        if artifact_path.is_empty() {
++            continue;
++        }
+ 
+-    #[test]
+-    fn parse_skips_program_output_and_non_workspace() {
+-        let json = concat!(
+-            "Hello, world!\n",
+-            r#"{"reason":"compiler-artifact","package_id":"registry+https://github.com/rust-lang/crates.io-index#serde@1.0.0","target":{"kind":["lib"],"name":"serde"},"profile":{"opt_level":"s"},"features":[],"filenames":["/project/target/debug/deps/libserde.rlib"],"executable":null}"#,
+-            "\n",
+-            r#"{"reason":"build-finished","success":true}"#,
+-        );
+-        assert!(parse_artifact_filenames(json).is_empty());
++        let relative = if let Some(pos) = artifact_path.find(mount_target_dir) {
++            &artifact_path[pos + mount_target_dir.len()..]
++        } else {
++            msg_info.warn(format_args!(
++                "artifact path {artifact_path} does not start with {mount_target_dir}, skipping"
++            ))?;
++            continue;
++        };
++
++        let host_path = host_target_dir.join(relative.trim_start_matches('/'));
++
++        if let Some(parent) = host_path.parent() {
++            fs::create_dir_all(parent)?;
++        }
++
++        subcommand_or_exit(&self.engine, "cp")?
++            .arg(format!("{container_id}:{artifact_path}"))
++            .arg(&host_path)
++            .run_and_get_status(msg_info, false)?;
+     }
++    Ok(discovered)
++}
++}
+ 
+-    #[test]
+-    fn parse_skips_empty_input() {
+-        assert!(parse_artifact_filenames("").is_empty());
+-        assert!(parse_artifact_filenames("\n  \n").is_empty());
++impl DockerOptions {
++    fn artifact_candidates(json_output: &str) -> impl Iterator<Item = String> + '_ {
++        let mut seen = Vec::new();
++        json_output.lines().filter_map(|line| {
++            serde_json::from_str::<CargoCompilerArtifact>(line.trim()).ok()
++        }).filter(|artifact| artifact.reason == "compiler-artifact" && is_workspace_artifact(artifact))
++        .flat_map(|artifact| {
++            artifact.filenames.into_iter().filter(|path| !is_intermediate_artifact(path))
++                .chain(artifact.executable)
++        }).filter(move |path| {
++            if seen.contains(path) { false } else { seen.push(path.clone()); true }
++        })
+     }
+ }
+diff --git a/src/docker/shared.rs b/src/docker/shared.rs
+index 70c81a7..47d4f0d 100644
+--- a/src/docker/shared.rs
++++ b/src/docker/shared.rs
+@@ -83,11 +83,11 @@ impl DockerOptions {
+     }
+ 
+     pub(crate) fn custom_image_build(
+-        &self,
++        &mut self,
+         paths: &DockerPaths,
+         msg_info: &mut MessageInfo,
+-    ) -> Result<String> {
+-        let mut image = self.image.clone();
++    ) -> Result<()> {
++
+         if self.target.triple() == "arm-unknown-linux-gnueabihf" {
+             msg_info.note("cannot install armhf system packages via apt for `arm-unknown-linux-gnueabihf`, since they are for ARMv7a targets but this target is ARMv6. installation of all packages for the armhf architecture has been blocked.")?;
+         }
+@@ -101,14 +101,14 @@ impl DockerOptions {
+                 path: &path,
+                 context: context.as_deref(),
+                 name: if is_custom_image {
+-                    Some(&image.name)
++                    Some(&self.image.name)
+                 } else {
+                     None
+                 },
+-                runs_with: &image.platform,
++                runs_with: &self.image.platform,
+             };
+ 
+-            image.name = build
++            self.image.name = build
+                 .build(
+                     self,
+                     paths,
+@@ -130,10 +130,11 @@ impl DockerOptions {
+                     && !pre_build_script.contains('\n')
+                     && paths.host_root().join(&pre_build_script).is_file() =>
+                 {
++                    let selected_image = self.image.to_string();
+                     let custom = Dockerfile::Custom {
+                         content: format!(
+                             r#"
+-                FROM {image}
++                FROM {selected_image}
+                 ARG CROSS_DEB_ARCH=
+                 ARG CROSS_SCRIPT
+                 ARG CROSS_TARGET
+@@ -141,10 +142,10 @@ impl DockerOptions {
+                 RUN chmod +x /pre-build-script
+                 RUN ./pre-build-script $CROSS_TARGET"#
+                         ),
+-                        runs_with: &image.platform,
++                        runs_with: &self.image.platform,
+                     };
+ 
+-                    image.name = custom
++                    self.image.name = custom
+                         .build(
+                             self,
+                             paths,
+@@ -164,17 +165,18 @@ impl DockerOptions {
+                         PreBuild::Lines(lines) => lines,
+                     };
+                     if !pre_build.is_empty() {
+-                        let custom = Dockerfile::Custom {
++                        let selected_image = self.image.to_string();
++                    let custom = Dockerfile::Custom {
+                             content: format!(
+                                 r#"
+-                FROM {image}
++                FROM {selected_image}
+                 ARG CROSS_DEB_ARCH=
+                 ARG CROSS_CMD
+                 RUN eval "${{CROSS_CMD}}""#
+                             ),
+-                            runs_with: &image.platform,
++                            runs_with: &self.image.platform,
+                         };
+-                        image.name = custom
++                        self.image.name = custom
+                             .build(
+                                 self,
+                                 paths,
+@@ -187,7 +189,7 @@ impl DockerOptions {
+                 }
+             }
+         }
+-        Ok(image.name.clone())
++        Ok(())
+     }
+ }
+ 
+@@ -875,38 +877,7 @@ impl Engine {
+     }
+ }
+ 
+-fn validate_env_var<'a>(
+-    var: &'a str,
+-    warned: &mut bool,
+-    var_type: &'static str,
+-    var_syntax: &'static str,
+-    msg_info: &mut MessageInfo,
+-) -> Result<(&'a str, Option<&'a str>)> {
+-    let (key, value) = match var.split_once('=') {
+-        Some((key, value)) => (key, Some(value)),
+-        _ => (var, None),
+-    };
+ 
+-    if value.is_none()
+-        && !*warned
+-        && !var
+-            .chars()
+-            .all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
+-    {
+-        msg_info.warn(format_args!(
+-            "got {var_type} of \"{var}\" which is not a valid environment variable name. the proper syntax is {var_syntax}"
+-        ))?;
+-        *warned = true;
+-    }
+-
+-    if key == "CROSS_RUNNER" {
+-        eyre::bail!(
+-            "CROSS_RUNNER environment variable name is reserved and cannot be pass through"
+-        );
+-    }
+-
+-    Ok((key, value))
+-}
+ 
+ impl CommandVariant {
+     pub(crate) fn safe_command(&self) -> SafeCommand {
+@@ -991,67 +962,7 @@ impl DockerCommandExt for Command {
+         dirs: &ToolchainDirectories,
+         msg_info: &mut MessageInfo,
+     ) -> Result<()> {
+-        let mut warned = false;
+-        for ref var in options
+-            .config
+-            .env_passthrough(&options.target)
+-            .unwrap_or_default()
+-        {
+-            validate_env_var(
+-                var,
+-                &mut warned,
+-                "environment variable",
+-                "`passthrough = [\"ENVVAR=value\"]`",
+-                msg_info,
+-            )?;
+-
+-            // Only specifying the environment variable name in the "-e"
+-            // flag forwards the value from the parent shell
+-            self.args(["-e", var]);
+-        }
+-
+-        let runner = options.config.runner(&options.target);
+-        let cross_runner = format!("CROSS_RUNNER={}", runner.unwrap_or_default());
+-        self.args(["-e", &format!("CARGO_HOME={}", dirs.cargo_mount_path())])
+-            .args([
+-                "-e",
+-                &format!("CROSS_RUST_SYSROOT={}", dirs.sysroot_mount_path()),
+-            ])
+-            .args(["-e", "CARGO_TARGET_DIR=/target"])
+-            .args(["-e", &cross_runner]);
+-        if options.command_variant.uses_zig() {
+-            // otherwise, zig has a permission error trying to create the cache
+-            self.args(["-e", "XDG_CACHE_HOME=/target/.zig-cache"]);
+-        }
+-        self.add_configuration_envvars();
+-
+-        if let Some(username) = id::username().wrap_err("could not get username")? {
+-            self.args(["-e", &format!("USER={username}")]);
+-        }
+-
+-        if let Ok(value) = env::var("CROSS_CONTAINER_OPTS") {
+-            if env::var("DOCKER_OPTS").is_ok() {
+-                msg_info.warn("using both `CROSS_CONTAINER_OPTS` and `DOCKER_OPTS`.")?;
+-            }
+-            self.args(&Engine::parse_opts(&value)?);
+-        } else if let Ok(value) = env::var("DOCKER_OPTS") {
+-            // FIXME: remove this when we deprecate DOCKER_OPTS.
+-            self.args(&Engine::parse_opts(&value)?);
+-        };
+-
+-        let (major, minor, patch) = match options.rustc_version.as_ref() {
+-            Some(version) => (version.major, version.minor, version.patch),
+-            // no toolchain version available, always provide the oldest
+-            // compiler available. this isn't a major issue because
+-            // linking with libgcc will not include symbols found in
+-            // the builtins.
+-            None => (1, 0, 0),
+-        };
+-        self.args(["-e", &format!("CROSS_RUSTC_MAJOR_VERSION={}", major)]);
+-        self.args(["-e", &format!("CROSS_RUSTC_MINOR_VERSION={}", minor)]);
+-        self.args(["-e", &format!("CROSS_RUSTC_PATCH_VERSION={}", patch)]);
+-
+-        Ok(())
++        options.configure_environment(self, dirs, msg_info)
+     }
+ 
+     fn add_cwd(&mut self, paths: &DockerPaths) -> Result<()> {
+@@ -1140,54 +1051,7 @@ impl DockerCommandExt for Command {
+         mut store_cb: impl FnMut((String, String)),
+         msg_info: &mut MessageInfo,
+     ) -> Result<()> {
+-        let mut warned = false;
+-        for ref var in options
+-            .config
+-            .env_volumes(&options.target)
+-            .unwrap_or_default()
+-        {
+-            let (var, value) = validate_env_var(
+-                var,
+-                &mut warned,
+-                "volume",
+-                "`volumes = [\"ENVVAR=/path/to/directory\"]`",
+-                msg_info,
+-            )?;
+-            let value = match value {
+-                Some(v) => Ok(v.to_owned()),
+-                None => env::var(var),
+-            };
+-
+-            // NOTE: we use canonical paths on the host, since it's unambiguous.
+-            // however, for the mounted paths, we use the same path as was
+-            // provided. this avoids canonicalizing symlinks which then causes
+-            // the mounted path to differ from the path expected on the host.
+-            // for example, if `/tmp` is a symlink to `/private/tmp`, canonicalizing
+-            // it would lead to us mounting `/tmp/process` to `/private/tmp/process`,
+-            // which would cause any code relying on `/tmp/process` to break.
+-
+-            if let Ok(val) = value {
+-                let canonical_path = file::canonicalize(&val)?;
+-                let host_path = paths.mount_finder.find_path(&canonical_path, true)?;
+-                let mount_path = Path::new(&val).as_posix_absolute()?;
+-                mount_cb(self, host_path.as_ref(), mount_path.as_ref())?;
+-                self.args(["-e", &format!("{}={}", var, mount_path)]);
+-                store_cb((val, mount_path));
+-            }
+-        }
+-
+-        for path in paths.workspace_dependencies() {
+-            // NOTE: we use canonical paths here since cargo metadata
+-            // always canonicalizes paths, so these should be relative
+-            // to the mounted project directory.
+-            let canonical_path = file::canonicalize(path)?;
+-            let host_path = paths.mount_finder.find_path(&canonical_path, true)?;
+-            let mount_path = path.as_posix_absolute()?;
+-            mount_cb(self, host_path.as_ref(), mount_path.as_ref())?;
+-            store_cb((path.to_utf8()?.to_owned(), mount_path));
+-        }
+-
+-        Ok(())
++        options.configure_mounts(self, paths, mount_cb, store_cb, msg_info)
+     }
+ }
+ 
+@@ -1902,3 +1766,128 @@ mod tests {
+         }
+     }
+ }
++
++impl DockerOptions {
++
++    pub(crate) fn configure_environment(&self, command: &mut Command, dirs: &ToolchainDirectories, msg_info: &mut MessageInfo) -> Result<()> {
++        let mut warned = false;
++        for ref var in self
++            .config
++            .env_passthrough(&self.target)
++            .unwrap_or_default()
++        {
++            let key = var.split_once('=').map_or(var.as_str(), |(key, _)| key);
++            if !var.contains('=') && !warned && !key.chars().all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')) {
++                msg_info.warn(format_args!(
++                    "got environment variable of \"{var}\" which is not a valid environment variable name. the proper syntax is `passthrough = [\"ENVVAR=value\"]`"
++                ))?;
++                warned = true;
++            }
++            if key == "CROSS_RUNNER" {
++                eyre::bail!("CROSS_RUNNER environment variable name is reserved and cannot be pass through");
++            }
++
++            // Only specifying the environment variable name in the "-e"
++            // flag forwards the value from the parent shell
++            command.args(["-e", var]);
++        }
++
++        let runner = self.config.runner(&self.target);
++        let cross_runner = format!("CROSS_RUNNER={}", runner.unwrap_or_default());
++        command.args(["-e", &format!("CARGO_HOME={}", dirs.cargo_mount_path())])
++            .args([
++                "-e",
++                &format!("CROSS_RUST_SYSROOT={}", dirs.sysroot_mount_path()),
++            ])
++            .args(["-e", "CARGO_TARGET_DIR=/target"])
++            .args(["-e", &cross_runner]);
++        if self.command_variant.uses_zig() {
++            // otherwise, zig has a permission error trying to create the cache
++            command.args(["-e", "XDG_CACHE_HOME=/target/.zig-cache"]);
++        }
++        command.add_configuration_envvars();
++
++        if let Some(username) = id::username().wrap_err("could not get username")? {
++            command.args(["-e", &format!("USER={username}")]);
++        }
++
++        if let Ok(value) = env::var("CROSS_CONTAINER_OPTS") {
++            if env::var("DOCKER_OPTS").is_ok() {
++                msg_info.warn("using both `CROSS_CONTAINER_OPTS` and `DOCKER_OPTS`.")?;
++            }
++            command.args(&Engine::parse_opts(&value)?);
++        } else if let Ok(value) = env::var("DOCKER_OPTS") {
++            // FIXME: remove this when we deprecate DOCKER_OPTS.
++            command.args(&Engine::parse_opts(&value)?);
++        };
++
++        let (major, minor, patch) = match self.rustc_version.as_ref() {
++            Some(version) => (version.major, version.minor, version.patch),
++            // no toolchain version available, always provide the oldest
++            // compiler available. this isn't a major issue because
++            // linking with libgcc will not include symbols found in
++            // the builtins.
++            None => (1, 0, 0),
++        };
++        command.args(["-e", &format!("CROSS_RUSTC_MAJOR_VERSION={}", major)]);
++        command.args(["-e", &format!("CROSS_RUSTC_MINOR_VERSION={}", minor)]);
++        command.args(["-e", &format!("CROSS_RUSTC_PATCH_VERSION={}", patch)]);
++
++        Ok(())
++    }
++
++    pub(crate) fn configure_mounts(&self, command: &mut Command, paths: &DockerPaths, mount_cb: impl Fn(&mut Command, &Path, &Path) -> Result<()>, mut store_cb: impl FnMut((String, String)), msg_info: &mut MessageInfo) -> Result<()> {
++        let mut warned = false;
++        for ref var in self
++            .config
++            .env_volumes(&self.target)
++            .unwrap_or_default()
++        {
++            let (key, value) = var.split_once('=').map_or((var.as_str(), None), |(key, value)| (key, Some(value)));
++            if value.is_none() && !warned && !key.chars().all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')) {
++                msg_info.warn(format_args!(
++                    "got volume of \"{var}\" which is not a valid environment variable name. the proper syntax is `volumes = [\"ENVVAR=/path/to/directory\"]`"
++                ))?;
++                warned = true;
++            }
++            if key == "CROSS_RUNNER" {
++                eyre::bail!("CROSS_RUNNER environment variable name is reserved and cannot be pass through");
++            }
++            let var = key;
++            let value = match value {
++                Some(v) => Ok(v.to_owned()),
++                None => env::var(var),
++            };
++
++            // NOTE: we use canonical paths on the host, since it's unambiguous.
++            // however, for the mounted paths, we use the same path as was
++            // provided. this avoids canonicalizing symlinks which then causes
++            // the mounted path to differ from the path expected on the host.
++            // for example, if `/tmp` is a symlink to `/private/tmp`, canonicalizing
++            // it would lead to us mounting `/tmp/process` to `/private/tmp/process`,
++            // which would cause any code relying on `/tmp/process` to break.
++
++            if let Ok(val) = value {
++                let canonical_path = file::canonicalize(&val)?;
++                let host_path = paths.mount_finder.find_path(&canonical_path, true)?;
++                let mount_path = Path::new(&val).as_posix_absolute()?;
++                mount_cb(command, host_path.as_ref(), mount_path.as_ref())?;
++                command.args(["-e", &format!("{}={}", var, mount_path)]);
++                store_cb((val, mount_path));
++            }
++        }
++
++        for path in paths.workspace_dependencies() {
++            // NOTE: we use canonical paths here since cargo metadata
++            // always canonicalizes paths, so these should be relative
++            // to the mounted project directory.
++            let canonical_path = file::canonicalize(path)?;
++            let host_path = paths.mount_finder.find_path(&canonical_path, true)?;
++            let mount_path = path.as_posix_absolute()?;
++            mount_cb(command, host_path.as_ref(), mount_path.as_ref())?;
++            store_cb((path.to_utf8()?.to_owned(), mount_path));
++        }
++
++        Ok(())
++    }
++}

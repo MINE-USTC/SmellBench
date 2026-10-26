@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/deeplcom_deepl_python_ss"
+version = "1.0.0"
+description = "Refactor an injected shotgun_surgery smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "shotgun_surgery", "python"]
+
+[metadata]
+repo_name = "deepl-python"
+repo_url = "https://github.com/DeepLcom/deepl-python"
+git_commit = "74415f95d0ed10414b278d7a332af6c7e7687f31"
+language = "Python"
+smell_type = "shotgun_surgery"
+prompt_mode = "explicit"
+apt_packages = ["nodejs","npm","util-linux"]
+smell_checker_match_count = 28
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 4
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"  # baseline; agent defaults to public networking
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/DeepLcom/deepl-python", CC_FORBIDDEN_REPO_URL = "deepl-python", CC_FORBIDDEN_REPO_NAME = "deepl-python" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

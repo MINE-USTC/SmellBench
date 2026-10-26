@@ -1,0 +1,566 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "q191201771_lal_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "avcc_framing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + deepening A length-prefix scanner/result scope.",
+      "baseline_defect": "The outer Avcc2Annexb workflow directly maintains avcc framing together with other ingestion/output phases.",
+      "criterion": "Recover a coherent avcc framing boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Keep nil/short prefix errors, zero-length warning/progress, clipped final NAL emitted before short-buffer error, complete final NAL success and accumulated output. Converter retains start-code bytes and allocation contract; iterator or parsed stream both qualify. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/avc/avc.go",
+          "symbol": "Avcc2Annexb",
+          "detail": "The outer Avcc2Annexb workflow directly maintains avcc framing together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "annexb_framing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + A start-code detection/emission/tail.",
+      "baseline_defect": "The outer Annexb2Avcc workflow directly maintains annexb framing together with other ingestion/output phases.",
+      "criterion": "Recover a coherent annexb framing boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Keep runs of at least two zeros before one, prefix discard, adjacent/terminal empty NAL error and previous outputs; absent start code emits whole input with length then ErrAvc, nil returns short-buffer. Preserve trailing zeros as tail payload and length-prefix output; can share codec owner with AVCC. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/avc/avc.go",
+          "symbol": "Annexb2Avcc",
+          "detail": "The outer Annexb2Avcc workflow directly maintains annexb framing together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "avpacket_nal_handoff",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R5 + C scanner progress, filtering and partial error callback.",
+      "baseline_defect": "The outer FeedRtmpMsg workflow directly maintains avpacket nal handoff together with other ingestion/output phases.",
+      "criterion": "Recover a coherent avpacket nal handoff boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Preserve nonvideo/short gating, config early return, advance before SEI filtering, erased truncated SEI still short-buffer error, accumulated output callback even when returning framing error. Codec framing can be shared with converters; no required callback shape. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2avpacket.go",
+          "symbol": "FeedRtmpMsg",
+          "detail": "The outer FeedRtmpMsg workflow directly maintains avpacket nal handoff together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "avpacket_configuration_output",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R5 consumer-owned parameter sets and packet policy.",
+      "baseline_defect": "The outer FeedRtmpMsg workflow directly maintains avpacket configuration output together with other ingestion/output phases.",
+      "criterion": "Recover a coherent avpacket configuration output boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Keep in-band complete SPS/PPS or VPS/SPS/PPS replacement, one cached-config append per message before first IDR/IRAP, option SEI filtering and nonempty output callback with timestamp/PTS/arg. Do not impose MPEGTS AUD or reset rules on this distinct consumer. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2avpacket.go",
+          "symbol": "FeedRtmpMsg",
+          "detail": "The outer FeedRtmpMsg workflow directly maintains avpacket configuration output together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "flv_tag_reading",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + A header/body parser and partial collection.",
+      "baseline_defect": "The outer ReadAllTagsFromFlvFile workflow directly maintains flv tag reading together with other ingestion/output phases.",
+      "criterion": "Recover a coherent flv tag reading boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Fresh reader performs one header Read with ignored error/count; tag header/body use ReadAtLeast, publish metadata and append only complete tags. EOF returns previous tags with nil, other errors previous tags plus error; preserve raw previous-tag-size bytes and deferred close. Shared reader operation may serve Pump. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/httpflv/util.go",
+          "symbol": "ReadAllTagsFromFlvFile",
+          "detail": "The outer ReadAllTagsFromFlvFile workflow directly maintains flv tag reading together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "flv_pump_resource_boundary",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + A read-before-paced playback lifecycle.",
+      "baseline_defect": "The outer Pump workflow directly maintains flv pump resource boundary together with other ingestion/output phases.",
+      "criterion": "Recover a coherent flv pump resource boundary boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Read all tags before PumpWithTags, close file before any paced callbacks, defer cleanup on open/read failure or panic, avoid double close via ownership transfer or equivalent. Preserve no playback on non-EOF read error and existing callback-stop semantics; streaming playback is not equivalent. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/httpflv/flv_file_pump.go",
+          "symbol": "Pump",
+          "detail": "The outer Pump workflow directly maintains flv pump resource boundary together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fragment_rotation_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + A timestamp, force and eligible boundary.",
+      "baseline_defect": "The outer FeedMpegts workflow directly maintains fragment rotation policy together with other ingestion/output phases.",
+      "criterion": "Recover a coherent fragment rotation policy boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Audio uses PTS, other frames DTS. Preserve strict jump thresholds, forced discontinuity close/open and retained old fragment pointer for subsequent duration/gate even after ring changes. Duration below threshold suppresses ordinary boundary rotation; raw write still proceeds when open. One lifecycle operation may cover both policy and open. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/hls/muxer.go",
+          "symbol": "FeedMpegts",
+          "detail": "The outer FeedMpegts workflow directly maintains fragment rotation policy together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fragment_open_publication",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + A file/create/PAT/state/observer scopes.",
+      "baseline_defect": "The outer FeedMpegts workflow directly maintains fragment open publication together with other ingestion/output phases.",
+      "criterion": "Recover a coherent fragment open publication boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Both forced and ordinary openings preserve handle assignment from Create including error, PAT write before opened/fragment/fragTs publication, OnFragmentOpen before OnHlsMakeTs(open), and post-callback field observation. Errors log/return before raw write; preserve PathStrategy/Clock/filesystem dispatch. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/hls/muxer.go",
+          "symbol": "FeedMpegts",
+          "detail": "The outer FeedMpegts workflow directly maintains fragment open publication together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fragment_close_transition",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + B ordinary versus terminal finalization.",
+      "baseline_defect": "The outer closeFragment,Dispose workflow directly maintains fragment close transition together with other ingestion/output phases.",
+      "criterion": "Recover a coherent fragment close transition boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Noop when closed; CloseFile error leaves later state/effects untouched; success sets opened false then incrFrag before playlist/record/delete/observer. Terminal Dispose and ordinary close can share complete finalization with end-marker policy, with outer logging/return differences retained. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/hls/muxer.go",
+          "symbol": "closeFragment,Dispose",
+          "detail": "The outer closeFragment,Dispose workflow directly maintains fragment close transition together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "live_playlist",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + A/B ring traversal and formatting.",
+      "baseline_defect": "The outer closeFragment,Dispose workflow directly maintains live playlist together with other ingestion/output phases.",
+      "criterion": "Recover a coherent live playlist boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Keep two ordered traversals after ring increment: max starts configured duration, replaces by frag.duration+0.5 only when frag.duration>current max, integer target duration; second traversal emits discontinuity and %.3f entries/media sequence. Endlist only terminal/isLast; write failure logged but later cleanup/observer still occurs. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/hls/muxer.go",
+          "symbol": "closeFragment,Dispose",
+          "detail": "The outer closeFragment,Dispose workflow directly maintains live playlist together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "record_playlist",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "B terminal record-update local failure must not escape full close.",
+      "baseline_defect": "The outer Dispose workflow directly maintains record playlist together with other ingestion/output phases.",
+      "criterion": "Recover a coherent record playlist boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Never/InTheEnd updates max from closed frag, reads existing file, trims existing end marker, updates target then appends new entry/end marker. Any ReadFile error uses new-header path; target-update failure skips record write but continues final close observer. Ordinary retained writer is a legal reconnect; no required boolean ready variable. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/hls/muxer.go",
+          "symbol": "Dispose",
+          "detail": "The outer Dispose workflow directly maintains record playlist together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "retention_and_close_event",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + B cleanup mode and observer completion.",
+      "baseline_defect": "The outer Dispose workflow directly maintains retention and close event together with other ingestion/output phases.",
+      "criterion": "Recover a coherent retention and close event boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Asap removes nonempty deletion candidate with PathStrategy and warning on error; close event remains after live/record/cleanup even when these nonfatal operations fail. Fetch closed fragment at existing point after side effects; preserve nil-observer skip, IDs/durations/path data. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/hls/muxer.go",
+          "symbol": "Dispose",
+          "detail": "The outer Dispose workflow directly maintains retention and close event together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "probe_drain",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + C clone/cache/probe/drain, author local-only gain.",
+      "baseline_defect": "The outer FeedRtmpMessage workflow directly maintains probe drain together with other ingestion/output phases.",
+      "criterion": "Recover a coherent probe drain boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Before done own payload copy and Header, probe audio/video then threshold or both-codec readiness. PAT/PMT callback before queued messages; clear queue and done only after callbacks. Already done forwards directly. Reconnecting intact filter.Push/drain is a complete valid repair, no depth penalty. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "FeedRtmpMessage",
+          "detail": "The outer FeedRtmpMessage workflow directly maintains probe drain together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "audio_configuration",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + B AAC config parse/publication.",
+      "baseline_defect": "The outer onPop workflow directly maintains audio configuration together with other ingestion/output phases.",
+      "criterion": "Recover a coherent audio configuration boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Keep codec and length gates, AAC sequence-header assignment including nil/error plus log then return; AAC data without config warns/returns while Opus does not need ASC. Independent from buffering/emission; existing aac.NewAscContext remains legitimate. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "onPop",
+          "detail": "The outer onPop workflow directly maintains audio configuration together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "audio_cache_framing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + B ADTS result collapsed into shared cache.",
+      "baseline_defect": "The outer onPop workflow directly maintains audio cache framing together with other ingestion/output phases.",
+      "criterion": "Recover a coherent audio cache framing boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "AAC flushes only strict delay when cache nonempty, rechecks empty after callback before firstPTS assignment; ADTS bits/masks derive length from declared MsgLen-2 plus header, not actual payload length. Append actual payload[2:]; Opus uses payload[1:], updates firstPTS and immediately flushes. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "onPop",
+          "detail": "The outer onPop workflow directly maintains audio cache framing together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "audio_flush_reentrancy",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + B cache ownership and continuity after callback.",
+      "baseline_defect": "The outer FlushAudio workflow directly maintains audio flush reentrancy together with other ingestion/output phases.",
+      "criterion": "Recover a coherent audio flush reentrancy boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Empty flush noops; construct audio frame from cache then reset length before observer can reenter. Frame.Pack and OnTsPackets remain extensible; audioCc assigned from mutable frame after observer returns. Preserve borrowed backing storage/normal cache ownership, not eager deep copy as a mandate. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "FlushAudio",
+          "detail": "The outer FlushAudio workflow directly maintains audio flush reentrancy together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "video_configuration_and_nals",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + B AVC/HEVC config and output scopes.",
+      "baseline_defect": "The outer onPop workflow directly maintains video configuration and nals together with other ingestion/output phases.",
+      "criterion": "Recover a coherent video configuration and nals boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Keep AVC/HEVC/enhanced config variants and reset videoOut before splitting data; split error aborts output. In-band complete parameter sets replace cache; AUD filtered/generated once, HEVC SEI filtered; IDR/IRAP configuration prepend rules and AVC P-slice versus HEVC non-IRAP reset differ. Missing nil config aborts while empty nonnil is allowed; three/four-byte start-code choices remain. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "onPop",
+          "detail": "The outer onPop workflow directly maintains video configuration and nals together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "timestamp_normalization",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + B specialized audio/video bases.",
+      "baseline_defect": "The outer FlushAudio,onPop workflow directly maintains timestamp normalization together with other ingestion/output phases.",
+      "criterion": "Recover a coherent timestamp normalization boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Each base initializes at MaxUint64, earlier DTS warns without subtracting, otherwise subtracts; recompute PTS using existing Cts conversion. Video audio-delay FlushAudio occurs before reading video base, allowing callback changes. Shared timestampFilter.Do reconnection legal; no new clock abstraction required. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "FlushAudio,onPop",
+          "detail": "The outer FlushAudio,onPop workflow directly maintains timestamp normalization together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "frame_boundary_and_emission",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 + B boundary/pack/observer/continuity.",
+      "baseline_defect": "The outer FlushAudio,onPop workflow directly maintains frame boundary and emission together with other ingestion/output phases.",
+      "criterion": "Recover a coherent frame boundary and emission boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Audio boundary when SPS/PPS length zero; video key and (ASC nil or not opened or audio cache nonempty). Set opened before Pack; retain mutable Frame and observer callback, publish videoCc afterward. A single output owner can satisfy timestamp/flush items without arbitrary separate modules. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "FlushAudio,onPop",
+          "detail": "The outer FlushAudio,onPop workflow directly maintains frame boundary and emission together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rtsp_configuration_ownership",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R6 + C borrowed parser results\u2192owned all-or-nil publication.",
+      "baseline_defect": "The outer FeedRtmpMsg workflow directly maintains rtsp configuration ownership together with other ingestion/output phases.",
+      "criterion": "Recover a coherent rtsp configuration ownership boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "AVC length/header/count validation precedes jointly publishing copied SPS/PPS; any parse failure publishes nil pair before readiness. Preserve zero-length nil semantics, HEVC variants and AAC cloned payload; no alias to input buffer. Existing complete parser call is valid. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2rtsp.go",
+          "symbol": "FeedRtmpMsg",
+          "detail": "The outer FeedRtmpMsg workflow directly maintains rtsp configuration ownership together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rtsp_readiness_and_replay",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R6 + B/C readiness/SDP/cache completion.",
+      "baseline_defect": "The outer FeedRtmpMsg workflow directly maintains rtsp readiness and replay together with other ingestion/output phases.",
+      "criterion": "Recover a coherent rtsp readiness and replay boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Sequence headers update config while other messages cloned into cache; readiness is SPS+PPS and ASC/known audio OR cache threshold. ASC errors clear ASC and return before SDP/replay; audio type mutation already occurred. SDP callback precedes cached remux replay, cache nil and analyzeDone last, preserving reentry timing and established post-analysis behavior. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2rtsp.go",
+          "symbol": "FeedRtmpMsg",
+          "detail": "The outer FeedRtmpMsg workflow directly maintains rtsp readiness and replay together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rtp_ordered_admission",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R4 stale and duplicate insertion.",
+      "baseline_defect": "The outer Feed workflow directly maintains rtp ordered admission together with other ingestion/output phases.",
+      "criterion": "Recover a coherent rtp ordered admission boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Stale done-sequence check before CalcPositionIfNeeded; duplicates still invoke protocol position calculation and continue unpack attempts, only insertion suppressed. Keep wrapping CompareSeq order and list-size updates; no wholesale concrete protocol replacement. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/rtprtcp/rtp_unpack_container.go",
+          "symbol": "Feed",
+          "detail": "The outer Feed workflow directly maintains rtp ordered admission together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rtp_unpack_recovery",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R4 + B sequential/overflow recovery.",
+      "baseline_defect": "The outer Feed workflow directly maintains rtp unpack recovery together with other ingestion/output phases.",
+      "criterion": "Recover a coherent rtp unpack recovery boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "TryUnpackOne stays dynamic; done flag/seq published only success. Sequential run requires absent prior done or gap exactly one; successful initial run returns before overflow. Full queue fallback attempts nonsequential once, failure drops one head then returns, success resumes sequential drain. Preserve successful callback mutation before done publication. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/rtprtcp/rtp_unpack_container.go",
+          "symbol": "Feed",
+          "detail": "The outer Feed workflow directly maintains rtp unpack recovery together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "aac_au_interpretation",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "C concrete parseAu removed below preserved protocol.",
+      "baseline_defect": "The outer TryUnpackOne workflow directly maintains aac au interpretation together with other ingestion/output phases.",
+      "criterion": "Recover a coherent aac au interpretation boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Header bits round up to bytes, count=floor(bytes/2), 13-bit sizes and cumulative offsets frozen before packet callbacks. Preserve diagnostic-before-branch timing and existing malformed-input outcome; callbacks may mutate backing payload but must not change remaining parsed sizes. No mandated descriptor type, same parser can serve fragments. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/rtprtcp/rtp_unpacker_aac.go",
+          "symbol": "TryUnpackOne",
+          "detail": "The outer TryUnpackOne workflow directly maintains aac au interpretation together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "aac_fragment_assembly",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "C fragmented AU scope and consumption.",
+      "baseline_defect": "The outer TryUnpackOne workflow directly maintains aac fragment assembly together with other ingestion/output phases.",
+      "criterion": "Recover a coherent aac fragment assembly boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Single incomplete AU accumulates contiguous same-timestamp packets, each exactly one same-size header, ignores marker; mismatch/incomplete/oversize returns false without unlink. Exact total concatenates then callback before unlink/size update/done result. Keep current packetCount accounting, not unrelated off-by-one cleanup. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/rtprtcp/rtp_unpacker_aac.go",
+          "symbol": "TryUnpackOne",
+          "detail": "The outer TryUnpackOne workflow directly maintains aac fragment assembly together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "aac_complete_emission",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "C complete and multi-AU body offsets/callbacks.",
+      "baseline_defect": "The outer TryUnpackOne workflow directly maintains aac complete emission together with other ingestion/output phases.",
+      "criterion": "Recover a coherent aac complete emission boundary so the outer workflow need not maintain its detailed algorithm.",
+      "acceptance": "Single complete AU borrows payload slice; multiple AUs use frozen sizes/offsets but read live packet timestamp/clock/payload type per callback iteration, retaining 1024-based timestamp arithmetic. Callback precedes list unlink/size decrement; zero-header path retains original completion behavior. Coherent AAC operation may cover assembly and metadata too. Existing exported APIs and protocol/observer dispatch remain supported. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Cosmetic extraction of the whole oversized body or helper fragments that leave the caller maintaining the same algorithm is insufficient; concise reconnection to an existing complete operation is valid."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/rtprtcp/rtp_unpacker_aac.go",
+          "symbol": "TryUnpackOne",
+          "detail": "The outer TryUnpackOne workflow directly maintains aac complete emission together with other ingestion/output phases.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "q191201771_lal_dim",
+    "rubric_status": "ready",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "weighting": "Every item has equal weight; dimensions classify obligations and have no separate quota.",
+    "excluded": "The empty post.diff, pre-existing media output and error behavior, test passage, compilation repairs, and merely restoring a name or moving a full block are not independent scoring credits. The generation record's probe/drain depth shortfall is not itself a repair requirement."
+  }
+}

@@ -1,0 +1,1245 @@
+diff --git a/cgdb/vterminal.cpp b/cgdb/vterminal.cpp
+index d377902..53299c4 100644
+--- a/cgdb/vterminal.cpp
++++ b/cgdb/vterminal.cpp
+@@ -2,7 +2,7 @@
+ #include "vterminal.h"
+ // To use fill_utf8 
+ #include "utf8.h"
++#include "vterm.h"
+-#include "vterm_internal.h"
+ #include "sys_util.h"
+ #include "scroller.h"
+ 
+@@ -199,10 +199,7 @@ VTerminal::VTerminal(VTerminalOptions options_p) : vt(nullptr)
+ 
+     // Setup screen
+     vts = vterm_obtain_screen(vt);
++    vterm_screen_set_callbacks(vts, &vterm_screen_callbacks, this);
+-    VTermServices services = vt->services;
+-    services.screen = &vterm_screen_callbacks;
+-    services.screen_data = this;
+-    vterm_set_services(vt, &services);
+     vterm_screen_set_damage_merge(vts, VTERM_DAMAGE_SCROLL);
+     vterm_screen_reset(vts, 1);
+ 
+diff --git a/lib/vterm/parser.c b/lib/vterm/parser.c
+index aba7df2..0459a89 100644
+--- a/lib/vterm/parser.c
++++ b/lib/vterm/parser.c
+@@ -12,28 +12,8 @@ static bool is_intermed(unsigned char c)
+ 
+ static void do_control(VTerm *vt, unsigned char control)
+ {
++  if(vt->parser.callbacks && vt->parser.callbacks->control)
++    if((*vt->parser.callbacks->control)(control, vt->parser.cbdata))
+-  int state_default = vt->services.parser == vterm_state_parser_callbacks();
+-  if(state_default && (control == 0x07 || control == 0x08 || control == 0x0d)) {
+-    VTermState *state = vt->services.parser_data;
+-    VTermPos oldpos = state->pos;
+-    if(control == 0x07) {
+-      if(vt->services.state && vt->services.state->bell)
+-        (*vt->services.state->bell)(vt->services.state_data);
+-    }
+-    else if(control == 0x0d)
+-      state->pos.col = 0;
+-    else if(state->pos.col > 0)
+-      state->pos.col--;
+-    vterm_state_control_end(state, oldpos, control);
+-    return;
+-  }
+-  if(vt->services.parser && vt->services.parser->control)
+-    if((*vt->services.parser->control)(control, vt->services.parser_data))
+-      return;
+-
+-  if(state_default &&
+-      vt->services.fallbacks && vt->services.fallbacks->control)
+-    if((*vt->services.fallbacks->control)(control, vt->services.fallback_data))
+       return;
+ 
+   DEBUG_LOG("libvterm: Unhandled control 0x%02x\n", control);
+@@ -41,7 +21,6 @@ static void do_control(VTerm *vt, unsigned char control)
+ 
+ static void do_csi(VTerm *vt, char command)
+ {
+-  int state_default = vt->services.parser == vterm_state_parser_callbacks();
+ #ifdef DEBUG_PARSER
+   printf("Parsed CSI args as:\n", arglen, args);
+   printf(" leader: %s\n", vt->parser.v.csi.leader);
+@@ -53,23 +32,14 @@ static void do_csi(VTerm *vt, char command)
+   }
+ #endif
+ 
++  if(vt->parser.callbacks && vt->parser.callbacks->csi)
++    if((*vt->parser.callbacks->csi)(
+-  if(vt->services.parser && vt->services.parser->csi)
+-    if((*vt->services.parser->csi)(
+           vt->parser.v.csi.leaderlen ? vt->parser.v.csi.leader : NULL, 
+           vt->parser.v.csi.args,
+           vt->parser.v.csi.argi,
+           vt->parser.intermedlen ? vt->parser.intermed : NULL,
+           command,
++          vt->parser.cbdata))
+-          vt->services.parser_data))
+-      return;
+-
+-  if(state_default &&
+-      vt->services.fallbacks && vt->services.fallbacks->csi)
+-    if((*vt->services.fallbacks->csi)(
+-          vt->parser.v.csi.leaderlen ? vt->parser.v.csi.leader : NULL,
+-          vt->parser.v.csi.args, vt->parser.v.csi.argi,
+-          vt->parser.intermedlen ? vt->parser.intermed : NULL,
+-          command, vt->services.fallback_data))
+       return;
+ 
+   DEBUG_LOG("libvterm: Unhandled CSI %c\n", command);
+@@ -84,8 +54,8 @@ static void do_escape(VTerm *vt, char command)
+   seq[len++] = command;
+   seq[len]   = 0;
+ 
++  if(vt->parser.callbacks && vt->parser.callbacks->escape)
++    if((*vt->parser.callbacks->escape)(seq, len, vt->parser.cbdata))
+-  if(vt->services.parser && vt->services.parser->escape)
+-    if((*vt->services.parser->escape)(seq, len, vt->services.parser_data))
+       return;
+ 
+   DEBUG_LOG("libvterm: Unhandled escape ESC 0x%02x\n", command);
+@@ -93,7 +63,6 @@ static void do_escape(VTerm *vt, char command)
+ 
+ static void string_fragment(VTerm *vt, const char *str, size_t len, bool final)
+ {
+-  int state_default = vt->services.parser == vterm_state_parser_callbacks();
+   VTermStringFragment frag = {
+     .str     = str,
+     .len     = len,
+@@ -102,50 +71,29 @@ static void string_fragment(VTerm *vt, const char *str, size_t len, bool final)
+   };
+ 
+   switch(vt->parser.state) {
++    case OSC:
++      if(vt->parser.callbacks && vt->parser.callbacks->osc)
++        (*vt->parser.callbacks->osc)(vt->parser.v.osc.command, frag, vt->parser.cbdata);
+-    case OSC: {
+-      int handled = 0;
+-      if(vt->services.parser && vt->services.parser->osc)
+-        handled = (*vt->services.parser->osc)(vt->parser.v.osc.command, frag, vt->services.parser_data);
+-      if(!handled && state_default && vt->services.fallbacks && vt->services.fallbacks->osc)
+-        (*vt->services.fallbacks->osc)(vt->parser.v.osc.command, frag, vt->services.fallback_data);
+       break;
+-    }
+ 
++    case DCS:
++      if(vt->parser.callbacks && vt->parser.callbacks->dcs)
++        (*vt->parser.callbacks->dcs)(vt->parser.v.dcs.command, vt->parser.v.dcs.commandlen, frag, vt->parser.cbdata);
+-    case DCS: {
+-      int handled = 0;
+-      const char *command = vt->parser.v.dcs.command;
+-      size_t commandlen = vt->parser.v.dcs.commandlen;
+-      if(vt->services.parser && vt->services.parser->dcs)
+-        handled = (*vt->services.parser->dcs)(command, commandlen, frag, vt->services.parser_data);
+-      if(!handled && state_default) {
+-        if(vt->services.fallbacks && vt->services.fallbacks->dcs)
+-          handled = (*vt->services.fallbacks->dcs)(command,
+-              commandlen, frag, vt->services.fallback_data);
+-        if(!handled)
+-          DEBUG_LOG("libvterm: Unhandled DCS %.*s\n", (int)commandlen, command);
+-      }
+       break;
+-    }
+ 
+     case APC:
++      if(vt->parser.callbacks && vt->parser.callbacks->apc)
++        (*vt->parser.callbacks->apc)(frag, vt->parser.cbdata);
+-      if(vt->services.parser && vt->services.parser->apc)
+-        (*vt->services.parser->apc)(frag, vt->services.parser_data);
+-      if(state_default && vt->services.fallbacks && vt->services.fallbacks->apc)
+-        (*vt->services.fallbacks->apc)(frag, vt->services.fallback_data);
+       break;
+ 
+     case PM:
++      if(vt->parser.callbacks && vt->parser.callbacks->pm)
++        (*vt->parser.callbacks->pm)(frag, vt->parser.cbdata);
+-      if(vt->services.parser && vt->services.parser->pm)
+-        (*vt->services.parser->pm)(frag, vt->services.parser_data);
+-      if(state_default && vt->services.fallbacks && vt->services.fallbacks->pm)
+-        (*vt->services.fallbacks->pm)(frag, vt->services.fallback_data);
+       break;
+ 
+     case SOS:
++      if(vt->parser.callbacks && vt->parser.callbacks->sos)
++        (*vt->parser.callbacks->sos)(frag, vt->parser.cbdata);
+-      if(vt->services.parser && vt->services.parser->sos)
+-        (*vt->services.parser->sos)(frag, vt->services.parser_data);
+-      if(state_default && vt->services.fallbacks && vt->services.fallbacks->sos)
+-        (*vt->services.fallbacks->sos)(frag, vt->services.fallback_data);
+       break;
+ 
+     case NORMAL:
+@@ -408,8 +356,8 @@ string_state:
+       }
+       else {
+         size_t eaten = 0;
++        if(vt->parser.callbacks && vt->parser.callbacks->text)
++          eaten = (*vt->parser.callbacks->text)(bytes + pos, len - pos, vt->parser.cbdata);
+-        if(vt->services.parser && vt->services.parser->text)
+-          eaten = (*vt->services.parser->text)(bytes + pos, len - pos, vt->services.parser_data);
+ 
+         if(!eaten) {
+           DEBUG_LOG("libvterm: Text callback did not consume any input\n");
+@@ -435,13 +383,11 @@ string_state:
+ 
+ void vterm_parser_set_callbacks(VTerm *vt, const VTermParserCallbacks *callbacks, void *user)
+ {
++  vt->parser.callbacks = callbacks;
++  vt->parser.cbdata = user;
+-  VTermServices services = vt->services;
+-  services.parser = callbacks;
+-  services.parser_data = user;
+-  vterm_set_services(vt, &services);
+ }
+ 
+ void *vterm_parser_get_cbdata(VTerm *vt)
+ {
++  return vt->parser.cbdata;
+-  return vt->services.parser_data;
+ }
+diff --git a/lib/vterm/pen.c b/lib/vterm/pen.c
+index cd9b0b9..5279592 100644
+--- a/lib/vterm/pen.c
++++ b/lib/vterm/pen.c
+@@ -125,8 +125,8 @@ static void setpenattr(VTermState *state, VTermAttr attr, VTermValueType type, V
+     return;
+   }
+ #endif
++  if(state->callbacks && state->callbacks->setpenattr)
++    (*state->callbacks->setpenattr)(attr, val, state->cbdata);
+-  if(state->vt->services.state && state->vt->services.state->setpenattr)
+-    (*state->vt->services.state->setpenattr)(attr, val, state->vt->services.state_data);
+ }
+ 
+ static void setpenattr_bool(VTermState *state, VTermAttr attr, int boolean)
+diff --git a/lib/vterm/screen.c b/lib/vterm/screen.c
+index 063c482..38b9b52 100644
+--- a/lib/vterm/screen.c
++++ b/lib/vterm/screen.c
+@@ -42,6 +42,9 @@ struct VTermScreen
+   VTerm *vt;
+   VTermState *state;
+ 
++  const VTermScreenCallbacks *callbacks;
++  void *cbdata;
++
+   VTermDamageSize damage_merge;
+   /* start_row == -1 => no damage */
+   VTermRect damaged;
+@@ -145,8 +148,8 @@ static void damagerect(VTermScreen *screen, VTermRect rect)
+     return;
+   }
+ 
++  if(screen->callbacks && screen->callbacks->damage)
++    (*screen->callbacks->damage)(emit, screen->cbdata);
+-  if(screen->vt->services.screen && screen->vt->services.screen->damage)
+-    (*screen->vt->services.screen->damage)(emit, screen->vt->services.screen_data);
+ }
+ 
+ static void damagescreen(VTermScreen *screen)
+@@ -202,14 +205,14 @@ static void sb_pushline_from_row(VTermScreen *screen, int row)
+   for(pos.col = 0; pos.col < screen->cols; pos.col++)
+     vterm_screen_get_cell(screen, pos, screen->sb_buffer + pos.col);
+ 
++  (screen->callbacks->sb_pushline)(screen->cols, screen->sb_buffer, screen->cbdata);
+-  (screen->vt->services.screen->sb_pushline)(screen->cols, screen->sb_buffer, screen->vt->services.screen_data);
+ }
+ 
+ static int moverect_internal(VTermRect dest, VTermRect src, void *user)
+ {
+   VTermScreen *screen = user;
+ 
++  if(screen->callbacks && screen->callbacks->sb_pushline &&
+-  if(screen->vt->services.screen && screen->vt->services.screen->sb_pushline &&
+      dest.start_row == 0 && dest.start_col == 0 &&        // starts top-left corner
+      dest.end_col == screen->cols &&                      // full width
+      screen->buffer == screen->buffers[BUFIDX_PRIMARY]) { // not altscreen
+@@ -244,12 +247,12 @@ static int moverect_user(VTermRect dest, VTermRect src, void *user)
+ {
+   VTermScreen *screen = user;
+ 
++  if(screen->callbacks && screen->callbacks->moverect) {
+-  if(screen->vt->services.screen && screen->vt->services.screen->moverect) {
+     if(screen->damage_merge != VTERM_DAMAGE_SCROLL)
+       // Avoid an infinite loop
+       vterm_screen_flush_damage(screen);
+ 
++    if((*screen->callbacks->moverect)(dest, src, screen->cbdata))
+-    if((*screen->vt->services.screen->moverect)(dest, src, screen->vt->services.screen_data))
+       return 1;
+   }
+ 
+@@ -296,41 +299,9 @@ static int erase(VTermRect rect, int selective, void *user)
+   return erase_user(rect, 0, user);
+ }
+ 
++static int scrollrect(VTermRect rect, int downward, int rightward, void *user)
+-INTERNAL void vterm_services_scroll(VTermState *state, VTermRect rect,
+-    int downward, int rightward)
+ {
++  VTermScreen *screen = user;
+-  if(!downward && !rightward)
+-    return;
+-
+-  int rows = rect.end_row - rect.start_row;
+-  int cols = rect.end_col - rect.start_col;
+-  if(downward > rows) downward = rows;
+-  if(downward < -rows) downward = -rows;
+-  if(rightward > cols) rightward = cols;
+-  if(rightward < -cols) rightward = -cols;
+-
+-  if(rect.start_col == 0 && rect.end_col == state->cols && !rightward) {
+-    int first = downward > 0 ? rect.start_row : rect.start_row - downward;
+-    int count = rows - abs(downward);
+-    memmove(state->lineinfo + first, state->lineinfo + first + downward,
+-        count * sizeof(state->lineinfo[0]));
+-    int blank = downward > 0 ? rect.end_row - downward : rect.start_row;
+-    for(int row = blank; row < blank + abs(downward); row++)
+-      state->lineinfo[row] = (VTermLineInfo){ 0 };
+-  }
+-
+-  VTermServices *services = &state->vt->services;
+-  if(services->state != vterm_screen_state_callbacks()) {
+-    if(services->state && services->state->scrollrect)
+-      if((*services->state->scrollrect)(rect, downward, rightward, services->state_data))
+-        return;
+-    if(services->state)
+-      vterm_scroll_rect(rect, downward, rightward,
+-          services->state->moverect, services->state->erase, services->state_data);
+-    return;
+-  }
+-
+-  VTermScreen *screen = services->state_data;
+ 
+   if(screen->damage_merge != VTERM_DAMAGE_SCROLL) {
+     vterm_scroll_rect(rect, downward, rightward,
+@@ -341,7 +312,7 @@ static int scrollrect(VTermRect rect, int downward, int rightward, void *user)
+     vterm_scroll_rect(rect, downward, rightward,
+         moverect_user, erase_user, screen);
+ 
++    return 1;
+-    return;
+   }
+ 
+   if(screen->damaged.start_row != -1 &&
+@@ -372,7 +343,7 @@ static int scrollrect(VTermRect rect, int downward, int rightward, void *user)
+       moverect_internal, erase_internal, screen);
+ 
+   if(screen->damaged.start_row == -1)
++    return 1;
+-    return;
+ 
+   if(rect_contains(&rect, &screen->damaged)) {
+     /* Scroll region entirely contains the damage; just move it */
+@@ -409,14 +380,15 @@ static int scrollrect(VTermRect rect, int downward, int rightward, void *user)
+         ARGSrect(screen->damaged), ARGSrect(rect));
+   }
+ 
++  return 1;
+ }
+ 
+ static int movecursor(VTermPos pos, VTermPos oldpos, int visible, void *user)
+ {
+   VTermScreen *screen = user;
+ 
++  if(screen->callbacks && screen->callbacks->movecursor)
++    return (*screen->callbacks->movecursor)(pos, oldpos, visible, screen->cbdata);
+-  if(screen->vt->services.screen && screen->vt->services.screen->movecursor)
+-    return (*screen->vt->services.screen->movecursor)(pos, oldpos, visible, screen->vt->services.screen_data);
+ 
+   return 0;
+ }
+@@ -464,17 +436,15 @@ static int setpenattr(VTermAttr attr, VTermValue *val, void *user)
+   return 0;
+ }
+ 
+-int vterm_screen_has_altscreen(const VTermScreen *screen)
+-{
+-  return screen->buffers[BUFIDX_ALTSCREEN] != NULL;
+-}
+-
+ static int settermprop(VTermProp prop, VTermValue *val, void *user)
+ {
+   VTermScreen *screen = user;
+ 
+   switch(prop) {
+   case VTERM_PROP_ALTSCREEN:
++    if(val->boolean && !screen->buffers[BUFIDX_ALTSCREEN])
++      return 0;
++
+     screen->buffer = val->boolean ? screen->buffers[BUFIDX_ALTSCREEN] : screen->buffers[BUFIDX_PRIMARY];
+     /* only send a damage event on disable; because during enable there's an
+      * erase that sends a damage anyway
+@@ -490,6 +460,9 @@ static int settermprop(VTermProp prop, VTermValue *val, void *user)
+     ; /* ignore */
+   }
+ 
++  if(screen->callbacks && screen->callbacks->settermprop)
++    return (*screen->callbacks->settermprop)(prop, val, screen->cbdata);
++
+   return 1;
+ }
+ 
+@@ -497,8 +470,8 @@ static int bell(void *user)
+ {
+   VTermScreen *screen = user;
+ 
++  if(screen->callbacks && screen->callbacks->bell)
++    return (*screen->callbacks->bell)(screen->cbdata);
+-  if(screen->vt->services.screen && screen->vt->services.screen->bell)
+-    return (*screen->vt->services.screen->bell)(screen->vt->services.screen_data);
+ 
+   return 0;
+ }
+@@ -542,10 +515,10 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
+       statefields->pos.row -= (old_row + 1);
+   }
+   if(new_row >= 0 && bufidx == BUFIDX_PRIMARY &&
++      screen->callbacks && screen->callbacks->sb_popline) {
+-      screen->vt->services.screen && screen->vt->services.screen->sb_popline) {
+     /* Try to backfill rows by popping scrollback buffer */
+     while(new_row >= 0) {
++      if(!(screen->callbacks->sb_popline(old_cols, screen->sb_buffer, screen->cbdata)))
+-      if(!(screen->vt->services.screen->sb_popline(old_cols, screen->sb_buffer, screen->vt->services.screen_data)))
+         break;
+ 
+       VTermPos pos = { .row = new_row };
+@@ -637,8 +610,8 @@ static int resize(int new_rows, int new_cols, VTermStateFields *fields, void *us
+   /* TODO: Maaaaybe we can optimise this if there's no reflow happening */
+   damagescreen(screen);
+ 
++  if(screen->callbacks && screen->callbacks->resize)
++    return (*screen->callbacks->resize)(new_rows, new_cols, screen->cbdata);
+-  if(screen->vt->services.screen && screen->vt->services.screen->resize)
+-    return (*screen->vt->services.screen->resize)(new_rows, new_cols, screen->vt->services.screen_data);
+ 
+   return 1;
+ }
+@@ -677,6 +650,7 @@ static int setlineinfo(int row, const VTermLineInfo *newinfo, const VTermLineInf
+ static VTermStateCallbacks state_cbs = {
+   .putglyph    = &putglyph,
+   .movecursor  = &movecursor,
++  .scrollrect  = &scrollrect,
+   .erase       = &erase,
+   .setpenattr  = &setpenattr,
+   .settermprop = &settermprop,
+@@ -685,11 +659,6 @@ static VTermStateCallbacks state_cbs = {
+   .setlineinfo = &setlineinfo,
+ };
+ 
+-const VTermStateCallbacks *vterm_screen_state_callbacks(void)
+-{
+-  return &state_cbs;
+-}
+-
+ static VTermScreen *screen_new(VTerm *vt)
+ {
+   VTermState *state = vterm_obtain_state(vt);
+@@ -711,8 +680,8 @@ static VTermScreen *screen_new(VTerm *vt)
+   screen->rows = rows;
+   screen->cols = cols;
+ 
++  screen->callbacks = NULL;
++  screen->cbdata    = NULL;
+-  screen->vt->services.screen = NULL;
+-  screen->vt->services.screen_data    = NULL;
+ 
+   screen->buffers[BUFIDX_PRIMARY] = alloc_buffer(screen, rows, cols);
+ 
+@@ -720,10 +689,7 @@ static VTermScreen *screen_new(VTerm *vt)
+ 
+   screen->sb_buffer = vterm_allocator_malloc(screen->vt, sizeof(VTermScreenCell) * cols);
+ 
++  vterm_state_set_callbacks(screen->state, &state_cbs, screen);
+-  VTermServices services = vt->services;
+-  services.state = &state_cbs;
+-  services.state_data = screen;
+-  vterm_bind_services(vt, &services, 1, 0);
+ 
+   return screen;
+ }
+@@ -879,15 +845,13 @@ void vterm_screen_enable_altscreen(VTermScreen *screen, int altscreen)
+ 
+ void vterm_screen_set_callbacks(VTermScreen *screen, const VTermScreenCallbacks *callbacks, void *user)
+ {
++  screen->callbacks = callbacks;
++  screen->cbdata = user;
+-  VTermServices services = screen->vt->services;
+-  services.screen = callbacks;
+-  services.screen_data = user;
+-  vterm_set_services(screen->vt, &services);
+ }
+ 
+ void *vterm_screen_get_cbdata(VTermScreen *screen)
+ {
++  return screen->cbdata;
+-  return screen->vt->services.screen_data;
+ }
+ 
+ void vterm_screen_set_unrecognised_fallbacks(VTermScreen *screen, const VTermStateFallbacks *fallbacks, void *user)
+@@ -910,8 +874,8 @@ void vterm_screen_flush_damage(VTermScreen *screen)
+   }
+ 
+   if(screen->damaged.start_row != -1) {
++    if(screen->callbacks && screen->callbacks->damage)
++      (*screen->callbacks->damage)(screen->damaged, screen->cbdata);
+-    if(screen->vt->services.screen && screen->vt->services.screen->damage)
+-      (*screen->vt->services.screen->damage)(screen->damaged, screen->vt->services.screen_data);
+ 
+     screen->damaged.start_row = -1;
+   }
+diff --git a/lib/vterm/state.c b/lib/vterm/state.c
+index 1ae5e49..d5f3a30 100644
+--- a/lib/vterm/state.c
++++ b/lib/vterm/state.c
+@@ -21,8 +21,8 @@ static void putglyph(VTermState *state, const uint32_t chars[], int width, VTerm
+     .dhl = state->lineinfo[pos.row].doubleheight,
+   };
+ 
++  if(state->callbacks && state->callbacks->putglyph)
++    if((*state->callbacks->putglyph)(&info, pos, state->cbdata))
+-  if(state->vt->services.state && state->vt->services.state->putglyph)
+-    if((*state->vt->services.state->putglyph)(&info, pos, state->vt->services.state_data))
+       return;
+ 
+   DEBUG_LOG("libvterm: Unhandled putglyph U+%04x at (%d,%d)\n", chars[0], pos.col, pos.row);
+@@ -36,8 +36,8 @@ static void updatecursor(VTermState *state, VTermPos *oldpos, int cancel_phantom
+   if(cancel_phantom)
+     state->at_phantom = 0;
+ 
++  if(state->callbacks && state->callbacks->movecursor)
++    if((*state->callbacks->movecursor)(state->pos, *oldpos, state->mode.cursor_visible, state->cbdata))
+-  if(state->vt->services.state && state->vt->services.state->movecursor)
+-    if((*state->vt->services.state->movecursor)(state->pos, *oldpos, state->mode.cursor_visible, state->vt->services.state_data))
+       return;
+ }
+ 
+@@ -51,8 +51,8 @@ static void erase(VTermState *state, VTermRect rect, int selective)
+       state->lineinfo[row].continuation = 0;
+   }
+ 
++  if(state->callbacks && state->callbacks->erase)
++    if((*state->callbacks->erase)(rect, selective, state->cbdata))
+-  if(state->vt->services.state && state->vt->services.state->erase)
+-    if((*state->vt->services.state->erase)(rect, selective, state->vt->services.state_data))
+       return;
+ }
+ 
+@@ -71,12 +71,12 @@ static VTermState *vterm_state_new(VTerm *vt)
+ 
+   state->mouse_protocol = MOUSE_X10;
+ 
++  state->callbacks = NULL;
++  state->cbdata    = NULL;
+-  state->vt->services.state = NULL;
+-  state->vt->services.state_data    = NULL;
+ 
++  state->selection.callbacks = NULL;
++  state->selection.user      = NULL;
++  state->selection.buffer    = NULL;
+-  state->vt->services.selection = NULL;
+-  state->vt->services.selection_data      = NULL;
+-  state->vt->services.selection_buffer    = NULL;
+ 
+   vterm_state_newpen(state);
+ 
+@@ -111,7 +111,48 @@ INTERNAL void vterm_state_free(VTermState *state)
+ 
+ static void scroll(VTermState *state, VTermRect rect, int downward, int rightward)
+ {
++  if(!downward && !rightward)
++    return;
++
++  int rows = rect.end_row - rect.start_row;
++  if(downward > rows)
++    downward = rows;
++  else if(downward < -rows)
++    downward = -rows;
++
++  int cols = rect.end_col - rect.start_col;
++  if(rightward > cols)
++    rightward = cols;
++  else if(rightward < -cols)
++    rightward = -cols;
++
++  // Update lineinfo if full line
++  if(rect.start_col == 0 && rect.end_col == state->cols && rightward == 0) {
++    int height = rect.end_row - rect.start_row - abs(downward);
++
++    if(downward > 0) {
++      memmove(state->lineinfo + rect.start_row,
++              state->lineinfo + rect.start_row + downward,
++              height * sizeof(state->lineinfo[0]));
++      for(int row = rect.end_row - downward; row < rect.end_row; row++)
++        state->lineinfo[row] = (VTermLineInfo){ 0 };
++    }
++    else {
++      memmove(state->lineinfo + rect.start_row - downward,
++              state->lineinfo + rect.start_row,
++              height * sizeof(state->lineinfo[0]));
++      for(int row = rect.start_row; row < rect.start_row - downward; row++)
++        state->lineinfo[row] = (VTermLineInfo){ 0 };
++    }
++  }
++
++  if(state->callbacks && state->callbacks->scrollrect)
++    if((*state->callbacks->scrollrect)(rect, downward, rightward, state->cbdata))
++      return;
++
++  if(state->callbacks)
++    vterm_scroll_rect(rect, downward, rightward,
++        state->callbacks->moverect, state->callbacks->erase, state->cbdata);
+-  vterm_services_scroll(state, rect, downward, rightward);
+ }
+ 
+ static void linefeed(VTermState *state)
+@@ -221,9 +262,9 @@ static void set_lineinfo(VTermState *state, int row, int force, int dwl, int dhl
+   else if(dhl == DHL_BOTTOM)
+     info.doubleheight = DHL_BOTTOM;
+ 
++  if((state->callbacks &&
++      state->callbacks->setlineinfo &&
++      (*state->callbacks->setlineinfo)(row, &info, state->lineinfo + row, state->cbdata))
+-  if((state->vt->services.state &&
+-      state->vt->services.state->setlineinfo &&
+-      (*state->vt->services.state->setlineinfo)(row, &info, state->lineinfo + row, state->vt->services.state_data))
+       || force)
+     state->lineinfo[row] = info;
+ }
+@@ -406,6 +447,16 @@ static int on_control(unsigned char control, void *user)
+   VTermPos oldpos = state->pos;
+ 
+   switch(control) {
++  case 0x07: // BEL - ECMA-48 8.3.3
++    if(state->callbacks && state->callbacks->bell)
++      (*state->callbacks->bell)(state->cbdata);
++    break;
++
++  case 0x08: // BS - ECMA-48 8.3.5
++    if(state->pos.col > 0)
++      state->pos.col--;
++    break;
++
+   case 0x09: // HT - ECMA-48 8.3.60
+     tab(state, 1, +1);
+     break;
+@@ -418,6 +469,10 @@ static int on_control(unsigned char control, void *user)
+       state->pos.col = 0;
+     break;
+ 
++  case 0x0d: // CR - ECMA-48 8.3.15
++    state->pos.col = 0;
++    break;
++
+   case 0x0e: // LS1 - ECMA-48 8.3.76
+     state->gl_set = 1;
+     break;
+@@ -463,15 +518,13 @@ static int on_control(unsigned char control, void *user)
+     break;
+ 
+   default:
++    if(state->fallbacks && state->fallbacks->control)
++      if((*state->fallbacks->control)(control, state->fbdata))
++        return 1;
++
+     return 0;
+   }
+ 
+-  vterm_state_control_end(state, oldpos, control);
+-  return 1;
+-}
+-
+-void vterm_state_control_end(VTermState *state, VTermPos oldpos, unsigned char control)
+-{
+   updatecursor(state, &oldpos, 1);
+ 
+ #ifdef DEBUG
+@@ -483,6 +536,7 @@ static int on_control(unsigned char control, void *user)
+   }
+ #endif
+ 
++  return 1;
+ }
+ 
+ static int settermprop_bool(VTermState *state, VTermProp prop, int v)
+@@ -639,8 +693,8 @@ static int on_escape(const char *bytes, size_t len, void *user)
+   {
+     VTermPos oldpos = state->pos;
+     vterm_state_reset(state, 1);
++    if(state->callbacks && state->callbacks->movecursor)
++      (*state->callbacks->movecursor)(state->pos, oldpos, state->mode.cursor_visible, state->cbdata);
+-    if(state->vt->services.state && state->vt->services.state->movecursor)
+-      (*state->vt->services.state->movecursor)(state->pos, oldpos, state->mode.cursor_visible, state->vt->services.state_data);
+     return 1;
+   }
+ 
+@@ -1432,6 +1486,10 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
+     break;
+ 
+   default:
++    if(state->fallbacks && state->fallbacks->csi)
++      if((*state->fallbacks->csi)(leader, args, argcount, intermed, command, state->fbdata))
++        return 1;
++
+     return 0;
+   }
+ 
+@@ -1563,14 +1621,14 @@ static void osc_selection(VTermState *state, VTermStringFragment frag)
+   }
+ 
+   if(state->tmp.selection.state == SELECTION_QUERY) {
++    if(state->selection.callbacks->query)
++      (*state->selection.callbacks->query)(state->tmp.selection.mask, state->selection.user);
+-    if(state->vt->services.selection->query)
+-      (*state->vt->services.selection->query)(state->tmp.selection.mask, state->vt->services.selection_data);
+     return;
+   }
+ 
++  if(state->selection.callbacks->set) {
+-  if(state->vt->services.selection->set) {
+     size_t bufcur = 0;
++    char *buffer = state->selection.buffer;
+-    char *buffer = state->vt->services.selection_buffer;
+ 
+     uint32_t x = 0; /* Current decoding value */
+     int n = 0;      /* Number of sextets consumed */
+@@ -1582,7 +1640,7 @@ static void osc_selection(VTermState *state, VTermStringFragment frag)
+       state->tmp.selection.recvpartial = 0;
+     }
+ 
++    while((state->selection.buflen - bufcur) >= 3 && frag.len) {
+-    while((state->vt->services.selection_buffer_len - bufcur) >= 3 && frag.len) {
+       if(frag.str[0] == '=') {
+         if(n == 2) {
+           buffer[0] = (x >> 4) & 0xFF;
+@@ -1621,18 +1679,18 @@ static void osc_selection(VTermState *state, VTermStringFragment frag)
+         }
+       }
+ 
++      if(!frag.len || (state->selection.buflen - bufcur) < 3) {
+-      if(!frag.len || (state->vt->services.selection_buffer_len - bufcur) < 3) {
+         if(bufcur) {
++          (*state->selection.callbacks->set)(state->tmp.selection.mask, (VTermStringFragment){
++              .str     = state->selection.buffer,
+-          (*state->vt->services.selection->set)(state->tmp.selection.mask, (VTermStringFragment){
+-              .str     = state->vt->services.selection_buffer,
+               .len     = bufcur,
+               .initial = state->tmp.selection.state == SELECTION_SET_INITIAL,
+               .final   = frag.final,
++            }, state->selection.user);
+-            }, state->vt->services.selection_data);
+           state->tmp.selection.state = SELECTION_SET;
+         }
+ 
++        buffer = state->selection.buffer;
+-        buffer = state->vt->services.selection_buffer;
+         bufcur = 0;
+       }
+     }
+@@ -1661,13 +1719,15 @@ static int on_osc(int command, VTermStringFragment frag, void *user)
+       return 1;
+ 
+     case 52:
++      if(state->selection.callbacks)
+-      if(state->vt->services.selection)
+         osc_selection(state, frag);
+ 
+       return 1;
+ 
+     default:
++      if(state->fallbacks && state->fallbacks->osc)
++        if((*state->fallbacks->osc)(command, frag, state->fbdata))
++          return 1;
+-      break;
+   }
+ 
+   return 0;
+@@ -1768,6 +1828,47 @@ static int on_dcs(const char *command, size_t commandlen, VTermStringFragment fr
+     request_status_string(state, frag);
+     return 1;
+   }
++  else if(state->fallbacks && state->fallbacks->dcs)
++    if((*state->fallbacks->dcs)(command, commandlen, frag, state->fbdata))
++      return 1;
++
++  DEBUG_LOG("libvterm: Unhandled DCS %.*s\n", (int)commandlen, command);
++  return 0;
++}
++
++static int on_apc(VTermStringFragment frag, void *user)
++{
++  VTermState *state = user;
++
++  if(state->fallbacks && state->fallbacks->apc)
++    if((*state->fallbacks->apc)(frag, state->fbdata))
++      return 1;
++
++  /* No DEBUG_LOG because all APCs are unhandled */
++  return 0;
++}
++
++static int on_pm(VTermStringFragment frag, void *user)
++{
++  VTermState *state = user;
++
++  if(state->fallbacks && state->fallbacks->pm)
++    if((*state->fallbacks->pm)(frag, state->fbdata))
++      return 1;
++
++  /* No DEBUG_LOG because all PMs are unhandled */
++  return 0;
++}
++
++static int on_sos(VTermStringFragment frag, void *user)
++{
++  VTermState *state = user;
++
++  if(state->fallbacks && state->fallbacks->sos)
++    if((*state->fallbacks->sos)(frag, state->fbdata))
++      return 1;
++
++  /* No DEBUG_LOG because all SOSs are unhandled */
+   return 0;
+ }
+ 
+@@ -1839,8 +1940,8 @@ static int on_resize(int rows, int cols, void *user)
+     .pos = state->pos,
+   };
+ 
++  if(state->callbacks && state->callbacks->resize)
++    (*state->callbacks->resize)(rows, cols, &fields, state->cbdata);
+-  if(state->vt->services.state && state->vt->services.state->resize)
+-    (*state->vt->services.state->resize)(rows, cols, &fields, state->vt->services.state_data);
+ 
+   state->pos = fields.pos;
+ 
+@@ -1870,14 +1971,12 @@ static const VTermParserCallbacks parser_callbacks = {
+   .csi     = on_csi,
+   .osc     = on_osc,
+   .dcs     = on_dcs,
++  .apc     = on_apc,
++  .pm      = on_pm,
++  .sos     = on_sos,
+   .resize  = on_resize,
+ };
+ 
+-const VTermParserCallbacks *vterm_state_parser_callbacks(void)
+-{
+-  return &parser_callbacks;
+-}
+-
+ VTermState *vterm_obtain_state(VTerm *vt)
+ {
+   if(vt->state)
+@@ -1886,10 +1985,7 @@ VTermState *vterm_obtain_state(VTerm *vt)
+   VTermState *state = vterm_state_new(vt);
+   vt->state = state;
+ 
++  vterm_parser_set_callbacks(vt, &parser_callbacks, state);
+-  VTermServices services = vt->services;
+-  services.parser = &parser_callbacks;
+-  services.parser_data = state;
+-  vterm_set_services(vt, &services);
+ 
+   return state;
+ }
+@@ -1925,8 +2021,8 @@ void vterm_state_reset(VTermState *state, int hard)
+   for(int row = 0; row < state->rows; row++)
+     set_lineinfo(state, row, FORCE, DWL_OFF, DHL_OFF);
+ 
++  if(state->callbacks && state->callbacks->initpen)
++    (*state->callbacks->initpen)(state->cbdata);
+-  if(state->vt->services.state && state->vt->services.state->initpen)
+-    (*state->vt->services.state->initpen)(state->vt->services.state_data);
+ 
+   vterm_state_resetpen(state);
+ 
+@@ -1968,44 +2064,47 @@ void vterm_state_get_cursorpos(const VTermState *state, VTermPos *cursorpos)
+ 
+ void vterm_state_set_callbacks(VTermState *state, const VTermStateCallbacks *callbacks, void *user)
+ {
++  if(callbacks) {
++    state->callbacks = callbacks;
++    state->cbdata = user;
++
++    if(state->callbacks && state->callbacks->initpen)
++      (*state->callbacks->initpen)(state->cbdata);
++  }
++  else {
++    state->callbacks = NULL;
++    state->cbdata = NULL;
++  }
+-  VTermServices services = state->vt->services;
+-  services.state = callbacks;
+-  services.state_data = callbacks ? user : NULL;
+-  vterm_bind_services(state->vt, &services, callbacks != NULL, 0);
+ }
+ 
+ void *vterm_state_get_cbdata(VTermState *state)
+ {
++  return state->cbdata;
+-  return state->vt->services.state_data;
+ }
+ 
+ void vterm_state_set_unrecognised_fallbacks(VTermState *state, const VTermStateFallbacks *fallbacks, void *user)
+ {
++  if(fallbacks) {
++    state->fallbacks = fallbacks;
++    state->fbdata = user;
++  }
++  else {
++    state->fallbacks = NULL;
++    state->fbdata = NULL;
++  }
+-  VTermServices services = state->vt->services;
+-  services.fallbacks = fallbacks;
+-  services.fallback_data = fallbacks ? user : NULL;
+-  vterm_set_services(state->vt, &services);
+ }
+ 
+ void *vterm_state_get_unrecognised_fbdata(VTermState *state)
+ {
++  return state->fbdata;
+-  return state->vt->services.fallback_data;
+ }
+ 
+ int vterm_state_set_termprop(VTermState *state, VTermProp prop, VTermValue *val)
+ {
+-  int screen_default = state->vt->services.state == vterm_screen_state_callbacks();
+-  if(screen_default && prop == VTERM_PROP_ALTSCREEN && val->boolean &&
+-      !vterm_screen_has_altscreen(state->vt->services.state_data))
+-    return 0;
+   /* Only store the new value of the property if usercode said it was happy.
+    * This is especially important for altscreen switching */
++  if(state->callbacks && state->callbacks->settermprop)
++    if(!(*state->callbacks->settermprop)(prop, val, state->cbdata))
+-  if(state->vt->services.state && state->vt->services.state->settermprop)
+-    if(!(*state->vt->services.state->settermprop)(prop, val, state->vt->services.state_data))
+-      return 0;
+-
+-  if(screen_default && state->vt->services.screen && state->vt->services.screen->settermprop)
+-    if(!(*state->vt->services.screen->settermprop)(prop, val, state->vt->services.screen_data))
+       return 0;
+ 
+   switch(prop) {
+@@ -2075,12 +2174,13 @@ const VTermLineInfo *vterm_state_get_lineinfo(const VTermState *state, int row)
+ void vterm_state_set_selection_callbacks(VTermState *state, const VTermSelectionCallbacks *callbacks, void *user,
+     char *buffer, size_t buflen)
+ {
++  if(buflen && !buffer)
++    buffer = vterm_allocator_malloc(state->vt, buflen);
++
++  state->selection.callbacks = callbacks;
++  state->selection.user      = user;
++  state->selection.buffer    = buffer;
++  state->selection.buflen    = buflen;
+-  VTermServices services = state->vt->services;
+-  services.selection = callbacks;
+-  services.selection_data = user;
+-  services.selection_buffer = buffer;
+-  services.selection_buffer_len = buflen;
+-  vterm_bind_services(state->vt, &services, 0, 1);
+ }
+ 
+ void vterm_state_send_selection(VTermState *state, VTermSelectionMask mask, VTermStringFragment frag)
+@@ -2102,7 +2202,7 @@ void vterm_state_send_selection(VTermState *state, VTermSelectionMask mask, VTer
+ 
+   if(frag.len) {
+     size_t bufcur = 0;
++    char *buffer = state->selection.buffer;
+-    char *buffer = state->vt->services.selection_buffer;
+ 
+     uint32_t x = 0;
+     int n = 0;
+@@ -2114,7 +2214,7 @@ void vterm_state_send_selection(VTermState *state, VTermSelectionMask mask, VTer
+       state->tmp.selection.sendpartial = 0;
+     }
+ 
++    while((state->selection.buflen - bufcur) >= 4 && frag.len) {
+-    while((state->vt->services.selection_buffer_len - bufcur) >= 4 && frag.len) {
+       x = (x << 8) | frag.str[0];
+       n++;
+       frag.str++, frag.len--;
+@@ -2130,20 +2230,11 @@ void vterm_state_send_selection(VTermState *state, VTermSelectionMask mask, VTer
+         n = 0;
+       }
+ 
++      if(!frag.len || (state->selection.buflen - bufcur) < 4) {
++        if(bufcur)
++          vterm_push_output_bytes(vt, state->selection.buffer, bufcur);
+-      if(!frag.len || (state->vt->services.selection_buffer_len - bufcur) < 4) {
+-        if(bufcur) {
+-          if(vt->services.output) {
+-            (*vt->services.output)(state->vt->services.selection_buffer,
+-                bufcur, vt->services.output_data);
+-          }
+-          else if(bufcur <= vt->services.output_buffer_len - vt->services.output_buffer_cur) {
+-            memcpy(vt->services.output_buffer + vt->services.output_buffer_cur,
+-                state->vt->services.selection_buffer, bufcur);
+-            vt->services.output_buffer_cur += bufcur;
+-          }
+-        }
+ 
++        buffer = state->selection.buffer;
+-        buffer = state->vt->services.selection_buffer;
+         bufcur = 0;
+       }
+     }
+@@ -2156,7 +2247,7 @@ void vterm_state_send_selection(VTermState *state, VTermSelectionMask mask, VTer
+     if(state->tmp.selection.sendpartial) {
+       int n      = state->tmp.selection.sendpartial >> 24;
+       uint32_t x = state->tmp.selection.sendpartial & 0xFFFFFF;
++      char *buffer = state->selection.buffer;
+-      char *buffer = state->vt->services.selection_buffer;
+ 
+       /* n is either 1 or 2 now */
+       x <<= (n == 1) ? 16 : 8;
+diff --git a/lib/vterm/vterm.c b/lib/vterm/vterm.c
+index 6378234..bbc55ae 100644
+--- a/lib/vterm/vterm.c
++++ b/lib/vterm/vterm.c
+@@ -45,15 +45,15 @@ VTerm *vterm_new_with_allocator(int rows, int cols, VTermAllocatorFunctions *fun
+ 
+   vt->parser.state = NORMAL;
+ 
++  vt->parser.callbacks = NULL;
++  vt->parser.cbdata    = NULL;
+-  vt->services.parser = NULL;
+-  vt->services.parser_data    = NULL;
+ 
++  vt->outfunc = NULL;
++  vt->outdata = NULL;
+-  vt->services.output = NULL;
+-  vt->services.output_data = NULL;
+ 
++  vt->outbuffer_len = 64;
++  vt->outbuffer_cur = 0;
++  vt->outbuffer = vterm_allocator_malloc(vt, vt->outbuffer_len);
+-  vt->services.output_buffer_len = 64;
+-  vt->services.output_buffer_cur = 0;
+-  vt->services.output_buffer = vterm_allocator_malloc(vt, vt->services.output_buffer_len);
+ 
+   vt->tmpbuffer_len = 64;
+   vt->tmpbuffer = vterm_allocator_malloc(vt, vt->tmpbuffer_len);
+@@ -69,7 +69,7 @@ void vterm_free(VTerm *vt)
+   if(vt->state)
+     vterm_state_free(vt->state);
+ 
++  vterm_allocator_free(vt, vt->outbuffer);
+-  vterm_allocator_free(vt, vt->services.output_buffer);
+   vterm_allocator_free(vt, vt->tmpbuffer);
+ 
+   vterm_allocator_free(vt, vt);
+@@ -98,8 +98,8 @@ void vterm_set_size(VTerm *vt, int rows, int cols)
+   vt->rows = rows;
+   vt->cols = cols;
+ 
++  if(vt->parser.callbacks && vt->parser.callbacks->resize)
++    (*vt->parser.callbacks->resize)(rows, cols, vt->parser.cbdata);
+-  if(vt->services.parser && vt->services.parser->resize)
+-    (*vt->services.parser->resize)(rows, cols, vt->services.parser_data);
+ }
+ 
+ int vterm_get_utf8(const VTerm *vt)
+@@ -112,37 +112,24 @@ void vterm_set_utf8(VTerm *vt, int is_utf8)
+   vt->mode.utf8 = is_utf8;
+ }
+ 
+-INTERNAL void vterm_bind_services(VTerm *vt, const VTermServices *services,
+-    int initpen, int allocate_selection)
+-{
+-  VTermServices bound = *services;
+-  if(allocate_selection && bound.selection_buffer_len && !bound.selection_buffer)
+-    bound.selection_buffer = vterm_allocator_malloc(vt, bound.selection_buffer_len);
+-  vt->services = bound;
+-  if(initpen && vt->services.state && vt->services.state->initpen)
+-    (*vt->services.state->initpen)(vt->services.state_data);
+-}
+-
+ void vterm_output_set_callback(VTerm *vt, VTermOutputCallback *func, void *user)
+ {
++  vt->outfunc = func;
++  vt->outdata = user;
+-  VTermServices services = vt->services;
+-  services.output = func;
+-  services.output_data = user;
+-  vterm_set_services(vt, &services);
+ }
+ 
+ INTERNAL void vterm_push_output_bytes(VTerm *vt, const char *bytes, size_t len)
+ {
++  if(vt->outfunc) {
++    (vt->outfunc)(bytes, len, vt->outdata);
+-  if(vt->services.output) {
+-    (vt->services.output)(bytes, len, vt->services.output_data);
+     return;
+   }
+ 
++  if(len > vt->outbuffer_len - vt->outbuffer_cur)
+-  if(len > vt->services.output_buffer_len - vt->services.output_buffer_cur)
+     return;
+ 
++  memcpy(vt->outbuffer + vt->outbuffer_cur, bytes, len);
++  vt->outbuffer_cur += len;
+-  memcpy(vt->services.output_buffer + vt->services.output_buffer_cur, bytes, len);
+-  vt->services.output_buffer_cur += len;
+ }
+ 
+ INTERNAL void vterm_push_output_vsprintf(VTerm *vt, const char *format, va_list args)
+@@ -225,30 +212,30 @@ INTERNAL void vterm_push_output_sprintf_str(VTerm *vt, unsigned char ctrl, bool
+ 
+ size_t vterm_output_get_buffer_size(const VTerm *vt)
+ {
++  return vt->outbuffer_len;
+-  return vt->services.output_buffer_len;
+ }
+ 
+ size_t vterm_output_get_buffer_current(const VTerm *vt)
+ {
++  return vt->outbuffer_cur;
+-  return vt->services.output_buffer_cur;
+ }
+ 
+ size_t vterm_output_get_buffer_remaining(const VTerm *vt)
+ {
++  return vt->outbuffer_len - vt->outbuffer_cur;
+-  return vt->services.output_buffer_len - vt->services.output_buffer_cur;
+ }
+ 
+ size_t vterm_output_read(VTerm *vt, char *buffer, size_t len)
+ {
++  if(len > vt->outbuffer_cur)
++    len = vt->outbuffer_cur;
+-  if(len > vt->services.output_buffer_cur)
+-    len = vt->services.output_buffer_cur;
+ 
++  memcpy(buffer, vt->outbuffer, len);
+-  memcpy(buffer, vt->services.output_buffer, len);
+ 
++  if(len < vt->outbuffer_cur)
++    memmove(vt->outbuffer, vt->outbuffer + len, vt->outbuffer_cur - len);
+-  if(len < vt->services.output_buffer_cur)
+-    memmove(vt->services.output_buffer, vt->services.output_buffer + len, vt->services.output_buffer_cur - len);
+ 
++  vt->outbuffer_cur -= len;
+-  vt->services.output_buffer_cur -= len;
+ 
+   return len;
+ }
+diff --git a/lib/vterm/vterm_internal.h b/lib/vterm/vterm_internal.h
+index d984b7a..2d77107 100644
+--- a/lib/vterm/vterm_internal.h
++++ b/lib/vterm/vterm_internal.h
+@@ -50,33 +50,16 @@ struct VTermPen
+   unsigned int font:4; /* To store 0-9 */
+ };
+ 
+-typedef struct {
+-  const VTermParserCallbacks *parser;
+-  void *parser_data;
+-  const VTermStateCallbacks *state;
+-  void *state_data;
+-  const VTermScreenCallbacks *screen;
+-  void *screen_data;
+-  VTermOutputCallback *output;
+-  void *output_data;
+-  const VTermStateFallbacks *fallbacks;
+-  void *fallback_data;
+-  const VTermSelectionCallbacks *selection;
+-  void *selection_data;
+-  char *selection_buffer;
+-  size_t selection_buffer_len;
+-  char *output_buffer;
+-  size_t output_buffer_len;
+-  size_t output_buffer_cur;
+-} VTermServices;
+-
+-INTERNAL void vterm_services_scroll(VTermState *state,
+-    VTermRect rect, int downward, int rightward);
+-
+ struct VTermState
+ {
+   VTerm *vt;
+ 
++  const VTermStateCallbacks *callbacks;
++  void *cbdata;
++
++  const VTermStateFallbacks *fallbacks;
++  void *fbdata;
++
+   int rows;
+   int cols;
+ 
+@@ -179,12 +162,16 @@ struct VTermState
+     } selection;
+   } tmp;
+ 
++  struct {
++    const VTermSelectionCallbacks *callbacks;
++    void *user;
++    char *buffer;
++    size_t buflen;
++  } selection;
+ };
+ 
+ struct VTerm
+ {
+-  VTermServices services;
+-
+   VTermAllocatorFunctions *allocator;
+   void *allocdata;
+ 
+@@ -234,11 +221,21 @@ struct VTerm
+       } dcs;
+     } v;
+ 
++    const VTermParserCallbacks *callbacks;
++    void *cbdata;
++
+     bool string_initial;
+   } parser;
+ 
+   /* len == malloc()ed size; cur == number of valid bytes */
+ 
++  VTermOutputCallback *outfunc;
++  void                *outdata;
++
++  char  *outbuffer;
++  size_t outbuffer_len;
++  size_t outbuffer_cur;
++
+   char  *tmpbuffer;
+   size_t tmpbuffer_len;
+ 
+@@ -246,14 +243,6 @@ struct VTerm
+   VTermScreen *screen;
+ };
+ 
+-static inline void vterm_set_services(VTerm *vt, const VTermServices *services)
+-{
+-  vt->services = *services;
+-}
+-
+-INTERNAL void vterm_bind_services(VTerm *vt, const VTermServices *services,
+-    int initpen, int allocate_selection);
+-
+ struct VTermEncoding {
+   void (*init) (VTermEncoding *enc, void *data);
+   void (*decode)(VTermEncoding *enc, void *data,
+@@ -276,10 +265,6 @@ void vterm_push_output_sprintf_ctrl(VTerm *vt, unsigned char ctrl, const char *f
+ void vterm_push_output_sprintf_str(VTerm *vt, unsigned char ctrl, bool term, const char *fmt, ...);
+ 
+ void vterm_state_free(VTermState *state);
+-const VTermParserCallbacks *vterm_state_parser_callbacks(void);
+-void vterm_state_control_end(VTermState *state, VTermPos oldpos, unsigned char control);
+-const VTermStateCallbacks *vterm_screen_state_callbacks(void);
+-int vterm_screen_has_altscreen(const VTermScreen *screen);
+ 
+ void vterm_state_newpen(VTermState *state);
+ void vterm_state_resetpen(VTermState *state);

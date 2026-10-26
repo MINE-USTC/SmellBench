@@ -1,0 +1,522 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "burnash_gspread_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "FE01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "File listing is a Client operation, while request execution and backoff belong to the HTTP client.",
+      "baseline_defect": "Client._list_spreadsheet_files reads BackOffHTTPClient counters and limits, classifies transport errors, calls HTTPClient.request directly, and manages sleeps during pagination.",
+      "criterion": "File listing delegates each page request and its retry behavior to the HTTP client boundary while retaining Client ownership of page tokens and accumulated files.",
+      "acceptance": "File pagination no longer owns another object\u2019s retry counters, error classification and delay lifecycle. A transport-owned policy or equivalent composition preserves page ordering and custom request dispatch; direct session execution is assessed separately. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating this code while the workflow still interprets the same foreign private state or policy does not repair the responsibility boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client._list_spreadsheet_files",
+          "detail": null,
+          "raw": "expanded.diff:gspread/client.py:Client._list_spreadsheet_files"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client._list_spreadsheet_files",
+          "detail": null,
+          "raw": "environment/smell.diff:gspread/client.py:Client._list_spreadsheet_files"
+        }
+      ]
+    },
+    {
+      "id": "FE02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Client.create and Client.copy build file-level payloads; the HTTP client performs request dispatch and status handling.",
+      "baseline_defect": "Create and copy inspect HTTPClient.request identity and duplicate session.request, timeout, response.ok, and APIError mechanics.",
+      "criterion": "File creation and copy retain payload and workflow decisions while a transport owner handles request dispatch and response errors.",
+      "acceptance": "Create and copy no longer interpret foreign session/timeout/status internals as part of business orchestration. Transport capability composition or equivalent ownership qualifies, without prescribing class or file placement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating this code while the workflow still interprets the same foreign private state or policy does not repair the responsibility boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client.create",
+          "detail": null,
+          "raw": "expanded.diff:gspread/client.py:Client.create"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client.copy",
+          "detail": null,
+          "raw": "expanded.diff:gspread/client.py:Client.copy"
+        }
+      ]
+    },
+    {
+      "id": "FE03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Copying permissions selects recipients in Client.copy and submits a permission through Spreadsheet.share and HTTPClient.insert_permission.",
+      "baseline_defect": "Client.copy combines source permission selection with low-level recipient payload, notification parameters, validation, and direct permission POST; the interaction delta shares the address branch across those decisions.",
+      "criterion": "Permission copying selects source recipients and roles at the copy workflow boundary and delegates permission request construction and delivery to the permission owner.",
+      "acceptance": "Permission protocol construction has a coherent permission owner; copying supplies source recipient/type/role intent. A shared capability or declarative permission model qualifies, with no mandatory share()/insert_permission() call chain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating this code while the workflow still interprets the same foreign private state or policy does not repair the responsibility boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client.copy",
+          "detail": null,
+          "raw": "expanded.diff:gspread/client.py:Client.copy"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client.copy",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/client.py:Client.copy"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client.copy",
+          "detail": null,
+          "raw": "environment/smell.diff:gspread/client.py:Client.copy"
+        }
+      ]
+    },
+    {
+      "id": "FE05",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Spreadsheet ownership methods produce Drive permission payloads and the HTTP client sends them.",
+      "baseline_defect": "Spreadsheet.transfer_ownership and accept_ownership inspect the HTTPClient implementation and reach into session, timeout, status, and APIError processing.",
+      "criterion": "Both ownership transitions hand their Drive payloads to a transport boundary that owns request execution and errors.",
+      "acceptance": "Both ownership transitions use transport-owned request execution and errors rather than interpreting another object\u2019s session/timeout internals. No mandatory HTTPClient implementation or exact original delegation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating this code while the workflow still interprets the same foreign private state or policy does not repair the responsibility boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "gspread/spreadsheet.py",
+          "symbol": "Spreadsheet.transfer_ownership",
+          "detail": null,
+          "raw": "expanded.diff:gspread/spreadsheet.py:Spreadsheet.transfer_ownership"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "gspread/spreadsheet.py",
+          "symbol": "Spreadsheet.accept_ownership",
+          "detail": null,
+          "raw": "expanded.diff:gspread/spreadsheet.py:Spreadsheet.accept_ownership"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient request boundary (baseline operation)",
+          "detail": null,
+          "raw": "environment/smell.diff:gspread/http_client.py:HTTPClient.request"
+        }
+      ]
+    },
+    {
+      "id": "FE06",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Drive metadata is fetched by HTTPClient and cached by Spreadsheet.update_drive_metadata.",
+      "baseline_defect": "HTTPClient.get_file_drive_metadata accepts a Spreadsheet object and mutates its private _properties; Spreadsheet.update_drive_metadata branches on method identity to activate that side effect.",
+      "criterion": "Give Drive metadata cache mutation a model-state owner instead of generic HTTP transport.",
+      "acceptance": "The transport does not interpret Spreadsheet private cache layout. Returned metadata, a model-owned apply operation, callback or equivalent composition qualifies; no mandated return-only API. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating this code while the workflow still interprets the same foreign private state or policy does not repair the responsibility boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.get_file_drive_metadata",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/http_client.py:HTTPClient.get_file_drive_metadata"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/spreadsheet.py",
+          "symbol": "Spreadsheet.update_drive_metadata",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/spreadsheet.py:Spreadsheet.update_drive_metadata"
+        }
+      ]
+    },
+    {
+      "id": "FE08",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Worksheet append and insert paths know the operation's row/column effect; HTTPClient.values_append handles the endpoint.",
+      "baseline_defect": "HTTPClient.values_append receives a Worksheet and changes rowCount or columnCount based on request majorDimension; three Worksheet callers use implementation-identity branches to select this side effect.",
+      "criterion": "The append endpoint and worksheet dimension bookkeeping have distinct owners across append_rows, insert_rows, and insert_cols.",
+      "acceptance": "Append/insert bookkeeping is owned by model state rather than HTTPClient interpreting private gridProperties. A model-owned operation, result application or equivalent handoff qualifies across rows and columns; exact original method calls are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating this code while the workflow still interprets the same foreign private state or policy does not repair the responsibility boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.values_append",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/http_client.py:HTTPClient.values_append"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.append_rows",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/worksheet.py:Worksheet.append_rows"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.insert_rows",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/worksheet.py:Worksheet.insert_rows"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.insert_cols",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/worksheet.py:Worksheet.insert_cols"
+        }
+      ]
+    },
+    {
+      "id": "FE09",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Cell rectangle formation is a cell/grid concern used by Worksheet.update_cells before the values endpoint receives a body.",
+      "baseline_defect": "Worksheet.update_cells reconstructs sparse coordinate alignment while HTTPClient.values_update can also take Cell objects and reconstruct a values body from A1 geometry; the interaction delta splits one operation across duplicate transformations.",
+      "criterion": "Sparse Cell coordinates are converted to a values rectangle at one coherent data-preparation boundary before a transport request.",
+      "acceptance": "Sparse Cell coordinate alignment and rectangle construction have a coherent data owner, without transport interpreting Cell internals or parallel per-implementation algorithms. Data may be materialized or streamed; a particular utility name, _cells parameter spelling or combined extent object is not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating this code while the workflow still interprets the same foreign private state or policy does not repair the responsibility boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.update_cells",
+          "detail": null,
+          "raw": "expanded.diff:gspread/worksheet.py:Worksheet.update_cells"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.values_update",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/http_client.py:HTTPClient.values_update"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.update_cells",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/worksheet.py:Worksheet.update_cells"
+        }
+      ]
+    },
+    {
+      "id": "FE10",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "HTTPClient.fetch_sheet_metadata is a transport method; worksheet range and merged-value interpretation is a model concern.",
+      "baseline_defect": "HTTPClient.fetch_sheet_metadata gains an optional Worksheet/range/values branch that selects named or basic-filter grids and merges values. The final patch shows no caller of these optional arguments, so this is an injected dormant responsibility rather than an active cross-file handoff.",
+      "criterion": "The metadata transport method has no worksheet-object or range-interpretation responsibility, including its dormant optional path.",
+      "acceptance": "The optional path no longer makes generic metadata transport inspect Worksheet identity and interpret named/basic-filter ranges and merged values. It may delegate to a model-owned capability or be removed if unused; no mandated return shape or class. This is a dormant added responsibility, not an asserted active Worksheet.get handoff. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating this code while the workflow still interprets the same foreign private state or policy does not repair the responsibility boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.fetch_sheet_metadata",
+          "detail": null,
+          "raw": "interaction_delta.diff:gspread/http_client.py:HTTPClient.fetch_sheet_metadata"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.fetch_sheet_metadata",
+          "detail": null,
+          "raw": "environment/smell.diff:gspread/http_client.py:HTTPClient.fetch_sheet_metadata"
+        }
+      ]
+    },
+    {
+      "id": "FE11",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Worksheet.get requests a value range and then applies presentation options to returned values.",
+      "baseline_defect": "Worksheet.get constructs the values endpoint URL, invokes the base HTTP request, classifies BackOffHTTPClient errors, increments retry state, and sleeps before value rendering.",
+      "criterion": "Worksheet.get relies on the values retrieval boundary for HTTP retry and endpoint details while it owns padding and returned ValueRange construction.",
+      "acceptance": "Range retrieval uses transport-owned backoff and endpoint handling, allowing supported overrides. Presentation/range-result logic remains coherently owned; no mandatory values_get name or fixed method layout. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or relocating this code while the workflow still interprets the same foreign private state or policy does not repair the responsibility boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.get",
+          "detail": null,
+          "raw": "expanded.diff:gspread/worksheet.py:Worksheet.get"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.get",
+          "detail": null,
+          "raw": "environment/smell.diff:gspread/worksheet.py:Worksheet.get"
+        }
+      ]
+    },
+    {
+      "id": "FE01_TRANSPORT",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "File listing is a Client operation, while request execution and backoff belong to the HTTP client.",
+      "baseline_defect": "File listing\u2019s ordinary HTTPClient branch directly executes its foreign session/timeout and response status.",
+      "criterion": "Remove foreign session execution policy from file discovery.",
+      "acceptance": "Pagination supplies request intent to transport-owned execution; repairing retry classification alone does not repair the ordinary bypass. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing another workflow or hiding the same foreign state interpretation behind a forwarding wrapper is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client._list_spreadsheet_files",
+          "detail": "File listing\u2019s ordinary HTTPClient branch directly executes its foreign session/timeout and response status.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE04_SOURCE",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Comment copy is a file workflow whose source and destination calls use the HTTP client.",
+      "baseline_defect": "Comment source pagination increments foreign backoff counters and owns delay/error eligibility.",
+      "criterion": "Return source-comment retry state and decisions to a transport owner.",
+      "acceptance": "Comment pagination can proceed through ordinary or custom transport without managing its private retry lifecycle; destination delivery is assessed separately. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing another workflow or hiding the same foreign state interpretation behind a forwarding wrapper is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client.copy copy_comments",
+          "detail": "Comment source pagination increments foreign backoff counters and owns delay/error eligibility.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE04_DEST",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Comment copy is a file workflow whose source and destination calls use the HTTP client.",
+      "baseline_defect": "Destination comment copying directly drives foreign session/timeout/status internals.",
+      "criterion": "Remove foreign request execution policy from destination comment delivery.",
+      "acceptance": "Comment content and copy sequencing are supplied to transport-owned execution. Repairing source retries alone is insufficient. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing another workflow or hiding the same foreign state interpretation behind a forwarding wrapper is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/client.py",
+          "symbol": "Client.copy copied_comment",
+          "detail": "Destination comment copying directly drives foreign session/timeout/status internals.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE07_GRID",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Worksheet methods form sheet-property requests and keep the local grid/title/style cache; HTTPClient.batch_update sends batch requests.",
+      "baseline_defect": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet grid size, frozen-axis and gridline properties.",
+      "criterion": "Give grid size, frozen-axis and gridline properties coherent model-state ownership.",
+      "acceptance": "Transport may submit batches and report results, but must not interpret private worksheet cache layout for this effect. Model operations, callbacks, change descriptions or equivalent designs qualify. No required one-method-per-field split; one model redesign can satisfy all cache items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing another workflow or hiding the same foreign state interpretation behind a forwarding wrapper is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.batch_update",
+          "detail": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet grid size, frozen-axis and gridline properties.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.resize / freeze / hide_gridlines",
+          "detail": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet grid size, frozen-axis and gridline properties.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE07_IDENTITY",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Worksheet methods form sheet-property requests and keep the local grid/title/style cache; HTTPClient.batch_update sends batch requests.",
+      "baseline_defect": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet title, index and visibility properties.",
+      "criterion": "Give title, index and visibility properties coherent model-state ownership.",
+      "acceptance": "Transport may submit batches and report results, but must not interpret private worksheet cache layout for this effect. Model operations, callbacks, change descriptions or equivalent designs qualify. No required one-method-per-field split; one model redesign can satisfy all cache items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing another workflow or hiding the same foreign state interpretation behind a forwarding wrapper is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.batch_update",
+          "detail": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet title, index and visibility properties.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.update_title / update_index / _set_hidden",
+          "detail": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet title, index and visibility properties.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE07_STYLE",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Worksheet methods form sheet-property requests and keep the local grid/title/style cache; HTTPClient.batch_update sends batch requests.",
+      "baseline_defect": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet tab-color setting and clearing.",
+      "criterion": "Give tab-color setting and clearing coherent model-state ownership.",
+      "acceptance": "Transport may submit batches and report results, but must not interpret private worksheet cache layout for this effect. Model operations, callbacks, change descriptions or equivalent designs qualify. No required one-method-per-field split; one model redesign can satisfy all cache items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing another workflow or hiding the same foreign state interpretation behind a forwarding wrapper is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.batch_update",
+          "detail": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet tab-color setting and clearing.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.update_tab_color / clear_tab_color",
+          "detail": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet tab-color setting and clearing.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE07_DELETE",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Worksheet methods form sheet-property requests and keep the local grid/title/style cache; HTTPClient.batch_update sends batch requests.",
+      "baseline_defect": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet row/column count decrements for dimension deletion.",
+      "criterion": "Give row/column count decrements for dimension deletion coherent model-state ownership.",
+      "acceptance": "Transport may submit batches and report results, but must not interpret private worksheet cache layout for this effect. Model operations, callbacks, change descriptions or equivalent designs qualify. No required one-method-per-field split; one model redesign can satisfy all cache items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing another workflow or hiding the same foreign state interpretation behind a forwarding wrapper is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.batch_update",
+          "detail": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet row/column count decrements for dimension deletion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.delete_dimension / delete_dimension_blocks",
+          "detail": "HTTPClient.batch_update parses request bodies to mutate foreign Worksheet row/column count decrements for dimension deletion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE12_SINGLE",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Current code supports single-range update and batch update with optional serializer and custom HTTP client methods.",
+      "baseline_defect": "Worksheet.update inspects exact HTTP method identity and locally rebuilds values endpoint dispatch.",
+      "criterion": "Give single-range update endpoint protocol a transport-operation owner.",
+      "acceptance": "Normalized request intent and optional serializer flow through a stable capability supporting overrides, without workflow ownership of endpoint dispatch. No specific original operation name or parameter signature is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing another workflow or hiding the same foreign state interpretation behind a forwarding wrapper is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.update",
+          "detail": "Worksheet.update inspects exact HTTP method identity and locally rebuilds values endpoint dispatch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE12_BATCH",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Current code supports single-range update and batch update with optional serializer and custom HTTP client methods.",
+      "baseline_defect": "Worksheet.batch_update inspects exact HTTP method identity and locally rebuilds values endpoint dispatch.",
+      "criterion": "Give batch value update endpoint protocol a transport-operation owner.",
+      "acceptance": "Normalized request intent and optional serializer flow through a stable capability supporting overrides, without workflow ownership of endpoint dispatch. No specific original operation name or parameter signature is mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing another workflow or hiding the same foreign state interpretation behind a forwarding wrapper is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "Worksheet.batch_update",
+          "detail": "Worksheet.batch_update inspects exact HTTP method identity and locally rebuilds values endpoint dispatch.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "burnash_gspread_fe",
+    "rubric_status": "ready",
+    "aggregation": "Equal weight for every item; each item is scored once when its acceptance condition is met.",
+    "excluded_from_scoring": [
+      "Existing request, pagination, property-cache, and serializer behavior by itself is not a repair credit.",
+      "The empty post.diff adds no defect.",
+      "Historical plans for stronger whole-territory interaction are excluded where absent from this final patch; correctness-only serializer repair is not scored."
+    ]
+  }
+}

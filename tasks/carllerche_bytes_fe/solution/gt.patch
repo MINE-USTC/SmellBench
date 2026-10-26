@@ -1,0 +1,375 @@
+diff --git a/src/buf/buf_impl.rs b/src/buf/buf_impl.rs
+index 4619c9d..2497a78 100644
+--- a/src/buf/buf_impl.rs
++++ b/src/buf/buf_impl.rs
+@@ -2361,6 +2361,8 @@ pub trait Buf {
+     ///
+     /// This function panics if `len > self.remaining()`.
+     fn copy_to_bytes(&mut self, len: usize) -> crate::Bytes {
++        use super::BufMut;
++
+         if self.remaining() < len {
+             panic_advance(&TryGetError {
+                 requested: len,
+@@ -2368,29 +2370,8 @@ pub trait Buf {
+             });
+         }
+ 
++        let mut ret = crate::BytesMut::with_capacity(len);
++        ret.put(self.take(len));
+-        let mut storage = alloc::vec::Vec::<u8>::with_capacity(len);
+-        let mut source = self.take(len);
+-        while source.has_remaining() {
+-            let chunk = source.chunk();
+-            let count = chunk.len();
+-            let initialized = storage.len();
+-            storage.reserve(count);
+-            unsafe {
+-                core::ptr::copy_nonoverlapping(chunk.as_ptr(), storage.as_mut_ptr().add(initialized), count);
+-                storage.set_len(initialized + count);
+-            }
+-            source.advance(count);
+-        }
+-        let capacity = storage.capacity();
+-        let width = crate::bytes_mut::PTR_WIDTH - ((capacity >> crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH).leading_zeros() as usize);
+-        let repr = core::cmp::min(width, crate::bytes_mut::MAX_ORIGINAL_CAPACITY_WIDTH - crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH);
+-        let mut storage = core::mem::ManuallyDrop::new(storage);
+-        let ret = crate::BytesMut {
+-            ptr: core::ptr::NonNull::new(storage.as_mut_ptr()).expect("Vec pointer should be non-null"),
+-            len: storage.len(),
+-            cap: capacity,
+-            data: core::ptr::null_mut::<u8>().wrapping_add((repr << crate::bytes_mut::ORIGINAL_CAPACITY_OFFSET) | crate::bytes_mut::KIND_VEC).cast(),
+-        };
+         ret.freeze()
+     }
+ 
+diff --git a/src/buf/buf_mut.rs b/src/buf/buf_mut.rs
+index d17d770..3154dfe 100644
+--- a/src/buf/buf_mut.rs
++++ b/src/buf/buf_mut.rs
+@@ -215,12 +215,7 @@ pub unsafe trait BufMut {
+             let d = self.chunk_mut();
+             let cnt = usize::min(s.len(), d.len());
+ 
++            d[..cnt].copy_from_slice(&s[..cnt]);
+-            let destination = &mut d.0[..cnt];
+-            let source = &s[..cnt];
+-            assert_eq!(destination.len(), source.len());
+-            unsafe {
+-                core::ptr::copy_nonoverlapping(source.as_ptr(), destination.as_mut_ptr().cast(), destination.len());
+-            }
+ 
+             // SAFETY: We just initialized `cnt` bytes in `self`.
+             unsafe { self.advance_mut(cnt) };
+@@ -260,12 +255,7 @@ pub unsafe trait BufMut {
+             let dst = self.chunk_mut();
+             let cnt = usize::min(src.len(), dst.len());
+ 
++            dst[..cnt].copy_from_slice(&src[..cnt]);
+-            let destination = &mut dst.0[..cnt];
+-            let source = &src[..cnt];
+-            assert_eq!(destination.len(), source.len());
+-            unsafe {
+-                core::ptr::copy_nonoverlapping(source.as_ptr(), destination.as_mut_ptr().cast(), destination.len());
+-            }
+             src = &src[cnt..];
+ 
+             // SAFETY: We just initialized `cnt` bytes in `self`.
+@@ -311,7 +301,7 @@ pub unsafe trait BufMut {
+             let dst = self.chunk_mut();
+             let dst_len = usize::min(dst.len(), cnt);
+             // SAFETY: The pointer is valid for `dst_len <= dst.len()` bytes.
++            unsafe { core::ptr::write_bytes(dst.as_mut_ptr(), val, dst_len) };
+-            unsafe { core::ptr::write_bytes(dst.0.as_mut_ptr().cast::<u8>(), val, dst_len) };
+             // SAFETY: We just initialized `dst_len` bytes in `self`.
+             unsafe { self.advance_mut(dst_len) };
+             cnt -= dst_len;
+diff --git a/src/buf/chain.rs b/src/buf/chain.rs
+index d12dbc6..c8bc36d 100644
+--- a/src/buf/chain.rs
++++ b/src/buf/chain.rs
+@@ -180,38 +180,9 @@ where
+                 len - a_rem <= self.b.remaining(),
+                 "`len` greater than remaining"
+             );
++            let mut ret = crate::BytesMut::with_capacity(len);
++            ret.put(&mut self.a);
++            ret.put((&mut self.b).take(len - a_rem));
+-            let mut ret = {
+-                let mut storage = core::mem::ManuallyDrop::new(alloc::vec::Vec::<u8>::with_capacity(len));
+-                let capacity = storage.capacity();
+-                let initialized = storage.len();
+-                let width = crate::bytes_mut::PTR_WIDTH - ((capacity >> crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH).leading_zeros() as usize);
+-                let repr = core::cmp::min(width, crate::bytes_mut::MAX_ORIGINAL_CAPACITY_WIDTH - crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH);
+-                let tag = (repr << crate::bytes_mut::ORIGINAL_CAPACITY_OFFSET) | crate::bytes_mut::KIND_VEC;
+-                let pointer = core::ptr::NonNull::new(storage.as_mut_ptr()).expect("Vec pointer should be non-null");
+-                crate::BytesMut {
+-                    ptr: pointer,
+-                    len: initialized,
+-                    cap: capacity,
+-                    data: core::ptr::null_mut::<u8>().wrapping_add(tag).cast(),
+-                }
+-            };
+-            let mut tail = (&mut self.b).take(len - a_rem);
+-            while self.a.has_remaining() || tail.has_remaining() {
+-                let source: &mut dyn Buf = if self.a.has_remaining() {
+-                    &mut self.a
+-                } else {
+-                    &mut tail
+-                };
+-                let chunk = source.chunk();
+-                let count = chunk.len();
+-                ret.reserve(count);
+-                let committed = ret.len;
+-                unsafe {
+-                    core::ptr::copy_nonoverlapping(chunk.as_ptr(), ret.ptr.as_ptr().add(committed), count);
+-                    ret.len = committed + count;
+-                }
+-                source.advance(count);
+-            }
+             ret.freeze()
+         }
+     }
+diff --git a/src/buf/limit.rs b/src/buf/limit.rs
+index 1f05a69..b422be5 100644
+--- a/src/buf/limit.rs
++++ b/src/buf/limit.rs
+@@ -63,9 +63,8 @@ unsafe impl<T: BufMut> BufMut for Limit<T> {
+ 
+     fn chunk_mut(&mut self) -> &mut UninitSlice {
+         let bytes = self.inner.chunk_mut();
++        let end = cmp::min(bytes.len(), self.limit);
++        &mut bytes[..end]
+-        let end = cmp::min(bytes.0.len(), self.limit);
+-        let storage = &mut bytes.0[..end];
+-        unsafe { &mut *(storage as *mut [core::mem::MaybeUninit<u8>] as *mut UninitSlice) }
+     }
+ 
+     unsafe fn advance_mut(&mut self, cnt: usize) {
+@@ -73,38 +72,4 @@ unsafe impl<T: BufMut> BufMut for Limit<T> {
+         self.inner.advance_mut(cnt);
+         self.limit -= cnt;
+     }
+-
+-    fn put_slice(&mut self, mut src: &[u8]) {
+-        let available = self.remaining_mut();
+-        if src.len() > available {
+-            crate::panic_advance(&crate::TryGetError { requested: src.len(), available });
+-        }
+-        while !src.is_empty() {
+-            let bytes = self.inner.chunk_mut();
+-            let writable = cmp::min(bytes.0.len(), self.limit);
+-            let copied = cmp::min(writable, src.len());
+-            unsafe {
+-                core::ptr::copy_nonoverlapping(src.as_ptr(), bytes.0.as_mut_ptr().cast(), copied);
+-            }
+-            src = &src[copied..];
+-            unsafe { self.inner.advance_mut(copied) };
+-            self.limit -= copied;
+-        }
+-    }
+-
+-    fn put_bytes(&mut self, val: u8, mut cnt: usize) {
+-        let available = self.remaining_mut();
+-        if cnt > available {
+-            crate::panic_advance(&crate::TryGetError { requested: cnt, available });
+-        }
+-        while cnt > 0 {
+-            let bytes = self.inner.chunk_mut();
+-            let writable = cmp::min(bytes.0.len(), self.limit);
+-            let copied = cmp::min(writable, cnt);
+-            unsafe { core::ptr::write_bytes(bytes.0.as_mut_ptr().cast::<u8>(), val, copied) };
+-            unsafe { self.inner.advance_mut(copied) };
+-            self.limit -= copied;
+-            cnt -= copied;
+-        }
+-    }
+ }
+diff --git a/src/buf/uninit_slice.rs b/src/buf/uninit_slice.rs
+index 73c7e57..aea096a 100644
+--- a/src/buf/uninit_slice.rs
++++ b/src/buf/uninit_slice.rs
+@@ -19,7 +19,7 @@ use core::ops::{
+ /// that it is possible in safe code to write uninitialized bytes to an
+ /// `&mut [MaybeUninit<u8>]`, which this type prohibits.
+ #[repr(transparent)]
++pub struct UninitSlice([MaybeUninit<u8>]);
+-pub struct UninitSlice(pub(crate) [MaybeUninit<u8>]);
+ 
+ impl UninitSlice {
+     /// Creates a `&mut UninitSlice` wrapping a slice of initialised memory.
+diff --git a/src/bytes.rs b/src/bytes.rs
+index 476857f..aed4d7c 100644
+--- a/src/bytes.rs
++++ b/src/bytes.rs
+@@ -1241,29 +1241,11 @@ unsafe fn promotable_to_mut(
+         let buf = f(shared);
+         let off = ptr.offset_from(buf) as usize;
+         let cap = off + len;
++        let v = Vec::from_raw_parts(buf, cap, cap);
++
++        let mut b = BytesMut::from_vec(v);
++        b.advance_unchecked(off);
++        b
+-        let width = crate::bytes_mut::PTR_WIDTH - ((cap >> crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH).leading_zeros() as usize);
+-        let repr = core::cmp::min(width, crate::bytes_mut::MAX_ORIGINAL_CAPACITY_WIDTH - crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH);
+-        let tag = (repr << crate::bytes_mut::ORIGINAL_CAPACITY_OFFSET) | crate::bytes_mut::KIND_VEC;
+-        if off <= crate::bytes_mut::MAX_VEC_POS {
+-            BytesMut {
+-                ptr: NonNull::new_unchecked(ptr as *mut u8),
+-                len,
+-                cap: len,
+-                data: core::ptr::null_mut::<u8>().wrapping_add(tag | (off << crate::bytes_mut::VEC_POS_OFFSET)).cast(),
+-            }
+-        } else {
+-            let mut b = BytesMut {
+-                ptr: NonNull::new_unchecked(buf),
+-                len: cap,
+-                cap,
+-                data: core::ptr::null_mut::<u8>().wrapping_add(tag).cast(),
+-            };
+-            b.promote_to_shared(1);
+-            b.ptr = NonNull::new_unchecked(ptr as *mut u8);
+-            b.len = len;
+-            b.cap = len;
+-            b
+-        }
+     }
+ }
+ 
+@@ -1445,44 +1427,18 @@ unsafe fn shared_to_mut_impl(shared: *mut Shared, ptr: *const u8, len: usize) ->
+         let buf = shared.buf;
+         let cap = shared.cap;
+ 
++        // Rebuild Vec
+         let off = ptr.offset_from(buf) as usize;
++        let v = Vec::from_raw_parts(buf, len + off, cap);
++
++        let mut b = BytesMut::from_vec(v);
++        b.advance_unchecked(off);
+-        let width = crate::bytes_mut::PTR_WIDTH - ((cap >> crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH).leading_zeros() as usize);
+-        let repr = core::cmp::min(width, crate::bytes_mut::MAX_ORIGINAL_CAPACITY_WIDTH - crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH);
+-        let tag = (repr << crate::bytes_mut::ORIGINAL_CAPACITY_OFFSET) | crate::bytes_mut::KIND_VEC;
+-        let mut b = BytesMut {
+-            ptr: NonNull::new_unchecked(buf),
+-            len: len + off,
+-            cap,
+-            data: core::ptr::null_mut::<u8>().wrapping_add(tag).cast(),
+-        };
+-        if off > crate::bytes_mut::MAX_VEC_POS {
+-            b.promote_to_shared(1);
+-        } else {
+-            b.data = core::ptr::null_mut::<u8>().wrapping_add(tag | (off << crate::bytes_mut::VEC_POS_OFFSET)).cast();
+-        }
+-        b.ptr = NonNull::new_unchecked(ptr as *mut u8);
+-        b.cap = cap - off;
+-        b.len = len;
+         b
+     } else {
+         // Copy the data from Shared in a new Vec, then release it
+         let v = slice::from_raw_parts(ptr, len).to_vec();
++        release_shared(shared);
++        BytesMut::from_vec(v)
+-        {
+-            let mut storage = core::mem::ManuallyDrop::new(v);
+-            let capacity = storage.capacity();
+-            let initialized = storage.len();
+-            let width = crate::bytes_mut::PTR_WIDTH - ((capacity >> crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH).leading_zeros() as usize);
+-            let repr = core::cmp::min(width, crate::bytes_mut::MAX_ORIGINAL_CAPACITY_WIDTH - crate::bytes_mut::MIN_ORIGINAL_CAPACITY_WIDTH);
+-            let tag = (repr << crate::bytes_mut::ORIGINAL_CAPACITY_OFFSET) | crate::bytes_mut::KIND_VEC;
+-            let pointer = core::ptr::NonNull::new(storage.as_mut_ptr()).expect("Vec pointer should be non-null");
+-            release_shared(shared);
+-            crate::BytesMut {
+-                ptr: pointer,
+-                len: initialized,
+-                cap: capacity,
+-                data: core::ptr::null_mut::<u8>().wrapping_add(tag).cast(),
+-            }
+-        }
+     }
+ }
+ 
+diff --git a/src/bytes_mut.rs b/src/bytes_mut.rs
+index e548897..ae808fa 100644
+--- a/src/bytes_mut.rs
++++ b/src/bytes_mut.rs
+@@ -58,10 +58,10 @@ use crate::{Buf, BufMut, Bytes, TryGetError};
+ /// assert_eq!(&b[..], b"hello");
+ /// ```
+ pub struct BytesMut {
++    ptr: NonNull<u8>,
++    len: usize,
++    cap: usize,
++    data: *mut Shared,
+-    pub(crate) ptr: NonNull<u8>,
+-    pub(crate) len: usize,
+-    pub(crate) cap: usize,
+-    pub(crate) data: *mut Shared,
+ }
+ 
+ // Thread-safe reference-counted container for the shared storage. This mostly
+@@ -73,7 +73,7 @@ pub struct BytesMut {
+ // some of the logic around setting `Inner::arc` and other ways the `arc` field
+ // is used. Using `Arc` ended up requiring a number of funky transmutes and
+ // other shenanigans to make it work.
++struct Shared {
+-pub(crate) struct Shared {
+     vec: Vec<u8>,
+     original_capacity_repr: usize,
+     ref_count: AtomicUsize,
+@@ -101,32 +101,32 @@ const _: () = {
+ 
+ // Buffer storage strategy flags.
+ const KIND_ARC: usize = 0b0;
++const KIND_VEC: usize = 0b1;
+-pub(crate) const KIND_VEC: usize = 0b1;
+ const KIND_MASK: usize = 0b1;
+ 
+ // The max original capacity value. Any `Bytes` allocated with a greater initial
+ // capacity will default to this.
++const MAX_ORIGINAL_CAPACITY_WIDTH: usize = 17;
+-pub(crate) const MAX_ORIGINAL_CAPACITY_WIDTH: usize = 17;
+ // The original capacity algorithm will not take effect unless the originally
+ // allocated capacity was at least 1kb in size.
++const MIN_ORIGINAL_CAPACITY_WIDTH: usize = 10;
+-pub(crate) const MIN_ORIGINAL_CAPACITY_WIDTH: usize = 10;
+ // The original capacity is stored in powers of 2 starting at 1kb to a max of
+ // 64kb. Representing it as such requires only 3 bits of storage.
+ const ORIGINAL_CAPACITY_MASK: usize = 0b11100;
++const ORIGINAL_CAPACITY_OFFSET: usize = 2;
+-pub(crate) const ORIGINAL_CAPACITY_OFFSET: usize = 2;
+ 
++const VEC_POS_OFFSET: usize = 5;
+-pub(crate) const VEC_POS_OFFSET: usize = 5;
+ // When the storage is in the `Vec` representation, the pointer can be advanced
+ // at most this value. This is due to the amount of storage available to track
+ // the offset is usize - number of KIND bits and number of ORIGINAL_CAPACITY
+ // bits.
++const MAX_VEC_POS: usize = usize::MAX >> VEC_POS_OFFSET;
++const NOT_VEC_POS_MASK: usize = 0b11111;
+-pub(crate) const MAX_VEC_POS: usize = usize::MAX >> VEC_POS_OFFSET;
+-pub(crate) const NOT_VEC_POS_MASK: usize = 0b11111;
+ 
+ #[cfg(target_pointer_width = "64")]
++const PTR_WIDTH: usize = 64;
+-pub(crate) const PTR_WIDTH: usize = 64;
+ #[cfg(target_pointer_width = "32")]
++const PTR_WIDTH: usize = 32;
+-pub(crate) const PTR_WIDTH: usize = 32;
+ 
+ /*
+  *
+@@ -1104,11 +1104,11 @@ impl BytesMut {
+     }
+ 
+     #[inline]
++    fn kind(&self) -> usize {
+-    pub(crate) fn kind(&self) -> usize {
+         self.data as usize & KIND_MASK
+     }
+ 
++    unsafe fn promote_to_shared(&mut self, ref_cnt: usize) {
+-    pub(crate) unsafe fn promote_to_shared(&mut self, ref_cnt: usize) {
+         debug_assert_eq!(self.kind(), KIND_VEC);
+         debug_assert!(ref_cnt == 1 || ref_cnt == 2);
+ 

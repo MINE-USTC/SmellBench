@@ -1,0 +1,291 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "jquense_yup_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "condition_references",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 Reference interpretation moves into Condition.",
+      "baseline_defect": "Condition reads Reference flags/getter/map itself.",
+      "criterion": "Make condition reference evaluation use coherent reference semantics without its own interpreter.",
+      "acceptance": "Preserve dynamic custom getValue, current context/value/parent flags, getter(source||{}), map exactly once and method receivers. Read reference values in refs order with optional options access. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/Condition.ts",
+          "symbol": "resolve",
+          "detail": "Condition reads Reference flags/getter/map itself.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "schema_references",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/4 indirect reference consumer in schema condition queue.",
+      "baseline_defect": "Schema queue duplicates reference internals while handling condition branches.",
+      "criterion": "Remove reference interpretation from schema queue progression.",
+      "acceptance": "Preserve dynamic custom getValue, current context/value/parent flags, getter(source||{}), map exactly once and method receivers. Do not precompute later conditions before earlier branch effects. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/schema.ts",
+          "symbol": "resolve",
+          "detail": "Schema queue duplicates reference internals while handling condition branches.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "condition_decisions",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 branch contract; stage2 continuation stack and clone transitions.",
+      "baseline_defect": "Schema queue owns Condition refs/fn/result validation and nested branch completion.",
+      "criterion": "Give branch evaluation and completion a coherent condition responsibility, removing duplicated Condition contract from queue management.",
+      "acceptance": "Keep clone/clear before each queue, fixed queue length with sparse-hole skipping, child branch completion before suspended parent resumes, undefined/same identity no-op, invalid-schema TypeError and terminal re-resolution. Honor custom condition.resolve and schema.resolve; do not require preserving an explicit stack. Recursive owner calls are valid. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/schema.ts",
+          "symbol": "resolve",
+          "detail": "Schema queue owns Condition refs/fn/result validation and nested branch completion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "reference_cast",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 object-field reference casting.",
+      "baseline_defect": "Object field casting manually evaluates Reference internals.",
+      "criterion": "Delegate or otherwise coherently own reference casting instead of object-local interpretation.",
+      "acceptance": "Preserve dynamic custom getValue, current context/value/parent flags, getter(source||{}), map exactly once and method receivers. Honor custom cast as well as getValue; preserve strict/__validating bypass and current intermediate parent state. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/object.ts",
+          "symbol": "_cast",
+          "detail": "Object field casting manually evaluates Reference internals.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "nested_preparation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 object/array/tuple and R3 Lazy child preparation.",
+      "baseline_defect": "Four consumers reproduce child strict/original-value/key/index/path semantics.",
+      "criterion": "Give nested test preparation a coherent child-schema boundary across object, array, tuple and Lazy.",
+      "acceptance": "Preserve sparse array indices, object field exclusion/order, strict:true, originalParent selection, key/index propagation and dotted-key quoting. Lazy resolves from parent[index??key] before nested preparation reads parent[key??index]; do not fuse observable reads. Honor custom asNestedTest dynamically. Container selection may remain local. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/object.ts",
+          "symbol": "_validate",
+          "detail": "Four consumers reproduce child strict/original-value/key/index/path semantics.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "nested_execution",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 specializes child execution in all four nested consumers.",
+      "baseline_defect": "Parents inspect resolved child internalTests/tests and decide two-phase execution.",
+      "criterion": "Remove foreign child validation phase ownership from all four consumers.",
+      "acceptance": "Resolve child at invocation time, honor custom _validate, default originalValue only if undefined, collect current internal tests then gate ordinary tests on their errors. Read child.tests after internal callbacks, not eagerly; preserve panic/next values, parent error sorting and sync/async behavior. This also covers default/custom execution variation; no extra duplicate override score. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/Lazy.ts",
+          "symbol": "asNestedTest",
+          "detail": "Parents inspect resolved child internalTests/tests and decide two-phase execution.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "set_merge",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 both enumeration merge directions.",
+      "baseline_defect": "Schema clones sets and directly encodes add/delete precedence.",
+      "criterion": "Own enumeration combination coherently without schema-local set merge algorithms.",
+      "acceptance": "Clone base; add incoming matching set then delete incoming opposite set, for both whitelist/blacklist. Incoming schema wins conflicts and custom merge overrides remain honored. No mandatory owner class placement. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/schema.ts",
+          "symbol": "concat",
+          "detail": "Schema clones sets and directly encodes add/delete precedence.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "enumeration_resolution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 resolveAll; stage2 eager resolution and membership integration.",
+      "baseline_defect": "Validators independently materialize set entries and compare them.",
+      "criterion": "Give enumeration resolution/membership a coherent reusable policy across both validators.",
+      "acceptance": "Resolve every entry in iteration order even after match, preserve SameValueZero including NaN and complete resolved error parameter list. Honor overridden resolveAll; preserve oneOf skipAbsent vs notOneOf behavior. Materialize via owner then includes is valid; no mandatory combined result object. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/schema.ts",
+          "symbol": "oneOf,notOneOf",
+          "detail": "Validators independently materialize set entries and compare them.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "set_description",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 Schema enumeration description.",
+      "baseline_defect": "Schema enumerates ReferenceSet values and dispatches item descriptions.",
+      "criterion": "Move set-description policy out of schema description assembly into a coherent set operation.",
+      "acceptance": "Keep order, nonreference identity, both oneOf/notOneOf and custom set.describe. Schema clone/default/test metadata assembly stays live; no forced separate helper. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/schema.ts",
+          "symbol": "describe",
+          "detail": "Schema enumerates ReferenceSet values and dispatches item descriptions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "reference_description",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 reference shape copied into set and schema descriptions.",
+      "baseline_defect": "Set.describe and Schema.describe construct {type:ref,key} by reading Reference internals.",
+      "criterion": "Use coherent reference-owned description semantics at both sites.",
+      "acceptance": "Honor custom reference.describe including later prototype overrides; preserve nonreference values and reference output. Set iteration and single-reference presentation are independently maintainable, though one redesign can repair both. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/util/ReferenceSet.ts",
+          "symbol": "describe",
+          "detail": "Set.describe and Schema.describe construct {type:ref,key} by reading Reference internals.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "validation_reference_values",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 parameter Reference interpretation and stage2 embedded error resolution.",
+      "baseline_defect": "Scalar resolver and createError both inspect reference flags/getter/map.",
+      "criterion": "Remove duplicate Reference interpretation from validation parameter consumers.",
+      "acceptance": "Preserve dynamic custom getValue, current context/value/parent flags, getter(source||{}), map exactly once and method receivers. Nonreferences pass through; eager error-parameter processing must not be shortened to only interpolated names. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/util/createValidation.ts",
+          "symbol": "resolveMaybeRef,createError",
+          "detail": "Scalar resolver and createError both inspect reference flags/getter/map.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "error_parameter_materialization",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 replaces resolveParams with local parameter map traversal before formatting.",
+      "baseline_defect": "Error construction duplicates parameter-map resolution while assembling presentation context.",
+      "criterion": "Give full parameter resolution a coherent operation reusable with the existing resolveParams path.",
+      "acceptance": "Preserve defaults then configured params then overrides.params precedence, Object.keys snapshot/order and eager reference effects for every parameter. Keep resolved nextParams for error.params and original path; avoid conflating formatting display params with stored params. Merely fixing scalar getValue leaves the separate map-resolution duplication. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/util/createValidation.ts",
+          "symbol": "createError",
+          "detail": "Error construction duplicates parameter-map resolution while assembling presentation context.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "error_presentation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 formatting and stage2 display-path separation.",
+      "baseline_defect": "createError implements formatting path selection, regex interpolation and function messages.",
+      "criterion": "Own error message presentation coherently outside validation-specific construction.",
+      "acceptance": "Honor custom ValidationError.formatError dynamically; display path label||path||this and originalPath original path; regex replacement uses printValue, functions receive display params, other messages pass through. error.path and error.params keep resolved original parameter path. Keep message/type override fallback semantics. Reconnecting existing owner APIs is valid. Ownership is semantic: a focused shared operation may live in the same file; no original class placement or captured-method identity scheme is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving a copied block to a consumer-only wrapper while retaining independent foreign-policy ownership is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/util/createValidation.ts",
+          "symbol": "createError",
+          "detail": "createError implements formatting path selection, regex interpolation and function messages.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "jquense_yup_fe",
+    "rubric_status": "ready",
+    "aggregation": "equal_weight_per_item",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "Pre-existing behavior, passing tests, TypeScript repairs, and cosmetic naming are controls rather than structural credits",
+      "Historical deepening intentions absent from the final diff"
+    ]
+  }
+}

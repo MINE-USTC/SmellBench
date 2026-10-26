@@ -1,0 +1,3 @@
+Remove permanently unreachable production code from the Spotify Web API wrapper. Establish reachability from supported public API entry points and preserve observable behavior in CommonJS and browser script loading, including request parameters, payloads, headers, callbacks, promises, response parsing, errors and aborts. Preserve the public API and type declarations. Do not modify existing tests or add runtime dependencies. Validate with the repository's original test command.
+
+Establish reachability through both the CommonJS and browser entrypoints and their request-preparation consumers. The internal branch selected by argument shape may differ from an unexercised test path; preserve callback, promise and abort behavior while removing only truly dead implementation.

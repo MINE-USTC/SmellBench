@@ -1,0 +1,426 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "xtaci_kcp_go_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "FE01",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 application receive; stage2 direct/staged storage",
+      "intent_basis": "R1 application receive; stage2 direct/staged storage",
+      "baseline_defect": "Session interprets fragment completeness and consumes protocol queues.",
+      "criterion": "Give complete-message readiness and consumption a coherent protocol responsibility.",
+      "acceptance": "Preserve incomplete versus zero-length admission, whole-message consumption, pool release, direct/staged choice and unread suffix; session locking and BytesReceived reflect actual application bytes. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "Read",
+          "detail": "Session interprets fragment completeness and consumes protocol queues.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 receive-window restoration",
+      "intent_basis": "R1 receive-window restoration",
+      "baseline_defect": "Session independently promotes heap segments and writes rcv_nxt/probe.",
+      "criterion": "Keep receive-window advancement consistent between protocol input and reads.",
+      "acceptance": "Only contiguous expected segments enter queue below window limit; restore blocked heap item; ASK_TELL only after a previously full window becomes available. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "Read",
+          "detail": "Session independently promotes heap segments and writes rcv_nxt/probe.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 send; stage2 stream/vector integration",
+      "intent_basis": "R1 send; stage2 stream/vector integration",
+      "baseline_defect": "Session implements stream-tail extension and segmentation.",
+      "criterion": "Maintain stream coalescing and segmentation at a coherent protocol boundary.",
+      "acceptance": "Keep vector/MSS packet boundaries, stream-only tail fill and remaining payload copy; empty input creates no segment. Existing Send calls are acceptable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "WriteBuffers",
+          "detail": "Session implements stream-tail extension and segmentation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE04",
+      "dimension": "responsibility_allocation",
+      "source_stage": "Stage2 ring integration",
+      "intent_basis": "Stage2 ring integration",
+      "baseline_defect": "Session computes wrapped tail index, full-ring condition, grow and publication.",
+      "criterion": "Keep ring indexing and capacity/publication rules owned coherently with queue representation.",
+      "acceptance": "A queue operation may include tail update and insertion; preserve wrap/grow before write and tail advance, without exposing a second maintained indexing algorithm to transport callers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "WriteBuffers",
+          "detail": "Session computes wrapped tail index, full-ring condition, grow and publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 configuration",
+      "intent_basis": "R1 configuration",
+      "baseline_defect": "Session duplicates positive-only protocol window assignment.",
+      "criterion": "Make window configuration policy consistent across direct and session configuration.",
+      "acceptance": "Only positive dimensions update, independently; retain session mutex and public API. A thin existing-owner delegation qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "SetWindowSize",
+          "detail": "Session duplicates positive-only protocol window assignment.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE06",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 configuration",
+      "intent_basis": "R1 configuration",
+      "baseline_defect": "Session repeats protocol MTU validation and storage derivation.",
+      "criterion": "Keep MTU, MSS and buffer derivation coherently maintained.",
+      "acceptance": "Retain session framing/AEAD adjustment, reject <= overhead before mutation, allocate (mtu+overhead)*3 and publish matching mtu/mss under lock. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "SetMtu",
+          "detail": "Session repeats protocol MTU validation and storage derivation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE07",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 configuration",
+      "intent_basis": "R1 configuration",
+      "baseline_defect": "Session repeats delay mode, RTO minimum and interval/resend/congestion settings.",
+      "criterion": "Keep transport timing configuration invariants in one maintained responsibility.",
+      "acceptance": "Negative arguments retain fields; delay controls min RTO; nonnegative interval clamps 10..5000; other supported values preserved under session lock. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "SetNoDelay",
+          "detail": "Session repeats delay mode, RTO minimum and interval/resend/congestion settings.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE08",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R1 backpressure",
+      "intent_basis": "R1 backpressure",
+      "baseline_defect": "Write, timer and both input notification paths each combine foreign queue lengths.",
+      "criterion": "Give outstanding-send accounting one coherent protocol query contract.",
+      "acceptance": "Count send queue plus send buffer consistently before/after writes and notifications, preserve window comparisons and flush/writeDelay ordering. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "update",
+          "detail": "Write, timer and both input notification paths each combine foreign queue lengths.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE09",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R2/R3 encoder framing and stage2 admission",
+      "intent_basis": "R2/R3 encoder framing and stage2 admission",
+      "baseline_defect": "Session writes FEC header, sequence, length, cache payload and maximum before separate quorum completion.",
+      "criterion": "Keep data/OOB framing and shard admission coherently owned with FEC state.",
+      "acceptance": "Data advances modulo paws and copies payload-only cache, OOB max-sequence framing does not advance normal block; preserve lengths and maximum tracking before quorum work. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "postProcess",
+          "detail": "Session writes FEC header, sequence, length, cache payload and maximum before separate quorum completion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE10",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R2 encoder quorum and stage2 temporal split",
+      "intent_basis": "R2 encoder quorum and stage2 temporal split",
+      "baseline_defect": "Session owns continuity, padding, codec invocation, parity sequence and reset.",
+      "criterion": "Keep parity generation lifecycle coherently maintained with encoder state.",
+      "acceptance": "Strict now-last < rto, clear data tails only, strip framing for codec; encode failure alone increments error counter, both skip causes advance full parity block; reset completed block and record timestamp on every data admission. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "encodePacket",
+          "detail": "Session owns continuity, padding, codec invocation, parity sequence and reset.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE11",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R2 decoder and stage2 sample ring",
+      "intent_basis": "R2 decoder and stage2 sample ring",
+      "baseline_defect": "Session and decoder directly update autoTune ring indices.",
+      "criterion": "Keep pulse sampling policy coherent with its ring representation.",
+      "acceptance": "Sample packet bit/seq before paws rejection, modulo tail, saturating count and head displacement; existing Sample is sufficient. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "recoverPacket",
+          "detail": "Session and decoder directly update autoTune ring indices.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "fec.go",
+          "symbol": "decode",
+          "detail": "Session and decoder directly update autoTune ring indices.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE12",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R2 decoder retuning",
+      "intent_basis": "R2 decoder retuning",
+      "baseline_defect": "Session interprets mismatch, finds periods and reconstructs decoder configuration.",
+      "criterion": "Keep decoder adaptation lifecycle with the state it governs.",
+      "acceptance": "Positive detected periods with sum<256, recycle old shards before map replacement and codec creation, preserve failure exit and valid-unchanged flag reset; tuning packets exit without ordinary decoding. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "recoverPacket",
+          "detail": "Session interprets mismatch, finds periods and reconstructs decoder configuration.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE13",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R2 shard recovery",
+      "intent_basis": "R2 shard recovery",
+      "baseline_defect": "Session owns shard lookup, duplicates, codec cache preparation and recovery buffer transfer.",
+      "criterion": "Make FEC shard admission and reconstruction a cohesive responsibility.",
+      "acceptance": "Dedup before parity accounting/copy; preserve all-data shortcut, zero padding, missing-data allocation, success ownership transfer and failed-buffer return; recycle originals once. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "recoverPacket",
+          "detail": "Session owns shard lookup, duplicates, codec cache preparation and recovery buffer transfer.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE14",
+      "dimension": "responsibility_allocation",
+      "source_stage": "R3 stale-shard lifecycle",
+      "intent_basis": "R3 stale-shard lifecycle",
+      "baseline_defect": "Session maintains newest-shard progression, age removal and gauges.",
+      "criterion": "Keep shard aging and retirement coherently maintained across decoder consumers.",
+      "acceptance": "Use wrap-aware product comparisons and strict expiration; return packets before deletion; publish newest and remaining-set gauges at original phase. Reconnecting complete decode qualifies for this and related items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "recoverPacket",
+          "detail": "Session maintains newest-shard progression, age removal and gauges.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE15",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R4 generic/Linux receive integrity",
+      "intent_basis": "R4 generic/Linux receive integrity",
+      "baseline_defect": "Platform loops independently implement packet protection branches and minimum plaintext admission.",
+      "criterion": "Give incoming protection and plaintext admission a consistent contract across readers and session/listener input.",
+      "acceptance": "Retain nil, AEAD and CFB paths, short ciphertext early discard, checksum/authentication error accounting, OOB-aware minimum-size check and KCPInErrors; invalid input must not reach KCP. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "packetInput",
+          "detail": "Platform loops independently implement packet protection branches and minimum plaintext admission.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "readloop.go",
+          "symbol": "defaultReadLoop",
+          "detail": "Platform loops independently implement packet protection branches and minimum plaintext admission.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "readloop_linux.go",
+          "symbol": "readLoop",
+          "detail": "Platform loops independently implement packet protection branches and minimum plaintext admission.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE16",
+      "dimension": "responsibility_allocation",
+      "source_stage": "Stage2 concrete cipher access",
+      "intent_basis": "Stage2 concrete cipher access",
+      "baseline_defect": "Incoming and original/parity outgoing consumers own blockCrypt mutexes and working buffers.",
+      "criterion": "Keep concrete cipher synchronization and work-buffer access coherent with cryptographic ownership.",
+      "acceptance": "Preserve separate enc/dec locks and in-place transforms; retain custom BlockCrypt Encrypt/Decrypt dispatch, rather than narrowing to built-in ciphers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "postProcess",
+          "detail": "Incoming and original/parity outgoing consumers own blockCrypt mutexes and working buffers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE17",
+      "dimension": "responsibility_allocation",
+      "source_stage": "Stage2 AEAD capacity and nonce policy",
+      "intent_basis": "Stage2 AEAD capacity and nonce policy",
+      "baseline_defect": "Session initialization/input/output reach through aeadCrypt and repeat capacity guards.",
+      "criterion": "Maintain AEAD nonce/overhead and no-allocation sealing policy behind a coherent protection responsibility.",
+      "acceptance": "Original and each parity packet fill nonce before capacity check, preserve insufficient-capacity panic and ciphertext alias behavior; open uses ciphertext[:0], no artificial requirement to combine AEAD and CFB implementations. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "postProcess",
+          "detail": "Session initialization/input/output reach through aeadCrypt and repeat capacity guards.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "FE18",
+      "dimension": "cross_file_coordination",
+      "source_stage": "R3 pool ownership",
+      "intent_basis": "R3 pool ownership",
+      "baseline_defect": "KCP/FEC/session paths expose raw xmitBuf and capacity/type/reset policy.",
+      "criterion": "Keep buffer allocation and recycling contracts coherent across every affected consumer.",
+      "acceptance": "Only capacity mtuLimit buffers return, reset to full capacity as plain []byte including fecPacket; preserve nil-safe segment invalidation and separate recovered/transmit/OOB/drop/duplicate buffer lifetimes. Existing Get/Put reconnection qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Relocating unchanged consumer-owned foreign-state manipulation without a coherent policy boundary is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sess.go",
+          "symbol": "postProcess",
+          "detail": "KCP/FEC/session paths expose raw xmitBuf and capacity/type/reset policy.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "fec.go",
+          "symbol": "decode",
+          "detail": "KCP/FEC/session paths expose raw xmitBuf and capacity/type/reset policy.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "kcp.go",
+          "symbol": "recycleSegment",
+          "detail": "KCP/FEC/session paths expose raw xmitBuf and capacity/type/reset policy.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "xtaci_kcp_go_fe",
+    "aggregation": "equal_weight_mean",
+    "rubric_status": "ready"
+  }
+}

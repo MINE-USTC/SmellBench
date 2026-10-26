@@ -1,0 +1,543 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "hello_rust_lychee_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "response_factory",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 terminal response factory.",
+      "baseline_defect": "Response-only consumers construct Output with both response/stats delegates and unrelated progress methods.",
+      "criterion": "Let response presentation be obtained with only its needed initialization and capabilities.",
+      "acceptance": "Retain narrow ResponseFormatter implementations, supported mode selection and no-color rules including Task exception. No requirement for custom response-only adapter to implement report/bar/hints/host duties; a shared implementation with narrow factory view is valid. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/mod.rs",
+          "symbol": "get_response_formatter,write_responses",
+          "detail": "Response-only consumers construct Output with both response/stats delegates and unrelated progress methods.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/compact.rs",
+          "symbol": "get_response_formatter,write_responses",
+          "detail": "Response-only consumers construct Output with both response/stats delegates and unrelated progress methods.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/detailed.rs",
+          "symbol": "get_response_formatter,write_responses",
+          "detail": "Response-only consumers construct Output with both response/stats delegates and unrelated progress methods.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Response-only consumers construct Output with both response/stats delegates and unrelated progress methods.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "progress_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 optional bar lifecycle.",
+      "baseline_defect": "Progress stores broad OutputFormatter for bar/log/render and inherits report/statistics responsibilities.",
+      "criterion": "Give progress operations a focused lifecycle contract independent of report capabilities.",
+      "acceptance": "Preserve shared bar identity across Arc clones, hidden bar behavior, set/inc length and normal/fatal-input finish. update(None) advances bar without fabricated response and leaves message intact; formatting occurs before verbosity filtering, print before bar increment/message. Archive-only progress must not require statistics. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/progress.rs",
+          "symbol": "Progress::new,update,set_length,inc_length,finish",
+          "detail": "Progress stores broad OutputFormatter for bar/log/render and inherits report/statistics responsibilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Progress stores broad OutputFormatter for bar/log/render and inherits report/statistics responsibilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "task_progress_mode",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Original stage-two raw Task mode.",
+      "baseline_defect": "Broad default alone interprets Task as default terminal mode while storing requested mode.",
+      "criterion": "Keep progress-only mode adaptation focused without altering other consumers.",
+      "acceptance": "Task progress uses default terminal rendering with existing color capability selection; report response and hint prefixes retain Task semantics. Do not globally normalize mode in a shared factory or require duplicating formatting algorithms. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/progress.rs",
+          "symbol": "format_progress_response,get_progress_formatter",
+          "detail": "Broad default alone interprets Task as default terminal mode while storing requested mode.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/mod.rs",
+          "symbol": "format_progress_response,get_progress_formatter",
+          "detail": "Broad default alone interprets Task as default terminal mode while storing requested mode.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Broad default alone interprets Task as default terminal mode while storing requested mode.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "pipeline_recording",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 and deepening progress/accounting.",
+      "baseline_defect": "Combined presentation default owns progress update and consuming statistics mutation.",
+      "criterion": "Compose progress presentation and statistics recording through focused contracts.",
+      "acceptance": "Present response before accounting consumes it, exactly once; standalone ResponseStats.add performs statistics without progress. A coordinator spanning both roles is valid, including a Progress facade method, provided statistics clients need no bar/report implementation. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/commands/check.rs",
+          "symbol": "record_response,ResponseStats::add",
+          "detail": "Combined presentation default owns progress update and consuming statistics mutation.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/progress.rs",
+          "symbol": "record_response,ResponseStats::add",
+          "detail": "Combined presentation default owns progress update and consuming statistics mutation.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/response.rs",
+          "symbol": "record_response,ResponseStats::add",
+          "detail": "Combined presentation default owns progress update and consuming statistics mutation.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Combined presentation default owns progress update and consuming statistics mutation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "statistics_accounting",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Original deepening counters versus status-map split.",
+      "baseline_defect": "Unique/total/redirect/remap mutation lives in broad formatter while status counters/maps remain on ResponseStats.",
+      "criterion": "Make complete response accounting available through a statistics-focused contract.",
+      "acceptance": "Unique only on first URI, total every response, redirect count regardless detailed flag while redirect-map retention requires it, remap count, cached/status counters then consuming map routing. Preserve source/response ownership and both standalone/pipeline paths. No imposed single function or move-all-fields design. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/response.rs",
+          "symbol": "record_statistics,increment_status_counters,add_response_status",
+          "detail": "Unique/total/redirect/remap mutation lives in broad formatter while status counters/maps remain on ResponseStats.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Unique/total/redirect/remap mutation lives in broad formatter while status counters/maps remain on ResponseStats.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hint_policy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Original stage-two eligibility/evidence split.",
+      "baseline_defect": "Output default owns config gates while hint helpers own response evidence.",
+      "criterion": "Provide hint eligibility and evidence composition without report/progress obligations.",
+      "acceptance": "Keep order rate-limit, GitHub, redirects, rejected codes, unfollowed redirects, root-relative, fragment-method. Gates: hosts empty, no token, verbosity below Info, default accepted codes, redirect max<=default; pair with original evidence predicates and messages. Last two retain their own predicates. A shared coordinator plus focused predicates is valid; all need not move together. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/hints.rs",
+          "symbol": "handle_stats,collect_hints",
+          "detail": "Output default owns config gates while hint helpers own response evidence.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Output default owns config gates while hint helpers own response evidence.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "hint_emission",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 hint verbosity/prefix output.",
+      "baseline_defect": "Hint printing obtains full stats formatter despite only needing mode, hints and stderr.",
+      "criterion": "Make hint presentation independently usable from report serialization and progress.",
+      "acceptance": "Retrieve hints before low-level<=Error return, preserve mode prefixes Emoji/Color/Plain/Task and order to stderr. No Task progress fallback here; color behavior follows original hint mode. Policy collection and presentation can share a focused hint service. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/mod.rs",
+          "symbol": "output_hints",
+          "detail": "Hint printing obtains full stats formatter despite only needing mode, hints and stderr.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Hint printing obtains full stats formatter despite only needing mode, hints and stderr.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "report_destination",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 real file/stdout emission.",
+      "baseline_defect": "Every OutputFormatter inherits destination writing and report formatting requirement.",
+      "criterion": "Keep destination emission available through focused report/output coordination.",
+      "acceptance": "Format first, propagate formatting failure before IO, exact file write with Cannot write status output to file context, stdout adds newline. Preserve supported main sequence; no new buffering/destination side effects or per-response writer requirement. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/mod.rs",
+          "symbol": "output_statistics,write_statistics",
+          "detail": "Every OutputFormatter inherits destination writing and report formatting requirement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Every OutputFormatter inherits destination writing and report formatting requirement.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "report_delegate",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1 report factory and retry delegate reentry.",
+      "baseline_defect": "Output::format passes broad self to stats delegates; text adapters reenter grouping/annotation/host methods, default falls back to narrow format.",
+      "criterion": "Narrow report composition dependencies in both direct and delegated paths.",
+      "acceptance": "Compact/Detailed/Markdown obtain needed section services without progress/hints/destination obligations; direct format and Display remain usable. Preserve JSON full OutputStats and JUnit response-focused serializers via equivalent default forwarding. Shared concrete delegate and focused context are valid; no recursion through fallback or forced format-specific service classes. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/mod.rs",
+          "symbol": "format,format_with_output",
+          "detail": "Output::format passes broad self to stats delegates; text adapters reenter grouping/annotation/host methods, default falls back to narrow format.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/mod.rs",
+          "symbol": "format,format_with_output",
+          "detail": "Output::format passes broad self to stats delegates; text adapters reenter grouping/annotation/host methods, default falls back to narrow format.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/compact.rs",
+          "symbol": "format,format_with_output",
+          "detail": "Output::format passes broad self to stats delegates; text adapters reenter grouping/annotation/host methods, default falls back to narrow format.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/detailed.rs",
+          "symbol": "format,format_with_output",
+          "detail": "Output::format passes broad self to stats delegates; text adapters reenter grouping/annotation/host methods, default falls back to narrow format.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/markdown.rs",
+          "symbol": "format,format_with_output",
+          "detail": "Output::format passes broad self to stats delegates; text adapters reenter grouping/annotation/host methods, default falls back to narrow format.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Output::format passes broad self to stats delegates; text adapters reenter grouping/annotation/host methods, default falls back to narrow format.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "response_groups",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry shared selection/grouping.",
+      "baseline_defect": "Compact/Detailed ask union default to merge/select/sort response maps.",
+      "criterion": "Make response grouping a focused data/report capability for existing consumers.",
+      "acceptance": "Compact errors+timeouts+unsupported, Detailed errors+timeouts with ignored separate; preserve same-source merge and natural source/response ordering, compact issue count/suggestions and detailed local sections. Returning ready groups or direct shared helper both valid; no sorting change. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/compact.rs",
+          "symbol": "response_groups,sort_stats_iter",
+          "detail": "Compact/Detailed ask union default to merge/select/sort response maps.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/detailed.rs",
+          "symbol": "response_groups,sort_stats_iter",
+          "detail": "Compact/Detailed ask union default to merge/select/sort response maps.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/mod.rs",
+          "symbol": "response_groups,sort_stats_iter",
+          "detail": "Compact/Detailed ask union default to merge/select/sort response maps.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Compact/Detailed ask union default to merge/select/sort response maps.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "markdown_annotation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R3 Markdown and retry split annotation/render.",
+      "baseline_defect": "Span/details prepared by broad default while per-map consumer composes code/URI text.",
+      "criterion": "Give Markdown response annotation/rendering focused dependencies.",
+      "acceptance": "Preserve optional span after URI and details separator; omit details only Status::Ok(HTTP200), not all success or cached status. Errors/timeouts/ignored sections and direct helper share policy. Entire focused Markdown response formatter is valid; no required tuple return. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/markdown.rs",
+          "symbol": "response_annotation,markdown_response_with_output",
+          "detail": "Span/details prepared by broad default while per-map consumer composes code/URI text.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Span/details prepared by broad default while per-map consumer composes code/URI text.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "host_counts",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry Compact borrowed calculation callback.",
+      "baseline_defect": "Host count arithmetic and standalone status_summary construct/bind broad output object.",
+      "criterion": "Make host failure/unknown classification independently available to host consumers.",
+      "acceptance": "Failed=rate_limited+client_errors+server_errors; unknown saturating total-(success+failed), zero markers omitted by layout. Direct standalone helper and callback-based adapter both qualify without union requirements. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/host_stats/mod.rs",
+          "symbol": "host_counts,status_summary",
+          "detail": "Host count arithmetic and standalone status_summary construct/bind broad output object.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/host_stats/compact.rs",
+          "symbol": "host_counts,status_summary",
+          "detail": "Host count arithmetic and standalone status_summary construct/bind broad output object.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Host count arithmetic and standalone status_summary construct/bind broad output object.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "host_rates",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry rates callback into two layouts.",
+      "baseline_defect": "Detailed/Markdown borrow union-bound percentage calculation.",
+      "criterion": "Provide focused host success/cache-rate calculation or equivalent self-contained layout inputs.",
+      "acceptance": "Preserve underlying ratios and exactly one *100 conversion, zero/cache conditional display and one-decimal percent formatting. Borrowed callback lifetime may remain; no compulsory snapshot or broad context. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/host_stats/detailed.rs",
+          "symbol": "host_rates",
+          "detail": "Detailed/Markdown borrow union-bound percentage calculation.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/host_stats/markdown.rs",
+          "symbol": "host_rates",
+          "detail": "Detailed/Markdown borrow union-bound percentage calculation.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Detailed/Markdown borrow union-bound percentage calculation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "host_layouts",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 optional host sections.",
+      "baseline_defect": "Report host rendering routes through union style dispatcher requiring response/report/progress duties.",
+      "criterion": "Make optional host section rendering usable with focused host capabilities.",
+      "acceptance": "Preserve None absence versus Some(empty) section behavior, sorted host order, compact heading widths, detailed conditional fields and Markdown table/median N/A semantics. Report newline concatenation stays unchanged. Shared HostFormat dispatcher is valid behind focused contract; no need separate factory per layout. Focused traits, functions, callbacks, composed services or existing narrow formatter reuse qualify. One shared concrete implementation may support several roles without exposing their union to each consumer. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Declaring narrow traits while the actual factory/client path still requires the full OutputFormatter and unrelated initialization is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/host_stats/compact.rs",
+          "symbol": "format_hosts",
+          "detail": "Report host rendering routes through union style dispatcher requiring response/report/progress duties.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/host_stats/detailed.rs",
+          "symbol": "format_hosts",
+          "detail": "Report host rendering routes through union style dispatcher requiring response/report/progress duties.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/host_stats/markdown.rs",
+          "symbol": "format_hosts",
+          "detail": "Report host rendering routes through union style dispatcher requiring response/report/progress duties.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/compact.rs",
+          "symbol": "format_hosts",
+          "detail": "Report host rendering routes through union style dispatcher requiring response/report/progress duties.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/detailed.rs",
+          "symbol": "format_hosts",
+          "detail": "Report host rendering routes through union style dispatcher requiring response/report/progress duties.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/stats/markdown.rs",
+          "symbol": "format_hosts",
+          "detail": "Report host rendering routes through union style dispatcher requiring response/report/progress duties.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lychee-bin/src/formatters/output.rs",
+          "symbol": "OutputFormatter,Output",
+          "detail": "Report host rendering routes through union style dispatcher requiring response/report/progress duties.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "hello_rust_lychee_isp",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "weighting": "equal per item; each of the 12 items has weight 1/12",
+    "excluded_from_scoring": [
+      "Unchanged empty post.diff",
+      "Pre-existing output correctness and test passage",
+      "Rust compilation fixes",
+      "Cosmetic renaming",
+      "Historical intentions absent from the final patch"
+    ]
+  }
+}

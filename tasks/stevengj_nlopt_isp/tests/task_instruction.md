@@ -1,0 +1,3 @@
+Refactor the internal callback handling so clients depend only on the capabilities they use. Preserve supported public APIs, scalar and vector callback behavior, optimization results, stopping behavior and resource ownership. Keep coordinate preparation, constraint output conventions and optional preconditioning correct across nested optimizers. Keep the original tests and build configuration unchanged. Any coherent design satisfying these requirements is acceptable.
+
+Scalar/vector callbacks, dimensional reduction, maximization and optional preconditioning share a broad internal service. Narrow the dependencies of nested optimizers and lifecycle consumers without changing callback order, constraint output conventions or ownership of memoized state.

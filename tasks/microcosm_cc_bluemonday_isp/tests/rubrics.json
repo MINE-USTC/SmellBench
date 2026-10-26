@@ -1,0 +1,416 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "microcosm_cc_bluemonday_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "token_input",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round1 and stage2 tokenizer uses whole binding as Reader.",
+      "baseline_defect": "Token construction/iteration requires output and all policy services.",
+      "criterion": "Let token input clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Token source needs Next/Token/Err or direct tokenizer, underlying Reader only Read. Preserve EOF as success/other read errors and laziness; stream orchestration may naturally coordinate several focused collaborators. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "sanitizeStream,tokenizerFor",
+          "detail": "Token construction/iteration requires output and all policy services.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "sanitizeStream,tokenizerFor",
+          "detail": "Token construction/iteration requires output and all policy services.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "string_output",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round1/default writer forwarding stage2.",
+      "baseline_defect": "Output adaptation shares unrelated policy/reader contract.",
+      "criterion": "Let string output clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Honor original stringWriterWriter optional capability then byte fallback exactly; preserve return counts/errors and existing call-site propagation, including ignored comment WriteString error. No added short-write policy, Flush/Close/cancel or full buffering requirement. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "WriteString,sanitizeStream",
+          "detail": "Output adaptation shares unrelated policy/reader contract.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "WriteString,sanitizeStream",
+          "detail": "Output adaptation shares unrelated policy/reader contract.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "attribute_admission",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round1 and retry local/global decision.",
+      "baseline_defect": "Attribute client and bound default share universal sanitizerStream.",
+      "criterion": "Let attribute admission clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Data attrs bypass if enabled; style special-case before ordinary attr admission, empty sanitized style omitted. Local rules before global fallback; nil regex allows, regex matches value, firstaccept stops, keep order/duplicates and empty-cleanattrs early return. Narrow acceptance operation sufficient; no need expose raw collections. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "sanitizeAttrs,acceptAttribute",
+          "detail": "Attribute client and bound default share universal sanitizerStream.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "sanitizeAttrs,acceptAttribute",
+          "detail": "Attribute client and bound default share universal sanitizerStream.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "css_rule_selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2 local/regex/global/default lookup.",
+      "baseline_defect": "CSS availability and rule selection depend on all stream capabilities.",
+      "criterion": "Let css rule selection clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Global or nonempty exact makes style available, else any matched nonempty pattern. Nonempty exact styles suppress pattern aggregation, empty exact permits allmatching pattern append. Preserve map iteration semantics, do not introduce priority by sorting; can share CSS owner with admission. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "stylePoliciesExist,styleRules",
+          "detail": "CSS availability and rule selection depend on all stream capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "stylePoliciesExist,styleRules",
+          "detail": "CSS availability and rule selection depend on all stream capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "css_declaration_admission",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2 plus retry handler/default execution.",
+      "baseline_defect": "CSS parsing and local/global callbacks require universal binding.",
+      "criterion": "Let css declaration admission clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Local then lazily read current global rules after local rejects, preserving callbacks modifying globals. Within each rule handler takes precedence over enum then regex; failing handler does not try that same rule enum. Normalize property/value/vendor prefix for matching but emit original Property/Value. First successful rule stops, preserve declaration order/error/empty results. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "sanitizeStyles,acceptStyle",
+          "detail": "CSS parsing and local/global callbacks require universal binding.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "sanitizeStyles,acceptStyle",
+          "detail": "CSS parsing and local/global callbacks require universal binding.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "url_preparation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2/stage2 parse preparation boundary.",
+      "baseline_defect": "URL trim/data normalization depends on reader/writer/other policies.",
+      "criterion": "Let url preparation clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Disabled parse returns raw untouched with nil parsed; enabled trims then rejects space/tab/newline unless data:, matching base64 prefix permits CR/LF removal before Parse. Parse failure false; keep exact normalization checks, do not add broad whitespace/security restrictions. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "validURL,prepareURL",
+          "detail": "URL trim/data normalization depends on reader/writer/other policies.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "validURL,prepareURL",
+          "detail": "URL trim/data normalization depends on reader/writer/other policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "url_authorization",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2/retry exact/regex policy dispatch.",
+      "baseline_defect": "Scheme defaults and callback application span broad binding/client.",
+      "criterion": "Let url authorization clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Exact scheme entry wins including empty allow-all; regex only when absent, matchedregex allow. Callback order/shortcircuit and mutated URL.String result preserved; missing scheme accepts only nonempty URL when relative enabled. Coherent complete URL validator valid, no required parsed-result tuple. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "validURL,resolveScheme",
+          "detail": "Scheme defaults and callback application span broad binding/client.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "validURL,resolveScheme",
+          "detail": "Scheme defaults and callback application span broad binding/client.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "element_admission",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 start/end/selfclosing exact/regex selection.",
+      "baseline_defect": "Element clients require unrelated CSS/URL/output methods.",
+      "criterion": "Let element admission clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Exact element presence wins even empty attr map; start/selfclosing merge all matching regex attr policies, end path only needs match existence and its own skip-content effects. Preserve current regex map order, no false identical tag-path policy; capability may return complete decision. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "matchElementRegex,sanitizeStream",
+          "detail": "Element clients require unrelated CSS/URL/output methods.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "matchElementRegex,sanitizeStream",
+          "detail": "Element clients require unrelated CSS/URL/output methods.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "no_attribute_and_skip_policy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 no-attribute defaults and skipped-content lifecycle.",
+      "baseline_defect": "Tag omission/skip matching tied to universal interface.",
+      "criterion": "Let no attribute and skip policy clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Exact noattrs membership then regex; stripped start pushes closing-tag stack, matching end consumes stack and optional spaces. Disallowed content skip depth and matching-regex end effects retained; self-closing omission does not invent stack entry. Shared coherent element owner may satisfy element admission too. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "allowNoAttrs,sanitizeStream",
+          "detail": "Tag omission/skip matching tied to universal interface.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "allowNoAttrs,sanitizeStream",
+          "detail": "Tag omission/skip matching tied to universal interface.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "token_emission_options",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 comment/unsafe/space flags.",
+      "baseline_defect": "Basic token output options are bundled with CSS/URL/security rules.",
+      "criterion": "Let token emission options clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Read live flags at existing decision points; unsafe script/style omission and raw-text exception, ordinary escaped text, default ignored comments/doctype and added spaces retained. This is a narrow emission policy, no one-interface-perflag requirement. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "sanitizeStream,commentsAllowed,unsafeAllowed,spacesAdded",
+          "detail": "Basic token output options are bundled with CSS/URL/security rules.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "sanitizeStream,commentsAllowed,unsafeAllowed,spacesAdded",
+          "detail": "Basic token output options are bundled with CSS/URL/security rules.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "source_rewriting",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 src callbacks.",
+      "baseline_defect": "Source rewriting routed through unrelated stream policy.",
+      "criterion": "Let source rewriting clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Only designated source attrs after URL validation; preserve re-read callback, parsed URL mutation then String output and existing parse-error reporting. URL callbacks may change rewriter before this stage; no eager capture of policy. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "sanitizeAttrs,sourceRewriter",
+          "detail": "Source rewriting routed through unrelated stream policy.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "sanitizeAttrs,sourceRewriter",
+          "detail": "Source rewriting routed through unrelated stream policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "link_decoration",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 live rel/target options.",
+      "baseline_defect": "Rel/target transformation consumes broad stream.",
+      "criterion": "Let link decoration clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Read live options after URL callbacks, href presence and parsed host decide fully-qualified rules. Preserve nofollow/noreferrer substring checks and append spacing, a-only target replacement/insertion, follow-up noopener pass for observed targetBlank inside original gate. No new unconditional noopener transformation; preserve attribute order. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "sanitizeAttrs,linkOptions",
+          "detail": "Rel/target transformation consumes broad stream.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "sanitizeAttrs,linkOptions",
+          "detail": "Rel/target transformation consumes broad stream.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "crossorigin_decoration",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 media/link origin option.",
+      "baseline_defect": "Crossorigin policy coupled to all stream services and unrelated link flags.",
+      "criterion": "Let crossorigin decoration clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Live flag and nonemptycleanattrs gate; only audio/img/link/script/video; set existing values anonymous or append once absent. A shared security owner legal; do not broaden element set or apply after earlyemptyreturn. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "sanitizeAttrs,linkOptions",
+          "detail": "Crossorigin policy coupled to all stream services and unrelated link flags.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "sanitizeAttrs,linkOptions",
+          "detail": "Crossorigin policy coupled to all stream services and unrelated link flags.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "iframe_sandbox",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 sandbox values.",
+      "baseline_defect": "Iframe policy retrieval needs fullstream implementation.",
+      "criterion": "Let iframe sandbox clients depend on the relevant capability or coherent concrete policy without the full sanitizerStream contract.",
+      "acceptance": "Nil map disables, nonnil empty map enforces empty sandbox. Filter strings.Fields tokens through live map, firstoccurrence order and dedup perattribute, append empty sandbox if absent; preserve upstream emptyattrs earlyreturn. No snapshot that loses callback policy changes. Public Policy and Reader/Writer compatibility remain unchanged. Narrow interfaces, policy methods, callbacks or pure helpers qualify; a coherent owner may serve several items. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Aliases, forwarding wrappers or adapter getters that retain the same universal client dependency are insufficient; do not invent public implementation or close/flush obligations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "sanitize.go",
+          "symbol": "sanitizeAttrs,sandboxValues",
+          "detail": "Iframe policy retrieval needs fullstream implementation.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "stream.go",
+          "symbol": "sanitizeAttrs,sandboxValues",
+          "detail": "Iframe policy retrieval needs fullstream implementation.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "microcosm_cc_bluemonday_isp",
+    "rubric_status": "ready",
+    "aggregation": "equal_weight",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "excluded_from_scoring": [
+      "Passing existing tests, compiling, and preserving clean sanitizer behavior are controls, not independent repair credits.",
+      "No close, flush, cancellation, or external stream implementor protocol exists in the matching source; none is scored.",
+      "The empty post.diff introduces no obligation."
+    ]
+  }
+}

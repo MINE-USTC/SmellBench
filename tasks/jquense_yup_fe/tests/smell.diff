@@ -1,0 +1,663 @@
+diff --git a/src/Condition.ts b/src/Condition.ts
+index 6a3676d..9225df4 100644
+--- a/src/Condition.ts
++++ b/src/Condition.ts
+@@ -1,5 +1,5 @@
+ import isSchema from './util/isSchema';
+-import Reference from './Reference';
++import Reference, { referenceGetValue } from './Reference';
+ import type { ISchema } from './types';
+ 
+ export type ConditionBuilder<T extends ISchema<any, any>> = (
+@@ -55,10 +55,17 @@ class Condition<TIn extends ISchema<any, any> = ISchema<any, any>> {
+   }
+ 
+   resolve(base: TIn, options: ResolveOptions) {
+-    let values = this.refs.map((ref) =>
+-      // TODO: ? operator here?
+-      ref.getValue(options?.value, options?.parent, options?.context),
+-    );
++    let values = this.refs.map((ref) => {
++      const value = options?.value;
++      const parent = options?.parent;
++      const context = options?.context;
++      if (ref.getValue !== referenceGetValue)
++        return ref.getValue(value, parent, context);
++      let result = ref.isContext ? context : ref.isValue ? value : parent;
++      if (ref.getter) result = ref.getter(result || {});
++      if (ref.map) result = ref.map(result);
++      return result;
++    });
+ 
+     let schema = this.fn(values, base, options);
+ 
+@@ -78,3 +85,5 @@ class Condition<TIn extends ISchema<any, any> = ISchema<any, any>> {
+ }
+ 
+ export default Condition;
++
++export const conditionResolve = Condition.prototype.resolve;
+diff --git a/src/Lazy.ts b/src/Lazy.ts
+index eab4a61..157e465 100644
+--- a/src/Lazy.ts
++++ b/src/Lazy.ts
+@@ -16,7 +16,7 @@ import type {
+ } from './schema';
+ import { Flags, Maybe, ResolveFlags } from './util/types';
+ import ValidationError from './ValidationError';
+-import Schema from './schema';
++import Schema, { schemaNestedTest, schemaValidate } from './schema';
+ import {
+   issuesFromValidationError,
+   StandardResult,
+@@ -121,11 +121,46 @@ class Lazy<T, TContext = AnyObject, TFlags extends Flags = any>
+     let { key, index, parent, options } = config;
+     let value = parent[index ?? key!];
+ 
+-    return this._resolve(value, {
++    const schema = this._resolve(value, {
+       ...options,
+       value,
+       parent,
+-    }).asNestedTest(config);
++    });
++    if (schema.asNestedTest !== schemaNestedTest) return schema.asNestedTest(config);
++    const k = key ?? index;
++    if (k == null)
++      throw TypeError('Must include `key` or `index` for nested validations');
++    const isIndex = typeof k === 'number';
++    const nestedValue = parent[k];
++    const nestedOptions = {
++      ...options,
++      strict: true,
++      parent,
++      value: nestedValue,
++      originalValue: config.originalParent[k],
++      key: undefined,
++      [isIndex ? 'index' : 'key']: k,
++      path: isIndex || k.includes('.')
++        ? `${config.parentPath || ''}[${isIndex ? k : `"${k}"`}]`
++        : (config.parentPath ? `${config.parentPath}.` : '') + key,
++    };
++    return (_: any, panic: any, next: any) => {
++      const child = schema.resolve(nestedOptions) as any;
++      if (child._validate !== schemaValidate)
++        return child._validate(nestedValue, nestedOptions, panic, next);
++      const run = {
++        path: nestedOptions.path,
++        value: nestedValue,
++        originalValue: nestedOptions.originalValue === undefined
++          ? nestedValue : nestedOptions.originalValue,
++        options: nestedOptions,
++        tests: Object.values(child.internalTests).filter(Boolean),
++      };
++      child.runTests(run, panic, (errors: ValidationError[]) => {
++        if (errors.length) return next(errors, nestedValue);
++        child.runTests({ ...run, tests: child.tests }, panic, next);
++      });
++    };
+   }
+ 
+   validate(value: any, options?: ValidateOptions<TContext>): Promise<T> {
+diff --git a/src/Reference.ts b/src/Reference.ts
+index c04ff16..7ee5443 100644
+--- a/src/Reference.ts
++++ b/src/Reference.ts
+@@ -95,3 +95,7 @@ export default class Reference<TValue = unknown> {
+ 
+ // @ts-ignore
+ Reference.prototype.__isYupRef = true;
++
++export const referenceGetValue = Reference.prototype.getValue;
++export const referenceCast = Reference.prototype.cast;
++export const referenceDescribe = Reference.prototype.describe;
+diff --git a/src/ValidationError.ts b/src/ValidationError.ts
+index 2847dc7..8286f92 100644
+--- a/src/ValidationError.ts
++++ b/src/ValidationError.ts
+@@ -122,3 +122,5 @@ export default class ValidationError extends Error {
+ 
+   [Symbol.toStringTag] = 'Error';
+ }
++
++export const formatValidationError = ValidationError.formatError;
+diff --git a/src/array.ts b/src/array.ts
+index 29f030b..122203a 100644
+--- a/src/array.ts
++++ b/src/array.ts
+@@ -22,6 +22,8 @@ import type {
+   Concat,
+ } from './util/types';
+ import Schema, {
++  schemaNestedTest,
++  schemaValidate,
+   RunTest,
+   SchemaInnerTypeDescription,
+   SchemaSpec,
+@@ -126,6 +128,39 @@ export default class ArraySchema<
+       // #950 Ensure that sparse array empty slots are validated
+       let tests: RunTest[] = new Array(value.length);
+       for (let index = 0; index < value.length; index++) {
++        if (innerType.asNestedTest === schemaNestedTest) {
++          const nestedValue = value[index];
++          const nestedOptions = {
++            ...options,
++            strict: true,
++            parent: value,
++            value: nestedValue,
++            originalValue: (options.originalValue ?? _value)[index],
++            key: undefined,
++            index,
++            path: `${options.path || ''}[${index}]`,
++          };
++          tests[index] = (_, panic, next) => {
++            const child = innerType!.resolve(nestedOptions) as any;
++            if (child._validate !== schemaValidate) {
++              child._validate(nestedValue, nestedOptions, panic, next);
++              return;
++            }
++            const run = {
++              path: nestedOptions.path,
++              value: nestedValue,
++              originalValue: nestedOptions.originalValue === undefined
++                ? nestedValue : nestedOptions.originalValue,
++              options: nestedOptions,
++              tests: Object.values(child.internalTests).filter(Boolean),
++            };
++            child.runTests(run, panic, (errors: ValidationError[]) => {
++              if (errors.length) return (next as any)(errors, nestedValue);
++              child.runTests({ ...run, tests: child.tests }, panic, next);
++            });
++          };
++          continue;
++        }
+         tests[index] = innerType!.asNestedTest({
+           options,
+           index,
+diff --git a/src/object.ts b/src/object.ts
+index 94dc817..4232449 100644
+--- a/src/object.ts
++++ b/src/object.ts
+@@ -8,8 +8,8 @@ import sortFields from './util/sortFields';
+ import sortByKeyOrder from './util/sortByKeyOrder';
+ import { DefaultThunk, InternalOptions, ISchema, Message } from './types';
+ import type { Defined, NotNull, _ } from './util/types';
+-import Reference from './Reference';
+-import Schema, { SchemaObjectDescription, SchemaSpec } from './schema';
++import Reference, { referenceGetValue, referenceCast } from './Reference';
++import Schema, { schemaNestedTest, schemaValidate, SchemaObjectDescription, SchemaSpec } from './schema';
+ import { ResolveOptions } from './Condition';
+ import type {
+   AnyObject,
+@@ -203,10 +203,25 @@ export default class ObjectSchema<
+           continue;
+         }
+ 
+-        fieldValue =
+-          !options.__validating || !strict
+-            ? (field as ISchema<any>).cast(inputValue, innerOptions)
+-            : inputValue;
++        if (!options.__validating || !strict) {
++          if (
++            field instanceof Reference &&
++            field.cast === referenceCast &&
++            field.getValue === referenceGetValue
++          ) {
++            fieldValue = field.isContext
++              ? innerOptions.context
++              : field.isValue
++              ? inputValue
++              : innerOptions.parent;
++            if (field.getter) fieldValue = field.getter(fieldValue || {});
++            if (field.map) fieldValue = field.map(fieldValue);
++          } else {
++            fieldValue = (field as ISchema<any>).cast(inputValue, innerOptions);
++          }
++        } else {
++          fieldValue = inputValue;
++        }
+ 
+         if (fieldValue !== undefined) {
+           intermediateValue[prop] = fieldValue;
+@@ -260,6 +275,40 @@ export default class ObjectSchema<
+           continue;
+         }
+ 
++        if (field.asNestedTest === schemaNestedTest) {
++          const nestedValue = value[key];
++          const nestedOptions = {
++            ...options,
++            strict: true,
++            parent: value,
++            value: nestedValue,
++            originalValue: originalValue[key],
++            key,
++            path: key.includes('.')
++              ? `${options.path || ''}["${key}"]`
++              : (options.path ? `${options.path}.` : '') + key,
++          };
++          tests.push((_, panic, next) => {
++            const child = field.resolve(nestedOptions) as any;
++            if (child._validate !== schemaValidate) {
++              child._validate(nestedValue, nestedOptions, panic, next);
++              return;
++            }
++            const run = {
++              path: nestedOptions.path,
++              value: nestedValue,
++              originalValue: nestedOptions.originalValue === undefined
++                ? nestedValue : nestedOptions.originalValue,
++              options: nestedOptions,
++              tests: Object.values(child.internalTests).filter(Boolean),
++            };
++            child.runTests(run, panic, (errors: ValidationError[]) => {
++              if (errors.length) return (next as any)(errors, nestedValue);
++              child.runTests({ ...run, tests: child.tests }, panic, next);
++            });
++          });
++          continue;
++        }
+         tests.push(
+           field.asNestedTest({
+             options,
+diff --git a/src/schema.ts b/src/schema.ts
+index 2d20330..2bc3ff2 100644
+--- a/src/schema.ts
++++ b/src/schema.ts
+@@ -1,5 +1,6 @@
+ import { mixed as locale } from './locale';
+ import Condition, {
++  conditionResolve,
+   ConditionBuilder,
+   ConditionConfig,
+   ResolveOptions,
+@@ -14,7 +15,8 @@ import createValidation, {
+   resolveParams,
+ } from './util/createValidation';
+ import printValue from './util/printValue';
+-import Ref from './Reference';
++import isSchema from './util/isSchema';
++import Ref, { referenceGetValue, referenceDescribe } from './Reference';
+ import { getIn } from './util/reach';
+ import {
+   ValidateOptions,
+@@ -28,7 +30,11 @@ import {
+ } from './types';
+ 
+ import ValidationError from './ValidationError';
+-import ReferenceSet from './util/ReferenceSet';
++import ReferenceSet, {
++  referenceSetMerge,
++  referenceSetDescribe,
++  referenceSetResolveAll,
++} from './util/ReferenceSet';
+ import Reference from './Reference';
+ import isAbsent from './util/isAbsent';
+ import type { Flags, Maybe, ResolveFlags, _ } from './util/types';
+@@ -298,14 +304,20 @@ export default abstract class Schema<
+ 
+     // manually merge the blacklist/whitelist (the other `schema` takes
+     // precedence in case of conflicts)
+-    combined._whitelist = base._whitelist.merge(
+-      schema._whitelist,
+-      schema._blacklist,
+-    );
+-    combined._blacklist = base._blacklist.merge(
+-      schema._blacklist,
+-      schema._whitelist,
+-    );
++    if (base._whitelist.merge === referenceSetMerge) {
++      combined._whitelist = base._whitelist.clone();
++      schema._whitelist.forEach((value) => combined._whitelist.add(value));
++      schema._blacklist.forEach((value) => combined._whitelist.delete(value));
++    } else {
++      combined._whitelist = base._whitelist.merge(schema._whitelist, schema._blacklist);
++    }
++    if (base._blacklist.merge === referenceSetMerge) {
++      combined._blacklist = base._blacklist.clone();
++      schema._blacklist.forEach((value) => combined._blacklist.add(value));
++      schema._whitelist.forEach((value) => combined._blacklist.delete(value));
++    } else {
++      combined._blacklist = base._blacklist.merge(schema._blacklist, schema._whitelist);
++    }
+ 
+     // start with the current tests
+     combined.tests = base.tests;
+@@ -341,13 +353,68 @@ export default abstract class Schema<
+ 
+       schema = schema.clone();
+       schema.conditions = [];
+-      schema = conditions.reduce(
+-        (prevSchema, condition) =>
+-          condition.resolve(prevSchema, options) as any,
+-        schema,
+-      ) as any as this;
+-
+-      schema = schema.resolve(options);
++      const pending: Array<{ conditions: Condition[]; index: number; length: number }> = [];
++      let index = 0;
++      let length = conditions.length;
++      while (true) {
++        if (index >= length) {
++          if (schema.resolve !== schemaResolve) {
++            schema = schema.resolve(options);
++          } else if (schema.conditions.length) {
++            conditions = schema.conditions;
++            schema = schema.clone();
++            schema.conditions = [];
++            index = 0;
++            length = conditions.length;
++            continue;
++          }
++          const continuation = pending.pop();
++          if (!continuation) break;
++          conditions = continuation.conditions;
++          index = continuation.index;
++          length = continuation.length;
++          continue;
++        }
++        if (!(index in conditions)) {
++          index++;
++          continue;
++        }
++        const condition = conditions[index++];
++        const prevSchema = schema;
++          if (condition.resolve !== conditionResolve)
++          {
++            schema = condition.resolve(prevSchema, options) as any;
++            continue;
++          }
++          const values = condition.refs.map((ref) => {
++            const value = options?.value;
++            const parent = options?.parent;
++            const context = options?.context;
++            if (ref.getValue !== referenceGetValue)
++              return ref.getValue(value, parent, context as any);
++            let result = ref.isContext ? context : ref.isValue ? value : parent;
++            if (ref.getter) result = ref.getter(result || {});
++            if (ref.map) result = ref.map(result);
++            return result;
++          });
++          const selected = condition.fn(values, prevSchema, options);
++          if (selected === undefined || selected === prevSchema) continue;
++          if (!isSchema(selected))
++            throw new TypeError('conditions must return a schema object');
++          if (selected.resolve !== schemaResolve) {
++            schema = selected.resolve(options) as any;
++          } else {
++            schema = selected as this;
++            if (schema.conditions.length) {
++              pending.push({ conditions, index, length });
++              conditions = schema.conditions;
++              schema = schema.clone();
++              schema.conditions = [];
++              index = 0;
++              length = conditions.length;
++            }
++          }
++      }
+     }
+ 
+     return schema;
+@@ -886,9 +953,21 @@ export default abstract class Schema<
+       skipAbsent: true,
+       test(value) {
+         let valids = (this.schema as Schema)._whitelist;
+-        let resolved = valids.resolveAll(this.resolve);
++        let resolved: unknown[] = [];
++        let matches = false;
++        if (valids.resolveAll !== referenceSetResolveAll) {
++          resolved = valids.resolveAll(this.resolve);
++          matches = resolved.includes(value);
++        } else {
++          for (const item of valids.values()) {
++            const candidate = this.resolve(item);
++            resolved.push(candidate);
++            if (candidate === value || (candidate !== candidate && value !== value))
++              matches = true;
++          }
++        }
+ 
+-        return resolved.includes(value)
++        return matches
+           ? true
+           : this.createError({
+               params: {
+@@ -917,8 +996,20 @@ export default abstract class Schema<
+       name: 'notOneOf',
+       test(value) {
+         let invalids = (this.schema as Schema)._blacklist;
+-        let resolved = invalids.resolveAll(this.resolve);
+-        if (resolved.includes(value))
++        let resolved: unknown[] = [];
++        let matches = false;
++        if (invalids.resolveAll !== referenceSetResolveAll) {
++          resolved = invalids.resolveAll(this.resolve);
++          matches = resolved.includes(value);
++        } else {
++          for (const item of invalids.values()) {
++            const candidate = this.resolve(item);
++            resolved.push(candidate);
++            if (candidate === value || (candidate !== candidate && value !== value))
++              matches = true;
++          }
++        }
++        if (matches)
+           return this.createError({
+             params: {
+               values: Array.from(invalids).join(', '),
+@@ -946,6 +1037,20 @@ export default abstract class Schema<
+   describe(options?: ResolveOptions<TContext>) {
+     const next = (options ? this.resolve(options) : this).clone();
+     const { label, meta, optional, nullable } = next.spec;
++    const describeSet = (items: ReferenceSet) => {
++      if (items.describe !== referenceSetDescribe) return items.describe();
++      const entries: Array<unknown | SchemaRefDescription> = [];
++      for (const item of items.values()) {
++        entries.push(
++          Ref.isRef(item)
++            ? item.describe === referenceDescribe
++              ? { type: 'ref', key: item.key }
++              : item.describe()
++            : item,
++        );
++      }
++      return entries;
++    };
+     const description: SchemaDescription = {
+       meta,
+       label,
+@@ -953,8 +1058,8 @@ export default abstract class Schema<
+       nullable,
+       default: next.getDefault(options),
+       type: next.type,
+-      oneOf: next._whitelist.describe(),
+-      notOneOf: next._blacklist.describe(),
++      oneOf: describeSet(next._whitelist),
++      notOneOf: describeSet(next._blacklist),
+       tests: next.tests
+         .filter(
+           (n, idx, list) =>
+@@ -1060,3 +1165,7 @@ for (const alias of ['equals', 'is'] as const)
+ 
+ for (const alias of ['not', 'nope'] as const)
+   Schema.prototype[alias] = Schema.prototype.notOneOf;
++
++export const schemaNestedTest = Schema.prototype.asNestedTest;
++export const schemaResolve = Schema.prototype.resolve;
++export const schemaValidate = (Schema.prototype as any)._validate;
+diff --git a/src/tuple.ts b/src/tuple.ts
+index 54bb8a9..7f99223 100644
+--- a/src/tuple.ts
++++ b/src/tuple.ts
+@@ -18,6 +18,8 @@ import type {
+ } from './util/types';
+ import type { ResolveOptions } from './Condition';
+ import Schema, {
++  schemaNestedTest,
++  schemaValidate,
+   RunTest,
+   SchemaInnerTypeDescription,
+   SchemaSpec,
+@@ -143,6 +145,39 @@ export default class TupleSchema<
+ 
+       let tests: RunTest[] = [];
+       for (let [index, itemSchema] of itemTypes.entries()) {
++        if (itemSchema.asNestedTest === schemaNestedTest) {
++          const nestedValue = value[index];
++          const nestedOptions = {
++            ...options,
++            strict: true,
++            parent: value,
++            value: nestedValue,
++            originalValue: (options.originalValue ?? _value)[index],
++            key: undefined,
++            index,
++            path: `${options.path || ''}[${index}]`,
++          };
++          tests[index] = (_, panic, next) => {
++            const child = itemSchema.resolve(nestedOptions) as any;
++            if (child._validate !== schemaValidate) {
++              child._validate(nestedValue, nestedOptions, panic, next);
++              return;
++            }
++            const run = {
++              path: nestedOptions.path,
++              value: nestedValue,
++              originalValue: nestedOptions.originalValue === undefined
++                ? nestedValue : nestedOptions.originalValue,
++              options: nestedOptions,
++              tests: Object.values(child.internalTests).filter(Boolean),
++            };
++            child.runTests(run, panic, (errors: ValidationError[]) => {
++              if (errors.length) return (next as any)(errors, nestedValue);
++              child.runTests({ ...run, tests: child.tests }, panic, next);
++            });
++          };
++          continue;
++        }
+         tests[index] = itemSchema!.asNestedTest({
+           options,
+           index,
+diff --git a/src/util/ReferenceSet.ts b/src/util/ReferenceSet.ts
+index 6388c08..d42e26d 100644
+--- a/src/util/ReferenceSet.ts
++++ b/src/util/ReferenceSet.ts
+@@ -1,12 +1,18 @@
+ import type { SchemaRefDescription } from '../schema';
+-import Reference from '../Reference';
++import Reference, { referenceDescribe } from '../Reference';
+ 
+ export default class ReferenceSet extends Set<unknown | Reference> {
+   describe() {
+     const description = [] as Array<unknown | SchemaRefDescription>;
+ 
+     for (const item of this.values()) {
+-      description.push(Reference.isRef(item) ? item.describe() : item);
++      if (!Reference.isRef(item)) {
++        description.push(item);
++      } else if (item.describe !== referenceDescribe) {
++        description.push(item.describe());
++      } else {
++        description.push({ type: 'ref', key: item.key });
++      }
+     }
+     return description;
+   }
+@@ -31,3 +37,7 @@ export default class ReferenceSet extends Set<unknown | Reference> {
+     return next;
+   }
+ }
++
++export const referenceSetMerge = ReferenceSet.prototype.merge;
++export const referenceSetDescribe = ReferenceSet.prototype.describe;
++export const referenceSetResolveAll = ReferenceSet.prototype.resolveAll;
+diff --git a/src/util/createValidation.ts b/src/util/createValidation.ts
+index 9243a44..a6d0883 100644
+--- a/src/util/createValidation.ts
++++ b/src/util/createValidation.ts
+@@ -1,5 +1,6 @@
+-import ValidationError from '../ValidationError';
+-import Ref from '../Reference';
++import ValidationError, { formatValidationError } from '../ValidationError';
++import printValue from './printValue';
++import Ref, { referenceGetValue } from '../Reference';
+ import {
+   ValidateOptions,
+   Message,
+@@ -89,8 +90,7 @@ export default function createValidation(config: {
+     } = options;
+     const resolveOptions = { value, parent, context };
+     function createError(overrides: CreateErrorOptions = {}) {
+-      const nextParams = resolveParams(
+-        {
++      const nextParams: ExtraParams = {
+           value,
+           originalValue,
+           label: schema.spec.label,
+@@ -99,16 +99,43 @@ export default function createValidation(config: {
+           disableStackTrace: overrides.disableStackTrace || disableStackTrace,
+           ...params,
+           ...overrides.params,
+-        },
+-        resolveOptions,
+-      );
++        };
++      for (const key of Object.keys(nextParams)) {
++        const item = nextParams[key];
++        if (!Ref.isRef(item)) continue;
++        if (item.getValue !== referenceGetValue) {
++          nextParams[key] = item.getValue(value, parent, context);
++          continue;
++        }
++        let resolved = item.isContext ? context : item.isValue ? value : parent;
++        if (item.getter) resolved = item.getter(resolved || {});
++        nextParams[key] = item.map ? item.map(resolved) : resolved;
++      }
+ 
++      const selectedMessage = overrides.message || message;
++      let formatted;
++      if (ValidationError.formatError !== formatValidationError) {
++        formatted = ValidationError.formatError(selectedMessage, nextParams);
++      } else {
++        const messageParams = {
++          ...nextParams,
++          path: nextParams.label || nextParams.path || 'this',
++          originalPath: nextParams.path,
++        };
++        formatted = typeof selectedMessage === 'string'
++          ? selectedMessage.replace(/\$\{\s*(\w+)\s*\}/g, (_, key) =>
++              printValue((messageParams as Record<string, unknown>)[key]),
++            )
++          : typeof selectedMessage === 'function'
++          ? selectedMessage(messageParams)
++          : selectedMessage;
++      }
+       const error = new ValidationError(
+-        ValidationError.formatError(overrides.message || message, nextParams),
++        formatted,
+         value,
+-        nextParams.path,
++        nextParams.path as string,
+         overrides.type || name,
+-        nextParams.disableStackTrace,
++        nextParams.disableStackTrace as boolean,
+       );
+       error.params = nextParams;
+       return error;
+@@ -188,7 +215,12 @@ export function resolveParams<T extends ExtraParams>(
+ }
+ 
+ function resolveMaybeRef<T>(item: T | Reference<T>, options: ResolveOptions) {
+-  return Ref.isRef(item)
+-    ? item.getValue(options.value, options.parent, options.context)
+-    : item;
++  if (!Ref.isRef(item)) return item;
++  const { value, parent, context } = options;
++  if (item.getValue !== referenceGetValue)
++    return item.getValue(value, parent, context);
++  let result = item.isContext ? context : item.isValue ? value : parent;
++  if (item.getter) result = item.getter(result || {});
++  if (item.map) result = item.map(result);
++  return result as T;
+ }

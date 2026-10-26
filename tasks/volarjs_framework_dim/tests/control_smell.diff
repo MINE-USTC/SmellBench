@@ -1,0 +1,1119 @@
+diff --git a/packages/language-server/lib/utils/snapshotDocument.ts b/packages/language-server/lib/utils/snapshotDocument.ts
+index e1c46a7..566d988 100644
+--- a/packages/language-server/lib/utils/snapshotDocument.ts
++++ b/packages/language-server/lib/utils/snapshotDocument.ts
+@@ -1,7 +1,6 @@
+ import type * as ts from 'typescript';
+ import type * as vscode from 'vscode-languageserver-protocol';
+ import { type Range, TextDocument } from 'vscode-languageserver-textdocument';
+-import { combineChangeRanges } from './combineChangeRanges';
+ 
+ export class SnapshotDocument implements TextDocument {
+ 	private document: TextDocument;
+@@ -56,21 +55,38 @@ export class SnapshotDocument implements TextDocument {
+ 	 */
+ 	update(contentChanges: vscode.TextDocumentContentChangeEvent[], version: number) {
+ 		if (contentChanges.every(change => 'range' in change)) {
+-			let changeRanges: ts.TextChangeRange[] = [];
++			let combined: ts.TextChangeRange | undefined;
+ 			for (const contentChange of contentChanges) {
+ 				if (!('range' in contentChange)) {
+ 					continue;
+ 				}
+ 				const start = this.offsetAt(contentChange.range.start);
+ 				const length = contentChange.rangeLength ?? this.offsetAt(contentChange.range.end) - start;
+-				changeRanges.push({
++				const next = {
+ 					span: { start, length },
+ 					newLength: contentChange.text.length,
+-				});
++				};
+ 				TextDocument.update(this.document, [contentChange], version);
++				if (combined === undefined) {
++					combined = next;
++				}
++				else {
++					const previousStart = combined.span.start;
++					const previousEnd = previousStart + combined.span.length;
++					const previousDiff = combined.newLength - combined.span.length;
++					const changeBegin = previousStart + Math.min(combined.span.length, combined.newLength);
++					const nextStart = next.span.start > changeBegin
++						? Math.max(previousStart, next.span.start - previousDiff) : next.span.start;
++					const nextEndOffset = next.span.start + next.span.length;
++					const nextEnd = nextEndOffset > changeBegin
++						? Math.max(previousStart, nextEndOffset - previousDiff) : nextEndOffset;
++					const start = Math.min(previousStart, nextStart);
++					const length = Math.max(previousEnd, nextEnd) - start;
++					combined = { span: { start, length }, newLength: previousDiff + next.newLength - next.span.length + length };
++				}
+ 			}
+ 			this.snapshots.push({
+-				changeRange: combineChangeRanges(...changeRanges),
++				changeRange: combined!,
+ 				version,
+ 				ref: undefined,
+ 			});
+@@ -82,7 +98,11 @@ export class SnapshotDocument implements TextDocument {
+ 	}
+ 
+ 	getSnapshot() {
+-		this.clearUnreferencedVersions();
++		let firstReferencedIndex = 0;
++		while (firstReferencedIndex < this.snapshots.length - 1 && !this.snapshots[firstReferencedIndex].ref?.deref()) {
++			firstReferencedIndex++;
++		}
++		this.snapshots = this.snapshots.slice(firstReferencedIndex);
+ 
+ 		const lastChange = this.snapshots[this.snapshots.length - 1];
+ 		if (!lastChange.ref) {
+@@ -95,12 +115,29 @@ export class SnapshotDocument implements TextDocument {
+ 					if (!changeRangeCache.has(oldSnapshot)) {
+ 						const oldIndex = this.snapshots.findIndex(change => change.ref?.deref() === oldSnapshot);
+ 						if (oldIndex >= 0) {
+-							const start = oldIndex + 1;
++							const firstIndex = oldIndex + 1;
+ 							const end = this.snapshots.indexOf(lastChange) + 1;
+-							const changeRanges = this.snapshots
+-								.slice(start, end)
+-								.map(change => change.changeRange);
+-							const changeRange = combineChangeRanges(...changeRanges);
++							let changeRange: ts.TextChangeRange | undefined;
++							for (let i = firstIndex; i < end; i++) {
++								const next = this.snapshots[i].changeRange;
++								if (i === firstIndex) {
++									changeRange = next;
++									continue;
++								}
++								const previous = changeRange!;
++								const previousStart = previous.span.start;
++								const previousEnd = previousStart + previous.span.length;
++								const previousDiff = previous.newLength - previous.span.length;
++								const changeBegin = previousStart + Math.min(previous.span.length, previous.newLength);
++								const nextStart = next.span.start > changeBegin
++									? Math.max(previousStart, next.span.start - previousDiff) : next.span.start;
++								const nextEndOffset = next.span.start + next.span.length;
++								const nextEnd = nextEndOffset > changeBegin
++									? Math.max(previousStart, nextEndOffset - previousDiff) : nextEndOffset;
++								const start = Math.min(previousStart, nextStart);
++								const length = Math.max(previousEnd, nextEnd) - start;
++								changeRange = { span: { start, length }, newLength: previousDiff + next.newLength - next.span.length + length };
++							}
+ 							changeRangeCache.set(oldSnapshot, changeRange);
+ 						}
+ 						else {
+@@ -132,11 +170,4 @@ export class SnapshotDocument implements TextDocument {
+ 		];
+ 	}
+ 
+-	private clearUnreferencedVersions() {
+-		let firstReferencedIndex = 0;
+-		while (firstReferencedIndex < this.snapshots.length - 1 && !this.snapshots[firstReferencedIndex].ref?.deref()) {
+-			firstReferencedIndex++;
+-		}
+-		this.snapshots = this.snapshots.slice(firstReferencedIndex);
+-	}
+ }
+diff --git a/packages/language-service/lib/features/provideCompletionItems.ts b/packages/language-service/lib/features/provideCompletionItems.ts
+index a8cb3c1..f791542 100644
+--- a/packages/language-service/lib/features/provideCompletionItems.ts
++++ b/packages/language-service/lib/features/provideCompletionItems.ts
+@@ -10,7 +10,7 @@ import {
+ 	getGeneratedPositions,
+ 	getSourceRange,
+ } from '../utils/featureWorkers';
+-import { transformCompletionList } from '../utils/transform';
++import { transformMarkdown, transformTextEdit } from '../utils/transform';
+ 
+ export interface ServiceCompletionData {
+ 	uri: string;
+@@ -122,12 +122,139 @@ export function register(context: LanguageServiceContext) {
+ 								}
+ 							}
+ 
+-							cacheData.list = transformCompletionList(
+-								cacheData.list,
+-								range => getSourceRange(docs, range),
+-								embeddedDocument,
+-								context,
+-							);
++							{
++								const completionList = cacheData.list;
++								const document = embeddedDocument;
++								const getOtherRange = (range: vscode.Range) => getSourceRange(docs, range);
++								cacheData.list = {
++									isIncomplete: completionList.isIncomplete,
++									itemDefaults: completionList.itemDefaults
++										? {
++											...completionList.itemDefaults,
++											editRange: completionList.itemDefaults.editRange
++												? 'replace' in completionList.itemDefaults.editRange
++													? {
++														insert: getOtherRange(completionList.itemDefaults.editRange.insert),
++														replace: getOtherRange(completionList.itemDefaults.editRange.replace),
++													}
++													: getOtherRange(completionList.itemDefaults.editRange)
++												: undefined,
++										}
++										: undefined,
++									items: completionList.items.map(item => {
++										const mappedItem: vscode.CompletionItem = {
++											...item,
++											additionalTextEdits: item.additionalTextEdits
++												?.map(edit => transformTextEdit(edit, getOtherRange, document))
++												.filter(edit => !!edit),
++											textEdit: undefined,
++										};
++										if (item.textEdit) {
++											const textEdit = item.textEdit;
++											editMapping: {
++												if ('range' in textEdit) {
++													let range = getOtherRange(textEdit.range);
++													if (range) {
++														mappedItem.textEdit = {
++															...textEdit,
++															range,
++														}; break editMapping;
++													}
++
++													{
++														const replaceRange = textEdit.range;
++														let newText = textEdit.newText;
++														if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++															let character = replaceRange.start.character;
++															while (newText.length && replaceRange.end.character > character) {
++																const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++																if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++																	newText = newText.slice(1);
++																	character++;
++																	const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++																	if (otherRange) {
++																		mappedItem.textEdit = { ...textEdit, range: otherRange, newText }; break editMapping;
++																	}
++																}
++																else {
++																	break;
++																}
++															}
++														}
++													}
++												}
++												else if ('replace' in textEdit && 'insert' in textEdit) {
++													const insert = getOtherRange(textEdit.insert);
++													const replace = insert ? getOtherRange(textEdit.replace) : undefined;
++													if (insert && replace) {
++														mappedItem.textEdit = {
++															...textEdit,
++															insert,
++															replace,
++														}; break editMapping;
++													}
++
++													let recoverInsert: vscode.TextEdit | undefined;
++													{
++														const replaceRange = textEdit.insert;
++														let newText = textEdit.newText;
++														if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++															let character = replaceRange.start.character;
++															while (newText.length && replaceRange.end.character > character) {
++																const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++																if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++																	newText = newText.slice(1);
++																	character++;
++																	const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++																	if (otherRange) {
++																		recoverInsert = { newText, range: otherRange };
++																		break;
++																	}
++																}
++																else {
++																	break;
++																}
++															}
++														}
++													}
++													if (recoverInsert) {
++														const replaceRange = textEdit.replace;
++														let newText = textEdit.newText;
++														if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++															let character = replaceRange.start.character;
++															while (newText.length && replaceRange.end.character > character) {
++																const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++																if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++																	newText = newText.slice(1);
++																	character++;
++																	const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++																	if (otherRange) {
++																		if (recoverInsert.newText === newText) {
++																			mappedItem.textEdit = { ...textEdit, insert: recoverInsert.range, replace: otherRange, newText: recoverInsert.newText }; break editMapping;
++																		}
++																		break editMapping;
++																	}
++																}
++																else {
++																	break;
++																}
++															}
++														}
++													}
++												}
++											}
++										}
++										mappedItem.documentation = item.documentation
++											? typeof item.documentation === 'string'
++												? transformMarkdown(item.documentation, context)
++												: item.documentation.kind === 'markdown'
++													? { kind: 'markdown', value: transformMarkdown(item.documentation.value, context) }
++													: item.documentation
++											: undefined;
++										return mappedItem;
++									}),
++								} as vscode.CompletionList;
++							}
+ 						}
+ 					}
+ 				}
+@@ -252,12 +379,136 @@ export function register(context: LanguageServiceContext) {
+ 					}
+ 
+ 					if (docs) {
+-						completionList = transformCompletionList(
+-							completionList,
+-							range => getSourceRange(docs, range, isCompletionEnabled),
+-							document,
+-							context,
+-						);
++						const originalList = completionList;
++						const getOtherRange = (range: vscode.Range) => getSourceRange(docs, range, isCompletionEnabled);
++						completionList = {
++							isIncomplete: originalList.isIncomplete,
++							itemDefaults: originalList.itemDefaults
++								? {
++									...originalList.itemDefaults,
++									editRange: originalList.itemDefaults.editRange
++										? 'replace' in originalList.itemDefaults.editRange
++											? {
++												insert: getOtherRange(originalList.itemDefaults.editRange.insert),
++												replace: getOtherRange(originalList.itemDefaults.editRange.replace),
++											}
++											: getOtherRange(originalList.itemDefaults.editRange)
++										: undefined,
++								}
++								: undefined,
++							items: originalList.items.map(item => {
++								const mappedItem: vscode.CompletionItem = {
++									...item,
++									additionalTextEdits: item.additionalTextEdits
++										?.map(edit => transformTextEdit(edit, getOtherRange, document))
++										.filter(edit => !!edit),
++									textEdit: undefined,
++								};
++								if (item.textEdit) {
++									const textEdit = item.textEdit;
++									editMapping: {
++										if ('range' in textEdit) {
++											let range = getOtherRange(textEdit.range);
++											if (range) {
++												mappedItem.textEdit = {
++													...textEdit,
++													range,
++												}; break editMapping;
++											}
++
++											{
++												const replaceRange = textEdit.range;
++												let newText = textEdit.newText;
++												if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++													let character = replaceRange.start.character;
++													while (newText.length && replaceRange.end.character > character) {
++														const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++														if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++															newText = newText.slice(1);
++															character++;
++															const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++															if (otherRange) {
++																mappedItem.textEdit = { ...textEdit, range: otherRange, newText }; break editMapping;
++															}
++														}
++														else {
++															break;
++														}
++													}
++												}
++											}
++										}
++										else if ('replace' in textEdit && 'insert' in textEdit) {
++											const insert = getOtherRange(textEdit.insert);
++											const replace = insert ? getOtherRange(textEdit.replace) : undefined;
++											if (insert && replace) {
++												mappedItem.textEdit = {
++													...textEdit,
++													insert,
++													replace,
++												}; break editMapping;
++											}
++
++											let recoverInsert: vscode.TextEdit | undefined;
++											{
++												const replaceRange = textEdit.insert;
++												let newText = textEdit.newText;
++												if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++													let character = replaceRange.start.character;
++													while (newText.length && replaceRange.end.character > character) {
++														const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++														if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++															newText = newText.slice(1);
++															character++;
++															const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++															if (otherRange) {
++																recoverInsert = { newText, range: otherRange };
++																break;
++															}
++														}
++														else {
++															break;
++														}
++													}
++												}
++											}
++											if (recoverInsert) {
++												const replaceRange = textEdit.replace;
++												let newText = textEdit.newText;
++												if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++													let character = replaceRange.start.character;
++													while (newText.length && replaceRange.end.character > character) {
++														const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++														if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++															newText = newText.slice(1);
++															character++;
++															const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++															if (otherRange) {
++																if (recoverInsert.newText === newText) {
++																	mappedItem.textEdit = { ...textEdit, insert: recoverInsert.range, replace: otherRange, newText: recoverInsert.newText }; break editMapping;
++																}
++																break editMapping;
++															}
++														}
++														else {
++															break;
++														}
++													}
++												}
++											}
++										}
++									}
++								}
++								mappedItem.documentation = item.documentation
++									? typeof item.documentation === 'string'
++										? transformMarkdown(item.documentation, context)
++										: item.documentation.kind === 'markdown'
++											? { kind: 'markdown', value: transformMarkdown(item.documentation.value, context) }
++											: item.documentation
++									: undefined;
++								return mappedItem;
++							}),
++						} as vscode.CompletionList;
+ 					}
+ 
+ 					lastResult?.results.push({
+diff --git a/packages/language-service/lib/features/provideFoldingRanges.ts b/packages/language-service/lib/features/provideFoldingRanges.ts
+index 1035457..7c19791 100644
+--- a/packages/language-service/lib/features/provideFoldingRanges.ts
++++ b/packages/language-service/lib/features/provideFoldingRanges.ts
+@@ -2,8 +2,7 @@ import { isFoldingRangesEnabled } from '@volar/language-core';
+ import { type URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+-import { documentFeatureWorker, getSourceRange } from '../utils/featureWorkers';
+-import { transformFoldingRanges } from '../utils/transform';
++import { documentFeatureWorker } from '../utils/featureWorkers';
+ 
+ import type * as _ from 'vscode-languageserver-protocol';
+ 
+@@ -23,10 +22,30 @@ export function register(context: LanguageServiceContext) {
+ 				if (!docs) {
+ 					return data;
+ 				}
+-				return transformFoldingRanges(
+-					data,
+-					range => getSourceRange(docs, range, isFoldingRangesEnabled),
+-				);
++				const result: _.FoldingRange[] = [];
++				for (const range of data) {
++					const start = { line: range.startLine, character: range.startCharacter ?? 0 };
++					const end = { line: range.endLine, character: range.endCharacter ?? 0 };
++					let otherRange: _.Range | undefined;
++					for (const [mappedStart, mappedEnd] of docs[2].toSourceRange(
++						docs[1].offsetAt(start), docs[1].offsetAt(end), true, isFoldingRangesEnabled,
++					)) {
++						otherRange = { start: docs[0].positionAt(mappedStart), end: docs[0].positionAt(mappedEnd) };
++						break;
++					}
++					if (otherRange) {
++						range.startLine = otherRange.start.line;
++						range.endLine = otherRange.end.line;
++						if (range.startCharacter !== undefined) {
++							range.startCharacter = otherRange.start.character;
++						}
++						if (range.endCharacter !== undefined) {
++							range.endCharacter = otherRange.end.character;
++						}
++						result.push(range);
++					}
++				}
++				return result;
+ 			},
+ 			arr => arr.flat(),
+ 		);
+diff --git a/packages/language-service/lib/features/resolveCompletionItem.ts b/packages/language-service/lib/features/resolveCompletionItem.ts
+index 9f921e3..cbfc175 100644
+--- a/packages/language-service/lib/features/resolveCompletionItem.ts
++++ b/packages/language-service/lib/features/resolveCompletionItem.ts
+@@ -3,7 +3,7 @@ import { URI } from 'vscode-uri';
+ import type { LanguageServiceContext } from '../types';
+ import { NoneCancellationToken } from '../utils/cancellation';
+ import { type DocumentsAndMap, getSourceRange } from '../utils/featureWorkers';
+-import { transformCompletionItem } from '../utils/transform';
++import { transformMarkdown, transformTextEdit } from '../utils/transform';
+ import type { ServiceCompletionData } from './provideCompletionItems';
+ 
+ export function register(context: LanguageServiceContext) {
+@@ -39,12 +39,124 @@ export function register(context: LanguageServiceContext) {
+ 						const docs: DocumentsAndMap = [sourceDocument, embeddedDocument, map];
+ 
+ 						item = await plugin[1].resolveCompletionItem(item, token);
+-						item = plugin[1].transformCompletionItem?.(item) ?? transformCompletionItem(
+-							item,
+-							embeddedRange => getSourceRange(docs, embeddedRange),
+-							embeddedDocument,
+-							context,
+-						);
++						const transformed = plugin[1].transformCompletionItem?.(item);
++						if (transformed !== undefined && transformed !== null) {
++							item = transformed;
++						}
++						else {
++							const document = embeddedDocument;
++							const getOtherRange = (embeddedRange: vscode.Range) => getSourceRange(docs, embeddedRange);
++							const mappedItem: vscode.CompletionItem = {
++								...item,
++								additionalTextEdits: item.additionalTextEdits
++									?.map(edit => transformTextEdit(edit, getOtherRange, document))
++									.filter(edit => !!edit),
++								textEdit: undefined,
++							};
++							if (item.textEdit) {
++								const textEdit = item.textEdit;
++								editMapping: {
++									if ('range' in textEdit) {
++										let range = getOtherRange(textEdit.range);
++										if (range) {
++											mappedItem.textEdit = {
++												...textEdit,
++												range,
++											}; break editMapping;
++										}
++
++										{
++											const replaceRange = textEdit.range;
++											let newText = textEdit.newText;
++											if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++												let character = replaceRange.start.character;
++												while (newText.length && replaceRange.end.character > character) {
++													const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++													if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++														newText = newText.slice(1);
++														character++;
++														const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++														if (otherRange) {
++															mappedItem.textEdit = { ...textEdit, range: otherRange, newText }; break editMapping;
++														}
++													}
++													else {
++														break;
++													}
++												}
++											}
++										}
++									}
++									else if ('replace' in textEdit && 'insert' in textEdit) {
++										const insert = getOtherRange(textEdit.insert);
++										const replace = insert ? getOtherRange(textEdit.replace) : undefined;
++										if (insert && replace) {
++											mappedItem.textEdit = {
++												...textEdit,
++												insert,
++												replace,
++											}; break editMapping;
++										}
++
++										let recoverInsert: vscode.TextEdit | undefined;
++										{
++											const replaceRange = textEdit.insert;
++											let newText = textEdit.newText;
++											if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++												let character = replaceRange.start.character;
++												while (newText.length && replaceRange.end.character > character) {
++													const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++													if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++														newText = newText.slice(1);
++														character++;
++														const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++														if (otherRange) {
++															recoverInsert = { newText, range: otherRange };
++															break;
++														}
++													}
++													else {
++														break;
++													}
++												}
++											}
++										}
++										if (recoverInsert) {
++											const replaceRange = textEdit.replace;
++											let newText = textEdit.newText;
++											if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++												let character = replaceRange.start.character;
++												while (newText.length && replaceRange.end.character > character) {
++													const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++													if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++														newText = newText.slice(1);
++														character++;
++														const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++														if (otherRange) {
++															if (recoverInsert.newText === newText) {
++																mappedItem.textEdit = { ...textEdit, insert: recoverInsert.range, replace: otherRange, newText: recoverInsert.newText }; break editMapping;
++															}
++															break editMapping;
++														}
++													}
++													else {
++														break;
++													}
++												}
++											}
++										}
++									}
++								}
++							}
++							mappedItem.documentation = item.documentation
++								? typeof item.documentation === 'string'
++									? transformMarkdown(item.documentation, context)
++									: item.documentation.kind === 'markdown'
++										? { kind: 'markdown', value: transformMarkdown(item.documentation.value, context) }
++										: item.documentation
++								: undefined;
++							item = mappedItem;
++						}
+ 					}
+ 				}
+ 			}
+diff --git a/packages/language-service/lib/utils/featureWorkers.ts b/packages/language-service/lib/utils/featureWorkers.ts
+index 6f1e728..b47130f 100644
+--- a/packages/language-service/lib/utils/featureWorkers.ts
++++ b/packages/language-service/lib/utils/featureWorkers.ts
+@@ -72,7 +72,36 @@ export async function languageFeatureWorker<T, K>(
+ 				context.documents.get(uri, virtualCode.languageId, virtualCode.snapshot),
+ 				context.language.maps.get(virtualCode, sourceScript),
+ 			];
+-			await docsWorker(docs, false);
++			await (async () => {
++				for (const mappedArg of eachVirtualDocParams(docs)) {
++					if (results.length && !combineResult) {
++						continue;
++					}
++		
++					for (const [pluginIndex, plugin] of Object.entries(context.plugins)) {
++						if (context.disabledServicePlugins.has(plugin[1])) {
++							continue;
++						}
++		
++						if (results.length && !combineResult) {
++							continue;
++						}
++		
++						const embeddedResult = await (async (errorMsg: string) => {
++							try {
++								return await worker(plugin, docs[1], mappedArg, docs);
++							}
++							catch (err) {
++								console.warn(errorMsg, err);
++							}
++						})(`Language service plugin "${plugin[0].name}" (${pluginIndex}) failed to provide document feature for ${docs[1].uri}.`);
++						if (!embeddedResult) {
++							continue;
++						}
++						results.push(embeddedResult);
++					}
++				}
++			})();
+ 		}
+ 	}
+ 	else if (sourceScript.generated) {
+@@ -80,7 +109,39 @@ export async function languageFeatureWorker<T, K>(
+ 			if (results.length && !combineResult) {
+ 				continue;
+ 			}
+-			await docsWorker(docs, true);
++			await (async () => {
++				for (const mappedArg of eachVirtualDocParams(docs)) {
++					if (results.length && !combineResult) {
++						continue;
++					}
++		
++					for (const [pluginIndex, plugin] of Object.entries(context.plugins)) {
++						if (context.disabledServicePlugins.has(plugin[1])) {
++							continue;
++						}
++		
++						if (results.length && !combineResult) {
++							continue;
++						}
++		
++						const embeddedResult = await (async (errorMsg: string) => {
++							try {
++								return await worker(plugin, docs[1], mappedArg, docs);
++							}
++							catch (err) {
++								console.warn(errorMsg, err);
++							}
++						})(`Language service plugin "${plugin[0].name}" (${pluginIndex}) failed to provide document feature for ${docs[1].uri}.`);
++						if (!embeddedResult) {
++							continue;
++						}
++						const mappedResult = transformResult(embeddedResult, docs);
++						if (mappedResult) {
++							results.push(mappedResult);
++						}
++					}
++				}
++			})();
+ 		}
+ 	}
+ 	else {
+@@ -123,42 +184,6 @@ export async function languageFeatureWorker<T, K>(
+ 		return results[0];
+ 	}
+ 
+-	async function docsWorker(docs: DocumentsAndMap, transform: boolean) {
+-		for (const mappedArg of eachVirtualDocParams(docs)) {
+-			if (results.length && !combineResult) {
+-				continue;
+-			}
+-
+-			for (const [pluginIndex, plugin] of Object.entries(context.plugins)) {
+-				if (context.disabledServicePlugins.has(plugin[1])) {
+-					continue;
+-				}
+-
+-				if (results.length && !combineResult) {
+-					continue;
+-				}
+-
+-				const embeddedResult = await safeCall(
+-					() => worker(plugin, docs[1], mappedArg, docs),
+-					`Language service plugin "${plugin[0].name}" (${pluginIndex}) failed to provide document feature for ${
+-						docs[1].uri
+-					}.`,
+-				);
+-				if (!embeddedResult) {
+-					continue;
+-				}
+-				if (transform) {
+-					const mappedResult = transformResult(embeddedResult, docs);
+-					if (mappedResult) {
+-						results.push(mappedResult);
+-					}
+-				}
+-				else {
+-					results.push(embeddedResult);
+-				}
+-			}
+-		}
+-	}
+ }
+ 
+ export async function safeCall<T>(cb: () => Thenable<T> | T, errorMsg?: string) {
+diff --git a/packages/language-service/lib/utils/transform.ts b/packages/language-service/lib/utils/transform.ts
+index 8b6bb42..00c6b49 100644
+--- a/packages/language-service/lib/utils/transform.ts
++++ b/packages/language-service/lib/utils/transform.ts
+@@ -42,10 +42,14 @@ export function transformDocumentLinkTarget(_target: string, context: LanguageSe
+ 			if (embeddedRange[5] !== undefined) {
+ 				const endLine = Number(embeddedRange[5]) - 1;
+ 				const endCharacter = Number(embeddedRange[7] ?? 1) - 1;
+-				const sourceRange = getSourceRange(docs, {
+-					start: { line: startLine, character: startCharacter },
+-					end: { line: endLine, character: endCharacter },
+-				});
++				let sourceRange: vscode.Range | undefined;
++				for (const [mappedStart, mappedEnd] of docs[2].toSourceRange(
++					docs[1].offsetAt({ line: startLine, character: startCharacter }),
++					docs[1].offsetAt({ line: endLine, character: endCharacter }), true, undefined,
++				)) {
++					sourceRange = { start: docs[0].positionAt(mappedStart), end: docs[0].positionAt(mappedEnd) };
++					break;
++				}
+ 				if (sourceRange) {
+ 					target = target.with({
+ 						fragment: 'L' + (sourceRange.start.line + 1) + ',' + (sourceRange.start.character + 1)
+@@ -76,7 +80,68 @@ export function transformDocumentLinkTarget(_target: string, context: LanguageSe
+ export function transformMarkdown(content: string, context: LanguageServiceContext) {
+ 	return content.replace(/(?!\()volar-embedded-content:\/\/\w+\/[^)]+/g, match => {
+ 		const segments = match.split('|');
+-		segments[0] = transformDocumentLinkTarget(segments[0], context).toString();
++		let target = URI.parse(segments[0]);
++		const decoded = context.decodeEmbeddedDocumentUri(target);
++		if (decoded) {
++			const embeddedRange = target.fragment.match(/^L(\d+)(,(\d+))?(-L(\d+)(,(\d+))?)?$/);
++			const sourceScript = context.language.scripts.get(decoded[0]);
++			const virtualCode = sourceScript?.generated?.embeddedCodes.get(decoded[1]);
++
++			target = decoded[0];
++
++			if (embeddedRange && sourceScript && virtualCode) {
++				const embeddedDocument = context.documents.get(
++					context.encodeEmbeddedDocumentUri(sourceScript.id, virtualCode.id),
++					virtualCode.languageId,
++					virtualCode.snapshot,
++				);
++				for (const [sourceScript, map] of context.language.maps.forEach(virtualCode)) {
++					if (!map.mappings.some(mapping => isDocumentLinkEnabled(mapping.data))) {
++						continue;
++					}
++
++					const sourceDocument = context.documents.get(sourceScript.id, sourceScript.languageId, sourceScript.snapshot);
++					const docs: DocumentsAndMap = [sourceDocument, embeddedDocument, map];
++					const startLine = Number(embeddedRange[1]) - 1;
++					const startCharacter = Number(embeddedRange[3] ?? 1) - 1;
++
++					if (embeddedRange[5] !== undefined) {
++						const endLine = Number(embeddedRange[5]) - 1;
++						const endCharacter = Number(embeddedRange[7] ?? 1) - 1;
++						let sourceRange: vscode.Range | undefined;
++						for (const [mappedStart, mappedEnd] of docs[2].toSourceRange(
++							docs[1].offsetAt({ line: startLine, character: startCharacter }),
++							docs[1].offsetAt({ line: endLine, character: endCharacter }), true, undefined,
++						)) {
++							sourceRange = { start: docs[0].positionAt(mappedStart), end: docs[0].positionAt(mappedEnd) };
++							break;
++						}
++						if (sourceRange) {
++							target = target.with({
++								fragment: 'L' + (sourceRange.start.line + 1) + ',' + (sourceRange.start.character + 1)
++									+ '-L' + (sourceRange.end.line + 1) + ',' + (sourceRange.end.character + 1),
++							});
++							break;
++						}
++					}
++					else {
++						let mapped = false;
++						for (const sourcePos of getSourcePositions(docs, { line: startLine, character: startCharacter })) {
++							mapped = true;
++							target = target.with({
++								fragment: 'L' + (sourcePos.line + 1) + ',' + (sourcePos.character + 1),
++							});
++							break;
++						}
++						if (mapped) {
++							break;
++						}
++					}
++				}
++			}
++
++		}
++		segments[0] = target.toString();
+ 		return segments.join('|');
+ 	});
+ }
+@@ -99,8 +164,8 @@ export function transformCompletionItem<T extends vscode.CompletionItem>(
+ 			? typeof item.documentation === 'string'
+ 				? transformMarkdown(item.documentation, context)
+ 				: item.documentation.kind === 'markdown'
+-				? { kind: 'markdown', value: transformMarkdown(item.documentation.value, context) }
+-				: item.documentation
++					? { kind: 'markdown', value: transformMarkdown(item.documentation.value, context) }
++					: item.documentation
+ 			: undefined,
+ 	};
+ }
+@@ -126,7 +191,24 @@ export function transformCompletionList<T extends vscode.CompletionList>(
+ 					: undefined,
+ 			}
+ 			: undefined,
+-		items: completionList.items.map(item => transformCompletionItem(item, getOtherRange, document, context)),
++		items: completionList.items.map(item => {
++			return {
++				...item,
++				additionalTextEdits: item.additionalTextEdits
++					?.map(edit => transformTextEdit(edit, getOtherRange, document))
++					.filter(edit => !!edit),
++				textEdit: item.textEdit
++					? transformTextEdit(item.textEdit, getOtherRange, document)
++					: undefined,
++				documentation: item.documentation
++					? typeof item.documentation === 'string'
++						? transformMarkdown(item.documentation, context)
++						: item.documentation.kind === 'markdown'
++							? { kind: 'markdown', value: transformMarkdown(item.documentation.value, context) }
++							: item.documentation
++					: undefined,
++			};
++		}),
+ 	} as T;
+ }
+ 
+@@ -262,13 +344,26 @@ export function transformTextEdit<T extends vscode.TextEdit | vscode.InsertRepla
+ 			};
+ 		}
+ 
+-		const cover = tryRecoverTextEdit(getOtherRange, textEdit.range, textEdit.newText, document);
+-		if (cover) {
+-			return {
+-				...textEdit,
+-				range: cover.range,
+-				newText: cover.newText,
+-			};
++		{
++			const replaceRange = textEdit.range;
++			let newText = textEdit.newText;
++			if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++				let character = replaceRange.start.character;
++				while (newText.length && replaceRange.end.character > character) {
++					const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++					if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++						newText = newText.slice(1);
++						character++;
++						const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++						if (otherRange) {
++							return { ...textEdit, range: otherRange, newText };
++						}
++					}
++					else {
++						break;
++					}
++				}
++			}
+ 		}
+ 	}
+ 	else if ('replace' in textEdit && 'insert' in textEdit) {
+@@ -282,49 +377,51 @@ export function transformTextEdit<T extends vscode.TextEdit | vscode.InsertRepla
+ 			};
+ 		}
+ 
+-		const recoverInsert = tryRecoverTextEdit(getOtherRange, textEdit.insert, textEdit.newText, document);
+-		const recoverReplace = recoverInsert
+-			? tryRecoverTextEdit(getOtherRange, textEdit.replace, textEdit.newText, document)
+-			: undefined;
+-		if (recoverInsert && recoverReplace && recoverInsert.newText === recoverReplace.newText) {
+-			return {
+-				...textEdit,
+-				insert: recoverInsert.range,
+-				replace: recoverReplace.range,
+-				newText: recoverInsert.newText,
+-			};
+-		}
+-	}
+-}
+-
+-/**
+- * update edit text from ". foo" to " foo"
+- * fix https://github.com/johnsoncodehk/volar/issues/2155
+- */
+-function tryRecoverTextEdit(
+-	getOtherRange: (range: vscode.Range) => vscode.Range | undefined,
+-	replaceRange: vscode.Range,
+-	newText: string,
+-	document: vscode.TextDocument,
+-): vscode.TextEdit | undefined {
+-	if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
+-		let character = replaceRange.start.character;
+-
+-		while (newText.length && replaceRange.end.character > character) {
+-			const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
+-			if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
+-				newText = newText.slice(1);
+-				character++;
+-				const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
+-				if (otherRange) {
+-					return {
+-						newText,
+-						range: otherRange,
+-					};
++		let recoverInsert: vscode.TextEdit | undefined;
++		{
++			const replaceRange = textEdit.insert;
++			let newText = textEdit.newText;
++			if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++				let character = replaceRange.start.character;
++				while (newText.length && replaceRange.end.character > character) {
++					const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++					if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++						newText = newText.slice(1);
++						character++;
++						const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++						if (otherRange) {
++							recoverInsert = { newText, range: otherRange };
++							break;
++						}
++					}
++					else {
++						break;
++					}
+ 				}
+ 			}
+-			else {
+-				break;
++		}
++		if (recoverInsert) {
++			const replaceRange = textEdit.replace;
++			let newText = textEdit.newText;
++			if (replaceRange.start.line === replaceRange.end.line && replaceRange.end.character > replaceRange.start.character) {
++				let character = replaceRange.start.character;
++				while (newText.length && replaceRange.end.character > character) {
++					const newStart = { line: replaceRange.start.line, character: replaceRange.start.character + 1 };
++					if (document.getText({ start: replaceRange.start, end: newStart }) === newText[0]) {
++						newText = newText.slice(1);
++						character++;
++						const otherRange = getOtherRange({ start: newStart, end: replaceRange.end });
++						if (otherRange) {
++							if (recoverInsert.newText === newText) {
++								return { ...textEdit, insert: recoverInsert.range, replace: otherRange, newText: recoverInsert.newText };
++							}
++							return;
++						}
++					}
++					else {
++						break;
++					}
++				}
+ 			}
+ 		}
+ 	}
+diff --git a/packages/source-map/lib/sourceMap.ts b/packages/source-map/lib/sourceMap.ts
+index 0de8db6..19c029a 100644
+--- a/packages/source-map/lib/sourceMap.ts
++++ b/packages/source-map/lib/sourceMap.ts
+@@ -20,7 +20,7 @@ export class SourceMap<Data = unknown> {
+ 	private sourceCodeOffsetsMemo: MappingMemo<Data> | undefined;
+ 	private generatedCodeOffsetsMemo: MappingMemo<Data> | undefined;
+ 
+-	constructor(public readonly mappings: Mapping<Data>[]) {}
++	constructor(public readonly mappings: Mapping<Data>[]) { }
+ 
+ 	toSourceRange(
+ 		generatedStart: number,
+@@ -54,16 +54,60 @@ export class SourceMap<Data = unknown> {
+ 		filter?: (data: Data) => boolean,
+ 		preferEnd: boolean = false,
+ 	) {
+-		const memo = this.getMemoBasedOnRange(fromRange);
++		let memo = fromRange === 'sourceOffsets' ? this.sourceCodeOffsetsMemo : this.generatedCodeOffsetsMemo;
++		if (!memo) {
++			const offsetsSet = new Set<number>();
++			for (const mapping of this.mappings) {
++				for (let i = 0; i < mapping[fromRange].length; i++) {
++					offsetsSet.add(mapping[fromRange][i]);
++					offsetsSet.add(mapping[fromRange][i] + (fromRange === 'sourceOffsets'
++						? mapping.lengths : mapping.generatedLengths ?? mapping.lengths)[i]);
++				}
++			}
++			const offsets = [...offsetsSet].sort((a, b) => a - b);
++			const mappings = offsets.map(() => new Set<Mapping<Data>>());
++			for (const mapping of this.mappings) {
++				for (let i = 0; i < mapping[fromRange].length; i++) {
++					const startIndex = binarySearch(offsets, mapping[fromRange][i]).match!;
++					const endIndex = binarySearch(offsets, mapping[fromRange][i] + (fromRange === 'sourceOffsets'
++						? mapping.lengths : mapping.generatedLengths ?? mapping.lengths)[i]).match!;
++					for (let i = startIndex; i <= endIndex; i++) {
++						mappings[i].add(mapping);
++					}
++				}
++			}
++			memo = { offsets, mappings };
++			if (fromRange === 'sourceOffsets') {
++				this.sourceCodeOffsetsMemo = memo;
++			}
++			else {
++				this.generatedCodeOffsetsMemo = memo;
++			}
++		}
+ 		if (memo.offsets.length === 0) {
+ 			return;
+ 		}
+ 
+-		const { low: start, high: end } = binarySearch(memo.offsets, offset);
++		let low = 0;
++		let high = memo.offsets.length - 1;
++		while (low <= high) {
++			const middle = Math.floor((low + high) / 2);
++			if (memo.offsets[middle] < offset) {
++				low = middle + 1;
++			}
++			else if (memo.offsets[middle] > offset) {
++				high = middle - 1;
++			}
++			else {
++				low = high = middle;
++				break;
++			}
++		}
+ 		const skip = new Set<Mapping>();
+ 		const toRange: CodeRangeKey = fromRange === 'sourceOffsets' ? 'generatedOffsets' : 'sourceOffsets';
+ 
+-		for (let i = start; i <= end; i++) {
++		for (let i = Math.max(Math.min(low, high, memo.offsets.length - 1), 0);
++			i <= Math.min(Math.max(low, high, 0), memo.offsets.length - 1); i++) {
+ 			for (const mapping of memo.mappings[i]) {
+ 				if (skip.has(mapping)) {
+ 					continue;
+@@ -78,8 +122,8 @@ export class SourceMap<Data = unknown> {
+ 					offset,
+ 					mapping[fromRange],
+ 					mapping[toRange],
+-					getLengths(mapping, fromRange),
+-					getLengths(mapping, toRange),
++					fromRange === 'sourceOffsets' ? mapping.lengths : mapping.generatedLengths ?? mapping.lengths,
++					toRange === 'sourceOffsets' ? mapping.lengths : mapping.generatedLengths ?? mapping.lengths,
+ 					preferEnd,
+ 				);
+ 				if (mapped !== undefined) {
+@@ -130,37 +174,6 @@ export class SourceMap<Data = unknown> {
+ 			}
+ 		}
+ 	}
+-
+-	private getMemoBasedOnRange(fromRange: CodeRangeKey) {
+-		return fromRange === 'sourceOffsets'
+-			? this.sourceCodeOffsetsMemo ??= this.createMemo('sourceOffsets')
+-			: this.generatedCodeOffsetsMemo ??= this.createMemo('generatedOffsets');
+-	}
+-
+-	private createMemo(key: CodeRangeKey): MappingMemo<Data> {
+-		const offsetsSet = new Set<number>();
+-		for (const mapping of this.mappings) {
+-			for (let i = 0; i < mapping[key].length; i++) {
+-				offsetsSet.add(mapping[key][i]);
+-				offsetsSet.add(mapping[key][i] + getLengths(mapping, key)[i]);
+-			}
+-		}
+-
+-		const offsets = [...offsetsSet].sort((a, b) => a - b);
+-		const mappings = offsets.map(() => new Set<Mapping<Data>>());
+-
+-		for (const mapping of this.mappings) {
+-			for (let i = 0; i < mapping[key].length; i++) {
+-				const startIndex = binarySearch(offsets, mapping[key][i]).match!;
+-				const endIndex = binarySearch(offsets, mapping[key][i] + getLengths(mapping, key)[i]).match!;
+-				for (let i = startIndex; i <= endIndex; i++) {
+-					mappings[i].add(mapping);
+-				}
+-			}
+-		}
+-
+-		return { offsets, mappings };
+-	}
+ }
+ 
+ function getLengths(mapping: Mapping, key: CodeRangeKey) {

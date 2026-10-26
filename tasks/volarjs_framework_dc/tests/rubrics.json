@@ -1,0 +1,471 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "volarjs_framework_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "VDC01",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Source and generated range mapping is repeatedly decomposed into document, map, and two offsets across feature callers.",
+      "baseline_defect": "The final patch makes callers repeatedly convert range endpoints to offsets and reconstruct positions, while the shared mapping boundary accepts only fragments.",
+      "criterion": "Source-range mapping used by feature providers is owned by a coherent boundary that accepts the related document, mapper, and range state together.",
+      "acceptance": "Equivalent APIs or local abstractions qualify when callers no longer repeat endpoint conversion and first mapped-range reconstruction for this path. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming getSourceRangeParts or wrapping its unchanged offset arguments at every call site."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "utils/featureWorkers.ts",
+          "symbol": "getSourceRangeParts",
+          "detail": null,
+          "raw": "environment/smell.diff:utils/featureWorkers.ts:getSourceRangeParts"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideCallHierarchyItems.ts",
+          "symbol": "range",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideCallHierarchyItems.ts:range"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "utils/featureWorkers.ts",
+          "symbol": "getSourceRangeParts",
+          "detail": null,
+          "raw": "interaction_delta.diff:utils/featureWorkers.ts:getSourceRangeParts"
+        }
+      ]
+    },
+    {
+      "id": "VDC02",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The opposite range direction has its own repeated source-offset assembly in code actions and color presentations.",
+      "baseline_defect": "Generated-range mapping requires feature files to split source ranges into offsets and pass mapper/document fragments.",
+      "criterion": "Generated-range mapping encapsulates the related source document, map, and range conversion for feature callers.",
+      "acceptance": "Code actions and color presentations can request mapped ranges without duplicating source endpoint conversion; all valid mapped ranges remain available where needed. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Keeping getGeneratedRangeParts with fragmented offsets and only shortening the call syntax."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "utils/featureWorkers.ts",
+          "symbol": "getGeneratedRangesParts",
+          "detail": null,
+          "raw": "environment/smell.diff:utils/featureWorkers.ts:getGeneratedRangesParts"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideCodeActions.ts",
+          "symbol": "transformLocations",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideCodeActions.ts:transformLocations"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideColorPresentations.ts",
+          "symbol": "getGeneratedRangesParts",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideColorPresentations.ts:getGeneratedRangesParts"
+        }
+      ]
+    },
+    {
+      "id": "VDC03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Point mapping was moved from full position conversion into offsets supplied separately by callers.",
+      "baseline_defect": "Call hierarchy, hover, references, and other feature providers each know how to convert source positions and map returned offsets back to embedded positions.",
+      "criterion": "Source-to-generated point conversion has a coherent owner that keeps source position, source document, embedded document, and mapper together.",
+      "acceptance": "Multiple point-based providers share the coordinate conversion responsibility while preserving their own feature-enable predicates. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving each existing offset loop unchanged into a differently named provider-local function."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "utils/featureWorkers.ts",
+          "symbol": "getGeneratedPositionsParts",
+          "detail": null,
+          "raw": "interaction_delta.diff:utils/featureWorkers.ts:getGeneratedPositionsParts"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideCallHierarchyItems.ts",
+          "symbol": "isCallHierarchyEnabled",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideCallHierarchyItems.ts:isCallHierarchyEnabled"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideHover.ts",
+          "symbol": "isHoverEnabled",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideHover.ts:isHoverEnabled"
+        }
+      ]
+    },
+    {
+      "id": "VDC04",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Generated-to-source point mapping similarly exposes raw offsets to inlay-hint consumers.",
+      "baseline_defect": "Inlay-hint positions are converted to embedded offsets outside the shared mapping helper, separating the position from its document and map.",
+      "criterion": "Generated-to-source point mapping owns the embedded-position conversion and source-position reconstruction at one boundary.",
+      "acceptance": "Inlay-hint and any other reverse point consumers can supply the related mapping context as a unit without owning low-level offset conversion. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that still requires each consumer to call embeddedDocument.offsetAt before mapping."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideInlayHints.ts",
+          "symbol": "getSourcePositionsParts",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideInlayHints.ts:getSourcePositionsParts"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "utils/featureWorkers.ts",
+          "symbol": "getSourcePositionsParts",
+          "detail": null,
+          "raw": "interaction_delta.diff:utils/featureWorkers.ts:getSourcePositionsParts"
+        }
+      ]
+    },
+    {
+      "id": "VDC05",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Feature-specific filters travel from range consumers into source-map lookup.",
+      "baseline_defect": "Document colors, highlights, references, and diagnostics each assemble raw range mapping loops while applying different CodeInformation predicates.",
+      "criterion": "The shared mapping boundary carries each feature's filter through source-map conversion, and affected consumers obtain mapped ranges through that boundary.",
+      "acceptance": "A producer of an embedded result, the mapping handoff, and the source-facing result cooperate for at least colors, highlights, references, and diagnostics without copying the same loop in each consumer. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Centralizing a loop that drops isColorEnabled, isHighlightEnabled, isReferencesEnabled, or shouldReportDiagnostics."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideDocumentColors.ts",
+          "symbol": "isColorEnabled",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideDocumentColors.ts:isColorEnabled"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideDocumentHighlights.ts",
+          "symbol": "isHighlightEnabled",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideDocumentHighlights.ts:isHighlightEnabled"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideReferences.ts",
+          "symbol": "isReferencesEnabled",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideReferences.ts:isReferencesEnabled"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideDiagnostics.ts",
+          "symbol": "shouldReportDiagnostics",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideDiagnostics.ts:shouldReportDiagnostics"
+        }
+      ]
+    },
+    {
+      "id": "VDC06",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Range-bearing LSP results must cross from plugin embedded documents to source documents consistently.",
+      "baseline_defect": "Code lenses, links, inline values, file references, and workspace symbols independently reproduce offset conversion, first range selection, and reconstruction.",
+      "criterion": "Range-bearing plugin results use a consistent source-map handoff across the affected feature files, with feature-specific result assembly remaining in each provider.",
+      "acceptance": "Those providers share range conversion policy and retain their established skip behavior when a mapping is unavailable. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Fixing one provider while leaving equivalent mapping loops in the other affected providers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideCodeLenses.ts",
+          "symbol": "codeLens.range",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideCodeLenses.ts:codeLens.range"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideDocumentLinks.ts",
+          "symbol": "link.range",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideDocumentLinks.ts:link.range"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideInlineValue.ts",
+          "symbol": "item.range",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideInlineValue.ts:item.range"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideFileReferences.ts",
+          "symbol": "reference.range",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideFileReferences.ts:reference.range"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideWorkspaceSymbols.ts",
+          "symbol": "loc.range",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideWorkspaceSymbols.ts:loc.range"
+        }
+      ]
+    },
+    {
+      "id": "VDC07",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Definition and hierarchy navigation map both requests and returned target ranges.",
+      "baseline_defect": "Navigation paths split position and range mapping across provider-local offset loops, including targetRange and targetSelectionRange in definitions and range/selectionRange in hierarchy items.",
+      "criterion": "Navigation request mapping and returned target-range mapping cooperate through coherent shared coordinate boundaries while retaining distinct target and selection ranges.",
+      "acceptance": "The request producer, plugin result, and source-facing navigation item use consistent mappings in definition and hierarchy paths. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Unifying only the input position mapping while leaving target and selection range mapping duplicated in consumers."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideDefinition.ts",
+          "symbol": "targetSelectionRange",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideDefinition.ts:targetSelectionRange"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideDefinition.ts",
+          "symbol": "targetRange",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideDefinition.ts:targetRange"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideCallHierarchyItems.ts",
+          "symbol": "selectionRange",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideCallHierarchyItems.ts:selectionRange"
+        }
+      ]
+    },
+    {
+      "id": "VDC08",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Diagnostic cache change handling duplicates updateRange's range mutation policy.",
+      "baseline_defect": "The cache loop and updateRange each calculate line/character deltas, endpoint retention, and minimum nonempty range behavior.",
+      "criterion": "Diagnostic range updating has one coherent owner for both cached errors and direct updateRange use.",
+      "acceptance": "Both call paths share the mutation policy, including the endpoint rule, while keeping their own failure handling. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Preserve in-place start update before end (including aliases/partial failure), old endpoint plus deltas, positive same-line insertion end-equality retention, and final same-line end<=start increment. Cached and exported updater keep own failure responses. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A helper for arithmetic only while both callers still independently decide endpoint retention and range widening."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "features/provideDiagnostics.ts",
+          "symbol": "cache.errors",
+          "detail": null,
+          "raw": "interaction_delta.diff:features/provideDiagnostics.ts:cache.errors"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "features/provideDiagnostics.ts",
+          "symbol": "updateRange",
+          "detail": null,
+          "raw": "interaction_delta.diff:features/provideDiagnostics.ts:updateRange"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideDiagnostics.ts",
+          "symbol": "updatePosition",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideDiagnostics.ts:updatePosition"
+        }
+      ]
+    },
+    {
+      "id": "VDC09",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Text-edit recovery separates related replacement range and new-text state into positional arguments and a tuple.",
+      "baseline_defect": "transformTextEdit inspects start/end eligibility for ordinary, insert, and replace edits, while tryRecoverTextEdit receives disassembled positions and returns a tuple decoded by callers.",
+      "criterion": "Text-edit recovery owns the related range, replacement text, eligibility, and recovered result together for both ordinary and insert/replace edits.",
+      "acceptance": "Equivalent structures qualify if callers no longer repeat range decomposition and tuple-index reconstruction for the three edit forms. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Preserve single-line positive-width admission, original endpoints and text, repeated comparison of original first character/newStart=start+1 (do not silently fix loop advancement), consumed-count publication; insert and replace recovery both succeed with equal consumed count before slicing original newText. Existing range mutation/getOtherRange callback ordering preserved. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming the tuple fields or moving the existing split checks wholesale without restoring a cohesive recovery boundary."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "utils/transform.ts",
+          "symbol": "transformTextEdit",
+          "detail": null,
+          "raw": "interaction_delta.diff:utils/transform.ts:transformTextEdit"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "utils/transform.ts",
+          "symbol": "tryRecoverTextEdit",
+          "detail": null,
+          "raw": "environment/smell.diff:utils/transform.ts:tryRecoverTextEdit"
+        }
+      ]
+    },
+    {
+      "id": "VDC10",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Current code already varies mapping by CodeInformation feature predicates and first-versus-all range retrieval.",
+      "baseline_defect": "Changing a feature's mapping predicate or whether it needs one versus all ranges currently interacts with fragmented coordinate handling in many feature files.",
+      "criterion": "Feature-specific mapping variation is supplied at a focused mapping boundary without editing unrelated feature coordinate assembly.",
+      "acceptance": "A change from one valid mapped range to iteration over all valid ranges, or a change in an existing feature predicate, is localized to the feature's use of the shared boundary; other providers need no coordinate changes. A tuple, closure, associated records, encapsulated column storage, or complete existing mapping helper qualifies; no new class or exact return shape is required. One coherent projection operation may satisfy several consumer obligations. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Hard-coding one predicate or first-result behavior inside a generic helper and adding provider-specific copies for exceptions."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "utils/featureWorkers.ts",
+          "symbol": "getSourceRangesParts",
+          "detail": null,
+          "raw": "environment/smell.diff:utils/featureWorkers.ts:getSourceRangesParts"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideColorPresentations.ts",
+          "symbol": "getGeneratedRangesParts",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideColorPresentations.ts:getGeneratedRangesParts"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "features/provideDocumentColors.ts",
+          "symbol": "isColorEnabled",
+          "detail": null,
+          "raw": "environment/smell.diff:features/provideDocumentColors.ts:isColorEnabled"
+        }
+      ]
+    },
+    {
+      "id": "VDC11",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Completion retry caching must keep each embedded document, provider, and result together as one entry through collection and incomplete-result refresh.",
+      "baseline_defect": "The expansion changes lastResult.results from records into parallel embeddedUris, plugins, and lists arrays; insertion and retry access rely on matching indexes, so the cache entry's related state has no cohesive owner.",
+      "criterion": "Maintain a coherent association between cached document identity, provider and completion result across seeding, refresh and combination.",
+      "acceptance": "Records, keyed association or encapsulated column storage qualify when updates cannot mismatch URI/plugin/list. Preserve list object references, null results, only incomplete refresh, captured old cache while awaiting, current plugin index lookup, initial versus refresh mapping filters, additional-service dedup and current lastResult combine behavior. No forced record-array representation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming the arrays, wrapping them together without changing index-coupled updates, or fixing only one push site."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/language-service/lib/features/provideCompletionItems.ts",
+          "symbol": "lastResult; embeddedUris; plugins; lists",
+          "detail": "The previous results array of records is replaced with three parallel arrays.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/language-service/lib/features/provideCompletionItems.ts",
+          "symbol": "lastResult; cached.lists; cached.plugins; cached.embeddedUris",
+          "detail": "The final injected retry path still associates entries by cacheIndex.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "VDC12",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry formatting selection split.",
+      "baseline_defect": "embeddedStarts and embeddedLengths publish related code identity/initial-snapshot extent separately.",
+      "criterion": "Keep each formatting selection identity and captured extent coherent from planning to later document conversion.",
+      "acceptance": "Normalize start to0 at first mapping and end to initial snapshot length at last mapping; child eligibility compares saved lengths, zero start/length valid; reconstruct using current document with saved planned coordinates after earlier rounds. Cohesive record or synchronized encapsulated storage qualifies. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Grouping only consumer locals while unrelated maps still publish the plan independently is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/language-service/lib/features/provideDocumentFormattingEdits.ts",
+          "symbol": "register",
+          "detail": "embeddedStarts and embeddedLengths publish related code identity/initial-snapshot extent separately.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "VDC13",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry folding representation split.",
+      "baseline_defect": "Folding endpoints and optional-character presence are unpacked separately during mapping/publication.",
+      "criterion": "Keep folding range coordinates and presence metadata together through mapping.",
+      "acceptance": "Absent characters map as0 but remain absent in result; successful mapping mutates original object, first map only, unchanged metadata; failed mapping omitted. Existing transformFoldingRanges reconnection valid. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Normalizing absent characters into explicit zeros or cloning away required mutation loses the contract."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/language-service/lib/features/provideFoldingRanges.ts",
+          "symbol": "register",
+          "detail": "Folding endpoints and optional-character presence are unpacked separately during mapping/publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "VDC14",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry semantic-token position/length expansion.",
+      "baseline_defect": "Token line/character/length separately derive paired offsets and emitted span.",
+      "criterion": "Keep token origin, extent and mapped position associated through projection.",
+      "acceptance": "Feature filter and first mapped range retained, emitted length equals mapped end.character-start.character, type/modifiers unchanged. A shared range transform qualifies; no forced token object or invented multiline correction. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Grouping only original scalars while reconstructing unrelated mapped endpoints independently is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/language-service/lib/features/provideDocumentSemanticTokens.ts",
+          "symbol": "register",
+          "detail": "Token line/character/length separately derive paired offsets and emitted span.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "volarjs_framework_dc",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "aggregation": "equal_weight_per_item",
+    "excluded_from_scoring": [
+      "The empty post.diff has no change.",
+      "Compilation, test passage, and preservation of existing LSP behavior are controls, not independent structural credits.",
+      "No unsupported historical design intention is scored."
+    ]
+  }
+}

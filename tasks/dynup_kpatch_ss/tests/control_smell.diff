@@ -1,0 +1,968 @@
+diff --git a/kpatch-build/create-diff-object.c b/kpatch-build/create-diff-object.c
+index 3d01e71..d85ecb4 100644
+--- a/kpatch-build/create-diff-object.c
++++ b/kpatch-build/create-diff-object.c
+@@ -76,14 +76,6 @@ int jump_label_errors, static_call_errors;
+ /*******************
+  * Data structures
+  * ****************/
+-struct special_section {
+-	char *name;
+-	enum architecture arch;
+-	int (*group_size)(struct kpatch_elf *kelf, int offset);
+-	bool (*group_filter)(struct lookup_table *lookup,
+-			     struct section *relasec, unsigned int offset,
+-			     unsigned int size);
+-};
+ 
+ /*************
+  * Functions
+@@ -381,19 +373,6 @@ static void kpatch_detect_child_functions(struct kpatch_elf *kelf)
+ 	}
+ }
+ 
+-static bool is_dynamic_debug_symbol(struct symbol *sym)
+-{
+-	if (sym->type == STT_OBJECT && !strcmp(sym->sec->name, "__verbose"))
+-		return true;
+-	if (sym->type == STT_OBJECT && !strcmp(sym->sec->name, "__dyndbg"))
+-		return true;
+-	if (sym->type == STT_SECTION && !strcmp(sym->name, "__verbose"))
+-		return true;
+-	if (sym->type == STT_SECTION && !strcmp(sym->name, "__dyndbg"))
+-		return true;
+-	return false;
+-}
+-
+ static bool is_string_literal_section(struct section *sec)
+ {
+ 	return !strncmp(sec->name, ".rodata.", 8) && strstr(sec->name, ".str");
+@@ -411,73 +390,6 @@ static bool is_clang_unnamed_data(const char *name)
+ 		!strncmp(name, ".data.__unnamed_", 16);
+ }
+ 
+-/*
+- * This function detects whether the given symbol is a "special" static local
+- * variable (for lack of a better term).
+- *
+- * Special static local variables should never be correlated and should always
+- * be included if they are referenced by an included function.
+- */
+-static bool is_special_static(struct symbol *sym)
+-{
+-	static char *var_names[] = {
+-		"__key",
+-		"__warned",
+-		"__already_done.",
+-		"__func__",
+-		"__FUNCTION__",
+-		"_rs",
+-		"CSWTCH",
+-		"_entry",
+-		NULL,
+-	};
+-	char **var_name;
+-
+-	if (!sym)
+-		return false;
+-
+-	/* pr_debug() uses static local variables in the __verbose or __dyndbg section */
+-	if (is_dynamic_debug_symbol(sym))
+-		return true;
+-
+-	/* Do not try to correlate statics inside unstable Clang sections */
+-	if (sym->sec && is_clang_unnamed_data(sym->sec->name))
+-		return true;
+-
+-	if (sym->type == STT_SECTION) {
+-		/* make sure section is bundled */
+-		if (!sym->sec->sym)
+-			return false;
+-
+-		/* use bundled object/function symbol for matching */
+-		sym = sym->sec->sym;
+-	}
+-
+-	if (sym->type != STT_OBJECT || sym->bind != STB_LOCAL)
+-		return false;
+-
+-	if  (!strcmp(sym->sec->name, ".data.once") ||
+-	     !strcmp(sym->sec->name, ".data..once"))
+-		return true;
+-
+-	for (var_name = var_names; *var_name; var_name++) {
+-		size_t var_name_len = strlen(*var_name);
+-		char buf[256];
+-
+-		snprintf(buf, 256, ".%s.", *var_name);
+-
+-		/* First look for gcc-style statics: '<var_name>.' */
+-		if (!strncmp(sym->name, buf + 1, var_name_len + 1))
+-			return true;
+-
+-		buf[var_name_len + 1] = '\0';
+-		/* Next clang-style statics: '<function_name>.<var_name>' */
+-		if (strstr(sym->name, buf))
+-			return true;
+-	}
+-
+-	return false;
+-}
+ 
+ static bool has_digit_tail(char *tail)
+ {
+@@ -1163,7 +1075,12 @@ static void kpatch_correlate_sections(struct list_head *seclist_orig,
+ 			    sec_patched->twin)
+ 				continue;
+ 
+-			if (is_ubsan_sec(sec_orig->name))
++			if ((!strncmp(sec_orig->name, ".data.rel.local..Lubsan_data", 28) ||
++		    !strncmp(sec_orig->name, ".data..Lubsan_type", 18) ||
++		    !strncmp(sec_orig->name, ".Lubsan_data", 12) ||
++		    !strncmp(sec_orig->name, ".data..Lubsan_data", 18) ||
++		    !strncmp(sec_orig->name, ".rela.data..Lubsan_data", 23) ||
++		    !strncmp(sec_orig->name, ".rela.data.rel.local..Lubsan_data", 33)))
+ 				continue;
+ 
+ 			/* Skip correlation for unstable Clang anonymous sections */
+@@ -1171,10 +1088,43 @@ static void kpatch_correlate_sections(struct list_head *seclist_orig,
+ 			    is_clang_unnamed_data(sec_patched->name))
+ 				continue;
+ 
+-			if (is_special_static(is_rela_section(sec_orig) ?
+-					      sec_orig->base->secsym :
+-					      sec_orig->secsym))
+-				continue;
++			{
++				struct symbol *candidate = is_rela_section(sec_orig) ? sec_orig->base->secsym : sec_orig->secsym;
++				const char *gcc_names[] = { "__key.", "__warned.", "__already_done..", "__func__.", "__FUNCTION__.", "_rs.", "CSWTCH.", "_entry.", NULL };
++				const char *clang_names[] = { ".__key", ".__warned", ".__already_done.", ".__func__", ".__FUNCTION__", "._rs", ".CSWTCH", "._entry", NULL };
++				unsigned int n;
++				bool fresh = false;
++
++				if (candidate && candidate->type == STT_SECTION &&
++				    (!strcmp(candidate->name, "__verbose") ||
++				     !strcmp(candidate->name, "__dyndbg")))
++					continue;
++				if (candidate && candidate->type == STT_OBJECT &&
++				    (!strcmp(candidate->sec->name, "__verbose") ||
++				     !strcmp(candidate->sec->name, "__dyndbg")))
++					continue;
++				if (candidate && candidate->sec &&
++				    is_clang_unnamed_data(candidate->sec->name))
++					continue;
++				{
++					if (candidate && candidate->type == STT_SECTION)
++						candidate = candidate->sec->sym;
++					if (candidate && candidate->type == STT_OBJECT &&
++					    candidate->bind == STB_LOCAL) {
++						if (!strcmp(candidate->sec->name, ".data.once") ||
++						    !strcmp(candidate->sec->name, ".data..once"))
++							fresh = true;
++						for (n = 0; gcc_names[n]; n++)
++							if (!strncmp(candidate->name, gcc_names[n], strlen(gcc_names[n])))
++								fresh = true;
++						for (n = 0; clang_names[n]; n++)
++							if (strstr(candidate->name, clang_names[n]))
++								fresh = true;
++					}
++				}
++				if (fresh)
++					continue;
++			}
+ 
+ 			/*
+ 			 * Group sections must match exactly to be correlated.
+@@ -1207,11 +1157,52 @@ static void kpatch_correlate_symbols(struct kpatch_elf *kelf_orig,
+ 			    sym_orig->type != sym_patched->type || sym_patched->twin)
+ 				continue;
+ 
+-			if (is_ubsan_sec(sym_orig->name))
++			if ((!strncmp(sym_orig->name, ".data.rel.local..Lubsan_data", 28) ||
++		    !strncmp(sym_orig->name, ".data..Lubsan_type", 18) ||
++		    !strncmp(sym_orig->name, ".Lubsan_data", 12) ||
++		    !strncmp(sym_orig->name, ".data..Lubsan_data", 18) ||
++		    !strncmp(sym_orig->name, ".rela.data..Lubsan_data", 23) ||
++		    !strncmp(sym_orig->name, ".rela.data.rel.local..Lubsan_data", 33)))
+ 				continue;
+ 
+-			if (is_special_static(sym_orig))
+-				continue;
++			{
++				struct symbol *candidate = sym_orig;
++				const char *names[] = { "__key", "__warned", "__already_done.", "__func__", "__FUNCTION__", "_rs", "CSWTCH", "_entry",  NULL };
++				unsigned int n;
++				bool fresh = false;
++
++				if (sym_orig->type == STT_OBJECT || sym_orig->type == STT_SECTION) {
++					const char *debug_name = sym_orig->type == STT_OBJECT ?
++							sym_orig->sec->name : sym_orig->name;
++					if (!strcmp(debug_name, "__verbose") ||
++					    !strcmp(debug_name, "__dyndbg"))
++						continue;
++				}
++				if (sym_orig->sec && is_clang_unnamed_data(sym_orig->sec->name))
++					continue;
++				{
++					if (candidate && candidate->type == STT_SECTION)
++						candidate = candidate->sec->sym;
++					if (candidate && candidate->type == STT_OBJECT &&
++					    candidate->bind == STB_LOCAL) {
++						if (!strcmp(candidate->sec->name, ".data.once") ||
++						    !strcmp(candidate->sec->name, ".data..once"))
++							fresh = true;
++						for (n = 0; names[n]; n++) {
++							char pattern[256];
++							size_t len = strlen(names[n]);
++							snprintf(pattern, sizeof(pattern), ".%s.", names[n]);
++							if (!strncmp(candidate->name, pattern + 1, len + 1))
++								fresh = true;
++							pattern[len + 1] = '\0';
++							if (strstr(candidate->name, pattern))
++								fresh = true;
++						}
++					}
++				}
++				if (fresh)
++					continue;
++			}
+ 
+ 			/*
+ 			 * The .LCx symbols point to string literals in
+@@ -1405,8 +1396,23 @@ static bool kpatch_is_normal_static_local(struct symbol *sym)
+ 	if (!strchr(sym->name, '.'))
+ 		return false;
+ 
+-	if (is_special_static(sym))
++	if (!strcmp(sym->sec->name, "__verbose") ||
++	    !strcmp(sym->sec->name, "__dyndbg") ||
++	    is_clang_unnamed_data(sym->sec->name) ||
++	    !strcmp(sym->sec->name, ".data.once") ||
++	    !strcmp(sym->sec->name, ".data..once"))
+ 		return false;
++	{
++		const char *gcc_names[] = { "__key.", "__warned.", "__already_done..", "__func__.", "__FUNCTION__.", "_rs.", "CSWTCH.", "_entry.",  NULL };
++		const char *clang_names[] = { ".__key", ".__warned", ".__already_done.", ".__func__", ".__FUNCTION__", "._rs", ".CSWTCH", "._entry",  NULL };
++		unsigned int n;
++		for (n = 0; gcc_names[n]; n++)
++			if (!strncmp(sym->name, gcc_names[n], strlen(gcc_names[n])))
++				return false;
++		for (n = 0; clang_names[n]; n++)
++			if (strstr(sym->name, clang_names[n]))
++				return false;
++	}
+ 
+ 	return true;
+ }
+@@ -1699,7 +1705,12 @@ static void kpatch_replace_sections_syms(struct kpatch_elf *kelf)
+ 			 * UBSAN data will be taken wholesale, no need to
+ 			 * replace section symbols.
+ 			 */
+-			if (is_ubsan_sec(rela->sym->name))
++			if ((!strncmp(rela->sym->name, ".data.rel.local..Lubsan_data", 28) ||
++		    !strncmp(rela->sym->name, ".data..Lubsan_type", 18) ||
++		    !strncmp(rela->sym->name, ".Lubsan_data", 12) ||
++		    !strncmp(rela->sym->name, ".data..Lubsan_data", 18) ||
++		    !strncmp(rela->sym->name, ".rela.data..Lubsan_data", 23) ||
++		    !strncmp(rela->sym->name, ".rela.data.rel.local..Lubsan_data", 33)))
+ 				continue;
+ 
+ 			/*
+@@ -2270,172 +2281,6 @@ static void kpatch_reorder_symbols(struct kpatch_elf *kelf)
+ 	list_replace(&symbols, &kelf->symbols);
+ }
+ 
+-static int bug_table_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	static int size = 0;
+-	char *str;
+-
+-	if (!size) {
+-		str = getenv("BUG_STRUCT_SIZE");
+-		if (!str)
+-			ERROR("BUG_STRUCT_SIZE not set");
+-		size = atoi(str);
+-	}
+-
+-	return size;
+-}
+-
+-static int ex_table_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	static int size = 0;
+-	char *str;
+-
+-	if (!size) {
+-		str = getenv("EX_STRUCT_SIZE");
+-		if (!str)
+-			ERROR("EX_STRUCT_SIZE not set");
+-		size = atoi(str);
+-	}
+-
+-	return size;
+-}
+-
+-static int jump_table_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	static int size = 0;
+-	char *str;
+-
+-	if (!size) {
+-		str = getenv("JUMP_STRUCT_SIZE");
+-		if (!str)
+-			ERROR("JUMP_STRUCT_SIZE not set");
+-		size = atoi(str);
+-	}
+-
+-	return size;
+-}
+-
+-static int printk_index_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	static int size = 0;
+-	char *str;
+-
+-	if (!size) {
+-		str = getenv("PRINTK_INDEX_STRUCT_SIZE");
+-		if (!str)
+-			ERROR("PRINTK_INDEX_STRUCT_SIZE not set");
+-		size = atoi(str);
+-	}
+-
+-	return size;
+-}
+-
+-static int parainstructions_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	static int size = 0;
+-	char *str;
+-
+-	if (!size) {
+-		str = getenv("PARA_STRUCT_SIZE");
+-		if (!str)
+-			ERROR("PARA_STRUCT_SIZE not set");
+-		size = atoi(str);
+-	}
+-
+-	return size;
+-}
+-
+-static int altinstructions_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	static int size = 0;
+-	char *str;
+-
+-	if (!size) {
+-		str = getenv("ALT_STRUCT_SIZE");
+-		if (!str)
+-			ERROR("ALT_STRUCT_SIZE not set");
+-		size = atoi(str);
+-	}
+-
+-	return size;
+-}
+-
+-static int smp_locks_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	return 4;
+-}
+-
+-static int static_call_sites_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	static int size = 0;
+-	char *str;
+-
+-	if (!size) {
+-		str = getenv("STATIC_CALL_STRUCT_SIZE");
+-		if (!str)
+-			ERROR("STATIC_CALL_STRUCT_SIZE not set");
+-		size = atoi(str);
+-	}
+-
+-	return size;
+-}
+-
+-static int call_sites_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	return 4;
+-}
+-
+-static int retpoline_sites_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	return 4;
+-}
+-
+-static int return_sites_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	return 4;
+-}
+-
+-static int fixup_entry_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	static int size = 0;
+-	char *str;
+-
+-	if (!size) {
+-		str = getenv("FIXUP_STRUCT_SIZE");
+-		if (!str)
+-			ERROR("FIXUP_STRUCT_SIZE not set");
+-		size = atoi(str);
+-	}
+-
+-	return size;
+-}
+-
+-static int fixup_lwsync_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	return 8;
+-}
+-
+-static int fixup_barrier_nospec_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	return 8;
+-}
+-
+-/*
+- * .s390_indirect_jump, .s390_indirect_call, .s390_indirect_branches,
+- * .s390_return_reg, .s390_return_mem contains indirect branch locations. This
+- * is an array of 32 bit elements. These sections could be used during runtime
+- * to replace the expolines with the normal indirect jump.
+- */
+-static int s390_expolines_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	return 4;
+-}
+-
+-static int s390_stack_protector_loc_group_size(struct kpatch_elf *kelf, int offset)
+-{
+-	return 8;
+-}
+-
+ /*
+  * The rela groups in the .fixup section vary in size.  The beginning of each
+  * .fixup rela group is referenced by the __ex_table section. To find the size
+@@ -2518,7 +2363,13 @@ static bool jump_table_group_filter(struct lookup_table *lookup,
+ 	if (!strncmp(key->sym->name, "__tracepoint_", 13))
+ 		tracepoint = true;
+ 
+-	if (is_dynamic_debug_symbol(key->sym))
++	if (key->sym->type == STT_OBJECT &&
++	    (!strcmp(key->sym->sec->name, "__verbose") ||
++	     !strcmp(key->sym->sec->name, "__dyndbg")))
++		dynamic_debug = true;
++	if (key->sym->type == STT_SECTION &&
++	    (!strcmp(key->sym->name, "__verbose") ||
++	     !strcmp(key->sym->name, "__dyndbg")))
+ 		dynamic_debug = true;
+ 
+ 	if (KLP_ARCH) {
+@@ -2649,138 +2500,20 @@ static bool static_call_sites_group_filter(struct lookup_table *lookup,
+ }
+ 
+ 
+-static struct special_section special_sections[] = {
+-	{
+-		.name		= "__bug_table",
+-		.arch		= AARCH64 | X86_64 | PPC64 | S390 | LOONGARCH64,
+-		.group_size	= bug_table_group_size,
+-	},
+-	{
+-		.name		= ".fixup",
+-		.arch		= AARCH64 | X86_64 | PPC64 | S390 | LOONGARCH64,
+-		.group_size	= fixup_group_size,
+-	},
+-	{
+-		.name		= "__ex_table", /* must come after .fixup */
+-		.arch		= AARCH64 | X86_64 | PPC64 | S390 | LOONGARCH64,
+-		.group_size	= ex_table_group_size,
+-	},
+-	{
+-		.name		= "__jump_table",
+-		.arch		= AARCH64 | X86_64 | PPC64 | S390 | LOONGARCH64,
+-		.group_size	= jump_table_group_size,
+-		.group_filter	= jump_table_group_filter,
+-	},
+-	{
+-		.name		= ".printk_index",
+-		.arch		= AARCH64 | X86_64 | PPC64 | S390,
+-		.group_size	= printk_index_group_size,
+-	},
+-	{
+-		.name		= ".smp_locks",
+-		.arch		= X86_64,
+-		.group_size	= smp_locks_group_size,
+-	},
+-	{
+-		.name		= ".parainstructions",
+-		.arch		= X86_64,
+-		.group_size	= parainstructions_group_size,
+-	},
+-	{
+-		.name		= ".altinstructions",
+-		.arch		= AARCH64 | X86_64 | S390 | LOONGARCH64,
+-		.group_size	= altinstructions_group_size,
+-	},
+-	{
+-		.name		= ".static_call_sites",
+-		.arch		= X86_64,
+-		.group_size	= static_call_sites_group_size,
+-		.group_filter	= static_call_sites_group_filter,
+-	},
+-	{
+-		.name		= ".call_sites",
+-		.arch		= X86_64,
+-		.group_size	= call_sites_group_size,
+-	},
+-	{
+-		.name		= ".retpoline_sites",
+-		.arch		= X86_64,
+-		.group_size	= retpoline_sites_group_size,
+-	},
+-	{
+-		.name		= ".return_sites",
+-		.arch		= X86_64,
+-		.group_size	= return_sites_group_size,
+-	},
+-	{
+-		.name		= "__ftr_fixup",
+-		.arch		= PPC64,
+-		.group_size	= fixup_entry_group_size,
+-	},
+-	{
+-		.name		= "__mmu_ftr_fixup",
+-		.arch		= PPC64,
+-		.group_size	= fixup_entry_group_size,
+-	},
+-	{
+-		.name		= "__fw_ftr_fixup",
+-		.arch		= PPC64,
+-		.group_size	= fixup_entry_group_size,
+-	},
+-	{
+-		.name		= "__lwsync_fixup",
+-		.arch		= PPC64,
+-		.group_size	= fixup_lwsync_group_size,
+-	},
+-	{
+-		.name		= "__barrier_nospec_fixup",
+-		.arch		= PPC64,
+-		.group_size	= fixup_barrier_nospec_group_size,
+-	},
+-	{
+-		.name		= ".s390_return_mem",
+-		.arch		= S390,
+-		.group_size	= s390_expolines_group_size,
+-	},
+-	{
+-		.name		= ".s390_return_reg",
+-		.arch		= S390,
+-		.group_size	= s390_expolines_group_size,
+-	},
+-	{
+-		.name		= ".s390_indirect_call",
+-		.arch		= S390,
+-		.group_size	= s390_expolines_group_size,
+-	},
+-	{
+-		.name		= ".s390_indirect_branches",
+-		.arch		= S390,
+-		.group_size	= s390_expolines_group_size,
+-	},
+-	{
+-		.name		= ".s390_indirect_jump",
+-		.arch		= S390,
+-		.group_size	= s390_expolines_group_size,
+-	},
+-	{
+-		.name		= "__stack_protector_loc",
+-		.arch		= S390,
+-		.group_size	= s390_stack_protector_loc_group_size,
+-	},
+-	{},
+-};
+ 
+ static bool should_keep_rela_group(struct lookup_table *lookup,
+ 				   struct section *relasec, unsigned int offset,
+-				   unsigned int size)
++				   unsigned int *size)
+ {
+ 	struct rela *rela;
+ 	bool found = false;
++	if (offset + *size > relasec->base->sh.sh_size)
++		*size = (unsigned int)(relasec->base->sh.sh_size - offset);
+ 
+ 	/* check if any relas in the group reference any changed functions */
+ 	list_for_each_entry(rela, &relasec->relas, list) {
+ 		if (rela->offset >= offset &&
+-		    rela->offset < offset + size &&
++		    rela->offset < offset + *size &&
+ 		    rela->sym->type == STT_FUNC &&
+ 		    rela->sym->sec->include) {
+ 			found = true;
+@@ -2801,7 +2534,6 @@ static bool should_keep_rela_group(struct lookup_table *lookup,
+  * fixup_group_size() is not affected.
+  */
+ static void kpatch_update_ex_table_addend(struct kpatch_elf *kelf,
+-					  struct special_section *special,
+ 					  int src_offset, int dest_offset,
+ 					  int group_size)
+ {
+@@ -2860,12 +2592,16 @@ static void recalculate_bug_table_rela_addend(struct kpatch_elf *kelf,
+ 
+ static void kpatch_regenerate_special_section(struct kpatch_elf *kelf,
+ 					      struct lookup_table *lookup,
+-					      struct special_section *special,
++					      const char *name,
+ 					      struct section *relasec)
+ {
+ 	struct rela *rela, *safe;
+ 	char *src, *dest;
+ 	unsigned int group_size, src_offset, dest_offset, new_offset;
++	static int bug_table_size, ex_table_size, jump_table_size, printk_index_size, parainstructions_size, altinstructions_size, static_call_sites_size, fixup_entry_size;
++	int *cached_size = NULL;
++	const char *size_env = NULL;
++	unsigned int fixed_size = 0;
+ 
+ 	LIST_HEAD(newrelas);
+ 
+@@ -2876,18 +2612,94 @@ static void kpatch_regenerate_special_section(struct kpatch_elf *kelf,
+ 		ERROR("malloc");
+ 
+ 	/* Restore the stashed r_addend from kpatch_update_ex_table_addend. */
+-	if (!strcmp(special->name, "__ex_table")) {
++	if (!strcmp(name, "__ex_table")) {
+ 		list_for_each_entry(rela, &relasec->relas, list) {
+ 			if (!strcmp(rela->sym->name, ".fixup"))
+ 				rela->addend = rela->rela.r_addend;
+ 		}
+ 	}
+ 
++	if (!strcmp(name, "__bug_table")) {
++		cached_size = &bug_table_size;
++		size_env = "BUG_STRUCT_SIZE";
++	}
++	else if (!strcmp(name, "__ex_table")) {
++		cached_size = &ex_table_size;
++		size_env = "EX_STRUCT_SIZE";
++	}
++	else if (!strcmp(name, "__jump_table")) {
++		cached_size = &jump_table_size;
++		size_env = "JUMP_STRUCT_SIZE";
++	}
++	else if (!strcmp(name, ".printk_index")) {
++		cached_size = &printk_index_size;
++		size_env = "PRINTK_INDEX_STRUCT_SIZE";
++	}
++	else if (!strcmp(name, ".parainstructions")) {
++		cached_size = &parainstructions_size;
++		size_env = "PARA_STRUCT_SIZE";
++	}
++	else if (!strcmp(name, ".altinstructions")) {
++		cached_size = &altinstructions_size;
++		size_env = "ALT_STRUCT_SIZE";
++	}
++	else if (!strcmp(name, ".smp_locks")) {
++		fixed_size = 4;
++	}
++	else if (!strcmp(name, ".static_call_sites")) {
++		cached_size = &static_call_sites_size;
++		size_env = "STATIC_CALL_STRUCT_SIZE";
++	}
++	else if (!strcmp(name, ".call_sites")) {
++		fixed_size = 4;
++	}
++	else if (!strcmp(name, ".retpoline_sites")) {
++		fixed_size = 4;
++	}
++	else if (!strcmp(name, ".return_sites")) {
++		fixed_size = 4;
++	}
++	else if (!strcmp(name, "__ftr_fixup") ||
++	    !strcmp(name, "__mmu_ftr_fixup") ||
++	    !strcmp(name, "__fw_ftr_fixup")) {
++		cached_size = &fixup_entry_size;
++		size_env = "FIXUP_STRUCT_SIZE";
++	}
++	else if (!strcmp(name, "__lwsync_fixup")) {
++		fixed_size = 8;
++	}
++	else if (!strcmp(name, "__barrier_nospec_fixup")) {
++		fixed_size = 8;
++	}
++	else if (!strcmp(name, ".s390_return_mem") ||
++	    !strcmp(name, ".s390_return_reg") ||
++	    !strcmp(name, ".s390_indirect_call") ||
++	    !strcmp(name, ".s390_indirect_branches") ||
++	    !strcmp(name, ".s390_indirect_jump")) {
++		fixed_size = 4;
++	}
++	else if (!strcmp(name, "__stack_protector_loc")) {
++		fixed_size = 8;
++	}
++	else if (strcmp(name, ".fixup"))
++		ERROR("unhandled special section %s", name);
++
+ 	src_offset = 0;
+ 	dest_offset = 0;
+ 	for ( ; src_offset < relasec->base->sh.sh_size; src_offset += group_size) {
+ 
+-		group_size = special->group_size(kelf, src_offset);
++		if (cached_size) {
++			if (!*cached_size) {
++				char *value = getenv(size_env);
++				if (!value)
++					ERROR("%s not set", size_env);
++				*cached_size = atoi(value);
++			}
++			group_size = (unsigned int)*cached_size;
++		} else if (!strcmp(relasec->base->name, ".fixup"))
++			group_size = (unsigned int)fixup_group_size(kelf, src_offset);
++		else
++			group_size = fixed_size;
+ 
+ 		/*
+ 		 * In some cases the struct has padding at the end to ensure
+@@ -2897,14 +2709,14 @@ static void kpatch_regenerate_special_section(struct kpatch_elf *kelf,
+ 		 * contains the data but doesn't go past the end of the
+ 		 * section.
+ 		 */
+-		if (src_offset + group_size > relasec->base->sh.sh_size)
+-			group_size = (unsigned int)(relasec->base->sh.sh_size - src_offset);
+-
+-		if (!should_keep_rela_group(lookup, relasec, src_offset, group_size))
++		if (!should_keep_rela_group(lookup, relasec, src_offset, &group_size))
+ 			continue;
+ 
+-		if (special->group_filter &&
+-		    !special->group_filter(lookup, relasec, src_offset, group_size))
++		if (!strcmp(relasec->base->name, "__jump_table") &&
++		    !jump_table_group_filter(lookup, relasec, src_offset, group_size))
++			continue;
++		if (!strcmp(relasec->base->name, ".static_call_sites") &&
++		    !static_call_sites_group_filter(lookup, relasec, src_offset, group_size))
+ 			continue;
+ 
+ 		/*
+@@ -2939,8 +2751,8 @@ static void kpatch_regenerate_special_section(struct kpatch_elf *kelf,
+ 
+ 				kpatch_include_symbol(rela->sym);
+ 
+-				if (!strcmp(special->name, ".fixup"))
+-					kpatch_update_ex_table_addend(kelf, special,
++				if (!strcmp(name, ".fixup"))
++					kpatch_update_ex_table_addend(kelf,
+ 								      src_offset,
+ 								      dest_offset,
+ 								      group_size);
+@@ -3304,16 +3116,17 @@ static void kpatch_mark_ignored_functions_same(struct kpatch_elf *kelf)
+ 
+ static void kpatch_create_kpatch_arch_section(struct kpatch_elf *kelf, char *objname)
+ {
+-	struct special_section *special;
++	const char *names[] = { ".parainstructions", ".altinstructions" };
++	const char *name;
+ 	struct symbol *strsym;
+ 	struct section *sec, *karch_sec;
+ 	struct rela *rela;
+-	int nr, index = 0;
++	int nr, candidate, index = 0;
+ 
+ 	if (!KLP_ARCH)
+ 		return;
+ 
+-	nr = sizeof(special_sections) / sizeof(special_sections[0]);
++	nr = 2;
+ 	karch_sec = create_section_pair(kelf, ".kpatch.arch", sizeof(struct kpatch_arch), nr);
+ 
+ 	/* lookup strings symbol */
+@@ -3321,15 +3134,13 @@ static void kpatch_create_kpatch_arch_section(struct kpatch_elf *kelf, char *obj
+ 	if (!strsym)
+ 		ERROR("can't find .kpatch.strings symbol");
+ 
+-	for (special = special_sections; special->name; special++) {
+-		if ((special->arch & kelf->arch) == 0)
++	for (candidate = 0; candidate < 2; candidate++) {
++		name = names[candidate];
++		if (candidate == 0 ? !(kelf->arch & X86_64) :
++		    !(kelf->arch & (AARCH64 | X86_64 | S390 | LOONGARCH64)))
+ 			continue;
+ 
+-		if (strcmp(special->name, ".parainstructions") &&
+-		    strcmp(special->name, ".altinstructions"))
+-			continue;
+-
+-		sec = find_section_by_name(&kelf->sections, special->name);
++		sec = find_section_by_name(&kelf->sections, name);
+ 		if (!sec)
+ 			continue;
+ 
+@@ -3359,23 +3170,73 @@ static void kpatch_create_kpatch_arch_section(struct kpatch_elf *kelf, char *obj
+ static void kpatch_process_special_sections(struct kpatch_elf *kelf,
+ 					    struct lookup_table *lookup)
+ {
+-	struct special_section *special;
++	const char *names[] = {
++		"__bug_table",
++		".fixup",
++		"__ex_table",
++		"__jump_table",
++		".printk_index",
++		".smp_locks",
++		".parainstructions",
++		".altinstructions",
++		".static_call_sites",
++		".call_sites",
++		".retpoline_sites",
++		".return_sites",
++		"__ftr_fixup",
++		"__mmu_ftr_fixup",
++		"__fw_ftr_fixup",
++		"__lwsync_fixup",
++		"__barrier_nospec_fixup",
++		".s390_return_mem",
++		".s390_return_reg",
++		".s390_indirect_call",
++		".s390_indirect_branches",
++		".s390_indirect_jump",
++		"__stack_protector_loc",
++		NULL
++	};
++	const char *name;
++	unsigned int i;
+ 	struct section *sec;
+ 	struct symbol *sym;
+ 	struct rela *rela;
+ 	int altinstr = 0;
+ 
+-	for (special = special_sections; special->name; special++) {
+-		if ((special->arch & kelf->arch) == 0)
++	for (i = 0; (name = names[i]); i++) {
++		if (!(
++		    (!strcmp(name, "__bug_table") && (kelf->arch & (AARCH64 | X86_64 | PPC64 | S390 | LOONGARCH64))) ||
++		    (!strcmp(name, ".fixup") && (kelf->arch & (AARCH64 | X86_64 | PPC64 | S390 | LOONGARCH64))) ||
++		    (!strcmp(name, "__ex_table") && (kelf->arch & (AARCH64 | X86_64 | PPC64 | S390 | LOONGARCH64))) ||
++		    (!strcmp(name, "__jump_table") && (kelf->arch & (AARCH64 | X86_64 | PPC64 | S390 | LOONGARCH64))) ||
++		    (!strcmp(name, ".printk_index") && (kelf->arch & (AARCH64 | X86_64 | PPC64 | S390))) ||
++		    (!strcmp(name, ".smp_locks") && (kelf->arch & (X86_64))) ||
++		    (!strcmp(name, ".parainstructions") && (kelf->arch & (X86_64))) ||
++		    (!strcmp(name, ".altinstructions") && (kelf->arch & (AARCH64 | X86_64 | S390 | LOONGARCH64))) ||
++		    (!strcmp(name, ".static_call_sites") && (kelf->arch & (X86_64))) ||
++		    (!strcmp(name, ".call_sites") && (kelf->arch & (X86_64))) ||
++		    (!strcmp(name, ".retpoline_sites") && (kelf->arch & (X86_64))) ||
++		    (!strcmp(name, ".return_sites") && (kelf->arch & (X86_64))) ||
++		    (!strcmp(name, "__ftr_fixup") && (kelf->arch & (PPC64))) ||
++		    (!strcmp(name, "__mmu_ftr_fixup") && (kelf->arch & (PPC64))) ||
++		    (!strcmp(name, "__fw_ftr_fixup") && (kelf->arch & (PPC64))) ||
++		    (!strcmp(name, "__lwsync_fixup") && (kelf->arch & (PPC64))) ||
++		    (!strcmp(name, "__barrier_nospec_fixup") && (kelf->arch & (PPC64))) ||
++		    (!strcmp(name, ".s390_return_mem") && (kelf->arch & (S390))) ||
++		    (!strcmp(name, ".s390_return_reg") && (kelf->arch & (S390))) ||
++		    (!strcmp(name, ".s390_indirect_call") && (kelf->arch & (S390))) ||
++		    (!strcmp(name, ".s390_indirect_branches") && (kelf->arch & (S390))) ||
++		    (!strcmp(name, ".s390_indirect_jump") && (kelf->arch & (S390))) ||
++		    (!strcmp(name, "__stack_protector_loc") && (kelf->arch & (S390)))))
+ 			continue;
+ 
+-		sec = find_section_by_name(&kelf->sections, special->name);
++		sec = find_section_by_name(&kelf->sections, name);
+ 		if (!sec || !sec->rela)
+ 			continue;
+ 
+-		kpatch_regenerate_special_section(kelf, lookup, special, sec->rela);
++		kpatch_regenerate_special_section(kelf, lookup, name, sec->rela);
+ 
+-		if (!strcmp(special->name, ".altinstructions") && sec->include)
++		if (!strcmp(name, ".altinstructions") && sec->include)
+ 			altinstr = 1;
+ 	}
+ 
+@@ -3775,7 +3636,6 @@ static void kpatch_create_intermediate_sections(struct kpatch_elf *kelf,
+ 	struct lookup_result symbol;
+ 	bool special;
+ 	bool vmlinux = !strcmp(objname, "vmlinux");
+-	struct special_section *s;
+ 
+ 	/* count rela entries that need to be dynamic */
+ 	nr = 0;
+@@ -3837,13 +3697,41 @@ static void kpatch_create_intermediate_sections(struct kpatch_elf *kelf,
+ 			continue;
+ 
+ 		special = false;
+-		for (s = special_sections; s->name; s++) {
+-			if ((s->arch & kelf->arch) == 0)
+-				continue;
+-
+-			if (!strcmp(relasec->base->name, s->name))
+-				special = true;
+-		}
++		if ((kelf->arch & (AARCH64 | X86_64 | PPC64 | S390 | LOONGARCH64)) &&
++		    (!strcmp(relasec->base->name, "__bug_table") ||
++		     !strcmp(relasec->base->name, ".fixup") ||
++		     !strcmp(relasec->base->name, "__ex_table") ||
++		     !strcmp(relasec->base->name, "__jump_table")))
++			special = true;
++		if ((kelf->arch & (AARCH64 | X86_64 | PPC64 | S390)) &&
++		    !strcmp(relasec->base->name, ".printk_index"))
++			special = true;
++		if ((kelf->arch & (AARCH64 | X86_64 | S390 | LOONGARCH64)) &&
++		    !strcmp(relasec->base->name, ".altinstructions"))
++			special = true;
++		if ((kelf->arch & X86_64) &&
++		    (!strcmp(relasec->base->name, ".smp_locks") ||
++		     !strcmp(relasec->base->name, ".parainstructions") ||
++		     !strcmp(relasec->base->name, ".static_call_sites") ||
++		     !strcmp(relasec->base->name, ".call_sites") ||
++		     !strcmp(relasec->base->name, ".retpoline_sites") ||
++		     !strcmp(relasec->base->name, ".return_sites")))
++			special = true;
++		if ((kelf->arch & PPC64) &&
++		    (!strcmp(relasec->base->name, "__ftr_fixup") ||
++		     !strcmp(relasec->base->name, "__mmu_ftr_fixup") ||
++		     !strcmp(relasec->base->name, "__fw_ftr_fixup") ||
++		     !strcmp(relasec->base->name, "__lwsync_fixup") ||
++		     !strcmp(relasec->base->name, "__barrier_nospec_fixup")))
++			special = true;
++		if ((kelf->arch & S390) &&
++		    (!strcmp(relasec->base->name, ".s390_return_mem") ||
++		     !strcmp(relasec->base->name, ".s390_return_reg") ||
++		     !strcmp(relasec->base->name, ".s390_indirect_call") ||
++		     !strcmp(relasec->base->name, ".s390_indirect_branches") ||
++		     !strcmp(relasec->base->name, ".s390_indirect_jump") ||
++		     !strcmp(relasec->base->name, "__stack_protector_loc")))
++			special = true;
+ 
+ 		list_for_each_entry_safe(rela, safe, &relasec->relas, list) {
+ 			if (!rela->need_klp_reloc) {
+diff --git a/kpatch-build/lookup.c b/kpatch-build/lookup.c
+index ca84bf2..559fd85 100644
+--- a/kpatch-build/lookup.c
++++ b/kpatch-build/lookup.c
+@@ -70,8 +70,19 @@ struct lookup_table {
+ 
+ static bool maybe_discarded_sym(const char *name)
+ {
++	const char *data_name;
++	bool instrumentation;
++
+ 	if (!name)
+ 		return false;
++	data_name = name;
++	if (!strncmp(name, ".rela.data.", 11))
++		data_name += 5;
++	instrumentation = !strncmp(data_name, ".data.rel.local..Lubsan_data", 28) ||
++			  !strncmp(data_name, ".data..Lubsan_data", 18);
++	if (!strncmp(name, ".Lubsan_data", 12) ||
++	    !strncmp(name, ".data..Lubsan_type", 18))
++		instrumentation = true;
+ 
+ 	/*
+ 	 * Sometimes these symbols are discarded during linking, and sometimes
+@@ -89,7 +100,7 @@ static bool maybe_discarded_sym(const char *name)
+ 	    !strncmp(name, ".L__const", 9) ||
+ 	    !strncmp(name, "__gendwarfksyms_", 16) ||
+ 	    !strncmp(name, "__export_symbol_", 16) ||
+-	    is_ubsan_sec(name))
++	    instrumentation)
+ 		return true;
+ 
+ 	return false;

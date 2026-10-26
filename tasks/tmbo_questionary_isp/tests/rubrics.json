@@ -1,0 +1,499 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "tmbo_questionary_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "configuration",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 parser input.",
+      "baseline_defect": "The configuration client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit configuration dependencies to its consumed capabilities.",
+      "acceptance": "Copy config, type/name admission before defaults merge; print special handling before choices/defaults; when callback before choices, filter-callable check before default and dynamic registry lookup after default. Preserve wrapped exceptions/chaining; widget clients need no parser contract. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "configure,choices,default",
+          "detail": "The configuration client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompt.py",
+          "symbol": "configure,choices,default",
+          "detail": "The configuration client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "answer_callback",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 name/filter/target binding.",
+      "baseline_defect": "The answer_callback client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit answer callback dependencies to its consumed capabilities.",
+      "acceptance": "Captured target/name/filter remain per question; None skipped before filter, filtered result may be None and still stored; errors wrapped. A scoped stateful sink/closure is legal, no categorical ban on mutable context or allow_none parameter. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "answer",
+          "detail": "The answer_callback client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompt.py",
+          "symbol": "answer",
+          "detail": "The answer_callback client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "form_collection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/Stage2 distinct None policy.",
+      "baseline_defect": "The form_collection client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit form collection dependencies to its consumed capabilities.",
+      "acceptance": "Sync/async sequentially invoke each current field unsafe override, retain None and duplicate-key overwrite/order, propagate interruption to existing safe wrapper. No parsing/layout/validation setup. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "fields,fields_async",
+          "detail": "The form_collection client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/form.py",
+          "symbol": "fields,fields_async",
+          "detail": "The form_collection client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "navigation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 selection plus Stage2 binding.",
+      "baseline_defect": "The navigation client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit navigation dependencies to its consumed capabilities.",
+      "acceptance": "Operate intended control only; select cycle vs checkbox noncycle undo first wrapped step then invalid-selection loop. Current control methods preserved; no checkbox validator needed for select. Stateful selection capability legal. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "move,prepare_selection",
+          "detail": "The navigation client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "move,prepare_selection",
+          "detail": "The navigation client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "move,prepare_selection",
+          "detail": "The navigation client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "checkbox_feedback",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 toolbar and Stage2 verdict sharing.",
+      "baseline_defect": "The checkbox_feedback client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit checkbox feedback dependencies to its consumed capabilities.",
+      "acceptance": "True-only success, literal False INVALID_INPUT, others str; callback once, error publication gated submission_attempted while validity returned independently. No input-validator/session/parser contract. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "selection_validation,error_text",
+          "detail": "The checkbox_feedback client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "selection_validation,error_text",
+          "detail": "The checkbox_feedback client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "input_validation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 representations/Stage2 callback capture.",
+      "baseline_defect": "The input_validation client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit input validation dependencies to its consumed capabilities.",
+      "acceptance": "Falsy validator none; Validator class instantiated, instance identity retained, callable text verdict True-only, False normalized and other values NOT stringified; cursor len(document.text). Callback closure must not require unrelated service lifetime. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "validator,error_text",
+          "detail": "The input_validation client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/common.py",
+          "symbol": "validator,error_text",
+          "detail": "The input_validation client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "style",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 presentation-only.",
+      "baseline_defect": "The style client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit style dependencies to its consumed capabilities.",
+      "acceptance": "DEFAULT_STYLE first then non-None styles in order; no question/config/control setup. Shared provider allowed, clients scoped. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "style",
+          "detail": "The style client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/styles.py",
+          "symbol": "style",
+          "detail": "The style client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "printing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 print-only.",
+      "baseline_defect": "The printing client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit printing dependencies to its consumed capabilities.",
+      "acceptance": "Style None uses default, explicit empty style still constructed, class:text formatted payload/options retained. Printing usable without sessions/answer/runner capabilities. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "print_text",
+          "detail": "The printing client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/common.py",
+          "symbol": "print_text",
+          "detail": "The printing client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "input_preparation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 and Stage2 prepared defaults.",
+      "baseline_defect": "The input_preparation client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit input preparation dependencies to its consumed capabilities.",
+      "acceptance": "Style/validator evaluated at original factory positions before session/completer work, duplicate keyword TypeError remains before factory. Defaults stay per construction. Explicit prepared values or focused builder legal; order itself cannot be removed by delaying validation. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "prepare_input,prepare_validation,session",
+          "detail": "The input_preparation client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/text.py",
+          "symbol": "prepare_input,prepare_validation,session",
+          "detail": "The input_preparation client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/path.py",
+          "symbol": "prepare_input,prepare_validation,session",
+          "detail": "The input_preparation client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/autocomplete.py",
+          "symbol": "prepare_input,prepare_validation,session",
+          "detail": "The input_preparation client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "buffer_seeding",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 default-buffer setup.",
+      "baseline_defect": "The buffer_seeding client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit buffer seeding dependencies to its consumed capabilities.",
+      "acceptance": "Session construction before Document/reset; path str(default) after session, text/autocomplete retain default. Preserve custom session and distinct completer/lexer arguments; no runtime/config/nav burden. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "seed",
+          "detail": "The buffer_seeding client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/text.py",
+          "symbol": "seed",
+          "detail": "The buffer_seeding client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/path.py",
+          "symbol": "seed",
+          "detail": "The buffer_seeding client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/autocomplete.py",
+          "symbol": "seed",
+          "detail": "The buffer_seeding client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "layout_sessions",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 two distinct sessions/Stage2 factory mutation.",
+      "baseline_defect": "The layout_sessions client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit layout sessions dependencies to its consumed capabilities.",
+      "acceptance": "Main session reserve0 and blank-line fix, toolbar session with lazy error callback; no leakage of input defaults/control validation into unrelated layout creation. Common direct call works without incoming selection service. Focused session provider may be shared. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "session",
+          "detail": "The layout_sessions client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/common.py",
+          "symbol": "session",
+          "detail": "The layout_sessions client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "application_construction",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 kwargs filtering handoff.",
+      "baseline_defect": "The application_construction client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit application construction dependencies to its consumed capabilities.",
+      "acceptance": "Preserve layout/bindings/style, utils.used_kwargs against current factory.__init__, duplicate-key errors and factory exceptions. Consumer need not carry parser/answer/runtime surface. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "build_application",
+          "detail": "The application_construction client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/select.py",
+          "symbol": "build_application",
+          "detail": "The application_construction client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/checkbox.py",
+          "symbol": "build_application",
+          "detail": "The application_construction client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sync_execution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 single Question.",
+      "baseline_defect": "The sync_execution client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit sync execution dependencies to its consumed capabilities.",
+      "acceptance": "Current should_skip/default and CURRENT application used, including reassignment after factory; stdout patch around synchronous run. No construction/navigation/answer setup required. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "run",
+          "detail": "The sync_execution client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/question.py",
+          "symbol": "run",
+          "detail": "The sync_execution client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "async_execution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 toolkit lifecycle.",
+      "baseline_defect": "The async_execution client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit async execution dependencies to its consumed capabilities.",
+      "acceptance": "Skip before activation; activation only if needed; patch closes after run_async creation before awaiting; version3 direct vs legacy conversion, error propagation unchanged. Focused sync+async runner may remain combined. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "run_async",
+          "detail": "The async_execution client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/question.py",
+          "symbol": "run_async",
+          "detail": "The async_execution client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "factory_lifetime",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 service installed into Question.",
+      "baseline_defect": "The factory_lifetime client uses all-purpose PromptService and unrelated setup/state.",
+      "criterion": "Limit factory lifetime dependencies to its consumed capabilities.",
+      "acceptance": "All factories yield independently usable Questions without requiring retained parser/navigation/validator capabilities for later execution. Confirmation/any-key options and bindings unchanged; late application reassignment works. Shared implementation/storage is not automatically forbidden, but actual client requirements must narrow. Shared backing implementation, focused stateful capability or direct functions are valid; no requirement to eliminate all state or create one interface per operation. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A facade still requiring unrelated service setup does not isolate the client."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/_prompt_service.py",
+          "symbol": "question",
+          "detail": "The factory_lifetime client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/confirm.py",
+          "symbol": "question",
+          "detail": "The factory_lifetime client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/prompts/press_any_key_to_continue.py",
+          "symbol": "question",
+          "detail": "The factory_lifetime client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "questionary/question.py",
+          "symbol": "question",
+          "detail": "The factory_lifetime client uses all-purpose PromptService and unrelated setup/state.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "tmbo_questionary_isp",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "weighting": "equal per item",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "preserving existing prompt behavior, tests, or compilation alone",
+      "cosmetic renaming or unchanged patches"
+    ]
+  }
+}

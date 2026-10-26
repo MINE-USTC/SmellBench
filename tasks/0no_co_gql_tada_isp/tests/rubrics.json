@@ -1,0 +1,379 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "0no_co_gql_tada_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "SE01",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The expansion made a schema-only printer construct the union schema adapter.",
+      "baseline_defect": "generate-schema/runner.ts obtains schemaOperations(load(...)) for printSchema although the adapter also offers introspection, diagnostic, scan, and loader-related operations.",
+      "criterion": "Keep schema printing independent of the all-purpose schema operation contract.",
+      "acceptance": "The schema-generation client receives a printing-only operation or calls the printer directly; its loader still supplies the schema. Direct functions, capability parameters, composition or an equivalent design qualify. No new interface, class, module, or separate object per item is required. A genuine narrow client dependency may be backed by a larger implementation; a cosmetic facade still requiring unrelated operations does not qualify.",
+      "insufficient_repairs": [
+        "Rename or add a facade while the affected client/provider still requires the same unrelated output, diagnostic or scan contract. Merely preserving behavior without removing that dependency is insufficient. A larger backing implementation alone is not a failure when the consumer contract is genuinely segregated."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/cli-utils/src/commands/generate-schema/runner.ts",
+          "symbol": "run / printSchema",
+          "detail": "generate-schema/runner.ts obtains schemaOperations(load(...)) for printSchema although the adapter also offers introspection, diagnostic, scan, and loader-related operations.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/schema-operations.ts",
+          "symbol": "SchemaOperations",
+          "detail": "generate-schema/runner.ts obtains schemaOperations(load(...)) for printSchema although the adapter also offers introspection, diagnostic, scan, and loader-related operations.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "SE02",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The diagnostic command's local reference construction was moved to the union adapter.",
+      "baseline_defect": "check/thread.ts calls schemaOperations(loadedRef).createDiagnosticsRef while SchemaOperations includes unrelated output and schema collection methods.",
+      "criterion": "Give diagnostic reference construction a focused boundary that does not require the schema-output union.",
+      "acceptance": "The diagnostic client can construct its reference locally or use a diagnostic-specific collaborator with the existing snapshot fields and fresh maps. Direct functions, capability parameters, composition or an equivalent design qualify. No new interface, class, module, or separate object per item is required. A genuine narrow client dependency may be backed by a larger implementation; a cosmetic facade still requiring unrelated operations does not qualify.",
+      "insufficient_repairs": [
+        "Rename or add a facade while the affected client/provider still requires the same unrelated output, diagnostic or scan contract. Merely preserving behavior without removing that dependency is insufficient. A larger backing implementation alone is not a failure when the consumer contract is genuinely segregated."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/cli-utils/src/commands/check/thread.ts",
+          "symbol": "_runDiagnostics / createDiagnosticsRef",
+          "detail": "check/thread.ts calls schemaOperations(loadedRef).createDiagnosticsRef while SchemaOperations includes unrelated output and schema collection methods.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/schema-operations.ts",
+          "symbol": "createDiagnosticsRef",
+          "detail": "check/thread.ts calls schemaOperations(loadedRef).createDiagnosticsRef while SchemaOperations includes unrelated output and schema collection methods.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "SE03",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The scan command's schema-map assembly was moved to the same union.",
+      "baseline_defect": "scan/runner.ts calls schemaOperations(ref).collectSchemas for a map, thereby obtaining output, diagnostic, and printing operations.",
+      "criterion": "Keep scan schema collection independent of the all-purpose schema adapter.",
+      "acceptance": "Scan assembles its default and named schema map locally or through a narrow collector preserving the existing insertion order and lookup semantics. Direct functions, capability parameters, composition or an equivalent design qualify. No new interface, class, module, or separate object per item is required. A genuine narrow client dependency may be backed by a larger implementation; a cosmetic facade still requiring unrelated operations does not qualify.",
+      "insufficient_repairs": [
+        "Rename or add a facade while the affected client/provider still requires the same unrelated output, diagnostic or scan contract. Merely preserving behavior without removing that dependency is insufficient. A larger backing implementation alone is not a failure when the consumer contract is genuinely segregated."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/cli-utils/src/commands/scan/runner.ts",
+          "symbol": "loadSchemas / collectSchemas",
+          "detail": "scan/runner.ts calls schemaOperations(ref).collectSchemas for a map, thereby obtaining output, diagnostic, and printing operations.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/schema-operations.ts",
+          "symbol": "collectSchemas",
+          "detail": "scan/runner.ts calls schemaOperations(ref).collectSchemas for a map, thereby obtaining output, diagnostic, and printing operations.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "RA01",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "SDL and URL loader implementations receive projection defaults through a factory that also installs output and diagnostic methods.",
+      "baseline_defect": "schemaLoaderOperations attaches loadIntrospection and loadSchema to concrete loaders and then applies schemaOperations, making loader defaults carry unrelated capabilities.",
+      "criterion": "Own loader projection defaults within a loader-specific boundary.",
+      "acceptance": "SDL and URL loader projections depend only on loading capabilities, without requiring unrelated SchemaOperations capabilities. Preserve supported load overrides and projection behavior through dynamic dispatch, composition or an equivalent model; neither this.load syntax nor a particular helper is required. A rich implementation may back the narrow contract.",
+      "insufficient_repairs": [
+        "Rename or add a facade while the affected client/provider still requires the same unrelated output, diagnostic or scan contract. Merely preserving behavior without removing that dependency is insufficient. A larger backing implementation alone is not a failure when the consumer contract is genuinely segregated."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/loaders/sdl.ts",
+          "symbol": "loadFromSDL / schemaLoaderOperations",
+          "detail": "schemaLoaderOperations attaches loadIntrospection and loadSchema to concrete loaders and then applies schemaOperations, making loader defaults carry unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/loaders/url.ts",
+          "symbol": "loadFromURL / schemaLoaderOperations",
+          "detail": "schemaLoaderOperations attaches loadIntrospection and loadSchema to concrete loaders and then applies schemaOperations, making loader defaults carry unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/schema-operations.ts",
+          "symbol": "schemaLoaderOperations",
+          "detail": "schemaLoaderOperations attaches loadIntrospection and loadSchema to concrete loaders and then applies schemaOperations, making loader defaults carry unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "RA02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Lazy loader construction was taken from loadRef and placed in the broad reference operations object.",
+      "baseline_defect": "schemaReferenceOperations.getLoaders caches named and default loaders and shares a contract with output, diagnostic, and subscriber-unrelated functions.",
+      "criterion": "Remove unrelated rendering/diagnostic requirements from reference loader initialization and caching.",
+      "acceptance": "loadRef or a narrow collaborator retains lazy initialization, named/default ordering, and the first configuration's cached loader set without importing the schema-output union. Direct functions, capability parameters, composition or an equivalent design qualify. No new interface, class, module, or separate object per item is required. A genuine narrow client dependency may be backed by a larger implementation; a cosmetic facade still requiring unrelated operations does not qualify.",
+      "insufficient_repairs": [
+        "Rename or add a facade while the affected client/provider still requires the same unrelated output, diagnostic or scan contract. Merely preserving behavior without removing that dependency is insufficient. A larger backing implementation alone is not a failure when the consumer contract is genuinely segregated."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/loaders/index.ts",
+          "symbol": "loadRef / getLoaders",
+          "detail": "schemaReferenceOperations.getLoaders caches named and default loaders and shares a contract with output, diagnostic, and subscriber-unrelated functions.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/schema-operations.ts",
+          "symbol": "schemaReferenceOperations.getLoaders",
+          "detail": "schemaReferenceOperations.getLoaders caches named and default loaders and shares a contract with output, diagnostic, and subscriber-unrelated functions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "RA03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Reference update teardown state was moved to the broad reference operations object separately from lazy construction.",
+      "baseline_defect": "schemaReferenceOperations retains teardown callbacks and stopUpdates drains them, while the object also exports schema-output and diagnostic capabilities.",
+      "criterion": "Remove unrelated rendering/diagnostic requirements from reference update teardown management.",
+      "acceptance": "The registration path and returned stop callback preserve shared LIFO teardown behavior with local or narrow lifecycle state. Direct functions, capability parameters, composition or an equivalent design qualify. No new interface, class, module, or separate object per item is required. A genuine narrow client dependency may be backed by a larger implementation; a cosmetic facade still requiring unrelated operations does not qualify.",
+      "insufficient_repairs": [
+        "Rename or add a facade while the affected client/provider still requires the same unrelated output, diagnostic or scan contract. Merely preserving behavior without removing that dependency is insufficient. A larger backing implementation alone is not a failure when the consumer contract is genuinely segregated."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/loaders/index.ts",
+          "symbol": "loadRef.autoupdate / stopUpdates",
+          "detail": "schemaReferenceOperations retains teardown callbacks and stopUpdates drains them, while the object also exports schema-output and diagnostic capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/schema-operations.ts",
+          "symbol": "retainTeardowns / stopUpdates",
+          "detail": "schemaReferenceOperations retains teardown callbacks and stopUpdates drains them, while the object also exports schema-output and diagnostic capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "RA04",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Second stage moved actual SDL and URL subscriber-set mutation into a shared provider.",
+      "baseline_defect": "schemaSubscriberOperations owns update and error Sets, subscribe and unsubscribe, while inheriting every SchemaOperations output and diagnostic member.",
+      "criterion": "Give SDL and URL update/error subscriber state a subscription-focused owner.",
+      "acceptance": "Both loaders can register, iterate, and remove live update and optional error callbacks with their existing watcher/timer scheduling, using state that does not expose output or diagnostic capabilities. Direct functions, capability parameters, composition or an equivalent design qualify. No new interface, class, module, or separate object per item is required. A genuine narrow client dependency may be backed by a larger implementation; a cosmetic facade still requiring unrelated operations does not qualify.",
+      "insufficient_repairs": [
+        "Rename or add a facade while the affected client/provider still requires the same unrelated output, diagnostic or scan contract. Merely preserving behavior without removing that dependency is insufficient. A larger backing implementation alone is not a failure when the consumer contract is genuinely segregated."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/internal/src/schema-operations.ts",
+          "symbol": "schemaSubscriberOperations",
+          "detail": "schemaSubscriberOperations owns update and error Sets, subscribe and unsubscribe, while inheriting every SchemaOperations output and diagnostic member.",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/internal/src/loaders/sdl.ts",
+          "symbol": "notifyOnUpdate",
+          "detail": "schemaSubscriberOperations owns update and error Sets, subscribe and unsubscribe, while inheriting every SchemaOperations output and diagnostic member.",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/internal/src/loaders/url.ts",
+          "symbol": "notifyOnUpdate",
+          "detail": "schemaSubscriberOperations owns update and error Sets, subscribe and unsubscribe, while inheriting every SchemaOperations output and diagnostic member.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "RA05",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Second stage routes three real load/update result paths through publishResult.",
+      "baseline_defect": "schemaReferenceOperations.publishResult increments ref.version and merges input/result, while callers in loadRef still choose current versus named destination and callback timing.",
+      "criterion": "Remove unrelated rendering/diagnostic requirements from reference result publication.",
+      "acceptance": "The three load/update publication paths can prepare their version/result state without requiring the schema-output union. Publication may stay local, use a narrow operation, or be unified with other coherent reference state; no separate publication interface is required. Assignment and notification timing remain constraints, not extra scoring credit.",
+      "insufficient_repairs": [
+        "Relocating publishResult intact into a different broad object or changing only its type annotation does not resolve this responsibility."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/internal/src/loaders/index.ts",
+          "symbol": "loadRef.autoupdate / load",
+          "detail": "schemaReferenceOperations.publishResult increments ref.version and merges input/result, while callers in loadRef still choose current versus named destination and callback timing.",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/internal/src/schema-operations.ts",
+          "symbol": "publishResult",
+          "detail": "schemaReferenceOperations.publishResult increments ref.version and merges input/result, while callers in loadRef still choose current versus named destination and callback timing.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "EX01",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Current output generation already varies by file type and preprocessing option, yet it obtains this policy from the union adapter.",
+      "baseline_defect": "generate-output/runner.ts uses SchemaOperations for minifyIntrospection, outputIntrospectionFile, and extractIntrospectionHeader, alongside unrelated printing, scan, and diagnostic capabilities.",
+      "criterion": "Let the existing .ts/.d.ts introspection format and preprocessing choices evolve at an output-format boundary.",
+      "acceptance": "Both single and named output paths handle the existing .ts/.d.ts and preprocessing choices without requiring loader, diagnostic or scan capabilities. Parameters, policy data, composition, direct functions or an equivalent design qualify; no fixed formatter signature or intermediate representation is required. Header preservation remains a behavior constraint.",
+      "insufficient_repairs": [
+        "Splitting the command into two branches while both still obtain SchemaOperations does not isolate the existing format variation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/cli-utils/src/commands/generate-output/runner.ts",
+          "symbol": "runProject / outputIntrospectionFile",
+          "detail": "generate-output/runner.ts uses SchemaOperations for minifyIntrospection, outputIntrospectionFile, and extractIntrospectionHeader, alongside unrelated printing, scan, and diagnostic capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/internal/src/schema-operations.ts",
+          "symbol": "SchemaOperations",
+          "detail": "generate-output/runner.ts uses SchemaOperations for minifyIntrospection, outputIntrospectionFile, and extractIntrospectionHeader, alongside unrelated printing, scan, and diagnostic capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "EX02",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Current output targets already vary between writable streams, missing files, and existing files.",
+      "baseline_defect": "OutputAccess combines header extraction with target reading and writing; turbo obtains a target adapter merely to extract a pure header, while the adapter also owns stream callbacks and file replacement.",
+      "criterion": "Let header parsing vary separately from stream and file output mechanics.",
+      "acceptance": "The turbo cache renderer can use a pure header parser or rendering-specific collaborator without constructing a target I/O adapter; outputAccess or an equivalent I/O boundary handles actual target operations. Direct functions, capability parameters, composition or an equivalent design qualify. No new interface, class, module, or separate object per item is required. A genuine narrow client dependency may be backed by a larger implementation; a cosmetic facade still requiring unrelated operations does not qualify.",
+      "insufficient_repairs": [
+        "A pure-looking extractHeader alias that still requires outputAccess(turboDestination) keeps the unrelated target dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/cli-utils/src/commands/turbo/runner.ts",
+          "symbol": "createCacheContents / extractHeader",
+          "detail": "OutputAccess combines header extraction with target reading and writing; turbo obtains a target adapter merely to extract a pure header, while the adapter also owns stream callbacks and file replacement.",
+          "raw": null
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/cli-utils/src/commands/shared/utils.ts",
+          "symbol": "OutputAccess.extractHeader",
+          "detail": "OutputAccess combines header extraction with target reading and writing; turbo obtains a target adapter merely to extract a pure header, while the adapter also owns stream callbacks and file replacement.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "CF01",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 3 gives the write-only SDL command a required read capability and makes compatibility writers route through the combined adapter.",
+      "baseline_defect": "generate-schema and the writeOutput compatibility entry obtain outputAccess, whose contract and construction also require read and extractHeader despite their write-only role.",
+      "criterion": "Allow write-only output clients to depend on writing without requiring reading or header parsing.",
+      "acceptance": "The SDL command and shared writeOutput entry use a write-capable dependency that does not require read/header behavior. Read-and-write commands may use a combined capability where they actually need both. Functions, narrow contracts, composition and equivalent IO designs qualify; callback completion and file replacement are constraints, not points.",
+      "insufficient_repairs": [
+        "Fix only the pure header renderer while write-only callers still acquire a read/header contract. A write-named wrapper around unchanged required OutputAccess does not narrow the dependency."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/generate-schema/runner.ts",
+          "symbol": "run / outputAccess",
+          "detail": "The command calls only write after constructing the combined access object.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/shared/utils.ts",
+          "symbol": "writeOutput / OutputAccess",
+          "detail": "writeOutput delegates to outputAccess(target).write; OutputAccess also requires read and extractHeader.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "SE04",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round 3 also routes the existing readOutput entry through combined target access.",
+      "baseline_defect": "The readOutput compatibility function constructs OutputAccess including write and extractHeader just to read existing contents.",
+      "criterion": "Allow reading existing output content without requiring writing or header parsing.",
+      "acceptance": "The readOutput entry obtains its behavior through a read-specific dependency or equivalent direct implementation. A combined read/write implementation may serve clients needing both, but reading alone must not require write/header capabilities. Existing stream/missing-file read absence remains a constraint; no required reader class or new interface.",
+      "insufficient_repairs": [
+        "Narrow write-only clients while leaving readOutput dependent on the same mandatory write/header surface."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/cli-utils/src/commands/shared/utils.ts",
+          "symbol": "readOutput / OutputAccess",
+          "detail": "readOutput delegates to outputAccess(target).read while the constructed contract requires write and extractHeader.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded_four_dimensions.v2",
+    "case_id": "0no-co--gql.tada--interface_segregation",
+    "aggregation": "equal_weight_per_item",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "derivation": {
+      "basis": [
+        "expansion_log.md",
+        "deepening_log.md",
+        "continuation-sweep.md",
+        "expanded.diff",
+        "interaction_delta.diff",
+        "environment/smell.diff"
+      ],
+      "excluded_from_scoring": [
+        "post.diff is empty",
+        "Existing output file and stream behavior is a preservation constraint",
+        "The historical type annotation correction is compilation only",
+        "Intact algorithm relocation and cosmetic naming do not earn credit"
+      ],
+      "historical_rubrics": "Not used as a checklist or grading oracle."
+    }
+  }
+}

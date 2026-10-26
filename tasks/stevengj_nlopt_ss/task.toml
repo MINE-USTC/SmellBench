@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/stevengj_nlopt_ss"
+version = "1.0.0"
+description = "Refactor an injected shotgun_surgery smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "god_classes", "c"]
+
+[metadata]
+repo_name = "nlopt"
+repo_url = "https://github.com/stevengj/nlopt"
+git_commit = "673d2504f819bf554a7968e41de552ee102e7fb1"
+language = "C"
+smell_type = "shotgun_surgery"
+prompt_mode = "natural"
+apt_packages = ["build-essential","cmake","clang-tidy"]
+smell_checker_match_count = 1
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 5
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/stevengj/nlopt", CC_FORBIDDEN_REPO_URL = "nlopt", CC_FORBIDDEN_REPO_NAME = "nlopt" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

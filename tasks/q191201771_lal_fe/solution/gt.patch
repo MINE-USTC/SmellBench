@@ -1,0 +1,667 @@
+diff --git a/pkg/logic/group__core_streaming.go b/pkg/logic/group__core_streaming.go
+--- a/pkg/logic/group__core_streaming.go
++++ b/pkg/logic/group__core_streaming.go
+@@ -284,14 +284,7 @@
+ 			session.IsFresh = false
+ 		}
+ 
++		if session.ShouldWaitVideoKeyFrame && msg.IsVideoKeyNalu() {
+-		if session.ShouldWaitVideoKeyFrame && msg.Header.MsgTypeId == base.RtmpTypeIdVideo {
+-			if msg.Payload[0]&0x80 != 0 {
+-				if msg.Payload[0]>>4&0x07 != base.RtmpExFrameTypeKeyFrame || msg.Payload[0]&0x0f == base.RtmpExPacketTypeSequenceStart {
+-					continue
+-				}
+-			} else if (msg.Payload[0] != base.RtmpAvcKeyFrame || msg.Payload[1] != base.RtmpAvcPacketTypeNalu) && (msg.Payload[0] != base.RtmpHevcKeyFrame || msg.Payload[1] != base.RtmpHevcPacketTypeNalu) {
+-				continue
+-			}
+ 			// 有sub session在等待关键帧，并且当前是关键帧
+ 			// 把rtmp buf writer中的缓存数据全部广播发送给老的sub session
+ 			// 并且修改这个sub session的标志
+@@ -370,18 +363,10 @@
+ 
+ 		// 是否在等待关键帧
+ 		if session.ShouldWaitVideoKeyFrame {
++			if msg.IsVideoKeyNalu() {
++				session.Write(lazyRtmpMsg2FlvTag.GetEnsureWithoutSdf())
++				session.ShouldWaitVideoKeyFrame = false
++			}
+-			if msg.Header.MsgTypeId != base.RtmpTypeIdVideo {
+-				continue
+-			}
+-			if msg.Payload[0]&0x80 != 0 {
+-				if msg.Payload[0]>>4&0x07 != base.RtmpExFrameTypeKeyFrame || msg.Payload[0]&0x0f == base.RtmpExPacketTypeSequenceStart {
+-					continue
+-				}
+-			} else if (msg.Payload[0] != base.RtmpAvcKeyFrame || msg.Payload[1] != base.RtmpAvcPacketTypeNalu) && (msg.Payload[0] != base.RtmpHevcKeyFrame || msg.Payload[1] != base.RtmpHevcPacketTypeNalu) {
+-				continue
+-			}
+-			session.Write(lazyRtmpMsg2FlvTag.GetEnsureWithoutSdf())
+-			session.ShouldWaitVideoKeyFrame = false
+ 		} else {
+ 			session.Write(lazyRtmpMsg2FlvTag.GetEnsureWithoutSdf())
+ 		}
+@@ -416,9 +401,9 @@
+ 	// # 记录stat
+ 	if group.stat.AudioCodec == "" {
+ 		if msg.Header.MsgTypeId == base.RtmpTypeIdAudio {
++			switch msg.AudioCodecId() {
+-			switch msg.Payload[0] >> 4 {
+ 			case base.RtmpSoundFormatAac:
++				if msg.IsAacSeqHeader() {
+-				if msg.Header.MsgTypeId == base.RtmpTypeIdAudio && msg.Payload[0]>>4 == base.RtmpSoundFormatAac && msg.Payload[1] == base.RtmpAacPacketTypeSeqHeader {
+ 					group.stat.AudioCodec = base.AudioCodecAac
+ 				}
+ 			case base.RtmpSoundFormatG711U:
+@@ -430,28 +415,16 @@
+ 			}
+ 		}
+ 	}
+-	videoConfig := uint8(0)
+-	if (group.stat.VideoCodec == "" || group.stat.VideoHeight == 0 || group.stat.VideoWidth == 0) && msg.Header.MsgTypeId == base.RtmpTypeIdVideo {
+-		if msg.Payload[0] == base.RtmpAvcKeyFrame && msg.Payload[1] == base.RtmpAvcPacketTypeSeqHeader {
+-			videoConfig = base.RtmpCodecIdAvc
+-		} else if msg.Payload[0]&0x80 != 0 {
+-			if msg.Payload[1] == 'h' && msg.Payload[2] == 'v' && msg.Payload[3] == 'c' && msg.Payload[4] == '1' && msg.Payload[0]&0x0f == base.RtmpExPacketTypeSequenceStart {
+-				videoConfig = base.RtmpCodecIdHevc
+-			}
+-		} else if msg.Payload[0] == base.RtmpHevcKeyFrame && msg.Payload[1] == base.RtmpHevcPacketTypeSeqHeader {
+-			videoConfig = base.RtmpCodecIdHevc
+-		}
+-	}
+ 	if group.stat.VideoCodec == "" {
++		if msg.IsAvcKeySeqHeader() {
+-		if videoConfig == base.RtmpCodecIdAvc {
+ 			group.stat.VideoCodec = base.VideoCodecAvc
+ 		}
++		if msg.IsHevcKeySeqHeader() {
+-		if videoConfig == base.RtmpCodecIdHevc {
+ 			group.stat.VideoCodec = base.VideoCodecHevc
+ 		}
+ 	}
+ 	if group.stat.VideoHeight == 0 || group.stat.VideoWidth == 0 {
++		if msg.IsAvcKeySeqHeader() {
+-		if videoConfig == base.RtmpCodecIdAvc {
+ 			sps, _, err := avc.ParseSpsPpsFromSeqHeader(msg.Payload)
+ 			if err == nil {
+ 				var ctx avc.Context
+@@ -462,10 +435,10 @@
+ 				}
+ 			}
+ 		}
++		if msg.IsHevcKeySeqHeader() {
+-		if videoConfig == base.RtmpCodecIdHevc {
+ 			var sps []byte
+ 			var err error
++			if msg.IsEnhanced() {
+-			if msg.Payload[0]&0x80 != 0 {
+ 				_, sps, _, err = hevc.ParseVpsSpsPpsFromEnhancedSeqHeader(msg.Payload)
+ 			} else {
+ 				_, sps, _, err = hevc.ParseVpsSpsPpsFromSeqHeader(msg.Payload)
+diff --git a/pkg/remux/dummy_audio_filter.go b/pkg/remux/dummy_audio_filter.go
+--- a/pkg/remux/dummy_audio_filter.go
++++ b/pkg/remux/dummy_audio_filter.go
+@@ -82,23 +82,21 @@
+ 		// 分析视频数据累计时长是否达到阈值
+ 
+ 		// 注意，为了避免seq header的时间戳和视频帧不是线性的（0或其他特殊的值）我们直接入队列并跳过
++		if msg.IsVideoKeySeqHeader() {
++			filter.cache(msg)
++			return
++		}
++
++		// 记录首个视频帧的时间戳
++		if filter.firstVideoTs == math.MaxUint32 {
++			filter.cache(msg)
++			filter.firstVideoTs = msg.Header.TimestampAbs
++			return
++		}
++
++		// 没有达到阈值
++		if msg.Header.TimestampAbs-filter.firstVideoTs < uint32(filter.waitAudioMs) {
++			filter.cache(msg)
+-		sequenceHeader := false
+-		if msg.Header.MsgTypeId == base.RtmpTypeIdVideo {
+-			if msg.Payload[0] == base.RtmpAvcKeyFrame && msg.Payload[1] == base.RtmpAvcPacketTypeSeqHeader {
+-				sequenceHeader = true
+-			} else if msg.Payload[0]&0x80 != 0 {
+-				sequenceHeader = msg.Payload[1] == 'h' && msg.Payload[2] == 'v' && msg.Payload[3] == 'c' && msg.Payload[4] == '1' && msg.Payload[0]&0x0f == base.RtmpExPacketTypeSequenceStart
+-			} else {
+-				sequenceHeader = msg.Payload[0] == base.RtmpHevcKeyFrame && msg.Payload[1] == base.RtmpHevcPacketTypeSeqHeader
+-			}
+-		}
+-		if sequenceHeader || filter.firstVideoTs == math.MaxUint32 || msg.Header.TimestampAbs-filter.firstVideoTs < uint32(filter.waitAudioMs) {
+-			retained := base.RtmpMsg{Header: msg.Header, Payload: make([]byte, len(msg.Payload))}
+-			copy(retained.Payload, msg.Payload)
+-			filter.earlyStageQueue = append(filter.earlyStageQueue, retained)
+-			if !sequenceHeader && filter.firstVideoTs == math.MaxUint32 {
+-				filter.firstVideoTs = retained.Header.TimestampAbs
+-			}
+ 			return
+ 		}
+ 
+@@ -131,17 +129,7 @@
+ 		return
+ 	}
+ 
++	if msg.IsVideoKeySeqHeader() {
+-	sequenceHeader := false
+-	if msg.Header.MsgTypeId == base.RtmpTypeIdVideo {
+-		if msg.Payload[0] == base.RtmpAvcKeyFrame && msg.Payload[1] == base.RtmpAvcPacketTypeSeqHeader {
+-			sequenceHeader = true
+-		} else if msg.Payload[0]&0x80 != 0 {
+-			sequenceHeader = msg.Payload[1] == 'h' && msg.Payload[2] == 'v' && msg.Payload[3] == 'c' && msg.Payload[4] == '1' && msg.Payload[0]&0x0f == base.RtmpExPacketTypeSequenceStart
+-		} else {
+-			sequenceHeader = msg.Payload[0] == base.RtmpHevcKeyFrame && msg.Payload[1] == base.RtmpHevcPacketTypeSeqHeader
+-		}
+-	}
+-	if sequenceHeader {
+ 		// TODO(chef): 这里的时间戳可以考虑减1，但是注意处理一些边界条件
+ 		ats := msg.Header.TimestampAbs
+ 		amsg := filter.makeAudioSeqHeader(ats)
+@@ -171,9 +159,7 @@
+ }
+ 
+ func (filter *DummyAudioFilter) cache(msg base.RtmpMsg) {
++	filter.earlyStageQueue = append(filter.earlyStageQueue, msg.Clone())
+-	retained := base.RtmpMsg{Header: msg.Header, Payload: make([]byte, len(msg.Payload))}
+-	copy(retained.Payload, msg.Payload)
+-	filter.earlyStageQueue = append(filter.earlyStageQueue, retained)
+ }
+ 
+ func (filter *DummyAudioFilter) clearCache() {
+diff --git a/pkg/remux/gop_cache.go b/pkg/remux/gop_cache.go
+--- a/pkg/remux/gop_cache.go
++++ b/pkg/remux/gop_cache.go
+@@ -97,48 +97,32 @@
+ //
+ // @param lg: 内部可能持有lg返回的内存块
+ func (gc *GopCache) Feed(msg base.RtmpMsg, b []byte) bool {
++	// TODO(chef): [refactor] 重构lg两个参数这种方式 202207
++
+-	var slot *[]byte
+-	var kind string
+-	var frameType, packetType uint8
+ 	switch msg.Header.MsgTypeId {
+ 	case base.RtmpTypeIdMetadata:
++		// noop
+ 		return true
+ 	case base.RtmpTypeIdAudio:
++		if msg.IsAacSeqHeader() {
++			gc.AacSeqHeader = b
++			Log.Debugf("[%s] cache %s aac seq header. size:%d", gc.uniqueKey, gc.t, len(gc.AacSeqHeader))
++			return true
+-		if msg.Payload[0]>>4 == base.RtmpSoundFormatAac && msg.Payload[1] == base.RtmpAacPacketTypeSeqHeader {
+-			slot, kind = &gc.AacSeqHeader, "aac"
+ 		}
+ 	case base.RtmpTypeIdVideo:
++		if msg.IsVideoKeySeqHeader() {
++			gc.VideoSeqHeader = b
++			Log.Debugf("[%s] cache %s video seq header. size:%d", gc.uniqueKey, gc.t, len(gc.VideoSeqHeader))
++			return true
++		}
++	}
++
+-		frameType = msg.Payload[0]
+-		if msg.Payload[0] == base.RtmpAvcKeyFrame && msg.Payload[1] == base.RtmpAvcPacketTypeSeqHeader {
+-			slot, kind = &gc.VideoSeqHeader, "video"
+-		} else if msg.Payload[0]&0x80 != 0 {
+-			frameType = msg.Payload[0] >> 4 & 0x07
+-			packetType = msg.Payload[0] & 0x0f
+-			if msg.Payload[1] == 'h' && msg.Payload[2] == 'v' && msg.Payload[3] == 'c' && msg.Payload[4] == '1' && msg.Payload[0]&0x0f == base.RtmpExPacketTypeSequenceStart {
+-				slot, kind = &gc.VideoSeqHeader, "video"
+-			}
+-		} else if msg.Payload[0] == base.RtmpHevcKeyFrame && msg.Payload[1] == base.RtmpHevcPacketTypeSeqHeader {
+-			slot, kind = &gc.VideoSeqHeader, "video"
+-		}
+-	}
+-	if slot != nil {
+-		*slot = b
+-		Log.Debugf("[%s] cache %s %s seq header. size:%d", gc.uniqueKey, gc.t, kind, len(*slot))
+-		return true
+-	}
+ 	if gc.gopSize > 1 {
++		if msg.IsVideoKeyNalu() {
++			gc.feedNewGop(msg, b)
++		} else {
+-		if msg.Header.MsgTypeId != base.RtmpTypeIdVideo {
+ 			return gc.feedLastGop(msg, b)
+ 		}
+-		if msg.Payload[0]&0x80 != 0 {
+-			if frameType != base.RtmpExFrameTypeKeyFrame || packetType == base.RtmpExPacketTypeSequenceStart {
+-				return gc.feedLastGop(msg, b)
+-			}
+-		} else if (frameType != base.RtmpAvcKeyFrame || msg.Payload[1] != base.RtmpAvcPacketTypeNalu) &&
+-			(frameType != base.RtmpHevcKeyFrame || msg.Payload[1] != base.RtmpHevcPacketTypeNalu) {
+-			return gc.feedLastGop(msg, b)
+-		}
+-		gc.feedNewGop(msg, b)
+ 	}
+ 	return true
+ }
+diff --git a/pkg/remux/rtmp.go b/pkg/remux/rtmp.go
+--- a/pkg/remux/rtmp.go
++++ b/pkg/remux/rtmp.go
+@@ -11,7 +11,6 @@
+ import (
+ 	"github.com/q191201771/lal/pkg/base"
+ 	"github.com/q191201771/lal/pkg/rtmp"
+-	"github.com/q191201771/naza/pkg/nazalog"
+ )
+ 
+ // MakeDefaultRtmpHeader
+@@ -52,13 +51,11 @@
+ 	if lcd.chunksWithSdf == nil {
+ 		var msg []byte
+ 		if lcd.msg.Header.MsgTypeId == base.RtmpTypeIdMetadata {
++			msg2 := lcd.msg.Clone()
++			msg2.Payload, _ = rtmp.MetadataEnsureWithSdf(msg2.Payload)
++			msg2.Header.MsgLen = uint32(len(msg2.Payload))
++			msg2.Header = MakeDefaultRtmpHeader(msg2.Header)
++			lcd.chunksWithSdf = rtmp.Message2Chunks(msg2.Payload, &msg2.Header)
+-			header := lcd.msg.Header
+-			payload := make([]byte, len(lcd.msg.Payload))
+-			copy(payload, lcd.msg.Payload)
+-			payload, _ = rtmp.MetadataEnsureWithSdf(payload)
+-			header.MsgLen = uint32(len(payload))
+-			header = MakeDefaultRtmpHeader(header)
+-			lcd.chunksWithSdf = rtmp.Message2Chunks(payload, &header)
+ 		} else {
+ 			msg = lcd.msg.Payload
+ 			h := MakeDefaultRtmpHeader(lcd.msg.Header)
+@@ -72,19 +69,11 @@
+ 	if lcd.chunksWithoutSdf == nil {
+ 		var msg []byte
+ 		if lcd.msg.Header.MsgTypeId == base.RtmpTypeIdMetadata {
++			msg2 := lcd.msg.Clone()
++			msg2.Payload, _ = rtmp.MetadataEnsureWithoutSdf(msg2.Payload)
++			msg2.Header.MsgLen = uint32(len(msg2.Payload))
++			msg2.Header = MakeDefaultRtmpHeader(msg2.Header)
++			lcd.chunksWithoutSdf = rtmp.Message2Chunks(msg2.Payload, &msg2.Header)
+-			header := lcd.msg.Header
+-			name, prefix, err := rtmp.Amf0.ReadString(lcd.msg.Payload)
+-			header.MsgLen = uint32(len(lcd.msg.Payload))
+-			if err != nil {
+-				nazalog.Errorf("%+v", err)
+-				prefix = 0
+-			} else if name == "@setDataFrame" {
+-				header.MsgLen -= uint32(prefix)
+-			} else {
+-				prefix = 0
+-			}
+-			header = MakeDefaultRtmpHeader(header)
+-			lcd.chunksWithoutSdf = rtmp.Message2Chunks(lcd.msg.Payload[prefix:], &header)
+ 		} else {
+ 			msg = lcd.msg.Payload
+ 			h := MakeDefaultRtmpHeader(lcd.msg.Header)
+diff --git a/pkg/remux/rtmp2avpacket.go b/pkg/remux/rtmp2avpacket.go
+--- a/pkg/remux/rtmp2avpacket.go
++++ b/pkg/remux/rtmp2avpacket.go
+@@ -11,7 +11,6 @@
+ import (
+ 	"github.com/q191201771/lal/pkg/base"
+ 	"github.com/q191201771/lal/pkg/h2645"
+-	"github.com/q191201771/naza/pkg/bele"
+ )
+ 
+ // TODO(chef): 该文件处于开发阶段，请不要直接使用
+@@ -74,24 +73,13 @@
+ 		return nil
+ 	}
+ 
++	isH264 := msg.VideoCodecId() == base.RtmpCodecIdAvc
++
+-	codecId := msg.Payload[0] & 0x0f
+ 	var err error
++	if msg.IsVideoKeySeqHeader() {
++		r.spspps, err = h2645.SeqHeader2Annexb(isH264, msg.Payload)
++		return err
+-	if msg.Payload[0]&0x80 != 0 {
+-		codecId = base.RtmpCodecIdAvc
+-		if msg.Payload[1] == 'h' && msg.Payload[2] == 'v' && msg.Payload[3] == 'c' && msg.Payload[4] == '1' {
+-			codecId = base.RtmpCodecIdHevc
+-			if msg.Header.MsgTypeId == base.RtmpTypeIdVideo && msg.Payload[0]&0x0f == base.RtmpExPacketTypeSequenceStart {
+-				r.spspps, err = h2645.SeqHeader2Annexb(false, msg.Payload)
+-				return err
+-			}
+-		}
+-	} else if msg.Header.MsgTypeId == base.RtmpTypeIdVideo {
+-		if (msg.Payload[0] == base.RtmpAvcKeyFrame && msg.Payload[1] == base.RtmpAvcPacketTypeSeqHeader) || (msg.Payload[0] == base.RtmpHevcKeyFrame && msg.Payload[1] == base.RtmpHevcPacketTypeSeqHeader) {
+-			r.spspps, err = h2645.SeqHeader2Annexb(codecId == base.RtmpCodecIdAvc, msg.Payload)
+-			return err
+-		}
+ 	}
+-	isH264 := codecId == base.RtmpCodecIdAvc
+ 
+ 	var out []byte
+ 	var vps, sps, pps []byte
+@@ -169,11 +157,9 @@
+ 	})
+ 
+ 	if len(out) > 0 {
+-		presentationTimestamp := msg.Header.TimestampAbs
+-		presentationTimestamp += bele.BeUint24(msg.Payload[2:])
+ 		pkt := base.AvPacket{
+ 			Timestamp: int64(msg.Header.TimestampAbs),
++			Pts:       int64(msg.Pts()),
+-			Pts:       int64(presentationTimestamp),
+ 			Payload:   out,
+ 		}
+ 		if isH264 {
+diff --git a/pkg/remux/rtmp2flv.go b/pkg/remux/rtmp2flv.go
+--- a/pkg/remux/rtmp2flv.go
++++ b/pkg/remux/rtmp2flv.go
+@@ -47,14 +47,9 @@
+ func (l *LazyRtmpMsg2FlvTag) GetEnsureWithoutSdf() []byte {
+ 	if l.tagWithoutSdf == nil {
+ 		if l.msg.Header.MsgTypeId == base.RtmpTypeIdMetadata {
++			msg2 := l.msg.Clone()
++			msg2.Payload, _ = rtmp.MetadataEnsureWithoutSdf(msg2.Payload)
++			l.tagWithoutSdf = RtmpMsg2FlvTag(msg2).Raw
+-			name, prefix, err := rtmp.Amf0.ReadString(l.msg.Payload)
+-			if err != nil {
+-				nazalog.Errorf("%+v", err)
+-				prefix = 0
+-			} else if name != "@setDataFrame" {
+-				prefix = 0
+-			}
+-			l.tagWithoutSdf = httpflv.PackHttpflvTag(l.msg.Header.MsgTypeId, l.msg.Header.TimestampAbs, l.msg.Payload[prefix:])
+ 		} else {
+ 			l.tagWithoutSdf = RtmpMsg2FlvTag(l.msg).Raw
+ 		}
+diff --git a/pkg/remux/rtmp2mpegts.go b/pkg/remux/rtmp2mpegts.go
+--- a/pkg/remux/rtmp2mpegts.go
++++ b/pkg/remux/rtmp2mpegts.go
+@@ -16,7 +16,6 @@
+ 	"github.com/q191201771/lal/pkg/base"
+ 	"github.com/q191201771/lal/pkg/hevc"
+ 	"github.com/q191201771/lal/pkg/mpegts"
+-	"github.com/q191201771/naza/pkg/bele"
+ 	"github.com/q191201771/naza/pkg/nazabytes"
+ 	"github.com/q191201771/naza/pkg/nazalog"
+ )
+@@ -178,7 +177,7 @@
+ func (s *Rtmp2MpegtsRemuxer) onPop(msg base.RtmpMsg) {
+ 	switch msg.Header.MsgTypeId {
+ 	case base.RtmpTypeIdAudio:
++		if msg.AudioCodecId() != base.RtmpSoundFormatAac && msg.AudioCodecId() != base.RtmpSoundFormatOpus {
+-		if (msg.Payload[0]>>4) != base.RtmpSoundFormatAac && (msg.Payload[0]>>4) != base.RtmpSoundFormatOpus {
+ 			return
+ 		}
+ 		s.feedAudio(msg)
+@@ -195,19 +194,7 @@
+ 		return
+ 	}
+ 
++	codecId := msg.VideoCodecId()
+-	enhanced := msg.Payload[0]&0x80 != 0
+-	packetType := msg.Payload[0] & 0x0f
+-	codecId := msg.Payload[0] & 0x0f
+-	payloadOffset := 5
+-	if enhanced {
+-		codecId = base.RtmpCodecIdAvc
+-		if msg.Payload[1] == 'h' && msg.Payload[2] == 'v' && msg.Payload[3] == 'c' && msg.Payload[4] == '1' {
+-			codecId = base.RtmpCodecIdHevc
+-			if packetType == base.RtmpExPacketTypeCodedFrames {
+-				payloadOffset += 3
+-			}
+-		}
+-	}
+ 	if codecId != base.RtmpCodecIdAvc && codecId != base.RtmpCodecIdHevc {
+ 		return
+ 	}
+@@ -216,23 +203,23 @@
+ 
+ 	// 如果是seq header sps pps，缓存住，然后直接返回
+ 	var err error
++	if msg.IsAvcKeySeqHeader() {
+-	if msg.Header.MsgTypeId == base.RtmpTypeIdVideo && msg.Payload[0] == base.RtmpAvcKeyFrame && msg.Payload[1] == base.RtmpAvcPacketTypeSeqHeader {
+ 		if s.spspps, err = avc.SpsPpsSeqHeader2Annexb(msg.Payload); err != nil {
+ 			Log.Errorf("[%s] cache spspps failed. err=%+v", s.uk, err)
+ 		}
+ 		return
++	} else if msg.IsHevcKeySeqHeader() {
++		if msg.IsEnhanced() {
+-	} else if msg.Header.MsgTypeId == base.RtmpTypeIdVideo && codecId == base.RtmpCodecIdHevc {
+-		if enhanced && packetType == base.RtmpExPacketTypeSequenceStart {
+ 			if s.spspps, err = hevc.VpsSpsPpsEnhancedSeqHeader2Annexb(msg.Payload); err != nil {
+ 				Log.Errorf("[%s] cache vpsspspps failed. err=%+v", s.uk, err)
+ 			}
++		} else {
+-			return
+-		} else if !enhanced && msg.Payload[0] == base.RtmpHevcKeyFrame && msg.Payload[1] == base.RtmpHevcPacketTypeSeqHeader {
+ 			if s.spspps, err = hevc.VpsSpsPpsSeqHeader2Annexb(msg.Payload); err != nil {
+ 				Log.Errorf("[%s] cache vpsspspps failed. err=%+v", s.uk, err)
+ 			}
++		}
++
++		return
+-			return
+-		}
+ 	}
+ 
+ 	audSent := false
+@@ -241,7 +228,12 @@
+ 
+ 	// msg中可能有多个NALU，逐个获取
+ 	var nals [][]byte
++	if codecId == base.RtmpCodecIdHevc && msg.IsEnchanedHevcNalu() {
++		index := msg.GetEnchanedHevcNaluIndex()
++		nals, err = avc.SplitNaluAvcc(msg.Payload[index:])
++	} else {
++		nals, err = avc.SplitNaluAvcc(msg.Payload[5:])
++	}
+-	nals, err = avc.SplitNaluAvcc(msg.Payload[payloadOffset:])
+ 	if err != nil {
+ 		Log.Errorf("[%s] iterate nalu failed. err=%+v, header=%+v, payload=%s", err, s.uk, msg.Header, hex.Dump(nazabytes.Prefix(msg.Payload, 32)))
+ 		return
+@@ -382,28 +374,9 @@
+ 	var frame mpegts.Frame
+ 	frame.Cc = s.videoCc
+ 	frame.Dts = dts
++	frame.Cts = msg.Cts()
+-	if msg.Header.MsgTypeId == base.RtmpTypeIdAudio || !enhanced {
+-		frame.Cts = bele.BeUint24(msg.Payload[2:])
+-	} else {
+-		switch packetType {
+-		case base.RtmpExPacketTypeCodedFrames:
+-			frame.Cts = bele.BeUint24(msg.Payload[5:])
+-		case base.RtmpExPacketTypeCodedFramesX:
+-			frame.Cts = 0
+-		default:
+-			base.Log.Warnf("RtmpMsg.Cts: packetType invalid, packetType=%d", packetType)
+-		}
+-	}
+ 	frame.Pts = frame.Dts + 90*uint64(frame.Cts)
++	frame.Key = msg.IsVideoKeyNalu()
+-	if msg.Header.MsgTypeId == base.RtmpTypeIdVideo {
+-		if msg.Payload[0] == base.RtmpAvcKeyFrame && msg.Payload[1] == base.RtmpAvcPacketTypeNalu {
+-			frame.Key = true
+-		} else if enhanced {
+-			frame.Key = msg.Payload[0]>>4&0x07 == base.RtmpExFrameTypeKeyFrame && packetType != base.RtmpExPacketTypeSequenceStart
+-		} else {
+-			frame.Key = msg.Payload[0] == base.RtmpHevcKeyFrame && msg.Payload[1] == base.RtmpHevcPacketTypeNalu
+-		}
+-	}
+ 	frame.Raw = s.videoOut
+ 	frame.Pid = mpegts.PidVideo
+ 	frame.Sid = mpegts.StreamIdVideo
+@@ -420,7 +393,7 @@
+ 
+ 	//Log.Debugf("[%s] hls: feedAudio. dts=%d len=%d", s.uk, msg.Header.TimestampAbs, len(msg.Payload))
+ 
++	if msg.AudioCodecId() == base.RtmpSoundFormatAac {
+-	if (msg.Payload[0] >> 4) == base.RtmpSoundFormatAac {
+ 		if msg.Payload[1] == base.RtmpAacPacketTypeSeqHeader {
+ 			if err := s.cacheAacSeqHeader(msg); err != nil {
+ 				Log.Errorf("[%s] cache aac seq header failed. err=%+v", s.uk, err)
+@@ -435,7 +408,7 @@
+ 	}
+ 
+ 	pts := uint64(msg.Header.TimestampAbs) * 90
++	if msg.AudioCodecId() == base.RtmpSoundFormatAac {
+-	if (msg.Payload[0] >> 4) == base.RtmpSoundFormatAac {
+ 		if !s.audioCacheEmpty() && s.audioCacheFirstFramePts+maxAudioCacheDelayByAudio < pts {
+ 			s.FlushAudio()
+ 		}
+diff --git a/pkg/remux/rtmp2mpegts_filter_.go b/pkg/remux/rtmp2mpegts_filter_.go
+--- a/pkg/remux/rtmp2mpegts_filter_.go
++++ b/pkg/remux/rtmp2mpegts_filter_.go
+@@ -67,21 +67,13 @@
+ 		return
+ 	}
+ 
++	q.data = append(q.data, msg.Clone())
+-	retained := base.RtmpMsg{Header: msg.Header, Payload: make([]byte, len(msg.Payload))}
+-	copy(retained.Payload, msg.Payload)
+-	q.data = append(q.data, retained)
+ 
+ 	switch msg.Header.MsgTypeId {
+ 	case base.RtmpTypeIdAudio:
+ 		q.audioCodecId = int(msg.Payload[0] >> 4)
+ 	case base.RtmpTypeIdVideo:
++		q.videoCodecId = int(msg.VideoCodecId())
+-		q.videoCodecId = int(msg.Payload[0] & 0x0f)
+-		if msg.Payload[0]&0x80 != 0 {
+-			q.videoCodecId = int(base.RtmpCodecIdAvc)
+-			if msg.Payload[1] == 'h' && msg.Payload[2] == 'v' && msg.Payload[3] == 'c' && msg.Payload[4] == '1' {
+-				q.videoCodecId = int(base.RtmpCodecIdHevc)
+-			}
+-		}
+ 	}
+ 
+ 	if q.videoCodecId != -1 && q.audioCodecId != -1 {
+diff --git a/pkg/remux/rtmp2rtsp.go b/pkg/remux/rtmp2rtsp.go
+--- a/pkg/remux/rtmp2rtsp.go
++++ b/pkg/remux/rtmp2rtsp.go
+@@ -94,7 +94,7 @@
+ 			return
+ 		}
+ 		if r.audioPt == base.AvPacketPtUnknown {
++			switch msg.AudioCodecId() {
+-			switch msg.Payload[0] >> 4 {
+ 			case base.RtmpSoundFormatG711U:
+ 				r.audioPt = base.AvPacketPtG711U
+ 				if r.audioSampleRate < 0 {
+@@ -123,46 +123,31 @@
+ 	// 并且考虑，流中只有音频或只有视频的情况
+ 	// 我们把前面这个阶段叫做Analyze分析阶段
+ 
+-	videoConfig := false
+-	if msg.Header.MsgTypeId == base.RtmpTypeIdVideo {
+-		if msg.Payload[0] == base.RtmpAvcKeyFrame && msg.Payload[1] == base.RtmpAvcPacketTypeSeqHeader {
+-			videoConfig = true
+-			if !r.analyzeDone {
+-				r.sps, r.pps, err = avc.ParseSpsPpsFromSeqHeader(msg.Payload)
+-			}
+-		} else if msg.Payload[0]&0x80 != 0 {
+-			if msg.Payload[1] == 'h' && msg.Payload[2] == 'v' && msg.Payload[3] == 'c' && msg.Payload[4] == '1' && msg.Payload[0]&0x0f == base.RtmpExPacketTypeSequenceStart {
+-				videoConfig = true
+-				if !r.analyzeDone {
+-					r.vps, r.sps, r.pps, err = hevc.ParseVpsSpsPpsFromEnhancedSeqHeader(msg.Payload)
+-				}
+-			}
+-		} else if msg.Payload[0] == base.RtmpHevcKeyFrame && msg.Payload[1] == base.RtmpHevcPacketTypeSeqHeader {
+-			videoConfig = true
+-			if !r.analyzeDone {
+-				r.vps, r.sps, r.pps, err = hevc.ParseVpsSpsPpsFromSeqHeader(msg.Payload)
+-			}
+-		}
+-	}
+-	audioConfig := msg.Header.MsgTypeId == base.RtmpTypeIdAudio && msg.Payload[0]>>4 == base.RtmpSoundFormatAac && msg.Payload[1] == base.RtmpAacPacketTypeSeqHeader
+ 	if !r.analyzeDone {
++		if msg.IsAvcKeySeqHeader() || msg.IsHevcKeySeqHeader() {
++			if msg.IsAvcKeySeqHeader() {
++				r.sps, r.pps, err = avc.ParseSpsPpsFromSeqHeader(msg.Payload)
++				Log.Assert(nil, err)
++			} else if msg.IsHevcKeySeqHeader() {
++				if msg.IsEnhanced() {
++					r.vps, r.sps, r.pps, err = hevc.ParseVpsSpsPpsFromEnhancedSeqHeader(msg.Payload)
++				} else {
++					r.vps, r.sps, r.pps, err = hevc.ParseVpsSpsPpsFromSeqHeader(msg.Payload)
++				}
++
++				Log.Assert(nil, err)
++			}
+-		if videoConfig {
+-			Log.Assert(nil, err)
+ 			r.doAnalyze()
+ 			return
+ 		}
+ 
++		if msg.IsAacSeqHeader() {
++			r.asc = msg.Clone().Payload[2:]
+-		if audioConfig {
+-			retained := make([]byte, len(msg.Payload))
+-			copy(retained, msg.Payload)
+-			r.asc = retained[2:]
+ 			r.doAnalyze()
+ 			return
+ 		}
+ 
++		r.msgCache = append(r.msgCache, msg.Clone())
+-		retained := base.RtmpMsg{Header: msg.Header, Payload: make([]byte, len(msg.Payload))}
+-		copy(retained.Payload, msg.Payload)
+-		r.msgCache = append(r.msgCache, retained)
+ 		r.doAnalyze()
+ 		return
+ 	}
+@@ -171,7 +156,7 @@
+ 
+ 	// 音视频头已通过sdp回调，rtp数据中不再包含音视频头
+ 	// TODO(chef): [opt] RtspRemuxerAddSpsPps2KeyFrameFlag 开启时，考虑更新sps 202207
++	if msg.IsAvcKeySeqHeader() || msg.IsHevcKeySeqHeader() || msg.IsAacSeqHeader() {
+-	if videoConfig || audioConfig {
+ 		return
+ 	}
+ 
+@@ -258,7 +243,7 @@
+ 	case base.RtmpTypeIdAudio:
+ 		packer = r.getAudioPacker()
+ 		if packer != nil {
++			if msg.AudioCodecId() == base.RtmpSoundFormatG711A || msg.AudioCodecId() == base.RtmpSoundFormatG711U || msg.AudioCodecId() == base.RtmpSoundFormatOpus {
+-			if (msg.Payload[0]>>4) == base.RtmpSoundFormatG711A || (msg.Payload[0]>>4) == base.RtmpSoundFormatG711U || (msg.Payload[0]>>4) == base.RtmpSoundFormatOpus {
+ 				rtppkts = packer.Pack(base.AvPacket{
+ 					Timestamp:   int64(msg.Header.TimestampAbs),
+ 					PayloadType: r.audioPt,
+@@ -275,19 +260,19 @@
+ 	case base.RtmpTypeIdVideo:
+ 		packer = r.getVideoPacker()
+ 		if packer != nil {
++			var payload []byte
++			if msg.VideoCodecId() == base.RtmpCodecIdHevc && msg.IsEnchanedHevcNalu() {
++				index := msg.GetEnchanedHevcNaluIndex()
++				payload = msg.Payload[index:]
++			} else {
++				payload = msg.Payload[5:]
++			}
++
+-			payloadOffset := 5
+-			enhanced := msg.Payload[0]&0x80 != 0
+-			if enhanced && msg.Payload[1] == 'h' && msg.Payload[2] == 'v' && msg.Payload[3] == 'c' && msg.Payload[4] == '1' {
+-				if msg.Payload[0]&0x0f == base.RtmpExPacketTypeCodedFrames {
+-					payloadOffset += 3
+-				}
+-			}
+-			payload := msg.Payload[payloadOffset:]
+ 			if RtspRemuxerAddSpsPps2KeyFrameFlag {
++				if msg.IsAvcKeyNalu() && r.sps != nil && r.pps != nil {
+-				if (msg.Header.MsgTypeId == base.RtmpTypeIdVideo && msg.Payload[0] == base.RtmpAvcKeyFrame && msg.Payload[1] == base.RtmpAvcPacketTypeNalu) && r.sps != nil && r.pps != nil {
+ 					payload = h2645.JoinNaluAvcc(r.sps, r.pps, msg.Payload[9:])
+ 				}
++				if msg.IsHevcKeyNalu() && r.vps != nil && r.sps != nil && r.pps != nil {
+-				if (msg.Header.MsgTypeId == base.RtmpTypeIdVideo && ((msg.Payload[0]&0x80 != 0 && msg.Payload[0]>>4&0x07 == base.RtmpExFrameTypeKeyFrame && msg.Payload[0]&0x0f != base.RtmpExPacketTypeSequenceStart) || (msg.Payload[0]&0x80 == 0 && msg.Payload[0] == base.RtmpHevcKeyFrame && msg.Payload[1] == base.RtmpHevcPacketTypeNalu))) && r.vps != nil && r.sps != nil && r.pps != nil {
+ 					payload = h2645.JoinNaluAvcc(r.vps, r.sps, r.pps, msg.Payload[9:])
+ 				}
+ 			}
+diff --git a/pkg/rtmp/chunk_composer.go b/pkg/rtmp/chunk_composer.go
+--- a/pkg/rtmp/chunk_composer.go
++++ b/pkg/rtmp/chunk_composer.go
+@@ -198,7 +198,7 @@
+ 			if Log.GetOption().Level == nazalog.LevelTrace {
+ 				tmpMsg := stream.toAvMsg()
+ 				maxLength := 32
++				if tmpMsg.IsVideoKeySeqHeader() || tmpMsg.IsAacSeqHeader() {
+-				if ((tmpMsg.Header.MsgTypeId == base.RtmpTypeIdVideo && tmpMsg.Payload[0] == base.RtmpAvcKeyFrame && tmpMsg.Payload[1] == base.RtmpAvcPacketTypeSeqHeader) || (tmpMsg.Header.MsgTypeId == base.RtmpTypeIdVideo && ((tmpMsg.Payload[0]&0x80 != 0 && tmpMsg.Payload[1] == 'h' && tmpMsg.Payload[2] == 'v' && tmpMsg.Payload[3] == 'c' && tmpMsg.Payload[4] == '1' && tmpMsg.Payload[0]&0x0f == base.RtmpExPacketTypeSequenceStart) || (tmpMsg.Payload[0]&0x80 == 0 && tmpMsg.Payload[0] == base.RtmpHevcKeyFrame && tmpMsg.Payload[1] == base.RtmpHevcPacketTypeSeqHeader)))) || (tmpMsg.Header.MsgTypeId == base.RtmpTypeIdAudio && tmpMsg.Payload[0]>>4 == base.RtmpSoundFormatAac && tmpMsg.Payload[1] == base.RtmpAacPacketTypeSeqHeader) {
+ 					maxLength = 128
+ 				}
+ 				Log.Tracef("[%p] RTMP_READ cb. fmt=%d, csid=%d, header=%+v, timestamp=%d, hex=%s",

@@ -1,0 +1,3 @@
+Simplify obsolete internal validation and value-resolution paths in Yup while preserving supported behavior. Trace the current producers and consumers before deciding which code is removable. Keep public schema APIs, nested validation order and paths, sync/async error handling, reference mapping, and condition resolution behavior intact. Preserve the original tests and configuration. Avoid removing live setup or callbacks merely because adjacent code is obsolete.
+
+The affected lifecycle includes scheduler state, nested object/array/tuple traversal, reference lookup and conditional schema resolution. Trace the effective input and schema producers before removing an obsolete path; validation ordering and error paths must remain intact.

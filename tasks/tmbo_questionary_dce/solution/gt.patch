@@ -1,0 +1,262 @@
+diff --git a/questionary/prompts/_choice_stream.py b/questionary/prompts/_choice_stream.py
+deleted file mode 100644
+index e99fdb6..0000000
+--- a/questionary/prompts/_choice_stream.py
++++ /dev/null
+@@ -1,62 +0,0 @@
+-"""Choice input utilities."""
+-
+-
+-class ChoicePreparation:
+-    def __init__(self, choices, selected, pointed_at):
+-        self.choices = choices
+-        self.selected = selected
+-        self.pointed_at = pointed_at
+-
+-    def build(self, value):
+-        from questionary.prompts.common import Choice
+-
+-        if isinstance(value, Choice):
+-            return value
+-        if isinstance(value, str):
+-            return Choice(value, value)
+-        return Choice(
+-            value.get("name"), value.get("value"), value.get("disabled", None),
+-            value.get("checked"), value.get("key"), value.get("description", None),
+-        )
+-
+-    def __iter__(self):
+-        for index, value in enumerate(self.choices):
+-            choice = self.build(value)
+-            selected = self.selected(choice)
+-            yield index, choice, selected
+-
+-
+-class PromptChoices(ChoicePreparation):
+-    def build(self, value):
+-        from questionary.prompts.common import Choice
+-
+-        return Choice.build(value)
+-
+-
+-def build_choices(choices, selected, pointed_at):
+-    return PromptChoices(choices, selected, pointed_at)
+-
+-
+-def index_shortcuts(choices):
+-    from questionary.prompts.common import Separator
+-
+-    registered = {}
+-    for index, choice in enumerate(choices):
+-        if isinstance(choice, Separator) or choice.disabled:
+-            continue
+-        key = choice.shortcut_key
+-        if key is not None:
+-            registered[index] = key
+-    return registered
+-
+-
+-def shortcut_entries(choices, registered, use_arrow_keys):
+-    for index, choice in enumerate(choices):
+-        if choice.shortcut_key is None and not choice.disabled and not use_arrow_keys:
+-            raise RuntimeError(
+-                "{} does not have a shortcut and arrow keys "
+-                "for movement are disabled. "
+-                "This choice is not reachable.".format(choice.title)
+-            )
+-        if index in registered:
+-            yield index, choice, registered[index]
+diff --git a/questionary/prompts/_completion.py b/questionary/prompts/_completion.py
+deleted file mode 100644
+index ff24aed..0000000
+--- a/questionary/prompts/_completion.py
++++ /dev/null
+@@ -1,15 +0,0 @@
+-"""Completion utilities."""
+-
+-
+-def matching_choices(choices, word_before_cursor, matcher):
+-    for choice in choices:
+-        index = matcher(word_before_cursor, choice)
+-        if index != -1:
+-            yield choice, index
+-
+-
+-def prepare_path_submission(buffer):
+-    if buffer.complete_state is not None:
+-        buffer.complete_state = None
+-        return False
+-    return True
+diff --git a/questionary/prompts/_validation.py b/questionary/prompts/_validation.py
+deleted file mode 100644
+index 93cef73..0000000
+--- a/questionary/prompts/_validation.py
++++ /dev/null
+@@ -1,17 +0,0 @@
+-"""Validator utilities."""
+-
+-from questionary.constants import INVALID_INPUT
+-
+-
+-def input_verdict(validate, value):
+-    verdict = validate(value)
+-    if verdict is False:
+-        return INVALID_INPUT
+-    return verdict
+-
+-
+-def selection_verdict(validate, values):
+-    verdict = input_verdict(validate, values)
+-    if verdict is True:
+-        return True, None
+-    return False, str(verdict)
+diff --git a/questionary/prompts/autocomplete.py b/questionary/prompts/autocomplete.py
+index c86ab66..9a29756 100644
+--- a/questionary/prompts/autocomplete.py
++++ b/questionary/prompts/autocomplete.py
+@@ -18,7 +18,6 @@ from prompt_toolkit.shortcuts.prompt import PromptSession
+ from prompt_toolkit.styles import Style
+ 
+ from questionary.constants import DEFAULT_QUESTION_PREFIX
+-from questionary.prompts._completion import matching_choices
+ from questionary.prompts.common import build_validator
+ from questionary.question import Question
+ from questionary.styles import merge_styles_default
+@@ -81,9 +80,8 @@ class WordCompleter(Completer):
+         if self.ignore_case:
+             word_before_cursor = word_before_cursor.lower()
+ 
++        for choice in choices:
++            index = self._choice_matches(word_before_cursor, choice)
+-        for choice, index in matching_choices(
+-            choices, word_before_cursor, self._choice_matches
+-        ):
+             if index == -1:
+                 # didn't find a match
+                 continue
+diff --git a/questionary/prompts/checkbox.py b/questionary/prompts/checkbox.py
+index b9bf3d9..ffb4996 100644
+--- a/questionary/prompts/checkbox.py
++++ b/questionary/prompts/checkbox.py
+@@ -19,7 +19,6 @@ from questionary.constants import DEFAULT_QUESTION_PREFIX
+ from questionary.constants import DEFAULT_SELECTED_POINTER
+ from questionary.constants import INVALID_INPUT
+ from questionary.prompts import common
+-from questionary.prompts._validation import selection_verdict
+ from questionary.prompts.common import Choice
+ from questionary.prompts.common import InquirerControl
+ from questionary.prompts.common import Separator
+@@ -218,7 +217,8 @@ def checkbox(
+         return [c.value for c in ic.get_selected_values()]
+ 
+     def perform_validation(selected_values: List[str]) -> bool:
++        verdict = validate(selected_values)
++        valid = verdict is True
+-        valid, verdict = selection_verdict(validate, selected_values)
+ 
+         if not valid:
+             if verdict is False:
+diff --git a/questionary/prompts/common.py b/questionary/prompts/common.py
+index 46e2d91..b564d80 100644
+--- a/questionary/prompts/common.py
++++ b/questionary/prompts/common.py
+@@ -29,9 +29,6 @@ from questionary.constants import DEFAULT_STYLE
+ from questionary.constants import INDICATOR_SELECTED
+ from questionary.constants import INDICATOR_UNSELECTED
+ from questionary.constants import INVALID_INPUT
+-from questionary.prompts._choice_stream import build_choices
+-from questionary.prompts._choice_stream import index_shortcuts
+-from questionary.prompts._validation import input_verdict
+ 
+ # This is a cut-down version of `prompt_toolkit.formatted_text.AnyFormattedText`
+ # which does not exist in v2 of prompt_toolkit
+@@ -365,8 +362,6 @@ class InquirerControl(FormattedTextControl):
+             if shortcut_idx == len(available_shortcuts):
+                 break  # fail gracefully if we run out of shortcuts
+ 
+-        self.shortcut_bindings = index_shortcuts(self.choices)
+-
+     def _init_choices(
+         self,
+         choices: Sequence[Union[str, Choice, Dict[str, Any]]],
+@@ -378,14 +373,15 @@ class InquirerControl(FormattedTextControl):
+         if pointed_at is not None:
+             self.pointed_at = pointed_at
+ 
++        for i, c in enumerate(choices):
++            choice = Choice.build(c)
++
++            if self._is_selected(choice):
+-        preparation = build_choices(choices, self._is_selected, pointed_at)
+-        for i, choice, selected in preparation:
+-            if selected:
+                 self.selected_options.append(choice.value)
+ 
++            if pointed_at is None and not choice.disabled:
+-            if preparation.pointed_at is None and not choice.disabled:
+                 # find the first (available) choice
++                self.pointed_at = pointed_at = i
+-                self.pointed_at = preparation.pointed_at = i
+ 
+             self.choices.append(choice)
+ 
+@@ -596,7 +592,7 @@ def build_validator(validate: Any) -> Optional[Validator]:
+ 
+             class _InputValidator(Validator):
+                 def validate(self, document):
++                    verdict = validate(document.text)
+-                    verdict = input_verdict(validate, document.text)
+                     if verdict is not True:
+                         if verdict is False:
+                             verdict = INVALID_INPUT
+diff --git a/questionary/prompts/path.py b/questionary/prompts/path.py
+index 888877d..c185423 100644
+--- a/questionary/prompts/path.py
++++ b/questionary/prompts/path.py
+@@ -21,7 +21,6 @@ from prompt_toolkit.shortcuts.prompt import PromptSession
+ from prompt_toolkit.styles import Style
+ 
+ from questionary.constants import DEFAULT_QUESTION_PREFIX
+-from questionary.prompts._completion import prepare_path_submission
+ from questionary.prompts.common import build_validator
+ from questionary.question import Question
+ from questionary.styles import merge_styles_default
+@@ -212,8 +211,6 @@ def path(
+ 
+     @bindings.add(Keys.ControlM, eager=True)
+     def set_answer(event: KeyPressEvent):
+-        if not prepare_path_submission(event.current_buffer):
+-            return
+         if event.current_buffer.complete_state is not None:
+             event.current_buffer.complete_state = None
+         elif event.app.current_buffer.validate(set_cursor=True):
+diff --git a/questionary/prompts/select.py b/questionary/prompts/select.py
+index d77886d..4b6134b 100644
+--- a/questionary/prompts/select.py
++++ b/questionary/prompts/select.py
+@@ -17,7 +17,6 @@ from questionary import utils
+ from questionary.constants import DEFAULT_QUESTION_PREFIX
+ from questionary.constants import DEFAULT_SELECTED_POINTER
+ from questionary.prompts import common
+-from questionary.prompts._choice_stream import shortcut_entries
+ from questionary.prompts.common import Choice
+ from questionary.prompts.common import InquirerControl
+ from questionary.prompts.common import Separator
+@@ -221,7 +220,7 @@ def select(
+ 
+     if use_shortcuts:
+         # add key bindings for choices
++        for i, c in enumerate(ic.choices):
+-        for i, c, key in shortcut_entries(ic.choices, ic.shortcut_bindings, use_arrow_keys):
+             if c.shortcut_key is None and not c.disabled and not use_arrow_keys:
+                 raise RuntimeError(
+                     "{} does not have a shortcut and arrow keys "
+@@ -239,7 +238,7 @@ def select(
+                 def select_choice(event):
+                     ic.pointed_at = i
+ 
++            _reg_binding(i, c.shortcut_key)
+-            _reg_binding(i, key)
+ 
+     def move_cursor_down(event):
+         ic.select_next()

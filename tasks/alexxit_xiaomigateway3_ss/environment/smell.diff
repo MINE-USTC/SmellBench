@@ -1,0 +1,1074 @@
+diff --git a/custom_components/xiaomi_gateway3/core/converters/base.py b/custom_components/xiaomi_gateway3/core/converters/base.py
+index e676d81..1f36f5f 100644
+--- a/custom_components/xiaomi_gateway3/core/converters/base.py
++++ b/custom_components/xiaomi_gateway3/core/converters/base.py
+@@ -118,7 +118,40 @@ class BoolConv(BaseConv):
+         payload[self.attr] = bool(value)
+ 
+     def encode(self, device: "XDevice", payload: dict, value: bool):
+-        super().encode(device, payload, int(value))
++        value = int(value)
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type == ZIGBEE:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            else:
++                payload["method"] = "set_properties"
++                field = "params"
++                params = {"did": device.did}
++            params["siid"] = int(service)
++            params["piid"] = int(prop)
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            payload["params"] = {
++                "did": device.did, "siid": int(service), "aiid": int(action), "in": []
++            }
++            return
++        else:
++            field = "params"
++            if device.type == MATTER:
++                payload["method"] = "set_properties_v3"
++                params = {"did": device.did, "iid": self.mi}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++                params = {"res_name": self.mi}
++        params["value"] = value
++        payload.setdefault(field, []).append(params)
+ 
+ 
+ @dataclass
+@@ -131,7 +164,39 @@ class MapConv(BaseConv):
+ 
+     def encode(self, device: "XDevice", payload: dict, value):
+         value = next(k for k, v in self.map.items() if v == value)
+-        super().encode(device, payload, value)
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type == ZIGBEE:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            else:
++                payload["method"] = "set_properties"
++                field = "params"
++                params = {"did": device.did}
++            params["siid"] = int(service)
++            params["piid"] = int(prop)
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            payload["params"] = {
++                "did": device.did, "siid": int(service), "aiid": int(action), "in": []
++            }
++            return
++        else:
++            field = "params"
++            if device.type == MATTER:
++                payload["method"] = "set_properties_v3"
++                params = {"did": device.did, "iid": self.mi}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++                params = {"res_name": self.mi}
++        params["value"] = value
++        payload.setdefault(field, []).append(params)
+ 
+ 
+ @dataclass
+@@ -154,7 +219,39 @@ class MathConv(BaseConv):
+     def encode(self, device: "XDevice", payload: dict, value: float):
+         if self.multiply != 1.0:
+             value /= self.multiply
+-        super().encode(device, payload, value)
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type == ZIGBEE:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            else:
++                payload["method"] = "set_properties"
++                field = "params"
++                params = {"did": device.did}
++            params["siid"] = int(service)
++            params["piid"] = int(prop)
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            payload["params"] = {
++                "did": device.did, "siid": int(service), "aiid": int(action), "in": []
++            }
++            return
++        else:
++            field = "params"
++            if device.type == MATTER:
++                payload["method"] = "set_properties_v3"
++                params = {"did": device.did, "iid": self.mi}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++                params = {"res_name": self.mi}
++        params["value"] = value
++        payload.setdefault(field, []).append(params)
+ 
+ 
+ @dataclass
+@@ -170,7 +267,40 @@ class MaskConv(BaseConv):
+         # noinspection PyTypedDict
+         new_value = device.extra.get(self.attr, 0)
+         new_value = new_value | self.mask if value else new_value & ~self.mask
+-        super().encode(device, payload, new_value)
++        value = new_value
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        field = "params"
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type != ZIGBEE:
++                payload["method"] = "set_properties"
++                params = {"did": device.did}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            params.update(siid=int(service), piid=int(prop), value=value)
++            append = True
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            params = {"did": device.did, "siid": int(service), "aiid": int(action), "in": []}
++            append = False
++        elif device.type == MATTER:
++            payload["method"] = "set_properties_v3"
++            params = {"did": device.did, "iid": self.mi, "value": value}
++            append = True
++        else:
++            payload["cmd"] = "write"
++            payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++            params = {"res_name": self.mi, "value": value}
++            append = True
++        if append:
++            payload.setdefault(field, []).append(params)
++        else:
++            payload[field] = params
+ 
+ 
+ @dataclass
+@@ -182,7 +312,40 @@ class BrightnessConv(BaseConv):
+ 
+     def encode(self, device: "XDevice", payload: dict, value: float):
+         value = round(value / 255.0 * self.max)
+-        super().encode(device, payload, int(value))
++        value = int(value)
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type == ZIGBEE:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            else:
++                payload["method"] = "set_properties"
++                field = "params"
++                params = {"did": device.did}
++            params["siid"] = int(service)
++            params["piid"] = int(prop)
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            payload["params"] = {
++                "did": device.did, "siid": int(service), "aiid": int(action), "in": []
++            }
++            return
++        else:
++            field = "params"
++            if device.type == MATTER:
++                payload["method"] = "set_properties_v3"
++                params = {"did": device.did, "iid": self.mi}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++                params = {"res_name": self.mi}
++        params["value"] = value
++        payload.setdefault(field, []).append(params)
+ 
+ 
+ @dataclass
+@@ -201,7 +364,39 @@ class ColorTempKelvin(BaseConv):
+             value = self.mink
+         if value > self.maxk:
+             value = self.maxk
+-        super().encode(device, payload, value)
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type == ZIGBEE:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            else:
++                payload["method"] = "set_properties"
++                field = "params"
++                params = {"did": device.did}
++            params["siid"] = int(service)
++            params["piid"] = int(prop)
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            payload["params"] = {
++                "did": device.did, "siid": int(service), "aiid": int(action), "in": []
++            }
++            return
++        else:
++            field = "params"
++            if device.type == MATTER:
++                payload["method"] = "set_properties_v3"
++                params = {"did": device.did, "iid": self.mi}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++                params = {"res_name": self.mi}
++        params["value"] = value
++        payload.setdefault(field, []).append(params)
+ 
+ 
+ class RGBColor(BaseConv):
+@@ -210,4 +405,36 @@ class RGBColor(BaseConv):
+ 
+     def encode(self, device: "XDevice", payload: dict, value: tuple[int, int, int]):
+         value = value[0] << 16 | value[1] << 8 | value[2]
+-        super().encode(device, payload, value)
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        field = "params"
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type != ZIGBEE:
++                payload["method"] = "set_properties"
++                params = {"did": device.did}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            params.update(siid=int(service), piid=int(prop), value=value)
++            append = True
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            params = {"did": device.did, "siid": int(service), "aiid": int(action), "in": []}
++            append = False
++        elif device.type == MATTER:
++            payload["method"] = "set_properties_v3"
++            params = {"did": device.did, "iid": self.mi, "value": value}
++            append = True
++        else:
++            payload["cmd"] = "write"
++            payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++            params = {"res_name": self.mi, "value": value}
++            append = True
++        if append:
++            payload.setdefault(field, []).append(params)
++        else:
++            payload[field] = params
+diff --git a/custom_components/xiaomi_gateway3/core/converters/lumi.py b/custom_components/xiaomi_gateway3/core/converters/lumi.py
+index 6fee1b3..c428a04 100644
+--- a/custom_components/xiaomi_gateway3/core/converters/lumi.py
++++ b/custom_components/xiaomi_gateway3/core/converters/lumi.py
+@@ -2,6 +2,7 @@ from dataclasses import dataclass
+ from typing import TYPE_CHECKING
+ 
+ from .base import BaseConv
++from ..const import BLE, GATEWAY, MATTER, ZIGBEE
+ from .const import BUTTON, BUTTON_BOTH, UNKNOWN
+ 
+ if TYPE_CHECKING:
+@@ -89,7 +90,39 @@ class ClimateConv(BaseConv):
+         if "target_temp" in value:
+             b[2] = int(value["target_temp"])
+         value = int.from_bytes(b, "big")
+-        super().encode(device, payload, value)
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        field = "params"
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type != ZIGBEE:
++                payload["method"] = "set_properties"
++                params = {"did": device.did}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            params.update(siid=int(service), piid=int(prop), value=value)
++            append = True
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            params = {"did": device.did, "siid": int(service), "aiid": int(action), "in": []}
++            append = False
++        elif device.type == MATTER:
++            payload["method"] = "set_properties_v3"
++            params = {"did": device.did, "iid": self.mi, "value": value}
++            append = True
++        else:
++            payload["cmd"] = "write"
++            payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++            params = {"res_name": self.mi, "value": value}
++            append = True
++        if append:
++            payload.setdefault(field, []).append(params)
++        else:
++            payload[field] = params
+ 
+ 
+ class ClimateTempConv(BaseConv):
+@@ -169,7 +202,40 @@ class AqaraDNDTimeConv(BaseConv):
+ 
+     def encode(self, device: "XDevice", payload: dict, v: str):
+         v = int(v[:2]) | int(v[3:5]) << 8 | int(v[6:8]) << 16 | int(v[9:11]) << 24
+-        super().encode(device, payload, v)
++        value = v
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        field = "params"
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type != ZIGBEE:
++                payload["method"] = "set_properties"
++                params = {"did": device.did}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            params.update(siid=int(service), piid=int(prop), value=value)
++            append = True
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            params = {"did": device.did, "siid": int(service), "aiid": int(action), "in": []}
++            append = False
++        elif device.type == MATTER:
++            payload["method"] = "set_properties_v3"
++            params = {"did": device.did, "iid": self.mi, "value": value}
++            append = True
++        else:
++            payload["cmd"] = "write"
++            payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++            params = {"res_name": self.mi, "value": value}
++            append = True
++        if append:
++            payload.setdefault(field, []).append(params)
++        else:
++            payload[field] = params
+ 
+ 
+ # global props
+diff --git a/custom_components/xiaomi_gateway3/core/converters/mesh.py b/custom_components/xiaomi_gateway3/core/converters/mesh.py
+index 031fd98..37f2fce 100644
+--- a/custom_components/xiaomi_gateway3/core/converters/mesh.py
++++ b/custom_components/xiaomi_gateway3/core/converters/mesh.py
+@@ -2,6 +2,7 @@ import re
+ from typing import TYPE_CHECKING
+ 
+ from .base import BaseConv
++from ..const import BLE, GATEWAY, MATTER, ZIGBEE
+ 
+ if TYPE_CHECKING:
+     from ..device import XDevice
+@@ -23,7 +24,40 @@ class InductionRange(BaseConv):
+         for i, v in enumerate(m):
+             if v in "+xv":
+                 mask |= 1 << i
+-        super().encode(device, payload, mask)
++        value = mask
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        field = "params"
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type != ZIGBEE:
++                payload["method"] = "set_properties"
++                params = {"did": device.did}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            params.update(siid=int(service), piid=int(prop), value=value)
++            append = True
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            params = {"did": device.did, "siid": int(service), "aiid": int(action), "in": []}
++            append = False
++        elif device.type == MATTER:
++            payload["method"] = "set_properties_v3"
++            params = {"did": device.did, "iid": self.mi, "value": value}
++            append = True
++        else:
++            payload["cmd"] = "write"
++            payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++            params = {"res_name": self.mi, "value": value}
++            append = True
++        if append:
++            payload.setdefault(field, []).append(params)
++        else:
++            payload[field] = params
+ 
+ 
+ class GiotTimePatternConv(BaseConv):
+@@ -51,4 +85,37 @@ class GiotTimePatternConv(BaseConv):
+         value = value.replace(":", "").replace("-", "")
+         if len(value) != 8:
+             return
+-        super().encode(device, payload, int(value))
++        value = int(value)
++        if not self.mi or device.type == BLE or ".e." in self.mi:
++            return
++        field = "params"
++        if ".p." in self.mi:
++            service, prop = self.mi.split(".p.")
++            if device.type != ZIGBEE:
++                payload["method"] = "set_properties"
++                params = {"did": device.did}
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did
++                field = "mi_spec"
++                params = {}
++            params.update(siid=int(service), piid=int(prop), value=value)
++            append = True
++        elif ".a." in self.mi:
++            service, action = self.mi.split(".a.")
++            payload["method"] = "action"
++            params = {"did": device.did, "siid": int(service), "aiid": int(action), "in": []}
++            append = False
++        elif device.type == MATTER:
++            payload["method"] = "set_properties_v3"
++            params = {"did": device.did, "iid": self.mi, "value": value}
++            append = True
++        else:
++            payload["cmd"] = "write"
++            payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++            params = {"res_name": self.mi, "value": value}
++            append = True
++        if append:
++            payload.setdefault(field, []).append(params)
++        else:
++            payload[field] = params
+diff --git a/custom_components/xiaomi_gateway3/core/converters/zigbee.py b/custom_components/xiaomi_gateway3/core/converters/zigbee.py
+index c0fd93e..9db15f4 100644
+--- a/custom_components/xiaomi_gateway3/core/converters/zigbee.py
++++ b/custom_components/xiaomi_gateway3/core/converters/zigbee.py
+@@ -20,8 +20,10 @@ from zigpy.zcl.clusters.measurement import (
+ )
+ from zigpy.zcl.clusters.security import IasZone
+ from zigpy.zcl.clusters.smartenergy import Metering
++from zigpy.zcl.foundation import FrameControl, FrameType
+ 
+ from .base import BaseConv, decode_time
++from ..const import BLE, GATEWAY, MATTER, ZIGBEE
+ from .const import BUTTON_DOUBLE, BUTTON_HOLD, BUTTON_SINGLE
+ from .silabs import *
+ 
+@@ -64,29 +66,36 @@ class ZConverter(BaseConv):
+ 
+     def encode_read(self, device: "XDevice", payload: dict):
+         if self.attr_id is not None:
+-            cmd = zcl_read(device.nwk, self.ep or 1, self.cluster_id, self.attr_id)
++            nwk, ep = device.nwk, self.ep or 1
++            cmd = [
++                {"commandcli": f"zcl global read {self.cluster_id} {self.attr_id}"},
++                {"commandcli": f"send {nwk} 1 {ep}"},
++            ]
+             payload.setdefault("commands", []).extend(cmd)
+ 
+     def config(self, device: "XDevice", payload: dict):
+         if self.bind:
+             # noinspection PyUnresolvedReferences
+             gw_ieee = device.gateways[0].ieee
+-            cmd = zdo_bind(
+-                device.nwk, self.ep or 1, self.cluster_id, device.uid[2:], gw_ieee
+-            )
++            nwk, ep, cluster_id, src = device.nwk, self.ep or 1, self.cluster_id, device.uid[2:]
++            cmd = [{"commandcli": f"zdo bind {nwk} {ep} 1 {cluster_id} {{{src}}} {{{gw_ieee}}}"}]
+             payload.setdefault("commands", []).extend(cmd)
+ 
+         if self.report:
+             mint, maxt, change = self.report.split(" ")
+-            cmd = zdb_report(
+-                device.nwk,
+-                self.ep or 1,
+-                self.cluster_id,
+-                self.attr_id,
+-                int(decode_time(mint)),
+-                int(decode_time(maxt)),
+-                int(change),
+-            )
++            nwk, ep, cluster_id, attr_id = device.nwk, self.ep or 1, self.cluster_id, self.attr_id
++            mint, maxt, change = int(decode_time(mint)), int(decode_time(maxt)), int(change)
++            attribute = XCluster(cluster_id).attributes[attr_id]
++            for type_id, definition in DATA_TYPES.items():
++                if not issubclass(attribute.type, definition[1]):
++                    continue
++                data = definition[1](change).serialize().hex()
++                report = f"zcl global send-me-a-report {cluster_id} {attr_id} {type_id}"
++                report += f" {mint} {maxt} {{{data}}}"
++                cmd = [{"commandcli": report}, {"commandcli": f"send {nwk} 1 {ep}"}]
++                break
++            else:
++                raise StopIteration
+             payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -98,14 +107,13 @@ class ZBoolConv(ZConverter):
+             payload[self.attr] = bool(value)
+ 
+     def encode(self, device: "XDevice", payload: dict, value: bool):
+-        cmd = zcl_write(
+-            device.nwk,
+-            self.ep or 1,
+-            self.cluster_id,
+-            self.attr_id,
+-            int(value),
+-            type_id=TYPE_BOOL,
+-        )
++        nwk, ep, cluster_id, attr_id = device.nwk, self.ep or 1, self.cluster_id, self.attr_id
++        value = int(value)
++        data = DATA_TYPES[TYPE_BOOL][1](value).serialize().hex()
++        cmd = [
++            {"commandcli": f"zcl global write {cluster_id} {attr_id} {TYPE_BOOL} {{{data}}}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -118,14 +126,12 @@ class ZMapConv(ZConverter):
+ 
+     def encode(self, device: "XDevice", payload: dict, value: str):
+         v = next(k for k, v in self.map.items() if v == value)
+-        cmd = zcl_write(
+-            device.nwk,
+-            self.ep or 1,
+-            self.cluster_id,
+-            self.attr_id,
+-            v,
+-            type_id=TYPE_ENUM8,
+-        )
++        nwk, ep, cluster_id, attr_id = device.nwk, self.ep or 1, self.cluster_id, self.attr_id
++        data = DATA_TYPES[TYPE_ENUM8][1](v).serialize().hex()
++        cmd = [
++            {"commandcli": f"zcl global write {cluster_id} {attr_id} {TYPE_ENUM8} {{{data}}}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -149,7 +155,12 @@ class ZOnOffConv(ZBoolConv):
+     attr_id = OnOff.AttributeDefs.on_off.id
+ 
+     def encode(self, device: "XDevice", payload: dict, value: bool):
+-        cmd = zcl_on_off(device.nwk, self.ep or 1, value)
++        nwk, ep = device.nwk, self.ep or 1
++        state = "on" if value else "off"
++        cmd = [
++            {"commandcli": f"zcl on-off {state}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -159,7 +170,12 @@ class ZBrightnessConv(ZConverter):
+ 
+     def encode(self, device: "XDevice", payload: dict, value: int | float):
+         transition = payload.get("transition", 0)
+-        cmd = zcl_level(device.nwk, self.ep or 1, round(value), transition)
++        nwk, ep, br = device.nwk, self.ep or 1, round(value)
++        tr = int(transition * 10.0)
++        cmd = [
++            {"commandcli": f"zcl level-control o-mv-to-level {br} {tr}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -173,7 +189,12 @@ class ZColorTempConv(ZConverter):
+ 
+     def encode(self, device: "XDevice", payload: dict, value: int | float):
+         transition = payload.get("transition", 0)
+-        cmd = zcl_color_temp(device.nwk, self.ep or 1, round(value), transition)
++        nwk, ep, ct = device.nwk, self.ep or 1, round(value)
++        tr = int(transition * 10.0)
++        cmd = [
++            {"commandcli": f"zcl color-control movetocolortemp {ct} {tr} 0 0"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -184,20 +205,39 @@ class ZColorHSConv(ZConverter):
+ 
+     def decode(self, device: "XDevice", payload: dict, data: dict):
+         if self.attr_id1 in data and self.attr_id2 in data:
+-            hue = conv(data[self.attr_id1], 0, 254, 0, 360)
+-            sat = conv(data[self.attr_id2], 0, 254, 0, 100)
++            hue = round(data[self.attr_id1] / 254 * 360)
++            hue = min(360, max(0, hue))
++            sat = round(data[self.attr_id2] / 254 * 100)
++            sat = min(100, max(0, sat))
+             payload[self.attr] = (hue, sat)
+ 
+     def encode(self, device: "XDevice", payload: dict, value: tuple[int]):
+-        hue = conv(value[0], 0, 360, 0, 254)
+-        sat = conv(value[1], 0, 100, 0, 254)
++        hue = round(value[0] / 360 * 254)
++        if hue < 0:
++            hue = 0
++        elif hue > 254:
++            hue = 254
++        sat = round(value[1] / 100 * 254)
++        if sat < 0:
++            sat = 0
++        elif sat > 254:
++            sat = 254
+         transition = payload.get("transition", 0)
+-        cmd = zcl_color_hs(device.nwk, self.ep or 1, hue, sat, transition)
++        nwk, ep = device.nwk, self.ep or 1
++        tr = int(transition * 10.0)
++        cmd = [
++            {"commandcli": f"zcl color-control movetohueandsat {hue} {sat} {tr} 0 0"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+     def encode_read(self, device: "XDevice", payload: dict):
+-        cmd = zcl_read(device.nwk, self.ep or 1, self.cluster_id, self.attr_id1)
+-        cmd += zcl_read(device.nwk, self.ep or 1, self.cluster_id, self.attr_id2)
++        cmd = []
++        for attribute in ("attr_id1", "attr_id2"):
++            nwk, ep, cluster_id = device.nwk, self.ep or 1, self.cluster_id
++            attr_id = getattr(self, attribute)
++            cmd.append({"commandcli": f"zcl global read {cluster_id} {attr_id}"})
++            cmd.append({"commandcli": f"send {nwk} 1 {ep}"})
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -255,7 +295,16 @@ class ZOccupancyTimeoutConv(ZConverter):
+     max: int = 65535
+ 
+     def encode(self, device: "XDevice", payload: dict, value: int):
+-        cmd = zcl_write(device.nwk, self.ep or 1, self.cluster_id, self.attr_id, value)
++        nwk, ep, cluster_id, attr_id = device.nwk, self.ep or 1, self.cluster_id, self.attr_id
++        attribute = XCluster(cluster_id).attributes[attr_id]
++        for type_id, definition in DATA_TYPES.items():
++            if issubclass(attribute.type, definition[1]):
++                data = definition[1](value).serialize().hex()
++                cmd = [{"commandcli": f"zcl global write {cluster_id} {attr_id} {type_id} {{{data}}}"}]
++                cmd.append({"commandcli": f"send {nwk} 1 {ep}"})
++                break
++        else:
++            raise StopIteration
+         payload.setdefault("commands", []).extend(cmd)
+         # we need to read new value after write
+         self.encode_read(device, payload)
+@@ -364,8 +413,16 @@ class ZTuyaButtonConfig(ZConverter):
+     def config(self, device: "XDevice", payload: dict):
+         # some stupid but necessary magic from zigbee2mqtt
+         for attr_id in (0x00, 0x01, 0x04, 0x05, 0x07, 0xFFFE):
+-            cmd = zcl_read(device.nwk, self.ep or 1, cluster_id=6, attr_id=attr_id)
+-        cmd += zcl_read(device.nwk, self.ep or 1, cluster_id=0xE001, attr_id=0xD011)
++            nwk, ep = device.nwk, self.ep or 1
++            cmd = [
++                {"commandcli": f"zcl global read 6 {attr_id}"},
++                {"commandcli": f"send {nwk} 1 {ep}"},
++            ]
++        nwk, ep = device.nwk, self.ep or 1
++        cmd += [
++            {"commandcli": f"zcl global read {0xE001} {0xD011}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -494,22 +551,24 @@ class ZLumiSensConv(ZConverter):
+             payload[self.attr] = self.map[v]
+ 
+     def encode(self, device: "XDevice", payload: dict, value: str):
+-        cmd = zcl_write(
+-            device.nwk,
+-            self.ep or 1,
+-            self.cluster_id,
+-            0xFFF1,  # write attr
+-            self.write_map[value],
+-            type_id=TYPE_UINT32,
+-            mfg=0x115F,
+-        )
++        nwk, ep, cluster_id = device.nwk, self.ep or 1, self.cluster_id
++        value = self.write_map[value]
++        data = DATA_TYPES[TYPE_UINT32][1](value).serialize().hex()
++        cmd = [
++            {"commandcli": f"zcl mfg-code {0x115F}"},
++            {"commandcli": f"zcl global write {cluster_id} {0xFFF1} {TYPE_UINT32} {{{data}}}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+     def encode_read(self, device: "XDevice", payload: dict):
+         if self.attr_id is not None:
+-            cmd = zcl_read(
+-                device.nwk, self.ep or 1, self.cluster_id, self.attr_id, mfg=0x115F
+-            )
++            nwk, ep, cluster_id, attr_id = device.nwk, self.ep or 1, self.cluster_id, self.attr_id
++            cmd = [
++                {"commandcli": f"zcl mfg-code {0x115F}"},
++                {"commandcli": f"zcl global read {cluster_id} {attr_id}"},
++                {"commandcli": f"send {nwk} 1 {ep}"},
++            ]
+             payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -540,7 +599,13 @@ class ZHueDimmerOnConv(ZConverter):
+         super().config(device, payload)
+ 
+         # Thanks to zigbee2mqtt and ZHA (some unknown magic)
+-        cmd = zcl_write(device.nwk, 2, 0, 0x31, 0x0B, type_id=0x19, mfg=0x100B)
++        nwk = device.nwk
++        data = DATA_TYPES[0x19][1](0x0B).serialize().hex()
++        cmd = [
++            {"commandcli": f"zcl mfg-code {0x100B}"},
++            {"commandcli": f"zcl global write 0 {0x31} {0x19} {{{data}}}"},
++            {"commandcli": f"send {nwk} 1 2"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -568,15 +633,57 @@ class ZLumiBrightness(BaseConv):
+ 
+     def decode(self, device: "XDevice", payload: dict, value: int):
+         # lumi - 0..100, hass - 1..255
+-        payload[self.attr] = conv(value, 1, 100, 1, 255)
++        level = round((value - 1) / 99 * 254 + 1)
++        payload[self.attr] = min(255, max(1, level))
+ 
+     def encode(self, device: "XDevice", payload: dict, value: int):
+         if "transition" in payload:
+-            # noinspection PyTypeChecker
+-            ZBrightnessConv.encode(self, device, payload, value)
++            transition = payload.get("transition", 0)
++            nwk, ep, level = device.nwk, self.ep or 1, round(value)
++            duration = int(transition * 10.0)
+         else:
+-            value = conv(value, 1, 255, 1, 100)
+-            super().encode(device, payload, value)
++            value = round((value - 1) / 254 * 99 + 1)
++            if value < 1:
++                value = 1
++            elif value > 100:
++                value = 100
++            if not self.mi or device.type == BLE or ".e." in self.mi:
++                return
++            if ".p." in self.mi:
++                s, p = self.mi.split(".p.")
++                if device.type == ZIGBEE:
++                    payload["cmd"] = "write"
++                    payload["did"] = device.did
++                    params = {"siid": int(s), "piid": int(p), "value": value}
++                    payload.setdefault("mi_spec", []).append(params)
++                else:
++                    payload["method"] = "set_properties"
++                    params = {
++                        "did": device.did,
++                        "siid": int(s),
++                        "piid": int(p),
++                        "value": value,
++                    }
++                    payload.setdefault("params", []).append(params)
++            elif ".a." in self.mi:
++                s, a = self.mi.split(".a.")
++                payload["method"] = "action"
++                params = {"did": device.did, "siid": int(s), "aiid": int(a), "in": []}
++                payload["params"] = params
++            elif device.type == MATTER:
++                payload["method"] = "set_properties_v3"
++                params = {"did": device.did, "iid": self.mi, "value": value}
++                payload.setdefault("params", []).append(params)
++            else:
++                payload["cmd"] = "write"
++                payload["did"] = device.did if device.type != GATEWAY else "lumi.0"
++                params = {"res_name": self.mi, "value": value}
++                payload.setdefault("params", []).append(params)
++            return
++        payload.setdefault("commands", []).extend([
++            {"commandcli": f"zcl level-control o-mv-to-level {level} {duration}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ])
+ 
+ 
+ @dataclass
+@@ -594,7 +701,12 @@ class ZLumiColorTemp(BaseConv):
+             payload[self.attr] = value
+ 
+     def encode(self, device: "XDevice", payload: dict, value: int):
+-        cmd = zcl_color_temp(device.nwk, 1, value, self.transition)
++        nwk, tr = device.nwk, self.transition
++        tr = int(tr * 10.0)
++        cmd = [
++            {"commandcli": f"zcl color-control movetocolortemp {value} {tr} 0 0"},
++            {"commandcli": f"send {nwk} 1 1"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -635,9 +747,13 @@ class ZLumiOppleMode(ZConverter):
+ 
+     def encode(self, device: "XDevice", payload: dict, value: str):
+         v = next(k for k, v in self.map.items() if v == value)
+-        cmd = zcl_write(
+-            device.nwk, self.ep or 1, 0xFCC0, 9, v, type_id=TYPE_UINT8, mfg=0x115F
+-        )
++        nwk, ep = device.nwk, self.ep or 1
++        data = DATA_TYPES[TYPE_UINT8][1](v).serialize().hex()
++        cmd = [
++            {"commandcli": f"zcl mfg-code {0x115F}"},
++            {"commandcli": f"zcl global write {0xFCC0} 9 {TYPE_UINT8} {{{data}}}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -651,7 +767,31 @@ class ZCoverCmd(ZConverter):
+ 
+     def encode(self, device: "XDevice", payload: dict, value: str):
+         command_id = self.map[value]
+-        cmd = zcl_command(device.nwk, self.ep or 1, self.cluster_id, command_id)
++        nwk, ep, cluster_id = device.nwk, self.ep or 1, self.cluster_id
++        cluster = XCluster(cluster_id).cluster
++        command = cluster.server_commands[command_id]
++        if cluster._create_request is Cluster._create_request and not isinstance(command.schema, (tuple, list)):
++            request = command.schema()
++            request.serialize()
++            control = FrameControl(
++                frame_type=FrameType.CLUSTER_COMMAND,
++                is_manufacturer_specific=False,
++                direction=0,
++                disable_default_response=True,
++                reserved=0,
++            )
++            header = ZCLHeader(frame_control=control, manufacturer=None, tsn=0, command_id=command.id)
++        else:
++            header, request = cluster._create_request(
++                None, general=False, command_id=command.id, schema=command.schema,
++                manufacturer=None, tsn=0, disable_default_response=True,
++                direction=0, args=(), kwargs={},
++            )
++        raw = (header.serialize() + request.serialize()).hex()
++        cmd = [
++            {"commandcli": f"raw {cluster_id} {{{raw}}}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+@@ -666,9 +806,35 @@ class ZCoverPos(ZConverter):
+ 
+     def encode(self, device: "XDevice", payload: dict, value: int):
+         value = 100 - value
+-        cmd = zcl_command(
+-            device.nwk, self.ep or 1, self.cluster_id, self.command_id, int(value)
+-        )
++        nwk, ep, cluster_id, command_id, position = device.nwk, self.ep or 1, self.cluster_id, self.command_id, int(value)
++        cluster = XCluster(cluster_id).cluster
++        command = cluster.server_commands[command_id]
++        if cluster._create_request is Cluster._create_request and not isinstance(command.schema, (tuple, list)):
++            request = command.schema(position)
++            request.serialize()
++            header = ZCLHeader(
++                frame_control=FrameControl(
++                    frame_type=FrameType.CLUSTER_COMMAND,
++                    is_manufacturer_specific=False,
++                    direction=0,
++                    disable_default_response=True,
++                    reserved=0,
++                ),
++                manufacturer=None,
++                tsn=0,
++                command_id=command.id,
++            )
++        else:
++            header, request = cluster._create_request(
++                None, general=False, command_id=command.id, schema=command.schema,
++                manufacturer=None, tsn=0, disable_default_response=True,
++                direction=0, args=(position,), kwargs={},
++            )
++        raw = (header.serialize() + request.serialize()).hex()
++        cmd = [
++            {"commandcli": f"raw {cluster_id} {{{raw}}}"},
++            {"commandcli": f"send {nwk} 1 {ep}"},
++        ]
+         payload.setdefault("commands", []).extend(cmd)
+ 
+ 
+diff --git a/custom_components/xiaomi_gateway3/core/gate/silabs.py b/custom_components/xiaomi_gateway3/core/gate/silabs.py
+index a4d22b3..7aeb849 100644
+--- a/custom_components/xiaomi_gateway3/core/gate/silabs.py
++++ b/custom_components/xiaomi_gateway3/core/gate/silabs.py
+@@ -212,9 +212,54 @@ class SilabsGateway(XGateway):
+     async def silabs_send(self, device: XDevice, payload: dict):
+         assert "commands" in payload, payload
+ 
+-        silabs.optimize_read(payload["commands"])
+-
+-        if self.new_sdk:
++        commands = payload["commands"]
++        groups = []
++        positions = {}
++        manufacturer = None
++        pending = None
++        rebuild = False
++        for item in commands:
++            cli = item["commandcli"]
++            if cli.startswith("zcl mfg-code"):
++                manufacturer = cli.split(" ")[2]
++            elif cli.startswith("zcl global read"):
++                words = cli.split(" ")
++                pending = words[3], words[4]
++            elif cli.startswith("send") and pending and pending[0]:
++                cluster_id, attr_id = pending
++                key = cli, cluster_id, manufacturer
++                if key in positions:
++                    groups[positions[key]][3].append(attr_id)
++                    rebuild = True
++                else:
++                    positions[key] = len(groups)
++                    groups.append((cli, cluster_id, manufacturer, [attr_id]))
++                manufacturer = None
++                pending = None
++            else:
++                rebuild = False
++                break
++
++        if rebuild:
++            commands.clear()
++            destinations = []
++            for cli, cluster_id, mfg, attrs in groups:
++                if mfg:
++                    commands.append({"commandcli": f"zcl mfg-code {mfg}"})
++                if len(attrs) > 1:
++                    raw = "".join(int(a).to_bytes(2, "little").hex() for a in attrs)
++                    commands.append({"commandcli": f"raw {cluster_id} {{100000{raw}}}"})
++                else:
++                    commands.append({"commandcli": f"zcl global read {cluster_id} {attrs[0]}"})
++                destination = {"commandcli": cli}
++                commands.append(destination)
++                if cli.startswith("send "):
++                    destinations.append(destination)
++
++            if self.new_sdk:
++                for destination in destinations:
++                    destination["commandcli"] += " 65535 {0000000000000000}"
++        elif self.new_sdk:
+             # fix payload for new SDK
+             for item in payload["commands"]:
+                 if item["commandcli"].startswith("send "):
+diff --git a/custom_components/xiaomi_gateway3/light.py b/custom_components/xiaomi_gateway3/light.py
+index e7b297b..dcb63cd 100644
+--- a/custom_components/xiaomi_gateway3/light.py
++++ b/custom_components/xiaomi_gateway3/light.py
+@@ -54,8 +54,14 @@ class XLight(XEntity, LightEntity, RestoreEntity):
+                 self.listen_attrs.add(conv.attr)
+                 modes.add(ColorMode.COLOR_TEMP)
+                 if hasattr(conv, "minm") and hasattr(conv, "maxm"):
+-                    self._attr_max_color_temp_kelvin = color_temp(conv.minm)
+-                    self._attr_min_color_temp_kelvin = color_temp(conv.maxm)
++                    upper = conv.minm
++                    if upper is not None:
++                        upper = 0 if upper == 0 else math.floor(1000000 / upper)
++                    self._attr_max_color_temp_kelvin = upper
++                    lower = conv.maxm
++                    if lower is not None:
++                        lower = 0 if lower == 0 else math.floor(1000000 / lower)
++                    self._attr_min_color_temp_kelvin = lower
+                 elif hasattr(conv, "mink") and hasattr(conv, "maxk"):
+                     self._attr_max_color_temp_kelvin = conv.maxk
+                     self._attr_min_color_temp_kelvin = conv.mink
+@@ -85,7 +91,13 @@ class XLight(XEntity, LightEntity, RestoreEntity):
+         if ATTR_BRIGHTNESS in data:
+             self._attr_brightness = data[ATTR_BRIGHTNESS]
+         if ATTR_COLOR_TEMP in data:
+-            self._attr_color_temp_kelvin = color_temp(data[ATTR_COLOR_TEMP])
++            mired = data[ATTR_COLOR_TEMP]
++            if mired is None:
++                self._attr_color_temp_kelvin = None
++            elif mired == 0:
++                self._attr_color_temp_kelvin = 0
++            else:
++                self._attr_color_temp_kelvin = math.floor(1000000 / mired)
+             self._attr_color_mode = ColorMode.COLOR_TEMP
+         if ATTR_HS_COLOR in data:
+             self._attr_hs_color = data[ATTR_HS_COLOR]
+@@ -99,18 +111,28 @@ class XLight(XEntity, LightEntity, RestoreEntity):
+             self._attr_effect = data[ATTR_EFFECT]
+ 
+     def get_state(self) -> dict:
+-        return {
++        state = {
+             self.attr: self._attr_is_on,
+             ATTR_BRIGHTNESS: self._attr_brightness,
+-            ATTR_COLOR_TEMP: color_temp(self._attr_color_temp_kelvin),
+         }
++        kelvin = self._attr_color_temp_kelvin
++        state[ATTR_COLOR_TEMP] = (
++            None if kelvin is None else 0 if kelvin == 0 else math.floor(1000000 / kelvin)
++        )
++        return state
+ 
+     async def async_turn_on(self, **kwargs):
+         # https://github.com/AlexxIT/XiaomiGateway3/issues/1459
+         if not self._attr_is_on or not kwargs:
+             kwargs[self.attr] = True
+         if ATTR_COLOR_TEMP_KELVIN in kwargs:
+-            kwargs[ATTR_COLOR_TEMP] = color_temp(kwargs.pop(ATTR_COLOR_TEMP_KELVIN))
++            kelvin = kwargs.pop(ATTR_COLOR_TEMP_KELVIN)
++            if kelvin is None:
++                kwargs[ATTR_COLOR_TEMP] = None
++            elif kelvin == 0:
++                kwargs[ATTR_COLOR_TEMP] = 0
++            else:
++                kwargs[ATTR_COLOR_TEMP] = math.floor(1000000 / kelvin)
+         self.device.write(kwargs)
+ 
+     async def async_turn_off(self, **kwargs):
+@@ -138,7 +160,11 @@ class XZigbeeLight(XLight):
+             kwargs = {ATTR_TRANSITION: transition} | kwargs
+ 
+         if ATTR_COLOR_TEMP_KELVIN in kwargs:
+-            kwargs[ATTR_COLOR_TEMP] = color_temp(kwargs.pop(ATTR_COLOR_TEMP_KELVIN))
++            kelvin = kwargs.pop(ATTR_COLOR_TEMP_KELVIN)
++            mired = None if kelvin is None else 0
++            if kelvin is not None and kelvin != 0:
++                mired = math.floor(1000000 / kelvin)
++            kwargs[ATTR_COLOR_TEMP] = mired
+ 
+         self.device.write(kwargs if kwargs else {self.attr: True})
+ 

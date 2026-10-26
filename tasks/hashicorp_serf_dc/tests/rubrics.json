@@ -1,0 +1,785 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "hashicorp_serf_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "rpc_request",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch2 RPC request setup.",
+      "baseline_defect": "Query options, name/payload and delivery channels are split into nine positional arguments.",
+      "criterion": "Keep RPC query request and its delivery resources coherently associated through setup.",
+      "acceptance": "Preserve sequence/handler registration, send/init/shutdown flow and channel identities; existing QueryParam is valid, and request data plus a focused delivery context may remain distinct. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "client/rpc_client.go",
+          "symbol": "RPCClient.Query",
+          "detail": "Query options, name/payload and delivery channels are split into nine positional arguments.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "client/rpc_client.go",
+          "symbol": "queryValues",
+          "detail": "Query options, name/payload and delivery channels are split into nine positional arguments.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rpc_record",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch2 response decoding to delivery.",
+      "baseline_defect": "Decoded record type/from/payload split before dispatch.",
+      "criterion": "Keep each decoded RPC query record coherent through ack/response/done dispatch.",
+      "acceptance": "Preserve nonblocking send/drop behavior, NodeResponse origin/payload pairing, done deregistration and unknown-kind log. A tagged record or direct dispatch on existing record is valid; no forced universal query model. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "client/rpc_client.go",
+          "symbol": "queryHandler.Handle",
+          "detail": "Decoded record type/from/payload split before dispatch.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "client/rpc_client.go",
+          "symbol": "deliverQueryRecord",
+          "detail": "Decoded record type/from/payload split before dispatch.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ipc_request",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch2 IPC to agent request.",
+      "baseline_defect": "Decoded request is expanded into scalar options and reconstructed as Serf parameters.",
+      "criterion": "Give IPC request adaptation a cohesive handoff to the agent query.",
+      "acceptance": "Preserve decode error, name/payload/options, stream setup only on successful query and existing seq/client identity. Direct reuse/adaptation of existing request values qualifies. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cmd/serf/command/agent/ipc.go",
+          "symbol": "handleQuery",
+          "detail": "Decoded request is expanded into scalar options and reconstructed as Serf parameters.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "cmd/serf/command/agent/ipc.go",
+          "symbol": "startQueryValues",
+          "detail": "Decoded request is expanded into scalar options and reconstructed as Serf parameters.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "Query",
+          "detail": "Decoded request is expanded into scalar options and reconstructed as Serf parameters.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "normalized_options",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Batch2 and deepening nil/default branch.",
+      "baseline_defect": "Nil parameter defaults and explicit option fields enter scalar query producer independently.",
+      "criterion": "Keep normalized query options coherent while preserving public default behavior.",
+      "acceptance": "Protocol preflight remains before defaults, nil uses existing default timeout/empty filters/no ack/relay0, explicit Timeout0 mutates the supplied params before encoding. Do not require mutating nil input or copying away required visible timeout mutation. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "Query",
+          "detail": "Nil parameter defaults and explicit option fields enter scalar query producer independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "queryValues",
+          "detail": "Nil parameter defaults and explicit option fields enter scalar query producer independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "DefaultQueryParams",
+          "detail": "Nil parameter defaults and explicit option fields enter scalar query producer independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "query_message",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch1 creation/local/network delivery.",
+      "baseline_defect": "Identity, origin, filters, flags, timeout/name/payload are repeated in wire and scalar handler calls.",
+      "criterion": "Maintain coherent query message data across wire creation, local handling and network receipt.",
+      "acceptance": "Preserve Lamport witness before lock, age/dedup rejection, filter/rebroadcast behavior, ack then event publication, source endpoint and query identity. Existing messageQuery is valid; do not freeze mutable Query response state into a detached copy. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "queryValues",
+          "detail": "Identity, origin, filters, flags, timeout/name/payload are repeated in wire and scalar handler calls.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "handleQueryValues",
+          "detail": "Identity, origin, filters, flags, timeout/name/payload are repeated in wire and scalar handler calls.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/delegate.go",
+          "symbol": "NotifyMsg",
+          "detail": "Identity, origin, filters, flags, timeout/name/payload are repeated in wire and scalar handler calls.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "filters",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch2 node/tag filter encoding.",
+      "baseline_defect": "Node/tag collections are detached from option owner at repeated boundary.",
+      "criterion": "Keep supported filter choices coherent through their encoding policy.",
+      "acceptance": "Preserve node filter first, existing tag-map iteration behavior, encoding errors and ack flag selection at its proper caller; no sorting/new canonical wire order or new filter hierarchy required. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "encodeQueryFilters",
+          "detail": "Node/tag collections are detached from option owner at repeated boundary.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "QueryParam.encodeFilters",
+          "detail": "Node/tag collections are detached from option owner at repeated boundary.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "queryValues",
+          "detail": "Node/tag collections are detached from option owner at repeated boundary.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "response_identity",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch1 response lineage.",
+      "baseline_defect": "Response identity/from/flags/payload split across production and receipt paths.",
+      "criterion": "Carry response identity and content coherently through local emission and remote dispatch.",
+      "acceptance": "Preserve encoding/size errors, response lock/deadline behavior, registry LTime then ID matching and ack-vs-payload flag semantics. Compatibility methods may remain adapters. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/event.go",
+          "symbol": "Respond",
+          "detail": "Response identity/from/flags/payload split across production and receipt paths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/event.go",
+          "symbol": "respondWithValues",
+          "detail": "Response identity/from/flags/payload split across production and receipt paths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/delegate.go",
+          "symbol": "NotifyMsg",
+          "detail": "Response identity/from/flags/payload split across production and receipt paths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "handleQueryResponseValues",
+          "detail": "Response identity/from/flags/payload split across production and receipt paths.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "relay_endpoint",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch1 endpoint and response relay.",
+      "baseline_defect": "UDP IP/port/zone and response fields travel as parallel scalars before reconstruction.",
+      "criterion": "Keep relay destination and response associations coherent at the relay boundary.",
+      "acceptance": "Preserve relayFactor0 early return, node selection, destination node name/zone and wrapped response bytes; direct and ack relay callers must use same contract. Separate cohesive endpoint and response values are valid. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "relayResponse",
+          "detail": "UDP IP/port/zone and response fields travel as parallel scalars before reconstruction.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "relayResponseValues",
+          "detail": "UDP IP/port/zone and response fields travel as parallel scalars before reconstruction.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/event.go",
+          "symbol": "respondWithValues",
+          "detail": "UDP IP/port/zone and response fields travel as parallel scalars before reconstruction.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "handleQueryValues",
+          "detail": "UDP IP/port/zone and response fields travel as parallel scalars before reconstruction.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "response_registration",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch1 registration identity/deadline.",
+      "baseline_defect": "LTime/id/timeout/ack are copied separately from message into response construction and timer registration.",
+      "criterion": "Keep response registration identity, deadline and channel policy associated.",
+      "acceptance": "Preserve buffer member count, optional ack channel/maps, now+timeout deadline, registry key and timer duration. No forced single timestamp sample if original distinct calls are observable. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "newQueryResponseValues",
+          "detail": "LTime/id/timeout/ack are copied separately from message into response construction and timer registration.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "queryValues",
+          "detail": "LTime/id/timeout/ack are copied separately from message into response construction and timer registration.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "registerQueryResponse",
+          "detail": "LTime/id/timeout/ack are copied separately from message into response construction and timer registration.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "closure_resources",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Batch5 and shared-lock deepening.",
+      "baseline_defect": "Timer captures key, closed flag pointer, mutex pointer and channel snapshots separately; callers lock before scalar close.",
+      "criterion": "Make shared response closure resources and synchronization a coherent lifecycle contract.",
+      "acceptance": "Explicit and timed close share actual closed state and mutex identity, close channels at most once, and synchronize with deliveries. Timer removes registry under query lock before closure; preserve lock order and captured resource semantics. A shared resource handle or existing response operation qualifies; do not copy the mutex/flag. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "Close",
+          "detail": "Timer captures key, closed flag pointer, mutex pointer and channel snapshots separately; callers lock before scalar close.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "closeQueryResponseChannels",
+          "detail": "Timer captures key, closed flag pointer, mutex pointer and channel snapshots separately; callers lock before scalar close.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "registerQueryResponse",
+          "detail": "Timer captures key, closed flag pointer, mutex pointer and channel snapshots separately; callers lock before scalar close.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "local_delivery",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch1 delivered node responses.",
+      "baseline_defect": "From/payload split before send and sender-accounting updates.",
+      "criterion": "Keep delivered node response and origin accounting coherent.",
+      "acceptance": "Under close lock closed responses no-op; record sender only after successful nonblocking channel send, retain drop error/full behavior and separate ack/response dedup maps. Ack naturally needs only sender and need not carry an artificial payload object. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "sendResponseValues",
+          "detail": "From/payload split before send and sender-accounting updates.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/query.go",
+          "symbol": "sendAckFrom",
+          "detail": "From/payload split before send and sender-accounting updates.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/serf.go",
+          "symbol": "handleQueryResponseValues",
+          "detail": "From/payload split before send and sender-accounting updates.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "stream_lifetime",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch5 IPC stream lifetime.",
+      "baseline_defect": "Deadline, optional ack channel and response channel are projected from one query response.",
+      "criterion": "Keep response stream resources and absolute lifetime associated through streaming.",
+      "acceptance": "Use remaining time from absolute deadline, preserve optional ack behavior, current select/channel termination and RPC record ordering. Existing QueryResponse getters or a focused immutable resource view qualify; do not restart a full timeout on stream start. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "cmd/serf/command/agent/ipc_query_response_stream.go",
+          "symbol": "Stream",
+          "detail": "Deadline, optional ack channel and response channel are projected from one query response.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "cmd/serf/command/agent/ipc_query_response_stream.go",
+          "symbol": "streamQueryValues",
+          "detail": "Deadline, optional ack channel and response channel are projected from one query response.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "key_outcome",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch3 four key-operation producers.",
+      "baseline_defect": "Success/message/keys/primary are independent locals and repeated scalar response calls.",
+      "criterion": "Keep key operation outcomes coherent from all four producers into response encoding.",
+      "acceptance": "Preserve malformed/encryption-disabled/operation/persistence outcomes, list base64 keys/primary, false+empty message possibility, and normal versus special list response route. Existing nodeKeyResponse is a valid complete repair; operation algorithms need not be unified. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "handleInstallKey",
+          "detail": "Success/message/keys/primary are independent locals and repeated scalar response calls.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "handleUseKey",
+          "detail": "Success/message/keys/primary are independent locals and repeated scalar response calls.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "handleRemoveKey",
+          "detail": "Success/message/keys/primary are independent locals and repeated scalar response calls.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "handleListKeys",
+          "detail": "Success/message/keys/primary are independent locals and repeated scalar response calls.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "sendKeyResponseValues",
+          "detail": "Success/message/keys/primary are independent locals and repeated scalar response calls.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "key_list_preflight",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Batch5 and deepening size preflight.",
+      "baseline_defect": "Two callers separately capture original count and clamp candidate bound before passing list/message scalars.",
+      "criterion": "Keep truncation preflight and evolving list response state coherently related.",
+      "acceptance": "Original count remains stable across truncation, bound=min(limit/minEncodedKeyLength,original count); initial encoding uses current full list before failure-driven slicing. Preserve descending loop and message text, terminal error and compatibility publication of changed message/keys even on error. No forced immutable list copy. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "keyListResponseWithCorrectSize",
+          "detail": "Two callers separately capture original count and clamp candidate bound before passing list/message scalars.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "sendKeyResponseValues",
+          "detail": "Two callers separately capture original count and clamp candidate bound before passing list/message scalars.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "keyListResponseValues",
+          "detail": "Two callers separately capture original count and clamp candidate bound before passing list/message scalars.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "nested_key_encoding",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch5 nested response representations.",
+      "baseline_defect": "Inner key payload and outer raw bytes/identity returned and forwarded independently.",
+      "criterion": "Keep nested payload, enclosing response identity and encoded bytes consistent through size validation and send.",
+      "acceptance": "Preserve distinct inner config.MsgpackUseNewTimeFormat and outer runtime msgpackUseNewTimeFormat modes, size measured on outer bytes, success/warning and failure behavior. A pair of coherent records or encode-and-send operation is valid; no imposed result struct. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "keyListResponseValues",
+          "detail": "Inner key payload and outer raw bytes/identity returned and forwarded independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/internal_query.go",
+          "symbol": "sendKeyResponseValues",
+          "detail": "Inner key payload and outer raw bytes/identity returned and forwarded independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/event.go",
+          "symbol": "respondWithValues",
+          "detail": "Inner key payload and outer raw bytes/identity returned and forwarded independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "key_aggregation_state",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch4 maps/counters and termination.",
+      "baseline_defect": "Messages/key/primary maps and node/response/error counters travel independently, counters returned later.",
+      "criterion": "Keep streaming aggregate state and completion accounting coherent.",
+      "acceptance": "Increment response for every received record, errors for malformed/decode failure without key contributions, equality numResp==numNodes early termination, and publish final counters to API result. Existing KeyResponse or encapsulated columns valid; preserve in-place map identity and no new >= termination. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/keymanager.go",
+          "symbol": "streamKeyRespValues",
+          "detail": "Messages/key/primary maps and node/response/error counters travel independently, counters returned later.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/keymanager.go",
+          "symbol": "streamKeyResp",
+          "detail": "Messages/key/primary maps and node/response/error counters travel independently, counters returned later.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/keymanager.go",
+          "symbol": "handleKeyRequest",
+          "detail": "Messages/key/primary maps and node/response/error counters travel independently, counters returned later.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "key_outcome_interpretation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening error/message/warning split.",
+      "baseline_defect": "Caller derives numErr increment/recordMessage/warn while collector gets fields and decisions separately.",
+      "criterion": "Keep decoded node outcome and aggregate contribution decisions coherent.",
+      "acceptance": "Decoded failed responses increment error and store even empty message; success nonempty message warns; all decoded outcomes count listed keys and primary (including empty primary), while malformed records do not. Direct branch processing or a coherent contribution value qualifies; no forced one-function implementation. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/keymanager.go",
+          "symbol": "streamKeyRespValues",
+          "detail": "Caller derives numErr increment/recordMessage/warn while collector gets fields and decisions separately.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "serf/keymanager.go",
+          "symbol": "collectKeyResponseValues",
+          "detail": "Caller derives numErr increment/recordMessage/warn while collector gets fields and decisions separately.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "coordinate_validity",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch6 finite validation/reset.",
+      "baseline_defect": "Vector/error/adjustment/height are split at public/admission/postupdate checks.",
+      "criterion": "Keep coordinate component validity attached to a cohesive coordinate view.",
+      "acceptance": "Preserve component finite checks, dimension check before admission validity, reset count and reset coordinate after update stages. Public Coordinate and Client.coord remain supported; shared cache pointer identity must not change. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/coordinate.go",
+          "symbol": "IsValid",
+          "detail": "Vector/error/adjustment/height are split at public/admission/postupdate checks.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/coordinate.go",
+          "symbol": "coordinateValuesValid",
+          "detail": "Vector/error/adjustment/height are split at public/admission/postupdate checks.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/client.go",
+          "symbol": "checkCoordinate",
+          "detail": "Vector/error/adjustment/height are split at public/admission/postupdate checks.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/client.go",
+          "symbol": "Update",
+          "detail": "Vector/error/adjustment/height are split at public/admission/postupdate checks.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "coordinate_distance",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Batch6 and raw/adjusted candidate deepening.",
+      "baseline_defect": "Coordinate pairs split into components and callers repeat positive-adjustment selection and duration conversion.",
+      "criterion": "Keep adjusted distance selection and coordinate-pair data coherent for public/client consumers.",
+      "acceptance": "Use adjusted only if >0 else raw, preserve dimension panic and time.Duration nanosecond quantization before Vivaldi/gravity convert back to seconds. No replacement with unquantized float path or unconditional clamp. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/coordinate.go",
+          "symbol": "coordinateDistanceCandidates",
+          "detail": "Coordinate pairs split into components and callers repeat positive-adjustment selection and duration conversion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/coordinate.go",
+          "symbol": "DistanceTo",
+          "detail": "Coordinate pairs split into components and callers repeat positive-adjustment selection and duration conversion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/client.go",
+          "symbol": "updateVivaldi",
+          "detail": "Coordinate pairs split into components and callers repeat positive-adjustment selection and duration conversion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/client.go",
+          "symbol": "updateGravity",
+          "detail": "Coordinate pairs split into components and callers repeat positive-adjustment selection and duration conversion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/client.go",
+          "symbol": "DistanceTo",
+          "detail": "Coordinate pairs split into components and callers repeat positive-adjustment selection and duration conversion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "coordinate_raw_adjustment",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Batch6 distinct moving-window raw distance.",
+      "baseline_defect": "Adjustment computation forwards vector/height pairs to scalar kernel detached from coordinate state.",
+      "criterion": "Keep raw coordinate distance data cohesive without conflating adjusted/quantized distance consumers.",
+      "acceptance": "Moving-window adjustment uses raw unadjusted seconds, preserving window/index behavior; public raw kernel can remain inside coordinate-owned operation. Same coordinate abstraction may expose both raw and adjusted semantics; no forced separate component. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/coordinate.go",
+          "symbol": "rawDistanceTo",
+          "detail": "Adjustment computation forwards vector/height pairs to scalar kernel detached from coordinate state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/coordinate.go",
+          "symbol": "rawCoordinateDistanceValues",
+          "detail": "Adjustment computation forwards vector/height pairs to scalar kernel detached from coordinate state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/client.go",
+          "symbol": "updateAdjustment",
+          "detail": "Adjustment computation forwards vector/height pairs to scalar kernel detached from coordinate state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "coordinate_force",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Batch6 force state and deepening returned separation.",
+      "baseline_defect": "Vector kernel returns vector/separation while three callers retain error/adjustment/height snapshots and duplicate height update.",
+      "criterion": "Keep force geometry and resulting coordinate state coherently composed across all callers.",
+      "acceptance": "Preserve vector cloning, dimension panic, random unit direction, captured error/adjustment, and height update/min only when separation>zeroThreshold; coincident geometry retains original height even below minimum. No requirement to retain kernel shape or globally clamp coordinates; existing ApplyForce reuse is valid. Existing public/protocol values, borrowed context, focused operations and concise regrouping are valid. No mandatory new type or one object for every lineage. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed scalar wrapper or new bundle immediately unpacked into unchanged duplicated positional plumbing is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/coordinate.go",
+          "symbol": "ApplyForce",
+          "detail": "Vector kernel returns vector/separation while three callers retain error/adjustment/height snapshots and duplicate height update.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/coordinate.go",
+          "symbol": "forceCoordinateValues",
+          "detail": "Vector kernel returns vector/separation while three callers retain error/adjustment/height snapshots and duplicate height update.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/client.go",
+          "symbol": "updateVivaldi",
+          "detail": "Vector kernel returns vector/separation while three callers retain error/adjustment/height snapshots and duplicate height update.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "coordinate/client.go",
+          "symbol": "updateGravity",
+          "detail": "Vector kernel returns vector/separation while three callers retain error/adjustment/height snapshots and duplicate height update.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "hashicorp_serf_dc",
+    "rubric_status": "ready",
+    "scoring": {
+      "method": "equal_weight",
+      "weight_per_item": 1,
+      "total_items": 13
+    },
+    "exclusions": [
+      "The empty post.diff contains no change.",
+      "Preserving existing query, coordinate, and key behavior alone earns no structural point.",
+      "Compilation or test passage alone earns no structural point."
+    ]
+  }
+}

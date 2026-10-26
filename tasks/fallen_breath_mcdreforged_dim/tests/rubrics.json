@@ -1,0 +1,633 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "fallen_breath_mcdreforged_dim",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "command_context",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 parse/suggest error context.",
+      "baseline_defect": "Plugin context and CommandError/unexpected-exception handling are duplicated across parsing, suggestions and deferred callbacks.",
+      "criterion": "Give command context and exception routing a coherent shared boundary.",
+      "acceptance": "Retain handled-error silence, language-aware translation, custom RequirementNotMet text, KeyError translation fallback, source reply, CallbackError action/path/exc_info and repr-formatting fallback. Parse/suggestion result handling may remain distinct. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/command/command_manager.py",
+          "symbol": "execute_command,suggest_command",
+          "detail": "Plugin context and CommandError/unexpected-exception handling are duplicated across parsing, suggestions and deferred callbacks.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "deferred_context",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Depth command closure lifetime.",
+      "baseline_defect": "Dispatch loop embeds a long deferred contextmanager and exception policy.",
+      "criterion": "Separate deferred execution context responsibilities from scheduling through a clear capture/lifetime contract.",
+      "acceptance": "Bind each execution/holder at dispatch, but read holder plugin/node when entering callback context. Preserve callback error wrapping inside plugin context and reverse/deferred callback correctness. Shared context machinery can also satisfy command_context. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/command/command_manager.py",
+          "symbol": "execute_command,contextmanager_func",
+          "detail": "Dispatch loop embeds a long deferred contextmanager and exception policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "install_input",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 input and target preparation.",
+      "baseline_defect": "Input file reads, target selection and flags are embedded in full installation lifetime.",
+      "criterion": "Make install input preparation a cohesive phase with a clear downstream contract.",
+      "acceptance": "Keep argument then file order, OSError/empty input/no-directory errors, samefile target validation, first-directory default and option conversion. Existing _ParsedContext is already coherent and need not be redesigned. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Input file reads, target selection and flags are embedded in full installation lifetime.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "specifier_parsing",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 requirement/hash parsing.",
+      "baseline_defect": "Specifier syntax, optional hash validation and input expansion occupy the installation body.",
+      "criterion": "Isolate requirement syntax and hash-validator preparation from resolution and mutation.",
+      "acceptance": "Preserve spaces rejection, @ split, lowercase hash, sha256-only 10..64 hex prefix and exactly one == criterion for hashes, plus wildcard expansion and stable unique-list semantics. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Specifier syntax, optional hash validation and input expansion occupy the installation body.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "implicit_policy",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Depth implicit requirement source/version policy.",
+      "baseline_defect": "Updatable versus pinned requirement construction repeats for requested existing plugins and other installed plugins.",
+      "criterion": "Own the shared installed-plugin version/provenance policy so changes propagate to both branches.",
+      "acceptance": "Preserve explicit user-input source, >= existing versus == pinned, builtin rejection for direct requests and preferred-version capture before updatability checks. Do not conflate wildcard expansion with all-installed preservation. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Updatable versus pinned requirement construction repeats for requested existing plugins and other installed plugins.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "resolution",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 resolver phase.",
+      "baseline_defect": "Unknown-ID validation, resolver configuration and error provenance are embedded between parsing and candidate selection.",
+      "criterion": "Give requirement-to-resolution coordination a coherent boundary.",
+      "acceptance": "Preserve merged catalogue acquisition timing, no_deps resolver flag, diagnostic source lookup and returned-exception handling. Keep requirement sources alive for diagnostics without mandatory restoration of _ParsedPluginRequirements. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Unknown-ID validation, resolver configuration and error provenance are embedded between parsing and candidate selection.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "candidate_selection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 candidate/hash selection.",
+      "baseline_defect": "Version comparison, packed-plugin restrictions, release lookup, local hash validation and package provenance all run inline in process.",
+      "criterion": "Own resolved candidate validation and install selection as a coherent phase.",
+      "acceptance": "Retain missing-release assertion, LocalReleaseData skip, catalogue hash-prefix check for changes, local packed hash check for unchanged versions, package exclusion/provenance and no-work exit. Existing selected-plugin records may remain. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Version comparison, packed-plugin restrictions, release lookup, local hash validation and package provenance all run inline in process.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "install_summary",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 selected plan reporting.",
+      "baseline_defect": "Change counts, plugin version display and sorted package summary are expanded into the transaction coordinator.",
+      "criterion": "Separate install-plan presentation from selection and execution responsibilities.",
+      "acceptance": "Preserve new versus changed counts, entry order, version formatting, sorted package entries and no_deps clearing before package output. This is not a demand for a separate presentation class. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Change counts, plugin version display and sorted package summary are expanded into the transaction coordinator.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "confirmation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 confirmation/cancellation.",
+      "baseline_defect": "Confirmation wait/state handling and abort checks share the large installation mutation body.",
+      "criterion": "Give confirmation and cancellation gating a clear phase contract.",
+      "acceptance": "Keep clear/wait/get ordering, cancelled versus aborted replies, timeout priority after state inspection, skip_confirm behavior and pre-download abort. Do not turn every early exit into rollback. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Confirmation wait/state handling and abort checks share the large installation mutation body.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "package_install",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 package installer lifetime.",
+      "baseline_defect": "Package resolver setup, dry-run reporting, abort callback and subprocess handling are embedded in file-transaction flow.",
+      "criterion": "Bound package installation coordination and its cancellation/error contract.",
+      "acceptance": "Construct resolver even for empty requirements, preserve extra-args shlex parsing, pre-run logging, abort callback lifetime, CalledProcessError reply/console logging and OuterReturn behavior. Do not invent rollback of installed Python packages. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Package resolver setup, dry-run reporting, abort callback and subprocess handling are embedded in file-transaction flow.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "release_acquisition",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 downloader integration.",
+      "baseline_defect": "Per-release target registration, downloader setup and abort wiring are nested inside installer process.",
+      "criterion": "Own selected-release download coordination through a clear artifact handoff.",
+      "acceptance": "Preserve target registration before download, dry-run mkdir avoidance, catalogue owner/name URL overrides, timeout, if_costly progress, suppressed downloader.Aborted followed by outer abort check and download-all-before-file-moves ordering. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Per-release target registration, downloader setup and abort wiring are nested inside installer process.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "file_install",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 file transaction mutation.",
+      "baseline_defect": "Old-plugin path selection, trash move, sanitized destination/collision scan and new move run inline.",
+      "criterion": "Give plugin file replacement a cohesive operation and mutation-record contract.",
+      "acceptance": "Use live installed-plugin lookup, existing directory for replacements and configured default for new plugins, record trash mapping before mkdir/release/move and new destination before move, preserve 1000 collision attempts and load/unload order. No mandatory atomic transaction or eager path snapshot. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Old-plugin path selection, trash move, sanitized destination/collision scan and new move run inline.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rollback_cleanup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 outer cleanup; depth transaction lifetime.",
+      "baseline_defect": "Rollback, temp-directory cleanup and source cleanup are nested across the entire command.",
+      "criterion": "Make transaction failure recovery and resource lifetimes explicit and coherent.",
+      "acceptance": "OuterReturn bypasses ordinary rollback; other transaction errors delete new paths then restore originals with rollback-error logging; reload in try-else is outside rollback but inside temp cleanup. Always clear install source after its protected body; keep pre-transaction preparation outside temp cleanup where currently placed. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Rollback, temp-directory cleanup and source cleanup are nested across the entire command.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "activation_handoff",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 post-install reload.",
+      "baseline_defect": "Artifact movement results and affected IDs reach manager activation through distant local state.",
+      "criterion": "Provide a clear committed-installation handoff to plugin manipulation.",
+      "acceptance": "Retain ordered load paths/unload IDs, dry-run bypass, done message only after manipulation call and reload failures outside file rollback. No forced single plan object or asynchronous redesign. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/builtin/mcdr/commands/pim_internal/handler_install.py",
+          "symbol": "process",
+          "detail": "Artifact movement results and affected IDs reach manager activation through distant local state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "download_attempt",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 retry/attempt boundary.",
+      "baseline_defect": "URL setup, response checks, stream work and cleanup are nested directly inside retries.",
+      "criterion": "Distinguish bounded download-attempt work from retry/error orchestration.",
+      "acceptance": "Retain pre-attempt abort check, per-attempt event clear, captured original URL, retry count, error aggregation and report/log rules. In-stream Aborted is swallowed after unlink, while pre-stream Aborted propagates; do not normalize these distinct outcomes. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/installer/downloader.py",
+          "symbol": "download",
+          "detail": "URL setup, response checks, stream work and cleanup are nested directly inside retries.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "response_validation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 URL/response preparation.",
+      "baseline_defect": "Override formatting and response size validation obscure retry and stream orchestration.",
+      "criterion": "Give request/response preparation a cohesive contract before stream consumption.",
+      "acceptance": "Preserve override kwargs, streaming timeout, raise_for_status, missing/invalid content length errors, declared-size equality, >=100MiB rejection and debug timing. No additional length policy or eager body download. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/installer/downloader.py",
+          "symbol": "download",
+          "detail": "Override formatting and response size validation obscure retry and stream orchestration.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "download_stream",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 stream/hash/abort lifetime.",
+      "baseline_defect": "Chunk accounting, write/hash, report scheduling and abort cleanup are embedded in retry control.",
+      "criterion": "Own stream consumption and partial-file cleanup within an explicit lifetime.",
+      "acceptance": "Keep open wb then hasher/time initialization; abort before chunk consumption, byte-count overflow before hash/write, hash before write and final digest validation. Only caught Aborted unlinks with suppressed OSError; generic size/hash failures retain existing retry behavior. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/installer/downloader.py",
+          "symbol": "download",
+          "detail": "Chunk accounting, write/hash, report scheduling and abort cleanup are embedded in retry control.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "progress_policy",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Depth progress closure removal.",
+      "baseline_defect": "Width, percentage, bar and reply formatting repeat before stream and within chunk loop.",
+      "criterion": "Own common progress formatting/publication while preserving the two invocation scopes.",
+      "acceptance": "Retain full initial report before file/abort cleanup, streaming reports after byte publication, if_costly/never policy, has_any_report, interval/completion timing, terminal fallback and width calculations. A short reusable reporter is valid; moving initial report into stream cleanup is not equivalent. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/installer/downloader.py",
+          "symbol": "download",
+          "detail": "Width, percentage, bar and reply formatting repeat before stream and within chunk loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "plugin_storage",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 identifier/path store layers.",
+      "baseline_defect": "Add/remove index mutations repeat throughout lifecycle consumers.",
+      "criterion": "Own plugin-ID and file-path registry invariants across all lifecycle routes.",
+      "acceptance": "Preserve duplicate critical logging, RegularPlugin absolute path index and builtin removal exemption; add/remove need not be one method or new store class. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__add_builtin_plugin,__refresh_plugins,__reload_ready_plugins,manipulate_plugins",
+          "detail": "Add/remove index mutations repeat throughout lifecycle consumers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "loading_errors",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 error classification.",
+      "baseline_defect": "RequirementCheckFailure/IllegalPluginStructure/other logging repeats in load and reload.",
+      "criterion": "Centralize loading-error classification independently from operation-specific recovery.",
+      "acceptance": "Preserve two error messages for known failures versus exception logging for others and operation-specific leading translation. Do not force load and reload cleanup to match. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__reload_ready_plugins,__refresh_plugins,manipulate_plugins",
+          "detail": "RequirementCheckFailure/IllegalPluginStructure/other logging repeats in load and reload.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "plugin_load",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 single load; packaged batch inlining.",
+      "baseline_defect": "Load creation, duplicate rejection, cleanup and result publication repeat in refresh and explicit operations.",
+      "criterion": "Own one-plugin load decisions through batch result publication.",
+      "acceptance": "Create factory object outside load try as currently, reject existing absolute paths, publish success after store/log, unload duplicate with logged failure then remove it before path-failure result. Do not add removal on ordinary load failure. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__refresh_plugins,manipulate_plugins",
+          "detail": "Load creation, duplicate rejection, cleanup and result publication repeat in refresh and explicit operations.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "plugin_unload",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 unload operation.",
+      "baseline_defect": "Ready event, unload exception/state fallback and removal-finally are repeated across normal and recovery paths.",
+      "criterion": "Give unload lifecycle and recovery a shared coherent operation.",
+      "acceptance": "Keep READY-only event before unload try, fallback UNLOADING on unload exception, removal in finally and result record after cleanup where consumed. Event exceptions retain their original boundary; not every unload call has a result consumer. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__reload_ready_plugins,__refresh_plugins,manipulate_plugins",
+          "detail": "Ready event, unload exception/state fallback and removal-finally are repeated across normal and recovery paths.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "plugin_reload",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 reload; depth branch result publication.",
+      "baseline_defect": "Reload callback, load-error classification, failed-reload unload and duplicate handling are embedded in batch loop.",
+      "criterion": "Own reload outcome and recovery independently from batch traversal.",
+      "acceptance": "Retain reverse unload then forward reload, failed-reload cleanup, changed-ID duplicate detection, successful store/log before record and duplicate reload unload without new-plugin remove. Returning outcome or direct record publication both qualify. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__reload_ready_plugins",
+          "detail": "Reload callback, load-error classification, failed-reload unload and duplicate handling are embedded in batch loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dependent_selection",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 dependent selection.",
+      "baseline_defect": "Walker expansion, affected lookup/filter, topology sort and indirect attribution repeat across routes.",
+      "criterion": "Give dependency-based selection a common contract used by unload/reload consumers.",
+      "acceptance": "Preserve original selected-set identity, deduplicated affected IDs, unknown-plugin assertion, logged sort failures, reload READY filter versus unload all states and indirect membership before callbacks. Different selection inputs may remain local. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__reload_ready_plugins,__refresh_plugins,manipulate_plugins",
+          "detail": "Walker expansion, affected lookup/filter, topology sort and indirect attribution repeat across routes.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "discovery",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Packaged deepening discovery/selection inlining.",
+      "baseline_defect": "Directory scan and plugin-file filtering repeat in refresh and explicit path load.",
+      "criterion": "Own existing discovery policy so supported entry routes share one change boundary.",
+      "acceptance": "Preserve directory order/listdir order, nonexistent-directory warnings, factory eligibility and contains-plugin filtering after unload for refresh versus before manipulate for explicit loading. Do not require builtin registration to use filesystem discovery. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__refresh_plugins,load_plugin",
+          "detail": "Directory scan and plugin-file filtering repeat in refresh and explicit path load.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dependency_finalization",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 dependency check/recovery.",
+      "baseline_defect": "Both routes embed walker result-to-plugin lookup, result publication and failed-dependency unloading.",
+      "criterion": "Own dependency validation and recovery at lifecycle finalization.",
+      "acceptance": "Preserve walk order, record before failure log/unload, topological success list and exception behavior; shared unload recovery may satisfy plugin_unload as well. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__refresh_plugins,manipulate_plugins",
+          "detail": "Both routes embed walker result-to-plugin lookup, result publication and failed-dependency unloading.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "removal_snapshot",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 removed-module lifetime.",
+      "baseline_defect": "Removed-plugin assembly and module snapshot loops repeat inside finalization callers.",
+      "criterion": "Own removal preparation and old-module preservation before removal hooks.",
+      "acceptance": "Retain removal list including unload success/failure, reload failure and dependency failure, type assertions and all regular module snapshots before any remove callback. Preserve list multiplicity and ID overwrite behavior rather than imposing deduplication. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__refresh_plugins,manipulate_plugins",
+          "detail": "Removed-plugin assembly and module snapshot loops repeat inside finalization callers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ready_loaded_events",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 ready/load event publication.",
+      "baseline_defect": "Each caller repeats ready filtering and loaded-event old-module fallback.",
+      "criterion": "Give readiness and loaded-event publication a coherent finalization contract.",
+      "acceptance": "Clear listener registry before callbacks, ready all newly loaded successful plugins before any loaded event, then events in dependency order; old_entry_module_instance overrides snapshot only when non-None. Preserve supported hooks and queued nested manipulation. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "__refresh_plugins,manipulate_plugins",
+          "detail": "Each caller repeats ready filtering and loaded-event old-module fallback.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "registry_publication",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1/R3 registry collection and final sorting.",
+      "baseline_defect": "Clear/collect/arrange/notify registry pipeline repeats across builtin registration and finalizers.",
+      "criterion": "Own registry publication while callers retain their required phase placement.",
+      "acceptance": "Preserve plugin iteration/extension dispatch, arrange then on_plugin_registry_changed, READY assertions before final publication, builtin sort-before-publish versus ordinary final sort-after-publish and public operation result categories. No blanket early publication or callback bypass. Concise extraction, shared operations, policy data or equivalent control-flow redesign qualify; no minimum helper count or exact original private API is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the entire monolith, adding comments or renaming local variables without clarifying this responsibility and its consumers is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "mcdreforged/plugin/plugin_manager.py",
+          "symbol": "register_builtin_plugins,__refresh_plugins,manipulate_plugins",
+          "detail": "Clear/collect/arrange/notify registry pipeline repeats across builtin registration and finalizers.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "fallen_breath_mcdreforged_dim",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "weight_per_item": 1,
+    "aggregation": "equal weight per item; score = earned items / 12",
+    "excluded_from_scoring": [
+      "The zero-length post.diff makes no repair obligation.",
+      "Passing the 206 native tests, preserving clean behavior, and an unchanged patch are controls rather than structural credit.",
+      "No independently supported speculative plugin feature is scored."
+    ]
+  }
+}

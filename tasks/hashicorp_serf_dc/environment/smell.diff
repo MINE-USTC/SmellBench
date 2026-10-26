@@ -1,0 +1,1208 @@
+diff --git a/client/rpc_client.go b/client/rpc_client.go
+index dd1036e..a78e2fd 100644
+--- a/client/rpc_client.go
++++ b/client/rpc_client.go
+@@ -609,18 +609,22 @@ func (qh *queryHandler) Handle(resp *responseHeader) {
+ 		qh.client.deregisterHandler(qh.seq)
+ 		return
+ 	}
++	qh.deliverQueryRecord(rec.Type, rec.From, rec.Payload)
++}
++
++func (qh *queryHandler) deliverQueryRecord(kind, from string, payload []byte) {
+ 
+-	switch rec.Type {
++	switch kind {
+ 	case queryRecordAck:
+ 		select {
+-		case qh.ackCh <- rec.From:
++		case qh.ackCh <- from:
+ 		default:
+ 			log.Printf("[ERR] Dropping query ack, channel full")
+ 		}
+ 
+ 	case queryRecordResponse:
+ 		select {
+-		case qh.respCh <- NodeResponse{rec.From, rec.Payload}:
++		case qh.respCh <- NodeResponse{from, payload}:
+ 		default:
+ 			log.Printf("[ERR] Dropping query response, channel full")
+ 		}
+@@ -630,7 +634,7 @@ func (qh *queryHandler) Handle(resp *responseHeader) {
+ 		qh.client.deregisterHandler(qh.seq)
+ 
+ 	default:
+-		log.Printf("[ERR] Unrecognized query record type: %s", rec.Type)
++		log.Printf("[ERR] Unrecognized query record type: %s", kind)
+ 	}
+ }
+ 
+@@ -668,6 +672,12 @@ type QueryParam struct {
+ // sends and should be buffered. At the end of the query, the channels will be
+ // closed.
+ func (c *RPCClient) Query(params *QueryParam) error {
++	return c.queryValues(params.FilterNodes, params.FilterTags, params.RequestAck, params.RelayFactor,
++		params.Timeout, params.Name, params.Payload, params.AckCh, params.RespCh)
++}
++
++func (c *RPCClient) queryValues(nodes []string, tags map[string]string, ack bool, relay uint8,
++	timeout time.Duration, name string, payload []byte, ackCh chan<- string, respCh chan<- NodeResponse) error {
+ 	// Setup the request
+ 	seq := c.getSeq()
+ 	header := requestHeader{
+@@ -675,13 +685,13 @@ func (c *RPCClient) Query(params *QueryParam) error {
+ 		Seq:     seq,
+ 	}
+ 	req := queryRequest{
+-		FilterNodes: params.FilterNodes,
+-		FilterTags:  params.FilterTags,
+-		RequestAck:  params.RequestAck,
+-		RelayFactor: params.RelayFactor,
+-		Timeout:     params.Timeout,
+-		Name:        params.Name,
+-		Payload:     params.Payload,
++		FilterNodes: nodes,
++		FilterTags:  tags,
++		RequestAck:  ack,
++		RelayFactor: relay,
++		Timeout:     timeout,
++		Name:        name,
++		Payload:     payload,
+ 	}
+ 
+ 	// Create a query handler
+@@ -689,8 +699,8 @@ func (c *RPCClient) Query(params *QueryParam) error {
+ 	handler := &queryHandler{
+ 		client: c,
+ 		initCh: initCh,
+-		ackCh:  params.AckCh,
+-		respCh: params.RespCh,
++		ackCh:  ackCh,
++		respCh: respCh,
+ 		seq:    seq,
+ 	}
+ 	c.handleSeq(seq, handler)
+diff --git a/cmd/serf/command/agent/ipc.go b/cmd/serf/command/agent/ipc.go
+index 5aecfd6..136ea88 100644
+--- a/cmd/serf/command/agent/ipc.go
++++ b/cmd/serf/command/agent/ipc.go
+@@ -992,18 +992,24 @@ func (i *AgentIPC) handleQuery(client *IPCClient, seq uint64) error {
+ 	if err := client.dec.Decode(&req); err != nil {
+ 		return fmt.Errorf("decode failed: %v", err)
+ 	}
++	return i.startQueryValues(client, seq, req.FilterNodes, req.FilterTags, req.RequestAck,
++		req.RelayFactor, req.Timeout, req.Name, req.Payload)
++}
++
++func (i *AgentIPC) startQueryValues(client *IPCClient, seq uint64, nodes []string, tags map[string]string,
++	ack bool, relay uint8, timeout time.Duration, name string, payload []byte) error {
+ 
+ 	// Setup the query
+ 	params := serf.QueryParam{
+-		FilterNodes: req.FilterNodes,
+-		FilterTags:  req.FilterTags,
+-		RequestAck:  req.RequestAck,
+-		RelayFactor: req.RelayFactor,
+-		Timeout:     req.Timeout,
++		FilterNodes: nodes,
++		FilterTags:  tags,
++		RequestAck:  ack,
++		RelayFactor: relay,
++		Timeout:     timeout,
+ 	}
+ 
+ 	// Start the query
+-	queryResp, err := i.agent.Query(req.Name, req.Payload, &params)
++	queryResp, err := i.agent.Query(name, payload, &params)
+ 
+ 	// Stream the query responses
+ 	if err == nil {
+diff --git a/cmd/serf/command/agent/ipc_query_response_stream.go b/cmd/serf/command/agent/ipc_query_response_stream.go
+index fe038f6..f91d3c9 100644
+--- a/cmd/serf/command/agent/ipc_query_response_stream.go
++++ b/cmd/serf/command/agent/ipc_query_response_stream.go
+@@ -28,12 +28,14 @@ func newQueryResponseStream(client streamClient, seq uint64, logger *log.Logger)
+ 
+ // Stream is a long running routine used to stream the results of a query back to a client
+ func (qs *queryResponseStream) Stream(resp *serf.QueryResponse) {
++	qs.streamQueryValues(resp.Deadline(), resp.AckCh(), resp.ResponseCh())
++}
++
++func (qs *queryResponseStream) streamQueryValues(deadline time.Time, ackCh <-chan string, respCh <-chan serf.NodeResponse) {
+ 	// Setup a timer for the query ending
+-	remaining := time.Until(resp.Deadline())
++	remaining := time.Until(deadline)
+ 	done := time.After(remaining)
+ 
+-	ackCh := resp.AckCh()
+-	respCh := resp.ResponseCh()
+ 	for {
+ 		select {
+ 		case a := <-ackCh:
+diff --git a/coordinate/client.go b/coordinate/client.go
+index b9f3b2b..6ac7a07 100644
+--- a/coordinate/client.go
++++ b/coordinate/client.go
+@@ -114,7 +114,7 @@ func (c *Client) checkCoordinate(coord *Coordinate) error {
+ 		return fmt.Errorf("dimensions aren't compatible")
+ 	}
+ 
+-	if !coord.IsValid() {
++	if !coordinateValuesValid(coord.Vec, coord.Error, coord.Adjustment, coord.Height) {
+ 		return fmt.Errorf("coordinate is invalid")
+ 	}
+ 
+@@ -148,7 +148,13 @@ func (c *Client) latencyFilter(node string, rttSeconds float64) float64 {
+ func (c *Client) updateVivaldi(other *Coordinate, rttSeconds float64) {
+ 	const zeroThreshold = 1.0e-6
+ 
+-	dist := c.coord.DistanceTo(other).Seconds()
++	raw, adjusted := coordinateDistanceCandidates(c.coord.Vec, c.coord.Height, c.coord.Adjustment,
++		other.Vec, other.Height, other.Adjustment)
++	dist := raw
++	if adjusted > 0.0 {
++		dist = adjusted
++	}
++	dist = time.Duration(dist * secondsToNanoseconds).Seconds()
+ 	if rttSeconds < zeroThreshold {
+ 		rttSeconds = zeroThreshold
+ 	}
+@@ -167,7 +173,14 @@ func (c *Client) updateVivaldi(other *Coordinate, rttSeconds float64) {
+ 
+ 	delta := c.config.VivaldiCC * weight
+ 	force := delta * (rttSeconds - dist)
+-	c.coord = c.coord.ApplyForce(c.config, force, other)
++	errorEstimate, adjustment := c.coord.Error, c.coord.Adjustment
++	height, otherHeight := c.coord.Height, other.Height
++	vec, separation := forceCoordinateValues(c.config, force, c.coord.Vec, other.Vec)
++	if separation > zeroThreshold {
++		height = (height+otherHeight)*force/separation + height
++		height = math.Max(height, c.config.HeightMin)
++	}
++	c.coord = &Coordinate{Vec: vec, Error: errorEstimate, Adjustment: adjustment, Height: height}
+ }
+ 
+ // updateAdjustment updates the adjustment portion of the client's coordinate, if
+@@ -179,7 +192,7 @@ func (c *Client) updateAdjustment(other *Coordinate, rttSeconds float64) {
+ 
+ 	// Note that the existing adjustment factors don't figure in to this
+ 	// calculation so we use the raw distance here.
+-	dist := c.coord.rawDistanceTo(other)
++	dist := rawCoordinateDistanceValues(c.coord.Vec, c.coord.Height, other.Vec, other.Height)
+ 	c.adjustmentSamples[c.adjustmentIndex] = rttSeconds - dist
+ 	c.adjustmentIndex = (c.adjustmentIndex + 1) % c.config.AdjustmentWindowSize
+ 
+@@ -194,9 +207,22 @@ func (c *Client) updateAdjustment(other *Coordinate, rttSeconds float64) {
+ // the center of the coordinate system to combat drift. This assumes that the
+ // mutex is locked already.
+ func (c *Client) updateGravity() {
+-	dist := c.origin.DistanceTo(c.coord).Seconds()
++	raw, adjusted := coordinateDistanceCandidates(c.origin.Vec, c.origin.Height, c.origin.Adjustment,
++		c.coord.Vec, c.coord.Height, c.coord.Adjustment)
++	dist := raw
++	if adjusted > 0.0 {
++		dist = adjusted
++	}
++	dist = time.Duration(dist * secondsToNanoseconds).Seconds()
+ 	force := -1.0 * math.Pow(dist/c.config.GravityRho, 2.0)
+-	c.coord = c.coord.ApplyForce(c.config, force, c.origin)
++	errorEstimate, adjustment := c.coord.Error, c.coord.Adjustment
++	height, otherHeight := c.coord.Height, c.origin.Height
++	vec, separation := forceCoordinateValues(c.config, force, c.coord.Vec, c.origin.Vec)
++	if separation > zeroThreshold {
++		height = (height+otherHeight)*force/separation + height
++		height = math.Max(height, c.config.HeightMin)
++	}
++	c.coord = &Coordinate{Vec: vec, Error: errorEstimate, Adjustment: adjustment, Height: height}
+ }
+ 
+ // Update takes other, a coordinate for another node, and rtt, a round trip
+@@ -228,7 +254,7 @@ func (c *Client) Update(node string, other *Coordinate, rtt time.Duration) (*Coo
+ 	c.updateVivaldi(other, rttSeconds)
+ 	c.updateAdjustment(other, rttSeconds)
+ 	c.updateGravity()
+-	if !c.coord.IsValid() {
++	if !coordinateValuesValid(c.coord.Vec, c.coord.Error, c.coord.Adjustment, c.coord.Height) {
+ 		c.stats.Resets++
+ 		c.coord = NewCoordinate(c.config)
+ 	}
+@@ -242,5 +268,6 @@ func (c *Client) DistanceTo(other *Coordinate) time.Duration {
+ 	c.mutex.RLock()
+ 	defer c.mutex.RUnlock()
+ 
+-	return c.coord.DistanceTo(other)
++	return coordinateDistanceValues(c.coord.Vec, c.coord.Height, c.coord.Adjustment,
++		other.Vec, other.Height, other.Adjustment)
+ }
+diff --git a/coordinate/coordinate.go b/coordinate/coordinate.go
+index 09aae3d..da2213f 100644
+--- a/coordinate/coordinate.go
++++ b/coordinate/coordinate.go
+@@ -84,15 +84,19 @@ func componentIsValid(f float64) bool {
+ // IsValid returns false if any component of a coordinate isn't valid, per the
+ // componentIsValid() helper above.
+ func (c *Coordinate) IsValid() bool {
+-	for i := range c.Vec {
+-		if !componentIsValid(c.Vec[i]) {
++	return coordinateValuesValid(c.Vec, c.Error, c.Adjustment, c.Height)
++}
++
++func coordinateValuesValid(vec []float64, errorEstimate, adjustment, height float64) bool {
++	for i := range vec {
++		if !componentIsValid(vec[i]) {
+ 			return false
+ 		}
+ 	}
+ 
+-	return componentIsValid(c.Error) &&
+-		componentIsValid(c.Adjustment) &&
+-		componentIsValid(c.Height)
++	return componentIsValid(errorEstimate) &&
++		componentIsValid(adjustment) &&
++		componentIsValid(height)
+ }
+ 
+ // IsCompatibleWith checks to see if the two coordinates are compatible
+@@ -105,40 +109,61 @@ func (c *Coordinate) IsCompatibleWith(other *Coordinate) bool {
+ // ApplyForce returns the result of applying the force from the direction of the
+ // other coordinate.
+ func (c *Coordinate) ApplyForce(config *Config, force float64, other *Coordinate) *Coordinate {
+-	if !c.IsCompatibleWith(other) {
+-		panic(DimensionalityConflictError{})
++	errorEstimate, adjustment := c.Error, c.Adjustment
++	height, otherHeight := c.Height, other.Height
++	vec, separation := forceCoordinateValues(config, force, c.Vec, other.Vec)
++	if separation > zeroThreshold {
++		height = (height+otherHeight)*force/separation + height
++		height = math.Max(height, config.HeightMin)
+ 	}
++	return &Coordinate{Vec: vec, Error: errorEstimate, Adjustment: adjustment, Height: height}
++}
+ 
+-	ret := c.Clone()
+-	unit, mag := unitVectorAt(config.rand, c.Vec, other.Vec)
+-	ret.Vec = add(ret.Vec, mul(unit, force))
+-	if mag > zeroThreshold {
+-		ret.Height = (ret.Height+other.Height)*force/mag + ret.Height
+-		ret.Height = math.Max(ret.Height, config.HeightMin)
++func forceCoordinateValues(config *Config, force float64, vec, otherVec []float64) ([]float64, float64) {
++	if len(vec) != len(otherVec) {
++		panic(DimensionalityConflictError{})
+ 	}
+-	return ret
++
++	retVec := make([]float64, len(vec))
++	copy(retVec, vec)
++	unit, mag := unitVectorAt(config.rand, vec, otherVec)
++	retVec = add(retVec, mul(unit, force))
++	return retVec, mag
+ }
+ 
+ // DistanceTo returns the distance between this coordinate and the other
+ // coordinate, including adjustments.
+ func (c *Coordinate) DistanceTo(other *Coordinate) time.Duration {
+-	if !c.IsCompatibleWith(other) {
+-		panic(DimensionalityConflictError{})
+-	}
++	return coordinateDistanceValues(c.Vec, c.Height, c.Adjustment, other.Vec, other.Height, other.Adjustment)
++}
+ 
+-	dist := c.rawDistanceTo(other)
+-	adjustedDist := dist + c.Adjustment + other.Adjustment
++func coordinateDistanceValues(vec []float64, height, adjustment float64,
++	otherVec []float64, otherHeight, otherAdjustment float64) time.Duration {
++	dist, adjustedDist := coordinateDistanceCandidates(vec, height, adjustment, otherVec, otherHeight, otherAdjustment)
+ 	if adjustedDist > 0.0 {
+ 		dist = adjustedDist
+ 	}
+ 	return time.Duration(dist * secondsToNanoseconds)
+ }
+ 
++func coordinateDistanceCandidates(vec []float64, height, adjustment float64,
++	otherVec []float64, otherHeight, otherAdjustment float64) (float64, float64) {
++	if len(vec) != len(otherVec) {
++		panic(DimensionalityConflictError{})
++	}
++	raw := rawCoordinateDistanceValues(vec, height, otherVec, otherHeight)
++	return raw, raw + adjustment + otherAdjustment
++}
++
+ // rawDistanceTo returns the Vivaldi distance between this coordinate and the
+ // other coordinate in seconds, not including adjustments. This assumes the
+ // dimensions have already been checked to be compatible.
+ func (c *Coordinate) rawDistanceTo(other *Coordinate) float64 {
+-	return magnitude(diff(c.Vec, other.Vec)) + c.Height + other.Height
++	return rawCoordinateDistanceValues(c.Vec, c.Height, other.Vec, other.Height)
++}
++
++func rawCoordinateDistanceValues(vec []float64, height float64, otherVec []float64, otherHeight float64) float64 {
++	return magnitude(diff(vec, otherVec)) + height + otherHeight
+ }
+ 
+ // add returns the sum of vec1 and vec2. This assumes the dimensions have
+diff --git a/serf/delegate.go b/serf/delegate.go
+index 196bf0a..afc2d92 100644
+--- a/serf/delegate.go
++++ b/serf/delegate.go
+@@ -83,7 +83,8 @@ func (d *delegate) NotifyMsg(buf []byte) {
+ 		}
+ 
+ 		d.serf.logger.Printf("[DEBUG] serf: messageQueryType: %s", query.Name)
+-		rebroadcast = d.serf.handleQuery(&query)
++		rebroadcast = d.serf.handleQueryValues(query.LTime, query.ID, query.Addr, query.Port, query.SourceNode,
++			query.Filters, query.Flags, query.RelayFactor, query.Timeout, query.Name, query.Payload)
+ 		rebroadcastQueue = d.serf.queryBroadcasts
+ 
+ 	case messageQueryResponseType:
+@@ -94,7 +95,7 @@ func (d *delegate) NotifyMsg(buf []byte) {
+ 		}
+ 
+ 		d.serf.logger.Printf("[DEBUG] serf: messageQueryResponseType: %v", resp.From)
+-		d.serf.handleQueryResponse(&resp)
++		d.serf.handleQueryResponseValues(resp.LTime, resp.ID, resp.From, resp.Flags, resp.Payload)
+ 
+ 	case messageRelayType:
+ 		var header relayHeader
+diff --git a/serf/event.go b/serf/event.go
+index 28b087e..828c4ad 100644
+--- a/serf/event.go
++++ b/serf/event.go
+@@ -153,6 +153,10 @@ func (q *Query) checkResponseSize(resp []byte) error {
+ }
+ 
+ func (q *Query) respondWithMessageAndResponse(raw []byte, resp messageQueryResponse) error {
++	return q.respondWithValues(raw, resp.LTime, resp.ID, resp.From, resp.Flags, resp.Payload)
++}
++
++func (q *Query) respondWithValues(raw []byte, ltime LamportTime, id uint32, from string, flags uint32, payload []byte) error {
+ 	// Check the size limit
+ 	if err := q.checkResponseSize(raw); err != nil {
+ 		return err
+@@ -183,7 +187,8 @@ func (q *Query) respondWithMessageAndResponse(raw []byte, resp messageQueryRespo
+ 	}
+ 
+ 	// Relay the response through up to relayFactor other nodes
+-	if err := q.serf.relayResponse(q.relayFactor, udpAddr, q.sourceNode, &resp); err != nil {
++	if err := q.serf.relayResponseValues(q.relayFactor, udpAddr.IP, udpAddr.Port, udpAddr.Zone,
++		q.sourceNode, ltime, id, from, flags, payload); err != nil {
+ 		return err
+ 	}
+ 
+@@ -196,7 +201,8 @@ func (q *Query) respondWithMessageAndResponse(raw []byte, resp messageQueryRespo
+ // Respond is used to send a response to the user query
+ func (q *Query) Respond(buf []byte) error {
+ 	// Create response
+-	resp := q.createResponse(buf)
++	ltime, id, from := q.LTime, q.id, q.serf.config.NodeName
++	resp := messageQueryResponse{LTime: ltime, ID: id, From: from, Payload: buf}
+ 
+ 	// Encode response
+ 	raw, err := encodeMessage(messageQueryResponseType, resp, q.serf.msgpackUseNewTimeFormat)
+@@ -204,7 +210,7 @@ func (q *Query) Respond(buf []byte) error {
+ 		return fmt.Errorf("failed to format response: %v", err)
+ 	}
+ 
+-	if err := q.respondWithMessageAndResponse(raw, resp); err != nil {
++	if err := q.respondWithValues(raw, ltime, id, from, 0, buf); err != nil {
+ 		return fmt.Errorf("failed to respond to key query: %v", err)
+ 	}
+ 
+diff --git a/serf/internal_query.go b/serf/internal_query.go
+index 2d818d5..8fb03e6 100644
+--- a/serf/internal_query.go
++++ b/serf/internal_query.go
+@@ -164,60 +164,83 @@ func (s *serfQueries) handleConflict(q *Query) {
+ }
+ 
+ func (s *serfQueries) keyListResponseWithCorrectSize(q *Query, resp *nodeKeyResponse) ([]byte, messageQueryResponse, error) {
+-	maxListKeys := q.serf.config.QueryResponseSizeLimit / minEncodedKeyLength
+ 	actual := len(resp.Keys)
+-
+-	// if the provided list of keys is smaller then the max allowed, just iterate over it
+-	// to avoid an out of bound access when truncating
++	maxListKeys := q.serf.config.QueryResponseSizeLimit / minEncodedKeyLength
+ 	if maxListKeys > actual {
+ 		maxListKeys = actual
+ 	}
++	raw, payload, message, keys, err := s.keyListResponseValues(q.LTime, q.id, q.serf.config.NodeName,
++		q.serf.config.QueryResponseSizeLimit, maxListKeys, actual, q.serf.config.MsgpackUseNewTimeFormat, q.serf.msgpackUseNewTimeFormat,
++		resp.Result, resp.Message, resp.Keys, resp.PrimaryKey)
++	resp.Message, resp.Keys = message, keys
++	if err != nil {
++		return nil, messageQueryResponse{}, err
++	}
++	return raw, messageQueryResponse{LTime: q.LTime, ID: q.id, From: q.serf.config.NodeName, Payload: payload}, nil
++}
+ 
++func (s *serfQueries) keyListResponseValues(ltime LamportTime, id uint32, from string, limit, maxListKeys, actual int,
++	payloadTimeFormat, responseTimeFormat bool, result bool, message string, keys []string, primaryKey string,
++) ([]byte, []byte, string, []string, error) {
+ 	for i := maxListKeys; i >= 0; i-- {
+-		buf, err := encodeMessage(messageKeyResponseType, resp, q.serf.config.MsgpackUseNewTimeFormat)
++		buf, err := encodeMessage(messageKeyResponseType,
++			nodeKeyResponse{Result: result, Message: message, Keys: keys, PrimaryKey: primaryKey}, payloadTimeFormat)
+ 		if err != nil {
+-			return nil, messageQueryResponse{}, err
++			return nil, nil, message, keys, err
+ 		}
+ 
+ 		// Create response
+-		qresp := q.createResponse(buf)
++		qresp := messageQueryResponse{LTime: ltime, ID: id, From: from, Payload: buf}
+ 
+ 		// Encode response
+-		raw, err := encodeMessage(messageQueryResponseType, qresp, q.serf.msgpackUseNewTimeFormat)
++		raw, err := encodeMessage(messageQueryResponseType, qresp, responseTimeFormat)
+ 		if err != nil {
+-			return nil, messageQueryResponse{}, err
++			return nil, nil, message, keys, err
+ 		}
+ 
+ 		// Check the size limit
+-		if err = q.checkResponseSize(raw); err != nil {
+-			resp.Keys = resp.Keys[0:i]
+-			resp.Message = fmt.Sprintf("truncated key list response, showing first %d of %d keys", i, actual)
++		if len(raw) > limit {
++			keys = keys[0:i]
++			message = fmt.Sprintf("truncated key list response, showing first %d of %d keys", i, actual)
+ 			continue
+ 		}
+ 
+ 		if actual > i {
+-			s.logger.Printf("[WARN] serf: %s", resp.Message)
++			s.logger.Printf("[WARN] serf: %s", message)
+ 		}
+-		return raw, qresp, nil
++		return raw, buf, message, keys, nil
+ 	}
+-	return nil, messageQueryResponse{}, fmt.Errorf("Failed to truncate response so that it fits into message")
++	return nil, nil, message, keys, fmt.Errorf("Failed to truncate response so that it fits into message")
+ }
+ 
+ // sendKeyResponse handles responding to key-related queries.
+ func (s *serfQueries) sendKeyResponse(q *Query, resp *nodeKeyResponse) {
++	s.sendKeyResponseValues(q, resp.Result, resp.Message, resp.Keys, resp.PrimaryKey)
++}
++
++func (s *serfQueries) sendKeyResponseValues(q *Query, result bool, message string, keys []string, primaryKey string) {
+ 	switch q.Name {
+ 	case internalQueryName(listKeysQuery):
+-		raw, qresp, err := s.keyListResponseWithCorrectSize(q, resp)
++		ltime, id, from := q.LTime, q.id, q.serf.config.NodeName
++		actual := len(keys)
++		maxListKeys := q.serf.config.QueryResponseSizeLimit / minEncodedKeyLength
++		if maxListKeys > actual {
++			maxListKeys = actual
++		}
++		raw, payload, _, _, err := s.keyListResponseValues(ltime, id, from,
++			q.serf.config.QueryResponseSizeLimit, maxListKeys, actual, q.serf.config.MsgpackUseNewTimeFormat, q.serf.msgpackUseNewTimeFormat,
++			result, message, keys, primaryKey)
+ 		if err != nil {
+ 			s.logger.Printf("[ERR] serf: %v", err)
+ 			return
+ 		}
+-		if err := q.respondWithMessageAndResponse(raw, qresp); err != nil {
++		if err := q.respondWithValues(raw, ltime, id, from, 0, payload); err != nil {
+ 			s.logger.Printf("[ERR] serf: Failed to respond to key query: %v", err)
+ 			return
+ 		}
+ 	default:
+-		buf, err := encodeMessage(messageKeyResponseType, resp, s.serf.msgpackUseNewTimeFormat)
++		buf, err := encodeMessage(messageKeyResponseType,
++			nodeKeyResponse{Result: result, Message: message, Keys: keys, PrimaryKey: primaryKey}, s.serf.msgpackUseNewTimeFormat)
+ 		if err != nil {
+ 			s.logger.Printf("[ERR] serf: Failed to encode key response: %v", err)
+ 			return
+@@ -235,7 +258,7 @@ func (s *serfQueries) sendKeyResponse(q *Query, resp *nodeKeyResponse) {
+ // not fit the constraints that memberlist enforces. If the query fails, the
+ // response will contain the error message so that it may be relayed.
+ func (s *serfQueries) handleInstallKey(q *Query) {
+-	response := nodeKeyResponse{Result: false}
++	result, message := false, ""
+ 	keyring := s.serf.config.MemberlistConfig.Keyring
+ 	req := keyRequest{}
+ 	var err error
+@@ -252,30 +275,30 @@ func (s *serfQueries) handleInstallKey(q *Query) {
+ 	}
+ 
+ 	if !s.serf.EncryptionEnabled() {
+-		response.Message = "No keyring to modify (encryption not enabled)"
++		message = "No keyring to modify (encryption not enabled)"
+ 		s.logger.Printf("[ERR] serf: No keyring to modify (encryption not enabled)")
+ 		goto SEND
+ 	}
+ 
+ 	s.logger.Printf("[INFO] serf: Received install-key query")
+ 	if err := keyring.AddKey(req.Key); err != nil {
+-		response.Message = err.Error()
++		message = err.Error()
+ 		s.logger.Printf("[ERR] serf: Failed to install key: %s", err)
+ 		goto SEND
+ 	}
+ 
+ 	if s.serf.config.KeyringFile != "" {
+ 		if err := s.serf.writeKeyringFile(); err != nil {
+-			response.Message = err.Error()
++			message = err.Error()
+ 			s.logger.Printf("[ERR] serf: Failed to write keyring file: %s", err)
+ 			goto SEND
+ 		}
+ 	}
+ 
+-	response.Result = true
++	result = true
+ 
+ SEND:
+-	s.sendKeyResponse(q, &response)
++	s.sendKeyResponseValues(q, result, message, nil, "")
+ }
+ 
+ // handleUseKey is invoked whenever a query is received to mark a different key
+@@ -283,7 +306,7 @@ SEND:
+ // to operator error (requested key not in ring), and thus sends error messages
+ // back in the response.
+ func (s *serfQueries) handleUseKey(q *Query) {
+-	response := nodeKeyResponse{Result: false}
++	result, message := false, ""
+ 	keyring := s.serf.config.MemberlistConfig.Keyring
+ 	req := keyRequest{}
+ 	var err error
+@@ -300,28 +323,28 @@ func (s *serfQueries) handleUseKey(q *Query) {
+ 	}
+ 
+ 	if !s.serf.EncryptionEnabled() {
+-		response.Message = "No keyring to modify (encryption not enabled)"
++		message = "No keyring to modify (encryption not enabled)"
+ 		s.logger.Printf("[ERR] serf: No keyring to modify (encryption not enabled)")
+ 		goto SEND
+ 	}
+ 
+ 	s.logger.Printf("[INFO] serf: Received use-key query")
+ 	if err := keyring.UseKey(req.Key); err != nil {
+-		response.Message = err.Error()
++		message = err.Error()
+ 		s.logger.Printf("[ERR] serf: Failed to change primary key: %s", err)
+ 		goto SEND
+ 	}
+ 
+ 	if err := s.serf.writeKeyringFile(); err != nil {
+-		response.Message = err.Error()
++		message = err.Error()
+ 		s.logger.Printf("[ERR] serf: Failed to write keyring file: %s", err)
+ 		goto SEND
+ 	}
+ 
+-	response.Result = true
++	result = true
+ 
+ SEND:
+-	s.sendKeyResponse(q, &response)
++	s.sendKeyResponseValues(q, result, message, nil, "")
+ }
+ 
+ // handleRemoveKey is invoked when a query is received to remove a particular
+@@ -329,7 +352,7 @@ SEND:
+ // deletion is currently the primary key in the keyring, so therefore it will
+ // reply to the query with any relevant errors from the operation.
+ func (s *serfQueries) handleRemoveKey(q *Query) {
+-	response := nodeKeyResponse{Result: false}
++	result, message := false, ""
+ 	keyring := s.serf.config.MemberlistConfig.Keyring
+ 	req := keyRequest{}
+ 	var err error
+@@ -346,28 +369,28 @@ func (s *serfQueries) handleRemoveKey(q *Query) {
+ 	}
+ 
+ 	if !s.serf.EncryptionEnabled() {
+-		response.Message = "No keyring to modify (encryption not enabled)"
++		message = "No keyring to modify (encryption not enabled)"
+ 		s.logger.Printf("[ERR] serf: No keyring to modify (encryption not enabled)")
+ 		goto SEND
+ 	}
+ 
+ 	s.logger.Printf("[INFO] serf: Received remove-key query")
+ 	if err := keyring.RemoveKey(req.Key); err != nil {
+-		response.Message = err.Error()
++		message = err.Error()
+ 		s.logger.Printf("[ERR] serf: Failed to remove key: %s", err)
+ 		goto SEND
+ 	}
+ 
+ 	if err := s.serf.writeKeyringFile(); err != nil {
+-		response.Message = err.Error()
++		message = err.Error()
+ 		s.logger.Printf("[ERR] serf: Failed to write keyring file: %s", err)
+ 		goto SEND
+ 	}
+ 
+-	response.Result = true
++	result = true
+ 
+ SEND:
+-	s.sendKeyResponse(q, &response)
++	s.sendKeyResponseValues(q, result, message, nil, "")
+ }
+ 
+ // handleListKeys is invoked when a query is received to return a list of all
+@@ -375,11 +398,12 @@ SEND:
+ // encoded to base64 on each of the members to remove this burden from the
+ // node asking for the results.
+ func (s *serfQueries) handleListKeys(q *Query) {
+-	response := nodeKeyResponse{Result: false}
++	result, message, primaryKey := false, "", ""
++	var keys []string
+ 	keyring := s.serf.config.MemberlistConfig.Keyring
+ 	var primaryKeyBytes []byte
+ 	if !s.serf.EncryptionEnabled() {
+-		response.Message = "Keyring is empty (encryption not enabled)"
++		message = "Keyring is empty (encryption not enabled)"
+ 		s.logger.Printf("[ERR] serf: Keyring is empty (encryption not enabled)")
+ 		goto SEND
+ 	}
+@@ -389,13 +413,13 @@ func (s *serfQueries) handleListKeys(q *Query) {
+ 		// Encode the keys before sending the response. This should help take
+ 		// some the burden of doing this off of the asking member.
+ 		key := base64.StdEncoding.EncodeToString(keyBytes)
+-		response.Keys = append(response.Keys, key)
++		keys = append(keys, key)
+ 	}
+ 	primaryKeyBytes = keyring.GetPrimaryKey()
+-	response.PrimaryKey = base64.StdEncoding.EncodeToString(primaryKeyBytes)
++	primaryKey = base64.StdEncoding.EncodeToString(primaryKeyBytes)
+ 
+-	response.Result = true
++	result = true
+ 
+ SEND:
+-	s.sendKeyResponse(q, &response)
++	s.sendKeyResponseValues(q, result, message, keys, primaryKey)
+ }
+diff --git a/serf/keymanager.go b/serf/keymanager.go
+index 1423edf..23334a8 100644
+--- a/serf/keymanager.go
++++ b/serf/keymanager.go
+@@ -51,50 +51,61 @@ type KeyRequestOptions struct {
+ // them into a KeyResponse. It will update a KeyResponse *in place* and
+ // therefore has nothing to return.
+ func (k *KeyManager) streamKeyResp(resp *KeyResponse, ch <-chan NodeResponse) {
++	resp.NumResp, resp.NumErr = k.streamKeyRespValues(resp.Messages, resp.Keys, resp.PrimaryKeys,
++		resp.NumNodes, resp.NumResp, resp.NumErr, ch)
++}
++
++func (k *KeyManager) streamKeyRespValues(messages map[string]string, keys map[string]int,
++	primaryKeys map[string]int, numNodes, numResp, numErr int, ch <-chan NodeResponse) (int, int) {
+ 	for r := range ch {
+ 		var nodeResponse nodeKeyResponse
+ 
+-		resp.NumResp++
++		numResp++
+ 
+ 		// Decode the response
+ 		if len(r.Payload) < 1 || messageType(r.Payload[0]) != messageKeyResponseType {
+-			resp.Messages[r.From] = fmt.Sprintf(
++			messages[r.From] = fmt.Sprintf(
+ 				"Invalid key query response type: %v", r.Payload)
+-			resp.NumErr++
++			numErr++
+ 			goto NEXT
+ 		}
+ 		if err := decodeMessage(r.Payload[1:], &nodeResponse); err != nil {
+-			resp.Messages[r.From] = fmt.Sprintf(
++			messages[r.From] = fmt.Sprintf(
+ 				"Failed to decode key query response: %v", r.Payload)
+-			resp.NumErr++
++			numErr++
+ 			goto NEXT
+ 		}
+ 
+ 		if !nodeResponse.Result {
+-			resp.Messages[r.From] = nodeResponse.Message
+-			resp.NumErr++
+-		}
+-
+-		if nodeResponse.Result && len(nodeResponse.Message) > 0 {
+-			resp.Messages[r.From] = nodeResponse.Message
+-			k.serf.logger.Println("[WARN] serf:", nodeResponse.Message)
+-		}
+-
+-		// Currently only used for key list queries, this adds keys to a counter
+-		// and increments them for each node response which contains them.
+-		for _, key := range nodeResponse.Keys {
+-			resp.Keys[key]++
++			numErr++
+ 		}
+-
+-		resp.PrimaryKeys[nodeResponse.PrimaryKey]++
++		k.collectKeyResponseValues(messages, keys, primaryKeys, r.From, nodeResponse.Message,
++			nodeResponse.Keys, nodeResponse.PrimaryKey,
++			!nodeResponse.Result || len(nodeResponse.Message) > 0,
++			nodeResponse.Result && len(nodeResponse.Message) > 0)
+ 
+ 	NEXT:
+ 		// Return early if all nodes have responded. This allows us to avoid
+ 		// waiting for the full timeout when there is nothing left to do.
+-		if resp.NumResp == resp.NumNodes {
+-			return
++		if numResp == numNodes {
++			return numResp, numErr
+ 		}
+ 	}
++	return numResp, numErr
++}
++
++func (k *KeyManager) collectKeyResponseValues(messages map[string]string, keyCounts, primaryCounts map[string]int,
++	from, message string, keys []string, primaryKey string, recordMessage, warn bool) {
++	if recordMessage {
++		messages[from] = message
++	}
++	if warn {
++		k.serf.logger.Println("[WARN] serf:", message)
++	}
++	for _, key := range keys {
++		keyCounts[key]++
++	}
++	primaryCounts[primaryKey]++
+ }
+ 
+ // handleKeyRequest performs query broadcasting to all members for any type of
+@@ -131,7 +142,8 @@ func (k *KeyManager) handleKeyRequest(key, query string, opts *KeyRequestOptions
+ 
+ 	// Handle the response stream and populate the KeyResponse
+ 	resp.NumNodes = k.serf.memberlist.NumMembers()
+-	k.streamKeyResp(resp, queryResp.respCh)
++	resp.NumResp, resp.NumErr = k.streamKeyRespValues(resp.Messages, resp.Keys, resp.PrimaryKeys,
++		resp.NumNodes, resp.NumResp, resp.NumErr, queryResp.respCh)
+ 
+ 	// Check the response for any reported failure conditions
+ 	if resp.NumErr != 0 {
+diff --git a/serf/query.go b/serf/query.go
+index 1b3b76a..e173e4a 100644
+--- a/serf/query.go
++++ b/serf/query.go
+@@ -65,11 +65,15 @@ func (s *Serf) DefaultQueryParams() *QueryParam {
+ 
+ // encodeFilters is used to convert the filters into the wire format
+ func (q *QueryParam) encodeFilters() ([][]byte, error) {
++	return encodeQueryFilters(q.FilterNodes, q.FilterTags)
++}
++
++func encodeQueryFilters(nodes []string, tags map[string]string) ([][]byte, error) {
+ 	var filters [][]byte
+ 
+ 	// Add the node filter
+-	if len(q.FilterNodes) > 0 {
+-		if buf, err := encodeFilter(filterNodeType, q.FilterNodes); err != nil {
++	if len(nodes) > 0 {
++		if buf, err := encodeFilter(filterNodeType, nodes); err != nil {
+ 			return nil, err
+ 		} else {
+ 			filters = append(filters, buf)
+@@ -77,7 +81,7 @@ func (q *QueryParam) encodeFilters() ([][]byte, error) {
+ 	}
+ 
+ 	// Add the tag filters
+-	for tag, expr := range q.FilterTags {
++	for tag, expr := range tags {
+ 		filt := filterTag{tag, expr}
+ 		if buf, err := encodeFilter(filterTagType, &filt); err != nil {
+ 			return nil, err
+@@ -117,14 +121,18 @@ type QueryResponse struct {
+ 
+ // newQueryResponse is used to construct a new query response
+ func newQueryResponse(n int, q *messageQuery) *QueryResponse {
++	return newQueryResponseValues(n, q.LTime, q.ID, q.Timeout, q.Ack())
++}
++
++func newQueryResponseValues(n int, ltime LamportTime, id uint32, timeout time.Duration, ack bool) *QueryResponse {
+ 	resp := &QueryResponse{
+-		deadline:  time.Now().Add(q.Timeout),
+-		id:        q.ID,
+-		lTime:     q.LTime,
++		deadline:  time.Now().Add(timeout),
++		id:        id,
++		lTime:     ltime,
+ 		respCh:    make(chan NodeResponse, n),
+ 		responses: make(map[string]struct{}),
+ 	}
+-	if q.Ack() {
++	if ack {
+ 		resp.ackCh = make(chan string, n)
+ 		resp.acks = make(map[string]struct{})
+ 	}
+@@ -136,15 +144,19 @@ func newQueryResponse(n int, q *messageQuery) *QueryResponse {
+ func (r *QueryResponse) Close() {
+ 	r.closeLock.Lock()
+ 	defer r.closeLock.Unlock()
+-	if r.closed {
++	closeQueryResponseChannels(&r.closed, r.ackCh, r.respCh)
++}
++
++func closeQueryResponseChannels(closed *bool, ackCh chan string, respCh chan NodeResponse) {
++	if *closed {
+ 		return
+ 	}
+-	r.closed = true
+-	if r.ackCh != nil {
+-		close(r.ackCh)
++	*closed = true
++	if ackCh != nil {
++		close(ackCh)
+ 	}
+-	if r.respCh != nil {
+-		close(r.respCh)
++	if respCh != nil {
++		close(respCh)
+ 	}
+ }
+ 
+@@ -175,14 +187,18 @@ func (r *QueryResponse) ResponseCh() <-chan NodeResponse {
+ 
+ // sendResponse sends a response on the response channel ensuring the channel is not closed.
+ func (r *QueryResponse) sendResponse(nr NodeResponse) error {
++	return r.sendResponseValues(nr.From, nr.Payload)
++}
++
++func (r *QueryResponse) sendResponseValues(from string, payload []byte) error {
+ 	r.closeLock.Lock()
+ 	defer r.closeLock.Unlock()
+ 	if r.closed {
+ 		return nil
+ 	}
+ 	select {
+-	case r.respCh <- nr:
+-		r.responses[nr.From] = struct{}{}
++	case r.respCh <- NodeResponse{From: from, Payload: payload}:
++		r.responses[from] = struct{}{}
+ 	default:
+ 		return errors.New("serf: Failed to deliver query response, dropping")
+ 	}
+@@ -191,14 +207,18 @@ func (r *QueryResponse) sendResponse(nr NodeResponse) error {
+ 
+ // sendResponse sends a response on the response channel ensuring the channel is not closed.
+ func (r *QueryResponse) sendAck(nr *messageQueryResponse) error {
++	return r.sendAckFrom(nr.From)
++}
++
++func (r *QueryResponse) sendAckFrom(from string) error {
+ 	r.closeLock.Lock()
+ 	defer r.closeLock.Unlock()
+ 	if r.closed {
+ 		return nil
+ 	}
+ 	select {
+-	case r.ackCh <- nr.From:
+-		r.acks[nr.From] = struct{}{}
++	case r.ackCh <- from:
++		r.acks[from] = struct{}{}
+ 	default:
+ 		return errors.New("serf: Failed to deliver query response, dropping")
+ 	}
+@@ -268,6 +288,12 @@ func (s *Serf) relayResponse(
+ 	nodeName string,
+ 	resp *messageQueryResponse,
+ ) error {
++	return s.relayResponseValues(relayFactor, addr.IP, addr.Port, addr.Zone, nodeName,
++		resp.LTime, resp.ID, resp.From, resp.Flags, resp.Payload)
++}
++
++func (s *Serf) relayResponseValues(relayFactor uint8, ip net.IP, port int, zone string,
++	nodeName string, ltime LamportTime, id uint32, from string, flags uint32, payload []byte) error {
+ 	if relayFactor == 0 {
+ 		return nil
+ 	}
+@@ -281,6 +307,8 @@ func (s *Serf) relayResponse(
+ 	}
+ 
+ 	// Prep the relay message, which is a wrapped version of the original.
++	addr := net.UDPAddr{IP: ip, Port: port, Zone: zone}
++	resp := &messageQueryResponse{LTime: ltime, ID: id, From: from, Flags: flags, Payload: payload}
+ 	raw, err := encodeRelayMessage(messageQueryResponseType, addr, nodeName, &resp)
+ 	if err != nil {
+ 		return fmt.Errorf("failed to format relayed response: %v", err)
+diff --git a/serf/serf.go b/serf/serf.go
+index 0d452a0..627bfdd 100644
+--- a/serf/serf.go
++++ b/serf/serf.go
+@@ -532,37 +532,46 @@ func (s *Serf) Query(name string, payload []byte, params *QueryParam) (*QueryRes
+ 
+ 	// Provide default parameters if none given
+ 	if params == nil {
+-		params = s.DefaultQueryParams()
+-	} else if params.Timeout == 0 {
++		return s.queryValues(name, payload, nil, nil, false, 0, s.DefaultQueryTimeout())
++	}
++	if params.Timeout == 0 {
+ 		params.Timeout = s.DefaultQueryTimeout()
+ 	}
++	return s.queryValues(name, payload, params.FilterNodes, params.FilterTags, params.RequestAck, params.RelayFactor, params.Timeout)
++}
++
++func (s *Serf) queryValues(name string, payload []byte, nodes []string, tags map[string]string,
++	requestAck bool, relay uint8, duration time.Duration) (*QueryResponse, error) {
+ 
+ 	// Get the local node
+ 	local := s.memberlist.LocalNode()
+ 
+ 	// Encode the filters
+-	filters, err := params.encodeFilters()
++	filters, err := encodeQueryFilters(nodes, tags)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("Failed to format filters: %v", err)
+ 	}
+ 
+ 	// Setup the flags
+ 	var flags uint32
+-	if params.RequestAck {
++	if requestAck {
+ 		flags |= queryFlagAck
+ 	}
+ 
+ 	// Create a message
++	ltime, id := s.queryClock.Time(), uint32(rand.Int31())
++	sourceAddr, sourcePort, sourceName := local.Addr, local.Port, local.Name
++	timeout, relayFactor := duration, relay
+ 	q := messageQuery{
+-		LTime:       s.queryClock.Time(),
+-		ID:          uint32(rand.Int31()),
++		LTime:       ltime,
++		ID:          id,
+ 		Addr:        local.Addr,
+ 		Port:        local.Port,
+ 		SourceNode:  local.Name,
+ 		Filters:     filters,
+ 		Flags:       flags,
+-		RelayFactor: params.RelayFactor,
+-		Timeout:     params.Timeout,
++		RelayFactor: relayFactor,
++		Timeout:     timeout,
+ 		Name:        name,
+ 		Payload:     payload,
+ 	}
+@@ -579,11 +588,11 @@ func (s *Serf) Query(name string, payload []byte, params *QueryParam) (*QueryRes
+ 	}
+ 
+ 	// Register QueryResponse to track acks and responses
+-	resp := newQueryResponse(s.memberlist.NumMembers(), &q)
+-	s.registerQueryResponse(params.Timeout, resp)
++	resp := newQueryResponseValues(s.memberlist.NumMembers(), ltime, id, timeout, (flags&queryFlagAck) != 0)
++	s.registerQueryResponse(timeout, resp)
+ 
+ 	// Process query locally
+-	s.handleQuery(&q)
++	s.handleQueryValues(ltime, id, sourceAddr, sourcePort, sourceName, filters, flags, relayFactor, timeout, name, payload)
+ 
+ 	// Start broadcasting the event
+ 	s.queryBroadcasts.QueueBroadcast(&broadcast{
+@@ -603,10 +612,14 @@ func (s *Serf) registerQueryResponse(timeout time.Duration, resp *QueryResponse)
+ 	s.queryResponse[resp.lTime] = resp
+ 
+ 	// Setup a timer to close the response and deregister after the timeout
++	ltime, closed, closeLock := resp.lTime, &resp.closed, &resp.closeLock
++	ackCh, respCh := resp.ackCh, resp.respCh
+ 	time.AfterFunc(timeout, func() {
+ 		s.queryLock.Lock()
+-		delete(s.queryResponse, resp.lTime)
+-		resp.Close()
++		delete(s.queryResponse, ltime)
++		closeLock.Lock()
++		closeQueryResponseChannels(closed, ackCh, respCh)
++		closeLock.Unlock()
+ 		s.queryLock.Unlock()
+ 	})
+ }
+@@ -1315,64 +1328,71 @@ func (s *Serf) handleUserEvent(eventMsg *messageUserEvent) bool {
+ // handleQuery is called when a query broadcast is
+ // received. Returns if the message should be rebroadcast.
+ func (s *Serf) handleQuery(query *messageQuery) bool {
++	return s.handleQueryValues(query.LTime, query.ID, query.Addr, query.Port, query.SourceNode,
++		query.Filters, query.Flags, query.RelayFactor, query.Timeout, query.Name, query.Payload)
++}
++
++func (s *Serf) handleQueryValues(ltime LamportTime, id uint32, sourceAddr []byte, sourcePort uint16,
++	sourceName string, filters [][]byte, flags uint32, relayFactor uint8, timeout time.Duration,
++	name string, payload []byte) bool {
+ 	// Witness a potentially newer time
+-	s.queryClock.Witness(query.LTime)
++	s.queryClock.Witness(ltime)
+ 
+ 	s.queryLock.Lock()
+ 	defer s.queryLock.Unlock()
+ 
+ 	// Ignore if it is before our minimum query time
+-	if query.LTime < s.queryMinTime {
++	if ltime < s.queryMinTime {
+ 		return false
+ 	}
+ 
+ 	// Check if this message is too old
+ 	curTime := s.queryClock.Time()
+ 	if curTime > LamportTime(len(s.queryBuffer)) &&
+-		query.LTime < curTime-LamportTime(len(s.queryBuffer)) {
++		ltime < curTime-LamportTime(len(s.queryBuffer)) {
+ 		s.logger.Printf(
+ 			"[WARN] serf: received old query %s from time %d (current: %d)",
+-			query.Name,
+-			query.LTime,
++			name,
++			ltime,
+ 			s.queryClock.Time())
+ 		return false
+ 	}
+ 
+ 	// Check if we've already seen this
+-	idx := query.LTime % LamportTime(len(s.queryBuffer))
++	idx := ltime % LamportTime(len(s.queryBuffer))
+ 	seen := s.queryBuffer[idx]
+-	if seen != nil && seen.LTime == query.LTime {
+-		if slices.Contains(seen.QueryIDs, query.ID) {
++	if seen != nil && seen.LTime == ltime {
++		if slices.Contains(seen.QueryIDs, id) {
+ 			// Seen this ID already
+ 			return false
+ 		}
+ 	} else {
+-		seen = &queries{LTime: query.LTime}
++		seen = &queries{LTime: ltime}
+ 		s.queryBuffer[idx] = seen
+ 	}
+ 
+ 	// Add to recent queries
+-	seen.QueryIDs = append(seen.QueryIDs, query.ID)
++	seen.QueryIDs = append(seen.QueryIDs, id)
+ 
+ 	// Update some metrics
+ 	metrics.IncrCounterWithLabels([]string{"serf", "queries"}, 1, s.metricLabels)
+-	metrics.IncrCounterWithLabels([]string{"serf", "queries", query.Name}, 1, s.metricLabels)
++	metrics.IncrCounterWithLabels([]string{"serf", "queries", name}, 1, s.metricLabels)
+ 
+ 	// Check if we should rebroadcast, this may be disabled by a flag
+-	rebroadcast := !query.NoBroadcast()
++	rebroadcast := (flags & queryFlagNoBroadcast) == 0
+ 
+ 	// Filter the query
+-	if !s.shouldProcessQuery(query.Filters) {
++	if !s.shouldProcessQuery(filters) {
+ 		// Even if we don't process it further, we should rebroadcast,
+ 		// since it is the first time we've seen this.
+ 		return rebroadcast
+ 	}
+ 
+ 	// Send ack if requested, without waiting for client to Respond()
+-	if query.Ack() {
++	if (flags & queryFlagAck) != 0 {
+ 		ack := messageQueryResponse{
+-			LTime: query.LTime,
+-			ID:    query.ID,
++			LTime: ltime,
++			ID:    id,
+ 			From:  s.config.NodeName,
+ 			Flags: queryFlagAck,
+ 		}
+@@ -1380,15 +1400,16 @@ func (s *Serf) handleQuery(query *messageQuery) bool {
+ 		if err != nil {
+ 			s.logger.Printf("[ERR] serf: failed to format ack: %v", err)
+ 		} else {
+-			udpAddr := net.UDPAddr{IP: query.Addr, Port: int(query.Port)}
++			udpAddr := net.UDPAddr{IP: sourceAddr, Port: int(sourcePort)}
+ 			addr := memberlist.Address{
+ 				Addr: udpAddr.String(),
+-				Name: query.SourceNode,
++				Name: sourceName,
+ 			}
+ 			if err := s.memberlist.SendToAddress(addr, raw); err != nil {
+ 				s.logger.Printf("[ERR] serf: failed to send ack: %v", err)
+ 			}
+-			if err := s.relayResponse(query.RelayFactor, udpAddr, query.SourceNode, &ack); err != nil {
++			if err := s.relayResponseValues(relayFactor, udpAddr.IP, udpAddr.Port, udpAddr.Zone,
++				sourceName, ltime, id, s.config.NodeName, queryFlagAck, nil); err != nil {
+ 				s.logger.Printf("[ERR] serf: failed to relay ack: %v", err)
+ 			}
+ 		}
+@@ -1396,16 +1417,16 @@ func (s *Serf) handleQuery(query *messageQuery) bool {
+ 
+ 	if s.config.EventCh != nil {
+ 		s.config.EventCh <- &Query{
+-			LTime:       query.LTime,
+-			Name:        query.Name,
+-			Payload:     query.Payload,
++			LTime:       ltime,
++			Name:        name,
++			Payload:     payload,
+ 			serf:        s,
+-			id:          query.ID,
+-			addr:        query.Addr,
+-			port:        query.Port,
+-			sourceNode:  query.SourceNode,
+-			deadline:    time.Now().Add(query.Timeout),
+-			relayFactor: query.RelayFactor,
++			id:          id,
++			addr:        sourceAddr,
++			port:        sourcePort,
++			sourceNode:  sourceName,
++			deadline:    time.Now().Add(timeout),
++			relayFactor: relayFactor,
+ 		}
+ 	}
+ 	return rebroadcast
+@@ -1414,20 +1435,24 @@ func (s *Serf) handleQuery(query *messageQuery) bool {
+ // handleResponse is called when a query response is
+ // received.
+ func (s *Serf) handleQueryResponse(resp *messageQueryResponse) {
++	s.handleQueryResponseValues(resp.LTime, resp.ID, resp.From, resp.Flags, resp.Payload)
++}
++
++func (s *Serf) handleQueryResponseValues(ltime LamportTime, id uint32, from string, flags uint32, payload []byte) {
+ 	// Look for a corresponding QueryResponse
+ 	s.queryLock.RLock()
+-	query, ok := s.queryResponse[resp.LTime]
++	query, ok := s.queryResponse[ltime]
+ 	s.queryLock.RUnlock()
+ 	if !ok {
+ 		s.logger.Printf("[WARN] serf: reply for non-running query (LTime: %d, ID: %d) From: %s",
+-			resp.LTime, resp.ID, resp.From)
++			ltime, id, from)
+ 		return
+ 	}
+ 
+ 	// Verify the ID matches
+-	if query.id != resp.ID {
++	if query.id != id {
+ 		s.logger.Printf("[WARN] serf: query reply ID mismatch (Local: %d, Response: %d)",
+-			query.id, resp.ID)
++			query.id, id)
+ 		return
+ 	}
+ 
+@@ -1437,27 +1462,27 @@ func (s *Serf) handleQueryResponse(resp *messageQueryResponse) {
+ 	}
+ 
+ 	// Process each type of response
+-	if resp.Ack() {
++	if (flags & queryFlagAck) != 0 {
+ 		// Exit early if this is a duplicate ack
+-		if _, ok := query.acks[resp.From]; ok {
++		if _, ok := query.acks[from]; ok {
+ 			metrics.IncrCounterWithLabels([]string{"serf", "query_duplicate_acks"}, 1, s.metricLabels)
+ 			return
+ 		}
+ 
+ 		metrics.IncrCounterWithLabels([]string{"serf", "query_acks"}, 1, s.metricLabels)
+-		err := query.sendAck(resp)
++		err := query.sendAckFrom(from)
+ 		if err != nil {
+ 			s.logger.Printf("[WARN] %v", err)
+ 		}
+ 	} else {
+ 		// Exit early if this is a duplicate response
+-		if _, ok := query.responses[resp.From]; ok {
++		if _, ok := query.responses[from]; ok {
+ 			metrics.IncrCounterWithLabels([]string{"serf", "query_duplicate_responses"}, 1, s.metricLabels)
+ 			return
+ 		}
+ 
+ 		metrics.IncrCounterWithLabels([]string{"serf", "query_responses"}, 1, s.metricLabels)
+-		err := query.sendResponse(NodeResponse{From: resp.From, Payload: resp.Payload})
++		err := query.sendResponseValues(from, payload)
+ 		if err != nil {
+ 			s.logger.Printf("[WARN] %v", err)
+ 		}

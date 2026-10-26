@@ -1,0 +1,570 @@
+diff --git a/src/buf/buf_impl.rs b/src/buf/buf_impl.rs
+index 2497a78..b9ac84d 100644
+--- a/src/buf/buf_impl.rs
++++ b/src/buf/buf_impl.rs
+@@ -1171,11 +1171,19 @@ pub trait Buf {
+             });
+         }
+ 
+-        while !dst.is_empty() {
+-            let src = self.chunk();
+-            let cnt = usize::min(src.len(), dst.len());
+-
+-            dst[..cnt].copy_from_slice(&src[..cnt]);
++        let mut progress = super::transfer::Progress::new(dst.len());
++        while progress.remaining() != 0 {
++            let before = progress.initialized();
++            let selected = super::transfer::read_slice(self, dst, &mut progress);
++            let copied = progress.initialized() - before;
++            if copied < selected {
++                let src = self.chunk();
++                let start = copied;
++                let count = selected - copied;
++                dst[start..start + count].copy_from_slice(&src[start..start + count]);
++                progress.record(count);
++            }
++            let cnt = progress.initialized() - before;
+             dst = &mut dst[cnt..];
+ 
+             self.advance(cnt);
+@@ -2965,3 +2973,9 @@ impl<T: AsRef<[u8]>> Buf for std::io::Cursor<T> {
+ // The existence of this function makes the compiler catch if the Buf
+ // trait is "object-safe" or not.
+ fn _assert_trait_object(_b: &dyn Buf) {}
++
++pub(super) fn read_prefix(src: &[u8], dst: &mut [u8], progress: &mut super::transfer::Progress) {
++    let count = usize::min(progress.remaining(), usize::min(src.len(), dst.len()));
++    dst[..count].copy_from_slice(&src[..count]);
++    progress.record(count);
++}
+diff --git a/src/buf/buf_mut.rs b/src/buf/buf_mut.rs
+index 3154dfe..1e49241 100644
+--- a/src/buf/buf_mut.rs
++++ b/src/buf/buf_mut.rs
+@@ -251,11 +251,19 @@ pub unsafe trait BufMut {
+             });
+         }
+ 
+-        while !src.is_empty() {
++        let mut progress = super::transfer::Progress::new(src.len());
++        while progress.remaining() != 0 {
+             let dst = self.chunk_mut();
+-            let cnt = usize::min(src.len(), dst.len());
+-
+-            dst[..cnt].copy_from_slice(&src[..cnt]);
++            let before = progress.initialized();
++            let selected = super::transfer::write_slice(dst, src, &mut progress);
++            let copied = progress.initialized() - before;
++            if copied < selected {
++                let start = copied;
++                let count = selected - copied;
++                dst[start..start + count].copy_from_slice(&src[start..start + count]);
++                progress.record(count);
++            }
++            let cnt = progress.initialized() - before;
+             src = &src[cnt..];
+ 
+             // SAFETY: We just initialized `cnt` bytes in `self`.
+@@ -297,11 +305,20 @@ pub unsafe trait BufMut {
+             })
+         }
+ 
+-        while cnt > 0 {
++        let mut progress = super::transfer::Progress::new(cnt);
++        while progress.remaining() != 0 {
+             let dst = self.chunk_mut();
+-            let dst_len = usize::min(dst.len(), cnt);
+-            // SAFETY: The pointer is valid for `dst_len <= dst.len()` bytes.
+-            unsafe { core::ptr::write_bytes(dst.as_mut_ptr(), val, dst_len) };
++            let before = progress.initialized();
++            let selected = super::transfer::fill(dst, val, cnt, &mut progress);
++            let filled = progress.initialized() - before;
++            if filled < selected {
++                let start = filled;
++                let count = selected - filled;
++                // SAFETY: The selected range is contained in this chunk.
++                unsafe { core::ptr::write_bytes(dst.as_mut_ptr().add(start), val, count) };
++                progress.record(count);
++            }
++            let dst_len = progress.initialized() - before;
+             // SAFETY: We just initialized `dst_len` bytes in `self`.
+             unsafe { self.advance_mut(dst_len) };
+             cnt -= dst_len;
+@@ -1516,9 +1533,13 @@ unsafe impl BufMut for &mut [u8] {
+             });
+         }
+ 
+-        self[..src.len()].copy_from_slice(src);
++        let mut progress = super::transfer::Progress::new(src.len());
++        super::transfer::write_slice(UninitSlice::new(self), src, &mut progress);
++        if progress.remaining() != 0 {
++            self[..src.len()].copy_from_slice(src);
++        }
+         // SAFETY: We just initialized `src.len()` bytes.
+-        unsafe { self.advance_mut(src.len()) };
++        unsafe { self.advance_mut(progress.initialized()) };
+     }
+ 
+     #[inline]
+@@ -1530,11 +1551,14 @@ unsafe impl BufMut for &mut [u8] {
+             });
+         }
+ 
+-        // SAFETY: We just checked that the pointer is valid for `cnt` bytes.
+-        unsafe {
+-            ptr::write_bytes(self.as_mut_ptr(), val, cnt);
+-            self.advance_mut(cnt);
++        let mut progress = super::transfer::Progress::new(cnt);
++        super::transfer::fill(UninitSlice::new(self), val, cnt, &mut progress);
++        if progress.remaining() != 0 {
++            // SAFETY: We checked that the pointer is valid for `cnt` bytes.
++            unsafe { ptr::write_bytes(self.as_mut_ptr(), val, cnt) };
+         }
++        // SAFETY: The initialized prefix was recorded by the chunk writer.
++        unsafe { self.advance_mut(progress.initialized()) };
+     }
+ }
+ 
+@@ -1572,11 +1596,14 @@ unsafe impl BufMut for &mut [core::mem::MaybeUninit<u8>] {
+             });
+         }
+ 
+-        // SAFETY: We just checked that the pointer is valid for `src.len()` bytes.
+-        unsafe {
+-            ptr::copy_nonoverlapping(src.as_ptr(), self.as_mut_ptr().cast(), src.len());
+-            self.advance_mut(src.len());
++        let mut progress = super::transfer::Progress::new(src.len());
++        super::transfer::write_slice(UninitSlice::uninit(self), src, &mut progress);
++        if progress.remaining() != 0 {
++            // SAFETY: We checked that the pointer is valid for `src.len()` bytes.
++            unsafe { ptr::copy_nonoverlapping(src.as_ptr(), self.as_mut_ptr().cast(), src.len()) };
+         }
++        // SAFETY: The initialized prefix was recorded by the chunk writer.
++        unsafe { self.advance_mut(progress.initialized()) };
+     }
+ 
+     #[inline]
+@@ -1588,11 +1615,14 @@ unsafe impl BufMut for &mut [core::mem::MaybeUninit<u8>] {
+             });
+         }
+ 
+-        // SAFETY: We just checked that the pointer is valid for `cnt` bytes.
+-        unsafe {
+-            ptr::write_bytes(self.as_mut_ptr() as *mut u8, val, cnt);
+-            self.advance_mut(cnt);
++        let mut progress = super::transfer::Progress::new(cnt);
++        super::transfer::fill(UninitSlice::uninit(self), val, cnt, &mut progress);
++        if progress.remaining() != 0 {
++            // SAFETY: We checked that the pointer is valid for `cnt` bytes.
++            unsafe { ptr::write_bytes(self.as_mut_ptr() as *mut u8, val, cnt) };
+         }
++        // SAFETY: The initialized prefix was recorded by the chunk writer.
++        unsafe { self.advance_mut(progress.initialized()) };
+     }
+ }
+ 
+diff --git a/src/buf/mod.rs b/src/buf/mod.rs
+index 1bf0a47..bd84d2e 100644
+--- a/src/buf/mod.rs
++++ b/src/buf/mod.rs
+@@ -22,6 +22,7 @@ mod limit;
+ #[cfg(feature = "std")]
+ mod reader;
+ mod take;
++mod transfer;
+ mod uninit_slice;
+ mod vec_deque;
+ #[cfg(feature = "std")]
+diff --git a/src/buf/reader.rs b/src/buf/reader.rs
+index 5214949..cce22f1 100644
+--- a/src/buf/reader.rs
++++ b/src/buf/reader.rs
+@@ -66,8 +66,12 @@ impl<B: Buf + Sized> io::Read for Reader<B> {
+     fn read(&mut self, dst: &mut [u8]) -> io::Result<usize> {
+         let len = cmp::min(self.buf.remaining(), dst.len());
+ 
+-        Buf::copy_to_slice(&mut self.buf, &mut dst[0..len]);
+-        Ok(len)
++        let mut progress = super::transfer::Progress::new(len);
++        super::transfer::read_once(&mut self.buf, dst, &mut progress);
++        if progress.remaining() != 0 {
++            Buf::copy_to_slice(&mut self.buf, &mut dst[0..len]);
++        }
++        Ok(progress.initialized())
+     }
+ }
+ 
+diff --git a/src/buf/transfer.rs b/src/buf/transfer.rs
+new file mode 100644
+index 0000000..0d7f8dc
+--- /dev/null
++++ b/src/buf/transfer.rs
+@@ -0,0 +1,58 @@
++use crate::Buf;
++#[cfg(feature = "std")]
++use crate::BufMut;
++use super::UninitSlice;
++
++pub(super) struct Progress {
++    requested: usize,
++    initialized: usize,
++}
++
++impl Progress {
++    pub(super) fn new(requested: usize) -> Self {
++        Self { requested, initialized: 0 }
++    }
++    pub(super) fn remaining(&self) -> usize {
++        self.requested - self.initialized
++    }
++    pub(super) fn initialized(&self) -> usize {
++        self.initialized
++    }
++    pub(super) fn record(&mut self, count: usize) {
++        assert!(count <= self.remaining());
++        self.initialized += count;
++    }
++}
++
++pub(super) fn write_slice(dst: &mut UninitSlice, src: &[u8], progress: &mut Progress) -> usize {
++    let selected = usize::min(dst.len(), src.len());
++    dst.write_prefix(src, progress);
++    selected
++}
++
++pub(super) fn fill(dst: &mut UninitSlice, val: u8, requested: usize, progress: &mut Progress) -> usize {
++    let selected = usize::min(dst.len(), requested);
++    dst.fill_prefix(val, progress);
++    selected
++}
++
++pub(super) fn read_slice<B: Buf + ?Sized>(buf: &B, dst: &mut [u8], progress: &mut Progress) -> usize {
++    let src = buf.chunk();
++    let selected = usize::min(src.len(), dst.len());
++    super::buf_impl::read_prefix(src, dst, progress);
++    selected
++}
++
++#[cfg(feature = "std")]
++pub(super) fn read_once<B: Buf>(buf: &mut B, dst: &mut [u8], progress: &mut Progress) {
++    let len = progress.remaining();
++    Buf::copy_to_slice(buf, &mut dst[..len]);
++    progress.record(len);
++}
++
++#[cfg(feature = "std")]
++pub(super) fn write_once<B: BufMut>(buf: &mut B, src: &[u8], progress: &mut Progress) {
++    let len = progress.remaining();
++    buf.put_slice(&src[..len]);
++    progress.record(len);
++}
+diff --git a/src/buf/uninit_slice.rs b/src/buf/uninit_slice.rs
+index aea096a..5ab4030 100644
+--- a/src/buf/uninit_slice.rs
++++ b/src/buf/uninit_slice.rs
+@@ -22,6 +22,19 @@ use core::ops::{
+ pub struct UninitSlice([MaybeUninit<u8>]);
+ 
+ impl UninitSlice {
++    pub(super) fn write_prefix(&mut self, src: &[u8], progress: &mut super::transfer::Progress) {
++        let count = usize::min(progress.remaining(), usize::min(self.len(), src.len()));
++        self[..count].copy_from_slice(&src[..count]);
++        progress.record(count);
++    }
++
++    pub(super) fn fill_prefix(&mut self, val: u8, progress: &mut super::transfer::Progress) {
++        let count = usize::min(progress.remaining(), self.len());
++        // SAFETY: count is bounded by this writable slice.
++        unsafe { core::ptr::write_bytes(self.as_mut_ptr(), val, count) };
++        progress.record(count);
++    }
++
+     /// Creates a `&mut UninitSlice` wrapping a slice of initialised memory.
+     ///
+     /// # Examples
+diff --git a/src/buf/writer.rs b/src/buf/writer.rs
+index e72348f..6ee311b 100644
+--- a/src/buf/writer.rs
++++ b/src/buf/writer.rs
+@@ -78,8 +78,12 @@ impl<B: BufMut + Sized> io::Write for Writer<B> {
+     fn write(&mut self, src: &[u8]) -> io::Result<usize> {
+         let n = cmp::min(self.buf.remaining_mut(), src.len());
+ 
+-        self.buf.put_slice(&src[..n]);
+-        Ok(n)
++        let mut progress = super::transfer::Progress::new(n);
++        super::transfer::write_once(&mut self.buf, src, &mut progress);
++        if progress.remaining() != 0 {
++            self.buf.put_slice(&src[..n]);
++        }
++        Ok(progress.initialized())
+     }
+ 
+     fn flush(&mut self) -> io::Result<()> {
+diff --git a/src/bytes_mut.rs b/src/bytes_mut.rs
+index ae808fa..478e7aa 100644
+--- a/src/bytes_mut.rs
++++ b/src/bytes_mut.rs
+@@ -1,3 +1,5 @@
++mod allocation;
++
+ use core::mem::{self, ManuallyDrop, MaybeUninit};
+ use core::ops::{Deref, DerefMut};
+ use core::ptr::{self, NonNull};
+@@ -628,7 +630,23 @@ impl BytesMut {
+ 
+     // In separate function to allow the short-circuits in `reserve` and `try_reclaim` to
+     // be inline-able. Significantly helps performance. Returns false if it did not succeed.
++    fn required_capacity(&self, additional: usize, allocate: bool) -> Option<usize> {
++        match self.len().checked_add(additional) {
++            Some(n) => Some(n),
++            None if !allocate => None,
++            None => panic!("overflow"),
++        }
++    }
++
++    unsafe fn publish_allocation(&mut self, v: &mut Vec<u8>, offset: usize) {
++        self.ptr = vptr(v.as_mut_ptr().add(offset));
++        self.cap = v.capacity() - offset;
++    }
++
+     fn reserve_inner(&mut self, additional: usize, allocate: bool) -> bool {
++        let result = allocation::reserve(self, additional, false);
++        if allocate && additional > self.capacity() - self.len() {
++            return {
+         let len = self.len();
+         let kind = self.kind();
+ 
+@@ -683,8 +701,7 @@ impl BytesMut {
+                     v.reserve(additional);
+ 
+                     // Update the info
+-                    self.ptr = vptr(v.as_mut_ptr().add(off));
+-                    self.cap = v.capacity() - off;
++                    self.publish_allocation(&mut v, off);
+                     debug_assert_eq!(self.len, v.len() - off);
+                 }
+ 
+@@ -699,10 +716,9 @@ impl BytesMut {
+         // allocating a new vector with the requested capacity.
+         //
+         // Compute the new capacity
+-        let mut new_cap = match len.checked_add(additional) {
++        let mut new_cap = match self.required_capacity(additional, allocate) {
+             Some(new_cap) => new_cap,
+-            None if !allocate => return false,
+-            None => panic!("overflow"),
++            None => return false,
+         };
+ 
+         unsafe {
+@@ -775,8 +791,7 @@ impl BytesMut {
+                     v.reserve(new_cap - v.len());
+ 
+                     // Update the info
+-                    self.ptr = vptr(v.as_mut_ptr().add(offset));
+-                    self.cap = v.capacity() - offset;
++                    self.publish_allocation(v, offset);
+                 }
+ 
+                 return true;
+@@ -804,10 +819,12 @@ impl BytesMut {
+         // Update self
+         let data = (original_capacity_repr << ORIGINAL_CAPACITY_OFFSET) | KIND_VEC;
+         self.data = invalid_ptr(data);
+-        self.ptr = vptr(v.as_mut_ptr());
+-        self.cap = v.capacity();
++        unsafe { self.publish_allocation(&mut v, 0) };
+         debug_assert_eq!(self.len, v.len());
+         true
++                };
++        }
++        result
+     }
+ 
+     /// Attempts to cheaply reclaim already allocated capacity for at least `additional` more
+diff --git a/src/bytes_mut/allocation.rs b/src/bytes_mut/allocation.rs
+new file mode 100644
+index 0000000..b98ef4b
+--- /dev/null
++++ b/src/bytes_mut/allocation.rs
+@@ -0,0 +1,179 @@
++use super::*;
++
++pub(super) fn reserve(buf: &mut BytesMut, additional: usize, allocate: bool) -> bool {
++        let len = buf.len();
++        let kind = buf.kind();
++
++        if kind == KIND_VEC {
++            // If there's enough free space before the start of the buffer, then
++            // just copy the data backwards and reuse the already-allocated
++            // space.
++            //
++            // Otherwise, since backed by a vector, use `Vec::reserve`
++            //
++            // We need to make sure that this optimization does not kill the
++            // amortized runtimes of BytesMut's operations.
++            unsafe {
++                let off = buf.get_vec_pos();
++
++                // Only reuse space if we can satisfy the requested additional space.
++                //
++                // Also check if the value of `off` suggests that enough bytes
++                // have been read to account for the overhead of shifting all
++                // the data (in an amortized analysis).
++                // Hence the condition `off >= buf.len()`.
++                //
++                // This condition also already implies that the buffer is going
++                // to be (at least) half-empty in the end; so we do not break
++                // the (amortized) runtime with future resizes of the underlying
++                // `Vec`.
++                //
++                // [For more details check issue #524, and PR #525.]
++                if buf.capacity() - buf.len() + off >= additional && off >= buf.len() {
++                    // There's enough space, and it's not too much overhead:
++                    // reuse the space!
++                    //
++                    // Just move the pointer back to the start after copying
++                    // data back.
++                    let base_ptr = buf.ptr.as_ptr().sub(off);
++                    // Since `off >= buf.len()`, the two regions don't overlap.
++                    ptr::copy_nonoverlapping(buf.ptr.as_ptr(), base_ptr, buf.len);
++                    buf.ptr = vptr(base_ptr);
++                    buf.set_vec_pos(0);
++
++                    // Length stays constant, but since we moved backwards we
++                    // can gain capacity back.
++                    buf.cap += off;
++                } else {
++                    if !allocate {
++                        return false;
++                    }
++                    // Not enough space, or reusing might be too much overhead:
++                    // allocate more space!
++                    let mut v =
++                        ManuallyDrop::new(rebuild_vec(buf.ptr.as_ptr(), buf.len, buf.cap, off));
++                    v.reserve(additional);
++
++                    // Update the info
++                    buf.publish_allocation(&mut v, off);
++                    debug_assert_eq!(buf.len, v.len() - off);
++                }
++
++                return true;
++            }
++        }
++
++        debug_assert_eq!(kind, KIND_ARC);
++        let shared: *mut Shared = buf.data;
++
++        // Reserving involves abandoning the currently shared buffer and
++        // allocating a new vector with the requested capacity.
++        //
++        // Compute the new capacity
++        let mut new_cap = match buf.required_capacity(additional, allocate) {
++            Some(new_cap) => new_cap,
++            None => return false,
++        };
++
++        unsafe {
++            // First, try to reclaim the buffer. This is possible if the current
++            // handle is the only outstanding handle pointing to the buffer.
++            if (*shared).is_unique() {
++                // This is the only handle to the buffer. It can be reclaimed.
++                // However, before doing the work of copying data, check to make
++                // sure that the vector has enough capacity.
++                let v = &mut (*shared).vec;
++
++                let v_capacity = v.capacity();
++                let ptr = v.as_mut_ptr();
++
++                let offset = buf.ptr.as_ptr().offset_from(ptr) as usize;
++
++                let new_cap_plus_offset = match new_cap.checked_add(offset) {
++                    Some(new_cap_plus_offset) => new_cap_plus_offset,
++                    None if !allocate => return false,
++                    None => panic!("overflow"),
++                };
++
++                // Compare the condition in the `kind == KIND_VEC` case above
++                // for more details.
++                if v_capacity >= new_cap_plus_offset {
++                    buf.cap = new_cap;
++                    // no copy is necessary
++                } else if v_capacity >= new_cap && offset >= len {
++                    // The capacity is sufficient, and copying is not too much
++                    // overhead: reclaim the buffer!
++
++                    // `offset >= len` means: no overlap
++                    ptr::copy_nonoverlapping(buf.ptr.as_ptr(), ptr, len);
++
++                    buf.ptr = vptr(ptr);
++                    buf.cap = v.capacity();
++                } else {
++                    if !allocate {
++                        return false;
++                    }
++
++                    // new_cap is calculated in terms of `BytesMut`, not the underlying
++                    // `Vec`, so it does not take the offset into account.
++                    //
++                    // Thus we have to manually add it here.
++                    new_cap = new_cap_plus_offset;
++
++                    // The vector capacity is not sufficient. The reserve request is
++                    // asking for more than the initial buffer capacity. Allocate more
++                    // than requested if `new_cap` is not much bigger than the current
++                    // capacity.
++                    //
++                    // There are some situations, using `reserve_exact` that the
++                    // buffer capacity could be below `original_capacity`, so do a
++                    // check.
++                    let double = v.capacity().checked_shl(1).unwrap_or(new_cap);
++
++                    new_cap = cmp::max(double, new_cap);
++
++                    // No space - allocate more
++                    //
++                    // The length field of `Shared::vec` is not used by the `BytesMut`;
++                    // instead we use the `len` field in the `BytesMut` itbuf. However,
++                    // when calling `reserve`, it doesn't guarantee that data stored in
++                    // the unused capacity of the vector is copied over to the new
++                    // allocation, so we need to ensure that we don't have any data we
++                    // care about in the unused capacity before calling `reserve`.
++                    debug_assert!(offset + len <= v.capacity());
++                    v.set_len(offset + len);
++                    v.reserve(new_cap - v.len());
++
++                    // Update the info
++                    buf.publish_allocation(v, offset);
++                }
++
++                return true;
++            }
++        }
++        if !allocate {
++            return false;
++        }
++
++        let original_capacity_repr = unsafe { (*shared).original_capacity_repr };
++        let original_capacity = original_capacity_from_repr(original_capacity_repr);
++
++        new_cap = cmp::max(new_cap, original_capacity);
++
++        // Create a new vector to store the data
++        let mut v = ManuallyDrop::new(Vec::with_capacity(new_cap));
++
++        // Copy the bytes
++        v.extend_from_slice(buf.as_ref());
++
++        // Release the shared handle. This must be done *after* the bytes are
++        // copied.
++        unsafe { release_shared(shared) };
++
++        // Update self
++        let data = (original_capacity_repr << ORIGINAL_CAPACITY_OFFSET) | KIND_VEC;
++        buf.data = invalid_ptr(data);
++        unsafe { buf.publish_allocation(&mut v, 0) };
++        debug_assert_eq!(buf.len, v.len());
++        true
++    }

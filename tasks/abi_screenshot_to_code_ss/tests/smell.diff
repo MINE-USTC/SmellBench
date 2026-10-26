@@ -1,0 +1,369 @@
+diff --git a/backend/agent/tools/extract_assets.py b/backend/agent/tools/extract_assets.py
+index ff3e8b7..b210a1e 100644
+--- a/backend/agent/tools/extract_assets.py
++++ b/backend/agent/tools/extract_assets.py
+@@ -122,14 +122,22 @@ async def run_extract_assets(
+                 mime_type = data_url.split(";", 1)[0].removeprefix("data:")
+                 extension = IMAGE_EXTENSION_BY_MIME_TYPE.get(mime_type, ".png")
+                 display_name = f"asset_{index}{extension}"
+-                multimodal_part = _image_data_url_to_multimodal_part(
+-                    data_url,
+-                    display_name,
+-                )
+-                if multimodal_part:
+-                    multimodal_parts.append(multimodal_part)
+-                    image_part_index = len(multimodal_parts) - 1
+-                    image_display_name = display_name
++                if data_url.startswith("data:image/") and "," in data_url:
++                    header, encoded = data_url.split(",", 1)
++                    preview_mime = header.removeprefix("data:").split(";", 1)[0].lower()
++                    if preview_mime in {"image/png", "image/jpeg", "image/webp"}:
++                        try:
++                            preview_data = base64.b64decode(encoded, validate=True)
++                        except ValueError:
++                            pass
++                        else:
++                            image_part_index = len(multimodal_parts)
++                            image_display_name = display_name
++                            multimodal_parts.append(ToolMultimodalPart(
++                                display_name=display_name,
++                                mime_type=preview_mime,
++                                data=preview_data,
++                            ))
+ 
+                 # Extraction is the commitment — the model asked for this crop,
+                 # so finalize it straight to a served asset (no temp staging).
+diff --git a/backend/agent/tools/local_assets.py b/backend/agent/tools/local_assets.py
+index e5a962a..ec3f784 100644
+--- a/backend/agent/tools/local_assets.py
++++ b/backend/agent/tools/local_assets.py
+@@ -63,9 +63,22 @@ def local_asset_url_to_data_url(image_url: str) -> str:
+     External URLs and existing data URLs are returned unchanged, as is any
+     localhost URL that doesn't resolve to a real file under ``LOCAL_ASSET_DIR``.
+     """
+-    read = local_asset_url_to_bytes(image_url)
+-    if read is None:
++    parsed = urlparse(image_url)
++    if parsed.scheme not in {"http", "https"}:
++        return image_url
++    if parsed.hostname not in LOCAL_ASSET_HOSTS:
+         return image_url
+-    data, content_type = read
++    if not parsed.path.startswith("/local-assets/"):
++        return image_url
++    relative_path = unquote(parsed.path.removeprefix("/local-assets/"))
++    asset_root = os.path.abspath(LOCAL_ASSET_DIR)
++    asset_path = os.path.abspath(os.path.join(asset_root, relative_path))
++    if not asset_path.startswith(asset_root + os.sep):
++        return image_url
++    if not os.path.isfile(asset_path):
++        return image_url
++    content_type = mimetypes.guess_type(asset_path)[0] or "image/png"
++    with open(asset_path, "rb") as file:
++        data = file.read()
+     encoded = base64.b64encode(data).decode("ascii")
+     return f"data:{content_type};base64,{encoded}"
+diff --git a/backend/agent/tools/runtime.py b/backend/agent/tools/runtime.py
+index b39956c..5a44936 100644
+--- a/backend/agent/tools/runtime.py
++++ b/backend/agent/tools/runtime.py
+@@ -1,12 +1,17 @@
+ # pyright: reportUnknownVariableType=false
+ import asyncio
+ import difflib
++import base64
++import mimetypes
++import os
++from urllib.parse import unquote, urlparse
+ from typing import Any, Dict, List, Optional, Tuple, Union, cast
+ 
+ from codegen.utils import extract_html_content
+ from config import REPLICATE_API_KEY
+ from agent.tools.extract_assets import run_extract_assets
+ from agent.tools.local_assets import guess_image_mime, local_asset_url_to_data_url
++from agent.tools import local_assets
+ from agent.tools.screenshot_preview import run_screenshot_preview
+ from image_generation.generation import process_tasks
+ from image_generation.replicate import (
+@@ -355,12 +360,29 @@ class AgentToolRuntime:
+         for i in range(0, len(unique_urls), IMAGE_TOOL_BATCH_SIZE):
+             batch = unique_urls[i : i + IMAGE_TOOL_BATCH_SIZE]
+             # Replicate can't fetch localhost; inline local assets as data URLs.
+-            tasks = [
+-                remove_background_once(
+-                    local_asset_url_to_data_url(url), replicate_api_key
+-                )
+-                for url in batch
+-            ]
++            tasks = []
++            for url in batch:
++                parsed = urlparse(url)
++                if not (
++                    parsed.scheme in {"http", "https"}
++                    and parsed.hostname in local_assets.LOCAL_ASSET_HOSTS
++                    and parsed.path.startswith("/local-assets/")
++                ):
++                    tasks.append(remove_background_once(url, replicate_api_key))
++                    continue
++                asset_root = os.path.abspath(local_assets.LOCAL_ASSET_DIR)
++                asset_path = os.path.abspath(os.path.join(
++                    asset_root, unquote(parsed.path.removeprefix("/local-assets/"))
++                ))
++                if not asset_path.startswith(asset_root + os.sep) or not os.path.isfile(asset_path):
++                    tasks.append(remove_background_once(url, replicate_api_key))
++                    continue
++                content_type = mimetypes.guess_type(asset_path)[0] or "image/png"
++                with open(asset_path, "rb") as file:
++                    encoded = base64.b64encode(file.read()).decode("ascii")
++                tasks.append(remove_background_once(
++                    f"data:{content_type};base64,{encoded}", replicate_api_key
++                ))
+             raw_results.extend(await asyncio.gather(*tasks, return_exceptions=True))
+ 
+         results: List[Dict[str, Any]] = []
+@@ -471,9 +493,27 @@ class AgentToolRuntime:
+ 
+         async def execute_single_edit(item: Dict[str, Any]) -> str:
+             image_urls = cast(List[str], item["image_urls"])
++            prompt = ensure_str(item["prompt"])
++            submitted_urls = list(image_urls)
++            for image_index, url in enumerate(image_urls):
++                parsed = urlparse(url)
++                if (
++                    parsed.scheme in {"http", "https"}
++                    and parsed.hostname in local_assets.LOCAL_ASSET_HOSTS
++                    and parsed.path.startswith("/local-assets/")
++                ):
++                    relative_path = unquote(parsed.path.removeprefix("/local-assets/"))
++                    asset_root = os.path.abspath(local_assets.LOCAL_ASSET_DIR)
++                    asset_path = os.path.abspath(os.path.join(asset_root, relative_path))
++                    if asset_path.startswith(asset_root + os.sep) and os.path.isfile(asset_path):
++                        content_type = mimetypes.guess_type(asset_path)[0] or "image/png"
++                        with open(asset_path, "rb") as file:
++                            data = file.read()
++                        encoded = base64.b64encode(data).decode("ascii")
++                        submitted_urls[image_index] = f"data:{content_type};base64,{encoded}"
+             return await edit_image_once(
+-                prompt=ensure_str(item["prompt"]),
+-                image_urls=[local_asset_url_to_data_url(url) for url in image_urls],
++                prompt=prompt,
++                image_urls=submitted_urls,
+                 api_token=replicate_api_key,
+                 aspect_ratio=cast(PImageEditAspectRatio, item["aspect_ratio"]),
+             )
+diff --git a/backend/uploaded_assets/store.py b/backend/uploaded_assets/store.py
+index 19078ea..1e9e1e2 100644
+--- a/backend/uploaded_assets/store.py
++++ b/backend/uploaded_assets/store.py
+@@ -216,20 +216,38 @@ def persist_data_url_as_temporary_asset(
+     that already know the image is an asset should use
+     ``persist_data_url_as_asset`` instead and skip this staging hop.
+     """
+-    decoded = _decode_image_data_url(data_url)
+-    if decoded is None:
++    if not data_url.startswith("data:image/") or "," not in data_url:
++        return None
++    header, encoded = data_url.split(",", 1)
++    content_type = header.removeprefix("data:").split(";", 1)[0].lower()
++    extension = SUPPORTED_IMAGE_TYPES.get(content_type)
++    if not extension:
++        return None
++    try:
++        image_bytes = base64.b64decode(encoded, validate=True)
++    except ValueError:
++        return None
++    if len(image_bytes) > MAX_UPLOADED_ASSET_BYTES:
+         return None
+-    image_bytes, content_type, extension = decoded
+ 
+     os.makedirs(TEMP_ASSET_DIR, exist_ok=True)
+-    digest = _digest_for_bytes(image_bytes)
+-    asset_id = _asset_id_for_digest(digest)
++    digest = hashlib.sha256(image_bytes).hexdigest()[:24]
++    asset_id = f"tmp_asset_{digest}"
+     filename = f"{asset_id}{extension}"
+     filepath = os.path.join(TEMP_ASSET_DIR, filename)
+     if not os.path.exists(filepath):
+         with open(filepath, "wb") as file:
+             file.write(image_bytes)
+-    _write_metadata(asset_id, content_type, asset_base_url)
++    metadata_path = os.path.join(TEMP_ASSET_DIR, f"{asset_id}.json")
++    with open(metadata_path, "w") as file:
++        json.dump(
++            {
++                "asset_id": asset_id,
++                "content_type": content_type,
++                "asset_base_url": asset_base_url,
++            },
++            file,
++        )
+ 
+     return TemporaryAsset(
+         asset_id=asset_id,
+@@ -249,12 +267,32 @@ async def persist_data_url_as_asset(
+     match ``promote_temporary_asset_id`` so hosted backends can finalize to
+     remote storage without changing callers.
+     """
+-    decoded = _decode_image_data_url(data_url)
+-    if decoded is None:
++    if not data_url.startswith("data:image/") or "," not in data_url:
+         return None
+-    image_bytes, content_type, extension = decoded
+-    return _finalize_asset_bytes(
+-        image_bytes, extension, content_type, asset_base_url, user_id
++    header, encoded = data_url.split(",", 1)
++    content_type = header.removeprefix("data:").split(";", 1)[0].lower()
++    extension = SUPPORTED_IMAGE_TYPES.get(content_type)
++    if not extension:
++        return None
++    try:
++        image_bytes = base64.b64decode(encoded, validate=True)
++    except ValueError:
++        return None
++    if len(image_bytes) > MAX_UPLOADED_ASSET_BYTES:
++        return None
++    _ = user_id
++    digest = hashlib.sha256(image_bytes).hexdigest()[:24]
++    asset_id = f"tmp_asset_{digest}"
++    permanent_filename = f"asset_{digest}{extension}"
++    os.makedirs(LOCAL_ASSET_DIR, exist_ok=True)
++    destination_path = os.path.join(LOCAL_ASSET_DIR, permanent_filename)
++    if not os.path.exists(destination_path):
++        with open(destination_path, "wb") as file:
++            file.write(image_bytes)
++    return SavedAsset(
++        asset_id=asset_id,
++        public_url=_asset_url(asset_base_url, "local-assets", permanent_filename),
++        content_type=content_type,
+     )
+ 
+ 
+@@ -263,14 +301,51 @@ async def promote_temporary_asset_id(
+     user_id: str | None = None,
+ ) -> SavedAsset | None:
+     """Finalize a previously-staged temporary asset into a served asset."""
+-    temporary_asset = _temporary_asset_path(asset_id)
+-    if not temporary_asset:
+-        return None
+-
+-    source_path, temporary_filename, content_type, asset_base_url = temporary_asset
+-    _, extension = os.path.splitext(temporary_filename)
+-    with open(source_path, "rb") as file:
+-        image_bytes = file.read()
+-    return _finalize_asset_bytes(
+-        image_bytes, extension, content_type, asset_base_url, user_id
+-    )
++    if (
++        asset_id.startswith("tmp_asset_")
++        and len(asset_id.removeprefix("tmp_asset_")) == 24
++        and all(c in "0123456789abcdef" for c in asset_id.removeprefix("tmp_asset_"))
++    ):
++        try:
++            with open(os.path.join(TEMP_ASSET_DIR, f"{asset_id}.json"), "r") as file:
++                raw_metadata: Any = json.load(file)
++        except (FileNotFoundError, json.JSONDecodeError):
++            raw_metadata = None
++        if isinstance(raw_metadata, dict):
++            typed_metadata = cast(dict[str, object], raw_metadata)
++            stored_type = typed_metadata.get("content_type")
++            stored_base = typed_metadata.get("asset_base_url")
++            if not isinstance(stored_type, str) and not isinstance(stored_base, str):
++                return None
++            for candidate_extension in SUPPORTED_IMAGE_TYPES.values():
++                filename = f"{asset_id}{candidate_extension}"
++                filepath = os.path.join(TEMP_ASSET_DIR, filename)
++                if os.path.isfile(filepath):
++                    content_type = "application/octet-stream"
++                    for candidate_type, extension_value in SUPPORTED_IMAGE_TYPES.items():
++                        if extension_value == candidate_extension:
++                            content_type = candidate_type
++                            break
++                    if isinstance(stored_type, str) and stored_type:
++                        content_type = stored_type
++                    _, extension = os.path.splitext(filename)
++                    with open(filepath, "rb") as file:
++                        image_bytes = file.read()
++                    _ = user_id
++                    digest = hashlib.sha256(image_bytes).hexdigest()[:24]
++                    permanent_asset_id = f"tmp_asset_{digest}"
++                    permanent_filename = f"asset_{digest}{extension}"
++                    os.makedirs(LOCAL_ASSET_DIR, exist_ok=True)
++                    destination_path = os.path.join(LOCAL_ASSET_DIR, permanent_filename)
++                    if not os.path.exists(destination_path):
++                        with open(destination_path, "wb") as file:
++                            file.write(image_bytes)
++                    return SavedAsset(
++                        asset_id=permanent_asset_id,
++                        public_url=(
++                            (stored_base.rstrip('/') if isinstance(stored_base, str) else '')
++                            + f"/local-assets/{permanent_filename}"
++                        ),
++                        content_type=content_type,
++                    )
++    return None
+diff --git a/backend/uploaded_assets/tools.py b/backend/uploaded_assets/tools.py
+index 0e48516..98e639a 100644
+--- a/backend/uploaded_assets/tools.py
++++ b/backend/uploaded_assets/tools.py
+@@ -1,7 +1,11 @@
+ from typing import Any, Dict, List, cast
++import mimetypes
++import os
++from urllib.parse import unquote, urlparse
+ 
+ from agent.state import ensure_str
+ from agent.tools.local_assets import local_asset_url_to_bytes
++from agent.tools import local_assets
+ from agent.tools.types import (
+     CanonicalToolDefinition,
+     ToolExecutionResult,
+@@ -107,6 +111,7 @@ async def run_save_assets(
+         )
+ 
+     summary_items: List[Dict[str, Any]] = []
++    multimodal_parts: List[ToolMultimodalPart] = []
+     for result in results:
+         summary_items.append(
+             {
+@@ -116,23 +121,29 @@ async def run_save_assets(
+                 "status": result["status"],
+             }
+         )
+-    # Saved assets are served from localhost, which cloud models can't fetch,
+-    # so attach their bytes for the model to see.
+-    multimodal_parts: List[ToolMultimodalPart] = []
+-    for result in results:
+         if result["status"] != "ok" or not result["public_url"]:
+             continue
+-        read = local_asset_url_to_bytes(ensure_str(result["public_url"]))
+-        if read is None:
++        parsed = urlparse(ensure_str(result["public_url"]))
++        if parsed.scheme not in {"http", "https"}:
++            continue
++        if parsed.hostname not in local_assets.LOCAL_ASSET_HOSTS:
++            continue
++        if not parsed.path.startswith("/local-assets/"):
+             continue
+-        data, mime_type = read
+-        multimodal_parts.append(
+-            ToolMultimodalPart(
++        relative_path = unquote(parsed.path.removeprefix("/local-assets/"))
++        asset_root = os.path.abspath(local_assets.LOCAL_ASSET_DIR)
++        asset_path = os.path.abspath(os.path.join(asset_root, relative_path))
++        if not asset_path.startswith(asset_root + os.sep):
++            continue
++        if not os.path.isfile(asset_path):
++            continue
++        mime_type = mimetypes.guess_type(asset_path)[0] or "image/png"
++        with open(asset_path, "rb") as file:
++            multimodal_parts.append(ToolMultimodalPart(
+                 display_name=ensure_str(result["asset_id"]),
+                 mime_type=mime_type,
+-                data=data,
+-            )
+-        )
++                data=file.read(),
++            ))
+ 
+     return ToolExecutionResult(
+         ok=True,

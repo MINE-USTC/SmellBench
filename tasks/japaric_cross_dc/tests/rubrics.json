@@ -1,0 +1,320 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "japaric_cross_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "cargo_transport",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 cargo source/destination.",
+      "baseline_defect": "Volume stores cargo host and destination independently; copying reestablishes their relationship.",
+      "criterion": "Keep cargo host source and container destination associated through preparation and copying.",
+      "acceptance": "Preserve root-relative destination validation before environment override/create/copy, registry-all versus selective branches, source.join(\".\") behavior and errors. Keep const constructor/public getters supported; no eager UTF8 check introduced. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "ContainerDataVolume,copy_cargo",
+          "detail": "Volume stores cargo host and destination independently; copying reestablishes their relationship.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "ContainerDataVolume,copy_cargo",
+          "detail": "Volume stores cargo host and destination independently; copying reestablishes their relationship.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sysroot_transport",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 Rust base and manifest inputs.",
+      "baseline_defect": "Rust source/toolchain and destination require consumer-side regrouping in base and manifest copies.",
+      "criterion": "Provide cohesive sysroot transport coordinates to both copy paths.",
+      "acceptance": "Preserve host sysroot versus POSIX relative destination, base selections/temp staging/symlink warning and manifest selection; error timing retained. A shared toolchain owner may include cargo paths. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "ContainerDataVolume,copy_rust_base,copy_rust_manifest",
+          "detail": "Rust source/toolchain and destination require consumer-side regrouping in base and manifest copies.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "ContainerDataVolume,copy_rust_base,copy_rust_manifest",
+          "detail": "Rust source/toolchain and destination require consumer-side regrouping in base and manifest copies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "target_component",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Retry fresh/persistent target component paths.",
+      "baseline_defect": "Fresh and persistent consumers independently construct target source, full existence destination and parent copy destination.",
+      "criterion": "Keep target component coordinate relationships cohesive across fresh and persistent consumers.",
+      "acceptance": "Fresh copies base/manifests then host first and optional distinct requested triple, without existence checks or per-component manifest refresh. Persistent checks full target path, copies into parent only on miss then refreshes manifests; retain failure context/order. Lifecycle branching may stay in callers if coordinates come from a cohesive operation or data view. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "copy_rust,copy_target",
+          "detail": "Fresh and persistent consumers independently construct target source, full existence destination and parent copy destination.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "captured_project",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R2 and original deepening captured source choice.",
+      "baseline_defect": "Workspace/cwd selection repeats across three consumers despite captured package state.",
+      "criterion": "Own captured project-source selection consistently with its container destination.",
+      "acceptance": "Select cwd when captured workspace starts_with cwd else captured workspace; later public metadata changes must not alter this captured selection or mount root. Keep WSL/POSIX lexical destination semantics and existing getters. Restoring stored selected root or reusing host_root both qualify. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "PackageDirectories,project_source,host_root",
+          "detail": "Workspace/cwd selection repeats across three consumers despite captured package state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/local.rs",
+          "symbol": "PackageDirectories,project_source,host_root",
+          "detail": "Workspace/cwd selection repeats across three consumers despite captured package state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "PackageDirectories,project_source,host_root",
+          "detail": "Workspace/cwd selection repeats across three consumers despite captured package state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/custom.rs",
+          "symbol": "PackageDirectories,project_source,host_root",
+          "detail": "Workspace/cwd selection repeats across three consumers despite captured package state.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "remote_target_staging",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 project/target containment and staging.",
+      "baseline_defect": "Project host/mount and target scalars are independently recombined for containment and copy decisions.",
+      "criterion": "Keep project/target transport provenance cohesive during remote staging.",
+      "acceptance": "Canonicalize target for containment against captured project source, use relative POSIX suffix when inside; external target copies only with copy_cache else create directory, and records target source/destination. Preserve project copy, mount-prefix handling and original error sequence; no blanket canonicalization of all roots. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "run,project_source,target_source,target_dir",
+          "detail": "Project host/mount and target scalars are independently recombined for containment and copy decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "copied_root_mapping",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 copied-root exclusion and symlink planning.",
+      "baseline_defect": "Copied source/destination records are assembled from separated toolchain/project/target inputs then reused for suffix translation.",
+      "criterion": "Keep copied host roots associated with their staged destinations through volume exclusion and symlink planning.",
+      "acceptance": "Retain cargo,sysroot,project,optional target order and first matching prefix, not automatically longest. Join selected staged root with source-relative POSIX suffix; unmatched volumes retain normal mkdir/copy path. Existing paired vector is valid when its producers draw coherent mappings; do not demand replacing already paired records. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "run,copied,to_symlink",
+          "detail": "Copied source/destination records are assembled from separated toolchain/project/target inputs then reused for suffix translation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "artifact_return",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 artifact/full-target return.",
+      "baseline_defect": "Return paths reconstruct relationships from independent target and project mount scalars.",
+      "criterion": "Carry consistent target transport provenance into output synchronization.",
+      "acceptance": "Per-artifact destination is host target itself; full directory fallback goes to its parent to avoid target/target; container target combines project mount and selected relative target. Preserve skip/existence/output mode behavior, captured target path and exit checks. Derived local paths are legal. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "run,host_target_dir,host_root_dir,mount_target_dir",
+          "detail": "Return paths reconstruct relationships from independent target and project mount scalars.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "image_paths",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 build path identity/context and original stage2.",
+      "baseline_defect": "Scalar builder receives workspace,target,context with different provenance and derives image identity separately.",
+      "criterion": "Keep custom build path provenance cohesive without conflating its roots.",
+      "acceptance": "Current metadata workspace drives label/name/hash and relative Dockerfile path, current target metadata stages generated Dockerfile; explicit context wins else captured package source. Preserve explicit image names, UTF8/creation/error order. A data view or existing DockerPaths plus focused context selection qualifies; no mandatory behavior-rich object. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/custom.rs",
+          "symbol": "build,build_directories,image_name_for_root",
+          "detail": "Scalar builder receives workspace,target,context with different provenance and derives image identity separately.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mount_association",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1 nested mounts and retry indexed raw-priority representation.",
+      "baseline_defect": "Sources, normalized destination index and original byte lengths require index reconstruction during lookup.",
+      "criterion": "Maintain mount source/destination/original priority association through matching and translation.",
+      "acceptance": "Match component prefixes including relative/empty; maximize original raw destination byte length, stable earliest input on ties, including normalized-equivalent spellings sharing a map key. Join suffix to winning source; no match retains path. Paired stable-sort or encapsulated indexes/columns both valid. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "MountFinder::new,find_mount_path",
+          "detail": "Sources, normalized destination index and original byte lengths require index reconstruction during lookup.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fingerprint_observation",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R3 path/time columns and retry seconds/nanoseconds.",
+      "baseline_defect": "Readers separately synchronize path and two timestamp columns; serialization relies on aligned index.",
+      "criterion": "Keep complete fingerprint observations associated through parsing, collection and output.",
+      "acceptance": "Sorted keys with duplicate-last replacement update all time fields, preserve malformed/read/epoch errors and directory selection. Serialize sorted timestamp-tab-path lines. Complete observation insertion API is sufficient even with column storage; milliseconds may normalize at ingestion if observable semantics remain. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "Fingerprint,read_file,_read_dir,write_file",
+          "detail": "Readers separately synchronize path and two timestamp columns; serialization relies on aligned index.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fingerprint_equivalence",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Original raw precision split and retry merge comparison.",
+      "baseline_defect": "Millisecond recombination is repeated amid cursor/index differencing and serialization.",
+      "criterion": "Localize fingerprint observation equivalence independently of path alignment mechanics.",
+      "acceptance": "Live submillisecond differences compare equal after millisecond truncation; preserve u128-to-u64 truncating cast, no new overflow error. Copy additions/modifications and remove absent paths in lexical order, retaining tail removals and no mistaken cursor increment for absent current keys. A map of normalized times is valid; raw nanos are not required internal state. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "Fingerprint::difference,write_file",
+          "detail": "Millisecond recombination is repeated amid cursor/index differencing and serialization.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "local_mount_handoff",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 local mounts and remote shared producer.",
+      "baseline_defect": "Toolchain coordinates are independently unpacked for local mounts and volume state.",
+      "criterion": "Have actual local and remote consumers use coherent toolchain transport associations.",
+      "acceptance": "Local cargo UTF8 validation stays at original mount construction, cargo bin anonymous volume retained; project and sysroot use mount finder, target/cargo follow their existing mapping path, destination permissions unchanged. Scalar aliases derived from a cohesive owner are acceptable; require no needless relocation merely to remove locals. Existing directory owners/getters, encapsulated columns and concise reconnection are valid; scalar locals or public scalar adapters are not inherently defects. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A wrapper that leaves consumers responsible for independently synchronizing the same association is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/local.rs",
+          "symbol": "run,ContainerDataVolume",
+          "detail": "Toolchain coordinates are independently unpacked for local mounts and volume state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/shared.rs",
+          "symbol": "run,ContainerDataVolume",
+          "detail": "Toolchain coordinates are independently unpacked for local mounts and volume state.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/docker/remote.rs",
+          "symbol": "run,ContainerDataVolume",
+          "detail": "Toolchain coordinates are independently unpacked for local mounts and volume state.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "japaric_cross_dc",
+    "rubric_status": "ready",
+    "weighting": "equal; each item has weight 1",
+    "excluded_from_scoring": [
+      "The empty post.diff contains no repair obligation.",
+      "The earlier cargo UTF-8 error-order correction is correctness-only.",
+      "Passing original tests, compilation, and retaining existing behavior alone earn no structural credit.",
+      "Source notes describe broader possible depth, but unimplemented historical intentions are excluded."
+    ]
+  }
+}

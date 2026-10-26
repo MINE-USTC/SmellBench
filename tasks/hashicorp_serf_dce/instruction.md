@@ -1,0 +1,3 @@
+Remove permanently unreachable implementation remnants from Serf's internal message processing, coordinate exchange and event coalescing while preserving supported behavior. Keep malformed-input diagnostics, valid filters, membership and Lamport semantics, event ordering, forwarding failures, coordinate rejection metrics and cache synchronization intact. Public interfaces, upstream tests and dependencies must remain unchanged.
+
+The affected paths cross message decoding, coordinate update, event coalescing and cache synchronization. Distinguish a successfully decoded message from a successfully applied update before removing downstream error or fallback paths; ordering and forwarding failures remain observable.

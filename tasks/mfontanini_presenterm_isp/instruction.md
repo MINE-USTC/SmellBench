@@ -1,0 +1,3 @@
+Refactor the rendering interfaces so clients depend on the capabilities they use. Separate text/background drawing, image geometry, graphics transport, and frame/viewport operations where appropriate. Preserve existing narrow terminal and image implementations, rendering output, cursor positions, colors, optional behavior and error ordering. Keep original tests and configuration unchanged. Shared helpers are allowed when they express a coherent capability.
+
+Rendering clients span text/background drawing, image geometry, graphics transport and frame/viewport operations. Narrow the obligations of each consumer, including protocol-specific flush and cursor restoration, without forcing simple text renderers to implement unrelated image capabilities.

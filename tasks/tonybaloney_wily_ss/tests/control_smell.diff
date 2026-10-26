@@ -1,0 +1,549 @@
+diff --git a/src/wily/commands/diff.py b/src/wily/commands/diff.py
+index 731ca29..99fd88b 100644
+--- a/src/wily/commands/diff.py
++++ b/src/wily/commands/diff.py
+@@ -4,6 +4,11 @@ Diff command.
+ Compares metrics between uncommitted files and indexed files.
+ """
+ 
++from rich import box
++from rich.console import Console
++from rich.table import Table
++from rich.text import Text
++from wily.helper import BOX_STYLES
+ import json as json_module
+ import os
+ import sys
+@@ -27,6 +32,7 @@ from wily.operators import (
+     BAD_STYLES,
+     GOOD_STYLES,
+     Metric,
++    MetricType,
+     Operator,
+     OperatorLevel,
+     resolve_metric,
+@@ -98,7 +104,16 @@ def _resolve_metrics_and_operators(
+     """
+     if metrics:
+         operators = [resolve_operator(metric.split(".")[0]) for metric in metrics]
+-        resolved_metrics = [(metric.split(".")[0], resolve_metric(metric)) for metric in metrics]
++        resolved_metrics = []
++        for selected in metrics:
++            operator_name = selected.split(".")[0]
++            metric_name = selected
++            if "." in metric_name:
++                _, metric_name = metric_name.split(".")
++            candidates = [(owner, entry) for owner, entry in ALL_METRICS if entry.name == metric_name]
++            if not candidates:
++                raise ValueError(f"Metric {metric_name} not recognised.")
++            resolved_metrics.append((operator_name, candidates[0][1]))
+     else:
+         operators = list(ALL_OPERATORS.values())
+         resolved_metrics = [(operator.name, metric) for operator, metric in ALL_METRICS if operator in operators]
+@@ -338,10 +353,11 @@ def _format_table_cell(metric_diff: MetricDiff) -> str | Text:
+     # Format numeric values with styling
+     if metric.metric_type in (int, float) and before is not None and after is not None:
+         cell = Text(f"{before_display:n} -> ")
+-        if before > after:
+-            cell.append(f"{after_display:n}", style=BAD_STYLES[metric.measure])
+-        elif before < after:
+-            cell.append(f"{after_display:n}", style=GOOD_STYLES[metric.measure])
++        falling = before > after
++        rising = before < after
++        if falling or rising:
++            favorable = {MetricType.AimHigh: rising, MetricType.AimLow: falling, MetricType.Informational: None}[metric.measure]
++            cell.append(f"{after_display:n}", style="yellow" if favorable is None else "green" if favorable else "red")
+         else:
+             cell.append(f"{after_display:n}")
+         return cell
+@@ -370,21 +386,25 @@ def _format_table_output(
+         table_style: Table box style
+ 
+     """
+-    results = []
+-
++    table = None
++    console = None
+     for file_diff in diffs:
+         if changes_only and not file_diff.has_changes:
+             logger.debug("Skipping %s - no changes", file_diff.path)
+             continue
+-
+-        row = [file_diff.path]
++        if table is None:
++            console = Console()
++            table = Table(show_header=True, header_style="bold", box=BOX_STYLES.get(table_style.upper(), box.ROUNDED))
++            table.add_column("File", overflow="fold" if wrap else "ignore")
++            for operator, metric in resolved_metrics:
++                table.add_column(metric.description, overflow="fold" if wrap else "ignore")
++        row = [file_diff.path if isinstance(file_diff.path, Text) else str(file_diff.path)]
+         for metric_diff in file_diff.metrics:
+-            row.append(_format_table_cell(metric_diff))
+-        results.append(tuple(row))
+-
+-    if results:
+-        headers = ("File", *(metric.description for _, metric in resolved_metrics))
+-        print_table(headers=headers, data=results, wrap=wrap, table_style=table_style)
++            cell = _format_table_cell(metric_diff)
++            row.append(cell if isinstance(cell, Text) else str(cell))
++        table.add_row(*row)
++    if table is not None:
++        console.print(table)
+ 
+ 
+ def diff(
+@@ -418,7 +438,7 @@ def diff(
+     files, targets = _resolve_files_and_targets(config, files)
+ 
+     # Get path to parquet index
+-    parquet_path = get_default_metrics_path(config, archiver)
++    parquet_path = str(Path(config.cache_path) / archiver / "metrics.parquet")
+     if not Path(parquet_path).exists():
+         logger.error("Wily cache not found. Run 'wily build' first.")
+         sys.exit(1)
+@@ -456,3 +476,6 @@ def diff(
+         print(json_module.dumps(json_results, indent=2))
+     else:
+         _format_table_output(diffs, resolved_metrics, changes_only, wrap, table_style)
++
++
++
+diff --git a/src/wily/commands/graph.py b/src/wily/commands/graph.py
+index 7c04df2..b4fd1df 100644
+--- a/src/wily/commands/graph.py
++++ b/src/wily/commands/graph.py
+@@ -4,6 +4,8 @@ Graph command.
+ Draw graph in HTML for a specific metric.
+ """
+ 
++import datetime
++from wily.operators import ALL_METRICS
+ import sys
+ from pathlib import Path
+ 
+@@ -20,8 +22,12 @@ from wily.operators import Metric, resolve_metric, resolve_metric_as_tuple
+ 
+ def metric_parts(metric):
+     """Convert a metric name into the operator and metric names."""
+-    operator, met = resolve_metric_as_tuple(metric)
+-    return operator.name, met.name
++    if "." in metric:
++        _, metric = metric.split(".")
++    candidates = [(owner, entry) for owner, entry in ALL_METRICS if entry.name == metric]
++    if not candidates:
++        raise ValueError(f"Metric {metric} not recognised.")
++    return candidates[0][0].name, candidates[0][1].name
+ 
+ 
+ def path_startswith(filename: str, path: str) -> bool:
+@@ -61,7 +67,7 @@ def graph(
+     archiver = config.archiver or DEFAULT_ARCHIVER
+ 
+     # Get path to parquet index
+-    parquet_path = get_default_metrics_path(config, archiver)
++    parquet_path = str(Path(config.cache_path) / archiver / "metrics.parquet")
+     if not Path(parquet_path).exists():
+         logger.error("Wily cache not found. Run 'wily build' first.")
+         sys.exit(1)
+@@ -70,19 +76,37 @@ def graph(
+         x_axis = "history"
+         x_operator = x_key = ""
+     else:
+-        x_operator, x_key = metric_parts(x_axis)
++        x_key = x_axis
++        if "." in x_key:
++            x_operator, x_key = x_key.split(".")
++        x_candidates = [(owner, entry) for owner, entry in ALL_METRICS if entry.name == x_key]
++        if not x_candidates:
++            raise ValueError(f"Metric {x_key} not recognised.")
++        x_operator = x_candidates[0][0].name
+ 
+     metrics_list = metrics.split(",")
+ 
+     y_metric = resolve_metric(metrics_list[0])
+-    operator, key = metric_parts(metrics_list[0])
++    y_name = metrics_list[0]
++    if "." in y_name:
++        y_qualifier, y_name = y_name.split(".")
++    y_candidates = [(owner, entry) for owner, entry in ALL_METRICS if entry.name == y_name]
++    if not y_candidates:
++        raise ValueError(f"Metric {y_name} not recognised.")
++    operator = y_candidates[0][0].name
+ 
+     z_axis: Metric | str
+     if len(metrics_list) == 1:  # only y-axis
+         z_axis = z_operator = z_key = ""
+     else:
+         z_axis = resolve_metric(metrics_list[1])
+-        z_operator, z_key = metric_parts(metrics_list[1])
++        z_key = metrics_list[1]
++        if "." in z_key:
++            z_operator, z_key = z_key.split(".")
++        z_candidates = [(owner, entry) for owner, entry in ALL_METRICS if entry.name == z_key]
++        if not z_candidates:
++            raise ValueError(f"Metric {z_key} not recognised.")
++        z_operator = z_candidates[0][0].name
+ 
+     # Initialize title with a default - will be updated once we know paths
+     title = f"{x_axis.capitalize()} of {y_metric.description}"
+@@ -151,7 +175,7 @@ def graph(
+                     continue
+ 
+                 try:
+-                    val = row.get(key)
++                    val = row.get(y_candidates[0][1].name)
+                     if val is None:
+                         continue
+ 
+@@ -161,7 +185,7 @@ def graph(
+                             z_val = row.get(z_key)
+                             z.append(z_val if z_val is not None else 0)
+                         if x_axis == "history":
+-                            x.append(format_datetime(rev["date"]))
++                            x.append(datetime.datetime.fromtimestamp(rev["date"]).isoformat())
+                         else:
+                             x_val = row.get(x_key)
+                             x.append(x_val if x_val is not None else 0)
+@@ -207,3 +231,4 @@ def graph(
+         filename=filename,
+         include_plotlyjs=plotlyjs,  # type: ignore
+     )
++
+diff --git a/src/wily/commands/index.py b/src/wily/commands/index.py
+index 91769ae..d86b8ff 100644
+--- a/src/wily/commands/index.py
++++ b/src/wily/commands/index.py
+@@ -4,6 +4,13 @@ Index command.
+ Print information about the wily cache and what is in the index.
+ """
+ 
++from rich import box
++from rich.console import Console
++from rich.table import Table
++from rich.text import Text
++from wily.helper import BOX_STYLES
++import datetime
++from wily.archivers import ALL_ARCHIVERS
+ import sys
+ from pathlib import Path
+ 
+@@ -37,14 +44,20 @@ def index(
+     logger.info("")
+     logger.info("-----------History------------")
+ 
+-    archivers = list_archivers(config)
++    archivers = [name for name in ALL_ARCHIVERS if (Path(config.cache_path) / name).exists()]
+     if not archivers:
+         logger.error("No wily cache found. Run 'wily build' first.")
+         sys.exit(1)
+ 
+-    data: list[tuple[str, ...]] = []
++    console = Console()
++    table = Table(show_header=True, header_style="bold", box=BOX_STYLES.get(table_style.upper(), box.ROUNDED))
++    table.add_column("Revision", overflow="fold" if wrap else "ignore")
++    table.add_column("Author", overflow="fold" if wrap else "ignore")
++    if include_message:
++        table.add_column("Message", overflow="fold" if wrap else "ignore")
++    table.add_column("Date", overflow="fold" if wrap else "ignore")
+     for archiver in archivers:
+-        parquet_path = get_default_metrics_path(config, archiver)
++        parquet_path = str(Path(config.cache_path) / archiver / "metrics.parquet")
+         if not Path(parquet_path).exists():
+             continue
+ 
+@@ -66,29 +79,12 @@ def index(
+             sorted_revisions = sorted(revisions.values(), key=lambda r: r["date"], reverse=True)
+ 
+             for rev in sorted_revisions:
++                revision = rev["key"][:7]
++                cells = [revision if isinstance(revision, Text) else str(revision), str(rev["author"])]
+                 if include_message:
+                     message = rev["message"] or ""
+-                    data.append(
+-                        (
+-                            format_revision(rev["key"]),
+-                            str(rev["author"]),
+-                            message[:MAX_MESSAGE_WIDTH],
+-                            format_date(rev["date"]),
+-                        )
+-                    )
+-                else:
+-                    data.append(
+-                        (
+-                            format_revision(rev["key"]),
+-                            str(rev["author"]),
+-                            format_date(rev["date"]),
+-                        )
+-                    )
+-
+-    headers: tuple[str, ...]
+-    if include_message:
+-        headers = ("Revision", "Author", "Message", "Date")
+-    else:
+-        headers = ("Revision", "Author", "Date")
+-
+-    print_table(headers=headers, data=data, wrap=wrap, table_style=table_style)
++                    message = message[:MAX_MESSAGE_WIDTH]
++                    cells.append(message if isinstance(message, Text) else str(message))
++                cells.append(datetime.date.fromtimestamp(rev["date"]).isoformat())
++                table.add_row(*cells)
++    console.print(table)
+diff --git a/src/wily/commands/list_metrics.py b/src/wily/commands/list_metrics.py
+index 80c19bf..e4f2295 100644
+--- a/src/wily/commands/list_metrics.py
++++ b/src/wily/commands/list_metrics.py
+@@ -4,6 +4,11 @@ List available metrics across all providers.
+ TODO : Only show metrics for the operators that the cache has?
+ """
+ 
++from rich import box
++from rich.console import Console
++from rich.table import Table
++from rich.text import Text
++from wily.helper import BOX_STYLES
+ from wily.defaults import DEFAULT_TABLE_STYLE
+ from wily.helper import print_table
+ from wily.operators import OPERATOR_METRICS
+@@ -20,13 +25,14 @@ def list_metrics(wrap: bool, table_style: str = DEFAULT_TABLE_STYLE) -> None:
+     for operator, metrics in OPERATOR_METRICS.items():
+         print(f"{operator.name} operator:")
+         if len(metrics) > 0:
+-            data = [
+-                (
+-                    m.name,
+-                    m.description,
+-                    m.metric_type.__name__,
+-                    m.measure,
+-                )
+-                for m in metrics
+-            ]
+-            print_table(headers=headers, data=data, wrap=wrap, table_style=table_style)
++            console = Console()
++            table = Table(show_header=True, header_style="bold", box=BOX_STYLES.get(table_style.upper(), box.ROUNDED))
++            for heading in headers:
++                table.add_column(heading, overflow="fold" if wrap else "ignore")
++            for metric in metrics:
++                identity = [metric.name, metric.description]
++                cells = [value if isinstance(value, Text) else str(value) for value in identity]
++                cells.append(str(metric.metric_type.__name__))
++                cells.append(str(metric.measure))
++                table.add_row(*cells)
++            console.print(table)
+diff --git a/src/wily/commands/rank.py b/src/wily/commands/rank.py
+index c8340e0..51daef9 100644
+--- a/src/wily/commands/rank.py
++++ b/src/wily/commands/rank.py
+@@ -8,6 +8,13 @@ Will compare the values between files and return a sorted table.
+ TODO: Layer on Click invocation in operators section, __main__.py file
+ """
+ 
++from rich import box
++from rich.console import Console
++from rich.table import Table
++from rich.text import Text
++from wily.helper import BOX_STYLES
++import datetime
++from wily.operators import ALL_METRICS
+ import operator as op
+ import os
+ import sys
+@@ -51,12 +58,18 @@ def rank(
+ 
+     data = []
+ 
+-    _operator, resolved_metric = resolve_metric_as_tuple(metric)
+-    operator = _operator.name
++    metric_key = metric
++    if "." in metric_key:
++        _, metric_key = metric_key.split(".")
++    candidates = [(owner, entry) for owner, entry in ALL_METRICS if entry.name == metric_key]
++    if not candidates:
++        raise ValueError(f"Metric {metric_key} not recognised.")
++    operator = candidates[0][0].name
++    resolved_metric = candidates[0][1]
+     archiver = config.archiver or DEFAULT_ARCHIVER
+ 
+     # Get path to parquet index
+-    parquet_path = get_default_metrics_path(config, archiver)
++    parquet_path = str(Path(config.cache_path) / archiver / "metrics.parquet")
+     if not Path(parquet_path).exists():
+         logger.error("Wily cache not found. Run 'wily build' first.")
+         sys.exit(1)
+@@ -94,9 +107,9 @@ def rank(
+         logger.info(
+             "-----------Rank for %s for %s by %s on %s.------------",
+             resolved_metric.description,
+-            format_revision(target_revision_key),
++            target_revision_key[:7],
+             target_revision_author,
+-            format_date(target_revision_date),
++            datetime.date.fromtimestamp(target_revision_date).isoformat(),
+         )
+ 
+         # Build lookup of metrics for target revision: {path: metric_value}
+@@ -133,7 +146,8 @@ def rank(
+                     operator,
+                     str(item),
+                 )
+-                data.append((item, revision_data[item]))
++                value = revision_data[item]
++                data.append((item, value, value if isinstance(value, Text) else str(value)))
+             else:
+                 logger.debug("Could not find file %s in index", item)
+ 
+@@ -147,4 +161,10 @@ def rank(
+         return
+ 
+     headers = ("File", resolved_metric.description)
+-    print_table(headers=headers, data=data, wrap=wrap, table_style=table_style)
++    console = Console()
++    table = Table(show_header=True, header_style="bold", box=BOX_STYLES.get(table_style.upper(), box.ROUNDED))
++    for heading in list(headers):
++        table.add_column(heading, overflow="fold" if wrap else "ignore")
++    for filename, value, display in data:
++        table.add_row(filename if isinstance(filename, Text) else str(filename), display)
++    console.print(table)
+diff --git a/src/wily/commands/report.py b/src/wily/commands/report.py
+index 93c3995..0e4307b 100644
+--- a/src/wily/commands/report.py
++++ b/src/wily/commands/report.py
+@@ -5,6 +5,13 @@ The report command gives a table of metrics for a specified list of files.
+ Will compare the values between revisions and highlight changes in green/red.
+ """
+ 
++from rich import box
++from rich.console import Console
++from rich.table import Table
++from rich.text import Text
++from wily.helper import BOX_STYLES
++import datetime
++from wily.archivers import ALL_ARCHIVERS
+ import pathlib
+ from collections.abc import Iterable
+ from pathlib import Path
+@@ -59,7 +66,14 @@ def report(
+         resolved_metrics = ALL_METRICS
+     else:
+         metrics = sorted(set(metrics))
+-        resolved_metrics = [resolve_metric_as_tuple(metric_name) for metric_name in metrics]
++        resolved_metrics = []
++        for metric_name in metrics:
++            if "." in metric_name:
++                qualifier, metric_name = metric_name.split(".")
++            candidates = [(owner, entry) for owner, entry in ALL_METRICS if entry.name == metric_name]
++            if not candidates:
++                raise ValueError(f"Metric {metric_name} not recognised.")
++            resolved_metrics.append(candidates[0])
+ 
+     logger.debug("Running report command")
+ 
+@@ -67,30 +81,19 @@ def report(
+     metric_metas = []
+     for operator, metric in resolved_metrics:
+         key = metric.name
+-        # Set the delta styles depending on the metric type
+-        if metric.measure == MetricType.AimHigh:
+-            increase_style = STYLE_GREEN
+-            decrease_style = STYLE_RED
+-        elif metric.measure == MetricType.AimLow:
+-            increase_style = STYLE_RED
+-            decrease_style = STYLE_GREEN
+-        elif metric.measure == MetricType.Informational:
+-            increase_style = STYLE_YELLOW
+-            decrease_style = STYLE_YELLOW
+-        else:
+-            increase_style = STYLE_YELLOW
+-            decrease_style = STYLE_YELLOW
+         metric_meta = {
+             "key": key,
+             "operator": operator.name,
+-            "increase_style": increase_style,
+-            "decrease_style": decrease_style,
++            "measure": metric.measure,
+             "title": metric.description,
+             "type": metric.metric_type,
++            "overflow": "fold" if wrap else "ignore",
++            "increase_is_good": metric.measure == MetricType.AimHigh,
++            "decrease_is_good": metric.measure == MetricType.AimLow,
+         }
+         metric_metas.append(metric_meta)
+ 
+-    archivers = list_archivers(config)
++    archivers = [name for name in ALL_ARCHIVERS if (Path(config.cache_path) / name).exists()]
+ 
+     if not archivers:
+         logger.error("No wily cache found. Run 'wily build' first.")
+@@ -149,9 +152,11 @@ def report(
+                                 if delta == 0:
+                                     cell.append(str(delta))
+                                 elif delta < 0:
+-                                    cell.append(f"{delta:n}", style=meta["decrease_style"])
++                                    style = STYLE_GREEN if meta["decrease_is_good"] else STYLE_RED if meta["increase_is_good"] else STYLE_YELLOW
++                                    cell.append(f"{delta:n}", style=style)
+                                 else:
+-                                    cell.append(f"+{delta:n}", style=meta["increase_style"])
++                                    style = STYLE_GREEN if meta["increase_is_good"] else STYLE_RED if meta["decrease_is_good"] else STYLE_YELLOW
++                                    cell.append(f"+{delta:n}", style=style)
+                                 cell.append(")")
+                                 k = cell
+                         else:
+@@ -161,7 +166,7 @@ def report(
+                         k = f"Not found {e}"
+                         delta = 0
+                     deltas.append(delta)
+-                    vals.append(k)
++                    vals.append(k if isinstance(k, Text) else str(k))
+ 
+                 # Build row data
+                 revision_key = row.get("revision", "")
+@@ -172,19 +177,19 @@ def report(
+                 if include_message:
+                     data.append(
+                         (
+-                            format_revision(revision_key),
++                            revision_key[:7],
+                             (message or "")[:MAX_MESSAGE_WIDTH],
+                             str(author or ""),
+-                            format_date(date),
++                            datetime.date.fromtimestamp(date).isoformat(),
+                             *vals,
+                         )
+                     )
+                 else:
+                     data.append(
+                         (
+-                            format_revision(revision_key),
++                            revision_key[:7],
+                             str(author or ""),
+-                            format_date(date),
++                            datetime.date.fromtimestamp(date).isoformat(),
+                             *vals,
+                         )
+                     )
+@@ -202,7 +207,18 @@ def report(
+     if format == ReportFormat.HTML:
+         _render_html_report(output, headers, data)
+     else:
+-        print_table(headers=headers, data=data[::-1], wrap=wrap, table_style=table_style)
++        console = Console()
++        table = Table(show_header=True, header_style="bold", box=BOX_STYLES.get(table_style.upper(), box.ROUNDED))
++        for heading in headers[:len(headers) - len(metric_metas)]:
++            table.add_column(heading, overflow="fold" if wrap else "ignore")
++        for meta in metric_metas:
++            table.add_column(meta["title"], overflow=meta["overflow"])
++        for row in reversed(data):
++            prefix = row[:len(row) - len(metric_metas)]
++            cells = [cell if isinstance(cell, Text) else str(cell) for cell in prefix]
++            cells.extend(row[len(prefix):])
++            table.add_row(*cells)
++        console.print(table)
+ 
+ 
+ def _render_html_report(output: Path, headers: tuple, data: list) -> None:
+@@ -277,3 +293,6 @@ def _render_html_report(output: Path, headers: tuple, data: list) -> None:
+         pass
+ 
+     logger.info("wily report was saved to %s", report_path)
++
++
++

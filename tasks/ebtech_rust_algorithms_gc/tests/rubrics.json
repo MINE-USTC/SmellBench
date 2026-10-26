@@ -1,0 +1,336 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "ebtech_rust_algorithms_gc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "component_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 discovery scratch migration; retry event handoff.",
+      "baseline_defect": "Generic Graph coordinates traversal stack, discovery scratch, incoming edges and component-active stack.",
+      "criterion": "Give connectivity traversal lifecycle and its state handoff a coherent ownership boundary.",
+      "acceptance": "Keep discovery before child processing, edge events including revisits, leave after traversal pop, and component-active vertices that may outlive a traversal frame. Existing ConnectivityData is already cohesive; no extra wrapper is required. Separate recursive algorithms or a shared event kernel both qualify. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "fill_components,advance_traversal",
+          "detail": "Generic Graph coordinates traversal stack, discovery scratch, incoming edges and component-active stack.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "directed_components",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 SCC migration; retry edge/leave propagation.",
+      "baseline_defect": "Generic Graph owns directed low-link and SCC publication policy.",
+      "criterion": "Own strongly connected component decisions within a coherent connectivity operation.",
+      "acceptance": "Keep active-component cc==0 checks on revisits and after child publication, lowlink root detection, vertex-stack publication and exact component numbering. A shared directed/undirected kernel is valid when the differing policies remain clear. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "fill_components",
+          "detail": "Generic Graph owns directed low-link and SCC publication policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "undirected_components",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 BCC migration; retry incoming edge/leave handling.",
+      "baseline_defect": "Generic Graph also owns undirected parent exclusion, pending edges and block publication.",
+      "criterion": "Own biconnected decomposition and its edge-completion rules coherently.",
+      "acceptance": "Preserve reverse-parent exclusion, lower-to-visit for back edges, tree-edge pending order, paired block labels, self-loops and vis[parent]<=low[child] completion. No mandatory separate SCC/BCC classes or duplicated walk. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "fill_components",
+          "detail": "Generic Graph also owns undirected parent exclusion, pending edges and block publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "sat_interpretation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 2-SAT label interpretation.",
+      "baseline_defect": "Generic Graph interprets domain labels supplied by ConnectivityGraph.",
+      "criterion": "Give 2-sat label interpretation a connectivity-oriented responsibility boundary.",
+      "acceptance": "Keep paired literal labels, equal-label unsatisfiability and true<label false assignment ordering. These four interpretation items may be satisfied by the same connectivity owner. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "components_two_sat_assign",
+          "detail": "Generic Graph interprets domain labels supplied by ConnectivityGraph.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "topological_interpretation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 SCC topological result ordering.",
+      "baseline_defect": "Generic Graph interprets domain labels supplied by ConnectivityGraph.",
+      "criterion": "Give scc topological result ordering a connectivity-oriented responsibility boundary.",
+      "acceptance": "Keep all vertex indices and original num_cc-cc sorting semantics; do not add a new tie-order contract. These four interpretation items may be satisfied by the same connectivity owner. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "components_topological_sort",
+          "detail": "Generic Graph interprets domain labels supplied by ConnectivityGraph.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "articulation_interpretation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 Vertex block interpretation.",
+      "baseline_defect": "Generic Graph interprets domain labels supplied by ConnectivityGraph.",
+      "criterion": "Give vertex block interpretation a connectivity-oriented responsibility boundary.",
+      "acceptance": "Keep isolated vertex false and incident edge-block comparison against first edge. These four interpretation items may be satisfied by the same connectivity owner. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "components_is_cut_vertex",
+          "detail": "Generic Graph interprets domain labels supplied by ConnectivityGraph.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "bridge_interpretation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 Bridge interpretation.",
+      "baseline_defect": "Generic Graph interprets domain labels supplied by ConnectivityGraph.",
+      "criterion": "Give bridge interpretation a connectivity-oriented responsibility boundary.",
+      "acceptance": "Keep reverse-endpoint e^1 and forward-endpoint component comparison, supported bounds behavior and edge pairing. These four interpretation items may be satisfied by the same connectivity owner. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "components_is_cut_edge",
+          "detail": "Generic Graph interprets domain labels supplied by ConnectivityGraph.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dinic_levels",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 residual BFS; retry seeds admissible cursors.",
+      "baseline_defect": "Graph storage implementation owns residual level search and augmentation setup.",
+      "criterion": "Own Dinic level-search and its augmentation setup coherently in flow processing.",
+      "acceptance": "Keep residual eligibility and BFS order, unreachable target termination and first admissible-edge semantics. A redesign that computes levels then lazily scans original adjacency is valid if equivalent; seeding cursors during BFS is not mandated. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "network_dinic_search,network_dinic",
+          "detail": "Graph storage implementation owns residual level search and augmentation setup.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dinic_augmentation",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 blocking flow; retry suspended frames.",
+      "baseline_defect": "Graph owns pending flow frames, residual updates and persistent cursor completion.",
+      "criterion": "Give blocking augmentation a flow-specific responsibility and a coherent continuation contract.",
+      "acceptance": "Keep sink limit return, exhausted/satisfied frame totals, paired residual updates, parent accumulation, retained edge when request is full and advancement when more is needed. Restored recursion is valid; no pending-frame type required. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "network_dinic_augment",
+          "detail": "Graph owns pending flow frames, residual updates and persistent cursor completion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cost_potentials",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 initial negative-cost potential preparation.",
+      "baseline_defect": "Generic Graph owns capacity-gated Bellman-Ford potential initialization.",
+      "criterion": "Own minimum-cost potential preparation as part of coherent flow optimization.",
+      "acceptance": "Preserve zero initialization, n-1 ordered passes, positive-capacity edge filtering, signed costs and original arithmetic/panic behavior. This can live in the same owner as subsequent route optimization. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "network_mcf",
+          "detail": "Generic Graph owns capacity-gated Bellman-Ford potential initialization.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cost_route_execution",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 MCF search/augmentation; retry preparation/publication split.",
+      "baseline_defect": "Graph controls potential search, predecessor route construction and outer flow/cost commitment.",
+      "criterion": "Keep minimum-cost route selection and publication under coherent flow ownership across their phase boundary.",
+      "acceptance": "Keep strict relaxation, visitation/potential updates, tie behavior, sink-to-source path, bottleneck before mutation, empty-path stop, paired flow changes and per-path cost before global totals. Joined or separated phases and nonmaterialized predecessor traversal qualify. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "network_mcf_search,network_mcf",
+          "detail": "Graph controls potential search, predecessor route construction and outer flow/cost commitment.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "minimum_cut",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 residual cut interpretation.",
+      "baseline_defect": "Generic Graph owns the flow-specific interpretation of supplied reachability distances.",
+      "criterion": "Give minimum-cut result interpretation a coherent flow boundary.",
+      "acceptance": "Keep input distance meaning, reachable source/unreachable destination test, all directed edge IDs in original order and e^1 source endpoint. Existing FlowGraph method is a sufficient owner. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "network_min_cut",
+          "detail": "Generic Graph owns the flow-specific interpretation of supplied reachability distances.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "network_insertion",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Deepening flow pair publication absorbed into topology owner.",
+      "baseline_defect": "Generic Graph now pushes capacity/cost records and manually links both packed edges.",
+      "criterion": "Own flow-specific edge publication while coordinating topology through a coherent insertion contract.",
+      "acceptance": "Keep cap then reverse cap, cost then negated cost, forward/reverse IDs and adjacency order. Preserve supported partial mutation on failure, including cost negation before topology access and per-direction insertion; do not require transactional validation that changes panic behavior. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "network_add_edge",
+          "detail": "Generic Graph now pushes capacity/cost records and manually links both packed edges.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "disjoint_sets",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 DSU implementation migration.",
+      "baseline_defect": "Graph owns path compression and union for another type unrelated to adjacency.",
+      "criterion": "Place set representative and merge behavior at a cohesive set responsibility.",
+      "acceptance": "Keep compression, representative root attachment pu\u2192pv, merge Boolean and bounds behavior. Direct restoration to DisjointSets is valid; no need to invent interaction with graph/flow. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "set_representative,merge_sets",
+          "detail": "Graph owns path compression and union for another type unrelated to adjacency.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dfs_execution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 resumable iteration; retry shared event stepping.",
+      "baseline_defect": "Graph owns mutation of iterator visited/stack/cursors and filters events for public results.",
+      "criterion": "Give resumable DFS execution a clear traversal responsibility independent of unrelated Graph algorithms.",
+      "acceptance": "Keep cursor consumption before visited filtering, first discovery mark/push before yield, revisit/leave information needed by connectivity, root excluded from discovery output and exhaustion. Shared traversal implementation or independently equivalent traversal implementations qualify; no required event enum or ban on Graph factory methods. Graph may retain compatible entry points delegating to cohesive operations; free functions, existing domain types, shared kernels or composition qualify. No original file layout or extra class is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the mixed implementation to a differently named catch-all owner, or changing only method names/files without a coherent responsibility boundary, is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/graph/engine.rs",
+          "symbol": "next_traversal,advance_traversal",
+          "detail": "Graph owns mutation of iterator visited/stack/cursors and filters events for public results.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "ebtech_rust_algorithms_gc",
+    "case_id": "ebtech--rust-algorithms--god_classes",
+    "aggregation": "equal_weight_per_item",
+    "rubric_status": "limited",
+    "limited_reason": "Nine independent structural obligations are supported. Additional extensional and cross-file formulations of the same connectivity and flow ownership defects would duplicate GC01-GC07; the empty post stage supplies no further defect.",
+    "exclusions": [
+      "The empty post.diff contributes no independent criterion.",
+      "Existing algorithm correctness, compilation, test passage, and preservation of public results are constraints rather than structural score items.",
+      "Historical intentions absent from the final patch and the prior four-item rubric were not copied as criteria.",
+      "Existing directed/undirected and maximum/minimum-cost variations are covered by the connectivity and flow ownership criteria, so they are not scored again as extensibility items."
+    ]
+  }
+}

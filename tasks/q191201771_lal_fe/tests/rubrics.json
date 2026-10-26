@@ -1,0 +1,396 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "q191201771_lal_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "configuration_classification",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R2/R3 nine-family sequence policy.",
+      "baseline_defect": "Foreign RTMP configuration classification policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give configuration classification a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "AVC/classic HEVC require exact key byte+sequence byte; enhanced HEVC configuration requires hvc1 and SequenceStart, not enhanced key-frame bit. AAC requires audio type, codec and sequence type. Cover GOP, dummy, TS/RTSP, group and trace consumers without conflating codec identity, key-NAL and configuration. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/gop_cache.go",
+          "symbol": "Feed",
+          "detail": "Foreign RTMP configuration classification policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "gop_key_transition",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + retry frame/packet intermediates select ring routing.",
+      "baseline_defect": "Foreign RTMP gop key transition policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give gop key transition a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Metadata returns true; configs store caller b without mandatory copy and return. Only gopSize>1 considers key/newGOP versus lastGOP with frame-limit result; enhanced key is frame key and packet not SequenceStart irrespective of FourCC. Preserve classic predicates and slot-before-ring policy. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/gop_cache.go",
+          "symbol": "Feed",
+          "detail": "Foreign RTMP gop key transition policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dummy_sequence_clock",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + stage2 combined retention/first-frame condition.",
+      "baseline_defect": "Foreign RTMP dummy sequence clock policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give dummy sequence clock a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Sequence header always cached during analysis without setting firstVideoTs; first nonconfig sets sentinel, later timestamps use uint32 subtraction and strict wait threshold. Dummy-stage sequence handling keeps synthetic-header ordering and local lifecycle. Coherent filter owner may handle timing while message owner classifies. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/dummy_audio_filter.go",
+          "symbol": "handleAnalysisStage,handleDummyStage",
+          "detail": "Foreign RTMP dummy sequence clock policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "message_retention",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 dummy/probe/RTSP independently owned messages.",
+      "baseline_defect": "Foreign RTMP message retention policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give message retention a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Retained Header copied and payload independently allocated in dummy queue including cache helper, probe queue and RTSP message cache; ASC retains copied payload suffix. Preserve copy-before-discovery/analyze and queue timing. Complete Clone reuse valid; serializers that copy output need not allocate redundant intermediate copy. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts_filter_.go",
+          "symbol": "Push",
+          "detail": "Foreign RTMP message retention policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "codec_interpretation",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1\u20133 + retry codec state across AVPacket/TS/probe.",
+      "baseline_defect": "Foreign RTMP codec interpretation policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give codec interpretation a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Classic low nibble; enhanced hvc1 HEVC otherwise AVC fallback; audio high nibble. TS/probe/AVPacket derive respective outputs without repeating byte logic. Keep group labels sequence-driven and each unsupported-codec action; do not equate unknown enhanced codec fallback with configuration recognition. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "feedVideo",
+          "detail": "Foreign RTMP codec interpretation policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "audio_routing",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2/R3 audio consumers and group stats.",
+      "baseline_defect": "Foreign RTMP audio routing policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give audio routing a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Group AAC label requires sequence header while G711/Opus labels follow codec; TS accepts AAC/Opus and keeps AAC config/cache versus Opus immediate handling. RTSP type/sample-rate discovery only when unknown and existing defaults; audio payload starts at1 for G711/Opus otherwise2. Consumer policy remains distinct. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2rtsp.go",
+          "symbol": "FeedRtmpMsg,remux",
+          "detail": "Foreign RTMP audio routing policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "rtsp_configuration_handoff",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + retry classify/parse/analyzeDone coupling.",
+      "baseline_defect": "Foreign RTMP rtsp configuration handoff policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give rtsp configuration handoff a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Before analysis completion matching AVC/classic/enhanced HEVC parser updates corresponding sets then assertion/doAnalyze; AAC copies ASC then analyzes. After completion recognize and suppress config without reparsing/mutating sets. Other messages retain/cache and analyze normally; no forced unified parser for TS/AVPacket formats. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2rtsp.go",
+          "symbol": "FeedRtmpMsg",
+          "detail": "Foreign RTMP rtsp configuration handoff policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "avpacket_configuration_handoff",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + retry codec branches update AnnexB state.",
+      "baseline_defect": "Foreign RTMP avpacket configuration handoff policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give avpacket configuration handoff a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Configuration assigns parser result including errors then returns; ordinary codec choice drives h2645 iteration and payload type. Retain existing five-byte NAL offset even enhanced; output callback only nonempty and iterator partial/error semantics unchanged. Parsing into separate domain result is optional. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2avpacket.go",
+          "symbol": "feedVideo",
+          "detail": "Foreign RTMP avpacket configuration handoff policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "mpegts_configuration_handoff",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + retry enhanced codec/offset and parser selection.",
+      "baseline_defect": "Foreign RTMP mpegts configuration handoff policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give mpegts configuration handoff a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Keep length/codec gates, AVC and classic/enhanced HEVC parameter-cache parser selection/error logging/early returns before video buffer reset/data split. Recognition alone must not move consumer cache mutations or error paths across frame processing. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "feedVideo",
+          "detail": "Foreign RTMP mpegts configuration handoff policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "coded_payload_boundary",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 + stage2 TS and RTSP enhanced payload slicing.",
+      "baseline_defect": "Foreign RTMP coded payload boundary policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give coded payload boundary a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "TS and RTSP use8 only enhanced hvc1 CodedFrames, otherwise existing5 including CodedFramesX/unknown FourCC. AVPacket remains5. Preserve RTSP optional config injection using existing payload[9:] and stored parameter presence; do not silently fix its offset contract. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2rtsp.go",
+          "symbol": "remux",
+          "detail": "Foreign RTMP coded payload boundary policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "subscriber_key_release",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + retry subscription-local continue/flush/write.",
+      "baseline_defect": "Foreign RTMP subscriber key release policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give subscriber key release a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Both RTMP/HTTPFLV use shared key meaning but keep different release effects: RTMP flush old merged data before clearing wait and shared broadcast; HTTPFLV waiting path writes current key then clears, nonkey skips. Fresh-session handling and normal writes stay ordered; no prescribed new subscriber state object. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/logic/group__core_streaming.go",
+          "symbol": "broadcastByRtmpMsg",
+          "detail": "Foreign RTMP subscriber key release policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "output_key_policy",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 TS key flag and RTSP conditional parameter injection.",
+      "baseline_defect": "Foreign RTMP output key policy policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give output key policy a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "TS frame.Key and RTSP AVC/HEVC injection get message-domain decisions preserving enhanced key policy independent of FourCC. Keep state-dependent parameter presence checks and output-specific actions; same classification can satisfy GOP/subscriber without duplicated implementation. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "feedVideo",
+          "detail": "Foreign RTMP output key policy policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "composition_time",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 wire CTS versus MPEGTS clock.",
+      "baseline_defect": "Foreign RTMP composition time policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give composition time a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "CTS reads24bits at2 for classic/audio; enhanced CodedFrames at5, CodedFramesX0, other packet types warning then0. MPEGTS retains DTS in90k clock and PTS=DTS+90*uint64(CTS), existing call timing after audio flush. Reconnect Cts legitimate. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2mpegts.go",
+          "symbol": "feedVideo",
+          "detail": "Foreign RTMP composition time policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "avpacket_presentation_time",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 uint32 PTS before int64 conversion.",
+      "baseline_defect": "Foreign RTMP avpacket presentation time policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give avpacket presentation time a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Preserve actual Pts contract: TimestampAbs plus unsigned24bits at payload[2:] in uint32 with wrap, then int64. It is not enhanced-aware Cts; do not replace with common DTS+Cts merely to share logic. Existing Pts method is a complete valid owner boundary. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp2avpacket.go",
+          "symbol": "feedVideo",
+          "detail": "Foreign RTMP avpacket presentation time policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "group_codec_dimensions",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + stage2 lazy config discovery.",
+      "baseline_defect": "Foreign RTMP group codec dimensions policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give group codec dimensions a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Interpret video config only when codec missing or either dimension zero; independently fill missing label and parse SPS/dimensions with matching AVC/classic/enhanced HEVC decoder. Preserve parsing failure without label rollback and skip discovery when already complete; do not eagerly decode every message. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/logic/group__core_streaming.go",
+          "symbol": "broadcastByRtmpMsg",
+          "detail": "Foreign RTMP group codec dimensions policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metadata_envelope_removal",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 + retry AMF read/error/prefix shared with FLV.",
+      "baseline_defect": "Foreign RTMP metadata envelope removal policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give metadata envelope removal a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Only exact first AMF string @setDataFrame removes consumed prefix; parse error logs then retains full bytes, other name retains full bytes. RTMP header MsgLen matches resulting payload before default header/chunk serialization; FLV packs type/timestamp/result payload. Each cache commits only on demand and owns independently serialized output; redundant intermediate clone not required. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp.go",
+          "symbol": "GetEnsureWithoutSdf",
+          "detail": "Foreign RTMP metadata envelope removal policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metadata_envelope_addition",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 stage2 lazy RTMP copied payload/header normalization.",
+      "baseline_defect": "Foreign RTMP metadata envelope addition policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give metadata envelope addition a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Metadata with-SDF path protects source payload before normalization, updates resulting message length then default RTMP header before chunks. Preserve normalization error handling and independent with/without caches, nonmetadata uses original data through serializer. Existing message copy and metadata utility reuse valid; do not mandate extra allocations if ownership proven. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/remux/rtmp.go",
+          "symbol": "GetEnsureWithSdf",
+          "detail": "Foreign RTMP metadata envelope addition policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "trace_classification",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 final named-policy rescan explicitly retains diagnostic consumer.",
+      "baseline_defect": "Foreign RTMP trace classification policy is interpreted within consumer state/effect logic.",
+      "criterion": "Give trace classification a coherent message-format responsibility so consumers use domain meaning rather than reconstructing wire rules.",
+      "acceptance": "Only trace-enabled branch examines assembled message; video/AAC sequence headers select128-byte prefix else32. Reuse message-domain classification; do not parse configuration bodies or move diagnostics outside trace gate. Direct predicate reconnection is sufficient, no minimum diff size. Consumer-specific effects may remain local; existing RtmpMsg methods, focused functions or a cohesive decoded representation qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A renamed byte predicate duplicated per consumer or unrelated relocation of entire workflows is insufficient; no compulsory new class, parser result object or ban on existing owner reconnection."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "pkg/rtmp/chunk_composer.go",
+          "symbol": "RunLoop",
+          "detail": "Foreign RTMP trace classification policy is interpreted within consumer state/effect logic.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "q191201771_lal_fe",
+    "aggregation": "equal_weight_per_item",
+    "exclusions": [
+      "No post.diff exists for this revision.",
+      "The rejected extra probe-copy experiment in deepening_log.md is not in the final patch.",
+      "Passing native tests, restoring output behavior, compilation, and cosmetic renames carry no standalone score.",
+      "The chunk trace predicate is a small duplicate covered by the shared configuration classification, not an extra point."
+    ]
+  }
+}

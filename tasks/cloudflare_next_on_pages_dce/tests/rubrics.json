@@ -1,0 +1,349 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "cloudflare_next_on_pages_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "CF_DCE_01",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Action functions are removed from invalidFunctions before i18n reconciliation in the production sequence.",
+      "baseline_defect": "The i18n loop retains action-variant eligibility, a route-override search, and a special ignored-function reason after the earlier action cleanup has retired those entries.",
+      "criterion": "Remove the unreachable action-specific reconciliation from the locale loop while retaining the live locale alternative and override behavior.",
+      "acceptance": "For collected invalid functions, the i18n path no longer carries action-specific candidate selection or action-only state, and ordinary locale candidates still use their valid edge alternative. Direct deletion and simplification are sufficient. Existing supporting helpers may remain when they have live work, or be removed/inlined with their live semantics preserved; their names and return objects are not mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Leaving the same unreachable alternative under a renamed helper or guard is insufficient; deleting a shared live operation is also insufficient. An equivalent redesign preserving supported pipeline behavior qualifies."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts",
+          "symbol": "tryToFixI18nFunctions",
+          "detail": null,
+          "raw": "expanded.diff:invalidFunctions.ts:tryToFixI18nFunctions"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts",
+          "symbol": "tryToFixI18nFunctions",
+          "detail": null,
+          "raw": "interaction_delta.diff:invalidFunctions.ts:tryToFixI18nFunctions"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts",
+          "symbol": "checkInvalidFunctions/fixActionInvalidFuncFunctions",
+          "detail": null,
+          "raw": "environment/smell.diff:invalidFunctions.ts:checkInvalidFunctions/fixActionInvalidFuncFunctions"
+        }
+      ]
+    },
+    {
+      "id": "CF_DCE_02",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The favicon RSC invalid function is handled before the general valid-index alternative pass.",
+      "baseline_defect": "The general index-alternative loop still builds an icon-specific candidate list, override update and reason for an invalid entry already removed upstream.",
+      "criterion": "Retire the unreachable favicon-specific alternative from index reconciliation while preserving the reachable index alternative for edge and prerender functions.",
+      "acceptance": "The later pass has no favicon-only candidate or override mutation and continues to retire invalid entries with a valid index counterpart. Direct deletion and simplification are sufficient. Existing supporting helpers may remain when they have live work, or be removed/inlined with their live semantics preserved; their names and return objects are not mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Leaving the same unreachable alternative under a renamed helper or guard is insufficient; deleting a shared live operation is also insufficient. An equivalent redesign preserving supported pipeline behavior qualifies."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts",
+          "symbol": "tryToFixInvalidFuncsWithValidIndexAlternative",
+          "detail": null,
+          "raw": "expanded.diff:invalidFunctions.ts:tryToFixInvalidFuncsWithValidIndexAlternative"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts",
+          "symbol": "tryToFixInvalidFuncsWithValidIndexAlternative",
+          "detail": null,
+          "raw": "interaction_delta.diff:invalidFunctions.ts:tryToFixInvalidFuncsWithValidIndexAlternative"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/invalidFunctions.ts",
+          "symbol": "fixFaviconInvalidRSCFuncFunction",
+          "detail": null,
+          "raw": "environment/smell.diff:invalidFunctions.ts:fixFaviconInvalidRSCFuncFunction"
+        }
+      ]
+    },
+    {
+      "id": "CF_DCE_03",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The prepared prerender asset is produced only for prerender/filefsref configurations with fsPath, then handed to route validation.",
+      "baseline_defect": "After filefsref validation, getRoutePath still has redirect-only missing-location rejection, redirect.html selection and redirect diagnostics.",
+      "criterion": "Remove the unreachable redirect fallback alternative and its exclusive location/name/diagnostic preparation from validated route-source processing.",
+      "acceptance": "Filefsref source existence checks and missing-file diagnostics remain; redirect-specific alternatives disappear. The validation may be reorganized without preserving a named preparation helper. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Leaving the same unreachable alternative under a renamed helper or guard is insufficient; deleting a shared live operation is also insufficient. An equivalent redesign preserving supported pipeline behavior qualifies."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts",
+          "symbol": "getRoutePath",
+          "detail": null,
+          "raw": "expanded.diff:prerenderFunctions.ts:getRoutePath"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts",
+          "symbol": "resolvePrerenderAsset",
+          "detail": null,
+          "raw": "interaction_delta.diff:configs.ts:resolvePrerenderAsset"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts",
+          "symbol": "getRouteConfig/validateRoute/getRoutePath",
+          "detail": null,
+          "raw": "environment/smell.diff:prerenderFunctions.ts:getRouteConfig/validateRoute/getRoutePath"
+        }
+      ]
+    },
+    {
+      "id": "CF_DCE_04",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "configs.ts constructs the destination route for accepted filefsref assets; prerenderFunctions.ts carries that result through validation and output copying.",
+      "baseline_defect": "getRouteDest retains a missing-fsPath destination branch after the shared producer has required fsPath, duplicating an impossible destination policy across the file handoff.",
+      "criterion": "Use the accepted asset destination consistently from preparation through output destination construction, without a missing-fsPath branch in that lifecycle.",
+      "acceptance": "The producer in configs.ts and consumer in prerenderFunctions.ts agree on a filefsref destination, including fallback-suffix normalization, while the no-path destination route is gone. Direct deletion and simplification are sufficient. Existing supporting helpers may remain when they have live work, or be removed/inlined with their live semantics preserved; their names and return objects are not mandatory. Retaining resolvePrerenderAsset is not required; returning to local destination construction is valid if rejection, suffix normalization and output semantics remain and the impossible no-path branch is gone. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Leaving the same unreachable alternative under a renamed helper or guard is insufficient; deleting a shared live operation is also insufficient. An equivalent redesign preserving supported pipeline behavior qualifies."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts",
+          "symbol": "resolvePrerenderAsset",
+          "detail": null,
+          "raw": "interaction_delta.diff:configs.ts:resolvePrerenderAsset"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts",
+          "symbol": "getRouteDest",
+          "detail": null,
+          "raw": "expanded.diff:prerenderFunctions.ts:getRouteDest"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts",
+          "symbol": "validateRoute/getRouteDest",
+          "detail": null,
+          "raw": "environment/smell.diff:prerenderFunctions.ts:validateRoute/getRouteDest"
+        }
+      ]
+    },
+    {
+      "id": "CF_DCE_05",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "ast.ts registers each identifier with its current entrypoint as a consumer; grouping sorts consumers without deleting them.",
+      "baseline_defect": "The inline path retains detached manifest/webpack/generic source replacement even though current entrypoint membership is guaranteed.",
+      "criterion": "Remove the unreachable detached-identifier source replacement closure while preserving the live single-consumer source.",
+      "acceptance": "The impossible membership-failure branch, replacement-only state and now-unreachable replacement effect disappear. Live source slicing needed for byte accounting remains or is replaced equivalently. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Leaving the same unreachable alternative under a renamed helper or guard is insufficient; deleting a shared live operation is also insufficient. An equivalent redesign preserving supported pipeline behavior qualifies."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processFunctionIdentifiers",
+          "detail": null,
+          "raw": "expanded.diff:dedupeEdgeFunctions.ts:processFunctionIdentifiers"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processFunctionIdentifiers",
+          "detail": null,
+          "raw": "interaction_delta.diff:dedupeEdgeFunctions.ts:processFunctionIdentifiers"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processFunctionIdentifiers",
+          "detail": null,
+          "raw": "environment/smell.diff:dedupeEdgeFunctions.ts:processFunctionIdentifiers"
+        }
+      ]
+    },
+    {
+      "id": "CF_DCE_06",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The same AST consumer registration applies to import identifiers passed to processImportIdentifier.",
+      "baseline_defect": "The import resolver has a false retainImport path that reads local contents, marks it inlined and makes newImportToPrepend optional, spreading an impossible alternative into the caller.",
+      "criterion": "Keep import copying, destination tracking and caller import accumulation aligned with the actual registered-consumer contract, removing the unreachable local-content fallback and its optional return path.",
+      "acceptance": "The impossible local read/inlining return closure and caller absent-import control alternative are removed or made unnecessary by an equivalent flow. Preserve live path mapping, copying, stat accounting and returned import accumulation. Keeping a broader static type alone is not a dead-code failure; no exact return type is prescribed. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Leaving the same unreachable alternative under a renamed helper or guard is insufficient; deleting a shared live operation is also insufficient. An equivalent redesign preserving supported pipeline behavior qualifies."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processImportIdentifier/processFunctionIdentifiers",
+          "detail": null,
+          "raw": "interaction_delta.diff:dedupeEdgeFunctions.ts:processImportIdentifier/processFunctionIdentifiers"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processImportIdentifier",
+          "detail": null,
+          "raw": "environment/smell.diff:dedupeEdgeFunctions.ts:processImportIdentifier"
+        }
+      ]
+    },
+    {
+      "id": "CF_DCE_07",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Collector registration distinguishes edge runtime functions from nodejs invalid functions before edge publication.",
+      "baseline_defect": "The edge loader carries a nodejs server entrypoint selection and CommonJS wrapping policy despite receiving only edgeFunctions.",
+      "criterion": "Keep edge entrypoint reading and normalization focused on edge functions so variation in the existing nodejs invalid-function handling can change at its own registration boundary without modifying edge publication.",
+      "acceptance": "getFunctionFile uses the edge entrypoint and normalizer; server entrypoint selection and CommonJS wrapping are absent from this edge-only consumer. Direct deletion and simplification are sufficient. Existing supporting helpers may remain when they have live work, or be removed/inlined with their live semantics preserved; their names and return objects are not mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Leaving the same unreachable alternative under a renamed helper or guard is insufficient; deleting a shared live operation is also insufficient. An equivalent redesign preserving supported pipeline behavior qualifies."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "getFunctionFile",
+          "detail": null,
+          "raw": "expanded.diff:dedupeEdgeFunctions.ts:getFunctionFile"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "getFunctionFile",
+          "detail": null,
+          "raw": "interaction_delta.diff:dedupeEdgeFunctions.ts:getFunctionFile"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts",
+          "symbol": "collectFunctionConfigsRecursively",
+          "detail": null,
+          "raw": "environment/smell.diff:configs.ts:collectFunctionConfigsRecursively"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "getFunctionFile",
+          "detail": null,
+          "raw": "environment/smell.diff:dedupeEdgeFunctions.ts:getFunctionFile"
+        }
+      ]
+    },
+    {
+      "id": "CF_DCE_08",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Declared edge assets are copied through processBundledAssets; nodejs filePathMap assets belong to the invalid-function side of the existing runtime split.",
+      "baseline_defect": "The edge asset loop constructs server-assets queue entries and selects an unbundled destination and validation policy that no collected edge function can use.",
+      "criterion": "Keep the existing edge asset-copy variation at the declared-asset boundary, without nodejs filePathMap queueing or unbundled destination rules in edge publication.",
+      "acceptance": "Declared config.assets still resolve, validate and copy to the bundled assets output; nodejs-only queue entries, server-assets destinations and validation bypasses are removed. Direct deletion and simplification are sufficient. Existing supporting helpers may remain when they have live work, or be removed/inlined with their live semantics preserved; their names and return objects are not mandatory. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Leaving the same unreachable alternative under a renamed helper or guard is insufficient; deleting a shared live operation is also insufficient. An equivalent redesign preserving supported pipeline behavior qualifies."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processBundledAssets",
+          "detail": null,
+          "raw": "expanded.diff:dedupeEdgeFunctions.ts:processBundledAssets"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processBundledAssets",
+          "detail": null,
+          "raw": "interaction_delta.diff:dedupeEdgeFunctions.ts:processBundledAssets"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/configs.ts",
+          "symbol": "collectFunctionConfigsRecursively",
+          "detail": null,
+          "raw": "environment/smell.diff:configs.ts:collectFunctionConfigsRecursively"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processBundledAssets",
+          "detail": null,
+          "raw": "environment/smell.diff:dedupeEdgeFunctions.ts:processBundledAssets"
+        }
+      ]
+    },
+    {
+      "id": "CF_DCE_09",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage-one inline fallback is separate from redirect, and stage two disperses its source name and diagnostics around shared existence checking.",
+      "baseline_defect": "getRoutePath retains inline index.html selection and inline warning after resolvePrerenderAsset accepts only filefsref.",
+      "criterion": "Remove the unreachable inline fallback source and diagnostic alternatives.",
+      "acceptance": "Keep filefsref route construction, validation and warning behavior. This can be fixed independently of redirect; no new unsupported fallback support is required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only removing the adjacent unrelated dead alternative leaves this one intact."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/prerenderFunctions.ts",
+          "symbol": "getRoutePath",
+          "detail": "getRoutePath retains inline index.html selection and inline warning after resolvePrerenderAsset accepts only filefsref.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "CF_DCE_10",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The original zero-consumer branch set byte length to zero; final moves that possibility into otherwise live single-consumer accounting.",
+      "baseline_defect": "The byteLength update retains a zero-consumer arm even though AST collection guarantees at least the current entrypoint.",
+      "criterion": "Remove the impossible zero-consumer byte-accounting alternative without deleting live single-consumer accounting.",
+      "acceptance": "Preserve the conditional update when a byte length is absent and compute the live source size equivalently. This is separate from source replacement: either can remain after the other is deleted. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only removing the adjacent unrelated dead alternative leaves this one intact."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "packages/next-on-pages/src/buildApplication/processVercelFunctions/dedupeEdgeFunctions.ts",
+          "symbol": "processFunctionIdentifiers",
+          "detail": "The byteLength update retains a zero-consumer arm even though AST collection guarantees at least the current entrypoint.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "cloudflare_next_on_pages_dce",
+    "rubric_status": "ready",
+    "aggregation": "Equal weight per independently reviewed item; legacy eight-item denominator superseded.",
+    "limited_reason": "Historical eight-item assessment superseded by explicit redirect/inline and replacement/accounting separation; original synthesis scope limitations still apply.",
+    "excluded_from_scoring": [
+      "Pre-existing correct locale, index, filefsref and edge behaviors are preservation constraints, not extra credits.",
+      "The filefsref validation predicate is inherited; only new unreachable consumers are scored.",
+      "The TS index-signature change and passing tests are correctness controls, not structural credits.",
+      "post.diff is empty and adds no separate obligation."
+    ]
+  }
+}

@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/carllerche_bytes_isp"
+version = "1.0.0"
+description = "Refactor an injected interface_segregation smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "god_classes", "rust"]
+
+[metadata]
+repo_name = "bytes"
+repo_url = "https://github.com/carllerche/bytes"
+git_commit = "7930d93d583757e922014312d4aa3e58a415131f"
+language = "Rust"
+smell_type = "interface_segregation"
+prompt_mode = "explicit"
+apt_packages = ["build-essential","pkg-config","libssl-dev","cmake"]
+smell_checker_match_count = 4
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 4
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"  # baseline; agent defaults to public networking
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/carllerche/bytes", CC_FORBIDDEN_REPO_URL = "bytes", CC_FORBIDDEN_REPO_NAME = "bytes" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

@@ -1,0 +1,312 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "stevengj_nlopt_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "objective_algorithm_contracts",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R4 actual internal declarations/callers widened.",
+      "baseline_defect": "nlopt_optimize_ depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let objective algorithm contracts clients depend on the capabilities they actually consume.",
+      "acceptance": "Align CRS, MLSL, COBYLA, AUGLAG and CCSA declarations, producers and consumers; objective-only algorithms need no copy/destroy/vector/precondition obligations. Public C/C++/Fortran callback signatures stay supported; CCSA may consume a richer focused combination. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/api/optimize.c",
+          "symbol": "nlopt_optimize_",
+          "detail": "nlopt_optimize_ depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "raw_constraint_dispatch",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 scalar/vector constraint widening.",
+      "baseline_defect": "nlopt_eval_constraint depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let raw constraint dispatch clients depend on the capabilities they actually consume.",
+      "acceptance": "Retain scalar-first choice and scalar result[0] versus vector count, callback data identity and nullable gradient. Raw evaluation requires no multiplier, history, scaling or lifecycle setup; a scalar/vector sum contract is legal, no forced interface per form. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/util/stop.c",
+          "symbol": "nlopt_eval_constraint",
+          "detail": "nlopt_eval_constraint depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "callback_copy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 copy-only clients construct whole evaluation service.",
+      "baseline_defect": "nlopt_copy depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let callback copy clients depend on the capabilities they actually consume.",
+      "acceptance": "Copy hooks receive only existing nonnull data, objective then inequality then equality order. A null copy result follows existing allocation-failure cleanup; preserve tolerance/resource ordering and shared data semantics when hook absent. Can share a lifecycle contract with destroy. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/api/options.c",
+          "symbol": "nlopt_copy",
+          "detail": "nlopt_copy depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "callback_destroy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2/R3 destruction-only clients.",
+      "baseline_defect": "nlopt_destroy,nlopt_remove_equality_constraints,nlopt_remove_inequality_constraints depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let callback destroy clients depend on the capabilities they actually consume.",
+      "acceptance": "Invoke configured destruction including null data when hook exists, objective/inequality/equality order in full destroy; removals affect their own lists before tolerance cleanup. Do not give borrowed algorithm snapshots ownership authority or normalize hook acquisition timing. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/api/options.c",
+          "symbol": "nlopt_destroy,nlopt_remove_equality_constraints,nlopt_remove_inequality_constraints",
+          "detail": "nlopt_destroy,nlopt_remove_equality_constraints,nlopt_remove_inequality_constraints depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "fixed_dimension_mapping",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 + stage2 reconstruct and project defaults.",
+      "baseline_defect": "elimdim_func,elimdim_mfunc depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let fixed dimension mapping clients depend on the capabilities they actually consume.",
+      "acceptance": "Rebuild full coordinates with fixed lb==ub values, preserve scalar full-gradient scratch then free-coordinate projection; vector callback gets its actual arity and null gradient. Generic invocation need not know eliminated coordinates; no required old wrapper names. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/api/optimize.c",
+          "symbol": "elimdim_func,elimdim_mfunc",
+          "detail": "elimdim_func,elimdim_mfunc depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "input_scratch_lifetime",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 objective owns shared scratch; constraints borrow.",
+      "baseline_defect": "elimdim_create,elimdim_destroy depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let input scratch lifetime clients depend on the capabilities they actually consume.",
+      "acceptance": "Only owning objective releases point/gradient once; constraint adapters borrow the same buffers. Preserve creation failure paths, wrapper data cleanup and nested optimizer ownership; a common scoped owner can satisfy mapping too. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/api/optimize.c",
+          "symbol": "elimdim_create,elimdim_destroy",
+          "detail": "elimdim_create,elimdim_destroy depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "maximize_adapter",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/stage2 sign default affects evaluation/precondition.",
+      "baseline_defect": "f_max,pre_max depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let maximize adapter clients depend on the capabilities they actually consume.",
+      "acceptance": "Negate scalar value and requested gradient after original callback; optional precondition output negated after original preconditioner. Preserve nested data and restore original callbacks/signs. A single cohesive maximize adapter may expose both needed operations without lifecycle/vector baggage. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/api/optimize.c",
+          "symbol": "f_max,pre_max",
+          "detail": "f_max,pre_max depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "feasible_best_observer",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2/stage2 history observer default.",
+      "baseline_defect": "memoize_func depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let feasible best observer clients depend on the capabilities they actually consume.",
+      "acceptance": "Call objective first; independently check optional bounds on original x and update only strictly better feasible value, copying point in order. Keep wrapper allocation/restoration and nested maximize semantics; callback-only users need no best-point fields. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/api/optimize.c",
+          "symbol": "memoize_func",
+          "detail": "memoize_func depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "evaluation_accounting",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 CRS/MLSL/AUGLAG count order.",
+      "baseline_defect": "fcount,mlsl_minimize depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let evaluation accounting clients depend on the capabilities they actually consume.",
+      "acceptance": "MLSL indirect local callback increments before invocation; CRS initial/population/trial and AUGLAG wrapper count after. Preserve other direct sample paths and CCSA explicit increments, including gradient recomputation without extra count. Do not impose one universal timing or double-count. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/mlsl/mlsl.c",
+          "symbol": "fcount,mlsl_minimize",
+          "detail": "fcount,mlsl_minimize depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cobyla_coordinates",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry objective prepares shared point consumed by constraints.",
+      "baseline_defect": "func_wrap depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let cobyla coordinates clients depend on the capabilities they actually consume.",
+      "acceptance": "Clamp scaled x to lb/ub then unscale into xtmp before objective; constraint callbacks consume that same prepared point while bound residuals use original x. Forced stop after objective skips constraints. Focused preparation may be outside or inside adapter; no generic input_scale requirement. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/cobyla/cobyla.c",
+          "symbol": "func_wrap",
+          "detail": "func_wrap depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "cobyla_constraint_outputs",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry arity/output layout/sign.",
+      "baseline_defect": "func_wrap depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let cobyla constraint outputs clients depend on the capabilities they actually consume.",
+      "acceptance": "Inequalities negate each component; equalities retain first block and produce opposite block at count offset, advance cursor by count or twice count. Check forced stop immediately after user callback before sign/opposite writes. Preserve scalar/vector arity and original bound residual continuation; raw callbacks need no opposite destination. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/cobyla/cobyla.c",
+          "symbol": "func_wrap",
+          "detail": "func_wrap depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "auglag_shifted_constraints",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry multiplier slices and penalty accumulation.",
+      "baseline_defect": "auglag depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let auglag shifted constraints clients depend on the capabilities they actually consume.",
+      "acceptance": "Use per-component lambda or mu divided by captured rho after callback and only if unforced. Shifted equality contributes always, inequality only >0; derivative uses corresponding raw gradient row and shifted value. Keep cursor across vector constraints; a focused shifted evaluator or algorithm-local transform is sufficient. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/auglag/auglag.c",
+          "symbol": "auglag",
+          "detail": "auglag depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "optional_precondition_capability",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/stage2 CCSA model carries complete services.",
+      "baseline_defect": "gfunc,g0,gi depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let optional precondition capability clients depend on the capabilities they actually consume.",
+      "acceptance": "Model consumes optional preconditioner plus matching data, x0/dx/Hdx and existing scalar model terms. Missing callback skips Hdx use; objective and expanded constraint rows preserve original data, same preconditioner repeated by vector multiplicity. No mandatory fake identity preconditioner or unrelated scalar/copy fields. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/mma/ccsa_quadratic.c",
+          "symbol": "gfunc,g0,gi",
+          "detail": "gfunc,g0,gi depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "precondition_presence_and_workspace",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 optional records govern no_precond and allocation.",
+      "baseline_defect": "ccsa_quadratic_minimize depends on the omnibus callback service and its unrelated default policies.",
+      "criterion": "Let precondition presence and workspace clients depend on the capabilities they actually consume.",
+      "acceptance": "Determine absence across objective and all expanded constraint entries before optional workspace and nested solver path, retain allocation failure/cleanup and borrowed data identity. Capability narrowing must not turn absent callback into present no-op, lose vector rows or acquire callback-data ownership. Shared backing storage, scoped views, callbacks, composition or restoring narrow function/data pairs are valid; an internal aggregate need not be deleted if consumers are insulated. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Type aliases or forwarding wrappers that still require the complete unrelated capability contract are insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/algs/mma/ccsa_quadratic.c",
+          "symbol": "ccsa_quadratic_minimize",
+          "detail": "ccsa_quadratic_minimize depends on the omnibus callback service and its unrelated default policies.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "stevengj_nlopt_isp",
+    "rubric_status": "ready",
+    "scoring": "Equal weight per item; each independently earns 0 or 1.",
+    "excluded_from_scoring": [
+      "post.diff is empty.",
+      "Preserving existing numerical behavior, compilation, test passage, or renaming alone earns no structural credit.",
+      "The force-stop early return is treated as a behavior control, not a separate smell criterion."
+    ]
+  }
+}

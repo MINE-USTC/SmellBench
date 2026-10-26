@@ -1,0 +1,735 @@
+diff --git a/src/docker/custom.rs b/src/docker/custom.rs
+index c07d81a..8502fca 100644
+--- a/src/docker/custom.rs
++++ b/src/docker/custom.rs
+@@ -1,5 +1,5 @@
+ use std::io::Write;
++use std::path::PathBuf;
+-use std::path::{Path, PathBuf};
+ use std::str::FromStr;
+ 
+ use crate::docker::{self, DockerOptions, DockerPaths};
+@@ -87,26 +87,6 @@ impl<'a> Dockerfile<'a> {
+         paths: &DockerPaths,
+         build_args: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+         msg_info: &mut MessageInfo,
+-    ) -> Result<String> {
+-        let package_dirs = paths.directories.package_directories();
+-        let host_root = if package_dirs.workspace_root.starts_with(&package_dirs.cwd) {
+-            package_dirs.cwd.as_path()
+-        } else {
+-            package_dirs.workspace_root.as_path()
+-        };
+-        let build_context = self.context().map(Path::new).unwrap_or(host_root);
+-        self.build_directories(options, &paths.metadata.workspace_root,
+-            &paths.metadata.target_directory, build_context, build_args, msg_info)
+-    }
+-
+-    fn build_directories(
+-        &self,
+-        options: &DockerOptions,
+-        workspace_root: &Path,
+-        target_directory: &Path,
+-        build_context: &Path,
+-        build_args: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+-        msg_info: &mut MessageInfo,
+     ) -> Result<String> {
+         let uses_zig = options.command_variant.uses_zig();
+         let mut docker_build = options.engine.command();
+@@ -124,11 +104,11 @@ impl<'a> Dockerfile<'a> {
+             &format!(
+                 "{}.workspace_root={}",
+                 crate::CROSS_LABEL_DOMAIN,
++                paths.workspace_root().to_utf8()?
+-                workspace_root.to_utf8()?
+             ),
+         ]);
+ 
++        let image_name = self.image_name(options.target.target(), &paths.metadata)?;
+-        let image_name = self.image_name_for_root(options.target.target(), workspace_root)?;
+         docker_build.args(["--tag", &image_name]);
+ 
+         for (key, arg) in build_args {
+@@ -141,10 +121,13 @@ impl<'a> Dockerfile<'a> {
+ 
+         let path = match self {
+             Dockerfile::File { path, .. } => {
++                paths.metadata.workspace_root.join(PathBuf::from(path))
+-                workspace_root.join(PathBuf::from(path))
+             }
+             Dockerfile::Custom { content, .. } => {
++                let target_dir = paths
++                    .metadata
++                    .target_directory
++                    .join(options.target.to_string());
+-                let target_dir = target_directory.join(options.target.to_string());
+                 create_target_dir(&target_dir)?;
+                 let path = target_dir.join(format!("Dockerfile.{}-custom", &options.target));
+                 {
+@@ -180,7 +163,11 @@ impl<'a> Dockerfile<'a> {
+             docker_build.args(["--output", "type=docker"]);
+         };
+ 
++        if let Some(context) = self.context() {
++            docker_build.arg(context);
++        } else {
++            docker_build.arg(paths.host_root());
++        }
+-        docker_build.arg(build_context);
+ 
+         // FIXME: Inspect the error message, while still inheriting stdout on verbose mode to
+         // conditionally apply this suggestion and note. This could then inspect if a help string is emitted,
+@@ -197,10 +184,6 @@ impl<'a> Dockerfile<'a> {
+         target_triple: &TargetTriple,
+         metadata: &CargoMetadata,
+     ) -> Result<String> {
+-        self.image_name_for_root(target_triple, &metadata.workspace_root)
+-    }
+-
+-    fn image_name_for_root(&self, target_triple: &TargetTriple, workspace_root: &Path) -> Result<String> {
+         match self {
+             Dockerfile::File {
+                 name: Some(name), ..
+@@ -208,8 +191,8 @@ impl<'a> Dockerfile<'a> {
+             _ => Ok(format!(
+                 "{}{package_name}:{target_triple}-{path_hash}{custom}",
+                 CROSS_CUSTOM_DOCKERFILE_IMAGE_PREFIX,
++                package_name = docker_package_name(metadata),
++                path_hash = path_hash(&metadata.workspace_root, docker::PATH_HASH_SHORT)?,
+-                package_name = docker_package_name(workspace_root),
+-                path_hash = path_hash(workspace_root, docker::PATH_HASH_SHORT)?,
+                 custom = if matches!(self, Self::File { .. }) {
+                     ""
+                 } else {
+@@ -236,7 +219,7 @@ impl<'a> Dockerfile<'a> {
+     }
+ }
+ 
++fn docker_package_name(metadata: &CargoMetadata) -> String {
+-fn docker_package_name(workspace_root: &Path) -> String {
+     // a valid image name consists of the following:
+     // - lowercase ASCII letters
+     // - digits
+@@ -244,7 +227,8 @@ fn docker_package_name(metadata: &CargoMetadata) -> String {
+     // - 1-2 underscores
+     // - 1 or more hyphens (dashes)
+     docker_tag_name(
++        &metadata
++            .workspace_root
+-        &workspace_root
+             .file_name()
+             .expect("workspace_root can't end in `..`")
+             .to_string_lossy(),
+diff --git a/src/docker/local.rs b/src/docker/local.rs
+index 1ccdaee..5720253 100644
+--- a/src/docker/local.rs
++++ b/src/docker/local.rs
+@@ -36,17 +36,6 @@ pub(crate) fn run(
+     let engine = &options.engine;
+     let toolchain_dirs = paths.directories.toolchain_directories();
+     let package_dirs = paths.directories.package_directories();
+-    let cargo_source = toolchain_dirs.cargo();
+-    let cargo_destination = toolchain_dirs.cargo_mount_path();
+-    let rust_source = toolchain_dirs.get_sysroot();
+-    let rust_destination = toolchain_dirs.sysroot_mount_path();
+-    let project_source = if package_dirs.workspace_root.starts_with(&package_dirs.cwd) {
+-        package_dirs.cwd.as_path()
+-    } else {
+-        package_dirs.workspace_root.as_path()
+-    };
+-    let project_destination = package_dirs.mount_root();
+-    let target_source = package_dirs.target();
+ 
+     let mut cmd = options.command_variant.safe_command();
+     cmd.args(args);
+@@ -92,38 +81,38 @@ pub(crate) fn run(
+             "-v",
+             &format!(
+                 "{}:{}{selinux}",
++                toolchain_dirs.cargo_host_path()?,
++                toolchain_dirs.cargo_mount_path()
+-                cargo_source.to_utf8()?,
+-                cargo_destination
+             ),
+         ])
+         // Prevent `bin` from being mounted inside the Docker container.
++        .args(["-v", &format!("{}/bin", toolchain_dirs.cargo_mount_path())]);
+-        .args(["-v", &format!("{}/bin", cargo_destination)]);
+ 
++    let host_root = paths.mount_finder.find_mount_path(package_dirs.host_root());
+-    let host_root = paths.mount_finder.find_mount_path(project_source);
+     docker.args([
+         "-v",
+         &format!(
+             "{}:{}{selinux}",
+             host_root.to_utf8()?,
++            package_dirs.mount_root()
+-            project_destination
+         ),
+     ]);
+ 
+     let sysroot = paths
+         .mount_finder
++        .find_mount_path(toolchain_dirs.get_sysroot());
+-        .find_mount_path(rust_source);
+     docker
+         .args([
+             "-v",
+             &format!(
+                 "{}:{}{selinux_ro}",
+                 sysroot.to_utf8()?,
++                toolchain_dirs.sysroot_mount_path()
+-                rust_destination
+             ),
+         ])
+         .args([
+             "-v",
++            &format!("{}:/target{selinux}", package_dirs.target().to_utf8()?),
+-            &format!("{}:/target{selinux}", target_source.to_utf8()?),
+         ]);
+     docker.add_cwd(&paths)?;
+ 
+diff --git a/src/docker/remote.rs b/src/docker/remote.rs
+index 98bfbf3..82fb82c 100644
+--- a/src/docker/remote.rs
++++ b/src/docker/remote.rs
+@@ -1,3 +1,4 @@
++use std::collections::BTreeMap;
+ use std::io::{self, BufRead, Read, Write};
+ use std::path::Path;
+ use std::process::{Command, ExitStatus};
+@@ -215,20 +216,18 @@ impl ContainerDataVolume<'_, '_, '_> {
+         copy_registry: bool,
+         msg_info: &mut MessageInfo,
+     ) -> Result<()> {
++        let dirs = &self.toolchain_dirs;
++        let reldst = dirs.cargo_mount_path_relative()?;
+-        let reldst = self.cargo_destination
+-            .strip_prefix('/')
+-            .map(ToOwned::to_owned)
+-            .ok_or_else(|| eyre::eyre!("cargo directory must be relative to root"))?;
+         let copy_registry =
+             env::var("CROSS_REMOTE_COPY_REGISTRY").map_or(copy_registry, |s| bool_from_envvar(&s));
+ 
+         self.create_dir(&reldst, mount_prefix, msg_info)?;
+         if copy_registry {
++            self.copy_files(&dirs.cargo().join("."), &reldst, mount_prefix, msg_info)?;
+-            self.copy_files(&self.cargo_source.join("."), &reldst, mount_prefix, msg_info)?;
+         } else {
+             // can copy a limit subset of files: the rest is present.
++            for entry in fs::read_dir(dirs.cargo())
++                .wrap_err_with(|| format!("when reading directory {:?}", dirs.cargo()))?
+-            for entry in fs::read_dir(self.cargo_source)
+-                .wrap_err_with(|| format!("when reading directory {:?}", self.cargo_source))?
+             {
+                 let file = entry?;
+                 let basename = file
+@@ -248,15 +247,15 @@ impl ContainerDataVolume<'_, '_, '_> {
+     // copy over files needed for all targets in the toolchain that should never change
+     #[track_caller]
+     fn copy_rust_base(&self, mount_prefix: &str, msg_info: &mut MessageInfo) -> Result<()> {
++        let dirs = &self.toolchain_dirs;
++
+         // the rust toolchain is quite large, but most of it isn't needed
+         // we need the bin, libexec, and etc directories, and part of the lib directory.
++        let reldst = dirs.sysroot_mount_path_relative()?;
+-        let reldst = self.rust_destination.strip_prefix('/')
+-            .map(ToOwned::to_owned)
+-            .ok_or_else(|| eyre::eyre!("sysroot directory must be relative to root"))?;
+         let rustlib = "lib/rustlib";
+         self.create_dir(&format!("{reldst}/{}", rustlib), mount_prefix, msg_info)?;
+         for basename in ["bin", "libexec", "etc"] {
++            let file = dirs.get_sysroot().join(basename);
+-            let file = self.toolchain.get_sysroot().join(basename);
+             self.copy_files(&file, &reldst, mount_prefix, msg_info)?;
+         }
+ 
+@@ -270,7 +269,7 @@ impl ContainerDataVolume<'_, '_, '_> {
+         let temppath = tempdir.path();
+         file::create_dir_all(temppath.join(rustlib))?;
+         let mut had_symlinks = copy_dir(
++            &dirs.get_sysroot().join("lib"),
+-            &self.toolchain.get_sysroot().join("lib"),
+             &temppath.join("lib"),
+             true,
+             0,
+@@ -279,7 +278,7 @@ impl ContainerDataVolume<'_, '_, '_> {
+ 
+         // next, copy the src/etc directories inside rustlib
+         had_symlinks |= copy_dir(
++            &dirs.get_sysroot().join(rustlib),
+-            &self.toolchain.get_sysroot().join(rustlib),
+             &temppath.join(rustlib),
+             true,
+             0,
+@@ -292,11 +291,11 @@ impl ContainerDataVolume<'_, '_, '_> {
+ 
+     #[track_caller]
+     fn copy_rust_manifest(&self, mount_prefix: &str, msg_info: &mut MessageInfo) -> Result<()> {
++        let dirs = &self.toolchain_dirs;
++
+         // copy over all the manifest files in rustlib
+         // these are small text files containing names/paths to toolchains
++        let reldst = dirs.sysroot_mount_path_relative()?;
+-        let reldst = self.rust_destination.strip_prefix('/')
+-            .map(ToOwned::to_owned)
+-            .ok_or_else(|| eyre::eyre!("sysroot directory must be relative to root"))?;
+         let rustlib = "lib/rustlib";
+ 
+         // SAFETY: safe, single-threaded execution.
+@@ -304,7 +303,7 @@ impl ContainerDataVolume<'_, '_, '_> {
+         let temppath = tempdir.path();
+         file::create_dir_all(temppath.join(rustlib))?;
+         let had_symlinks = copy_dir(
++            &dirs.get_sysroot().join(rustlib),
+-            &self.toolchain.get_sysroot().join(rustlib),
+             &temppath.join(rustlib),
+             true,
+             0,
+@@ -315,6 +314,45 @@ impl ContainerDataVolume<'_, '_, '_> {
+         warn_symlinks(had_symlinks, msg_info)
+     }
+ 
++    // copy over the toolchain for a specific triple
++    #[track_caller]
++    fn copy_rust_triple(
++        &self,
++        target_triple: &TargetTriple,
++        mount_prefix: &str,
++        skip_exists: bool,
++        msg_info: &mut MessageInfo,
++    ) -> Result<()> {
++        let dirs = &self.toolchain_dirs;
++
++        // copy over the files for a specific triple
++        let reldst = &dirs.sysroot_mount_path_relative()?;
++        let rustlib = "lib/rustlib";
++        let reldst_rustlib = format!("{reldst}/{rustlib}");
++        let src_toolchain = dirs
++            .get_sysroot()
++            .join(Path::new(rustlib))
++            .join(target_triple.triple());
++        let reldst_toolchain = format!("{reldst_rustlib}/{}", target_triple.triple());
++
++        // skip if the toolchain target component already exists. for the host toolchain
++        // or the first run of the target toolchain, we know it doesn't exist.
++        let mut skip = false;
++        if skip_exists {
++            skip = self.container_path_exists(&reldst_toolchain, mount_prefix, msg_info)?;
++        }
++        if !skip {
++            self.copy_files(&src_toolchain, &reldst_rustlib, mount_prefix, msg_info)?;
++        }
++        if !skip && skip_exists {
++            // this means we have a persistent data volume and we have a
++            // new target, meaning we might have new manifests as well.
++            self.copy_rust_manifest(mount_prefix, msg_info)?;
++        }
++
++        Ok(())
++    }
++
+     #[track_caller]
+     pub fn copy_rust(
+         &self,
+@@ -322,17 +360,15 @@ impl ContainerDataVolume<'_, '_, '_> {
+         mount_prefix: &str,
+         msg_info: &mut MessageInfo,
+     ) -> Result<()> {
++        let dirs = &self.toolchain_dirs;
++
+         self.copy_rust_base(mount_prefix, msg_info)?;
+         self.copy_rust_manifest(mount_prefix, msg_info)?;
++        self.copy_rust_triple(dirs.host_target(), mount_prefix, false, msg_info)?;
++        if let Some(target_triple) = target_triple {
++            if target_triple.triple() != dirs.host_target().triple() {
++                self.copy_rust_triple(target_triple, mount_prefix, false, msg_info)?;
++            }
+-        let host = self.toolchain.host().target.triple();
+-        let targets = std::iter::once(host).chain(target_triple
+-            .map(TargetTriple::triple).filter(|target| *target != host));
+-        for target in targets {
+-            let root = self.rust_destination.strip_prefix('/')
+-                .ok_or_else(|| eyre::eyre!("sysroot directory must be relative to root"))?;
+-            let destination = format!("{root}/lib/rustlib");
+-            let source = self.toolchain.get_sysroot().join("lib/rustlib").join(target);
+-            self.copy_files(&source, &destination, mount_prefix, msg_info)?;
+         }
+ 
+         Ok(())
+@@ -360,7 +396,7 @@ impl ContainerDataVolume<'_, '_, '_> {
+                 let parent = temp::dir()?;
+                 file::create_dir_all(&parent)?;
+ 
++                let toolchain = &self.toolchain_dirs.toolchain();
+-                let toolchain = self.toolchain;
+                 let filename = toolchain.unique_mount_identifier(src)?;
+                 let fingerprint = parent.join(filename);
+                 let current = Fingerprint::read_dir(src, copy_cache)?;
+@@ -580,46 +616,30 @@ fn copy_artifacts_from_container(
+ 
+ #[derive(Debug)]
+ struct Fingerprint {
++    map: BTreeMap<String, time::SystemTime>,
+-    paths: Vec<String>,
+-    seconds: Vec<u64>,
+-    nanoseconds: Vec<u32>,
+ }
+ 
+ impl Fingerprint {
+     fn new() -> Self {
+         Self {
++            map: BTreeMap::new(),
+-            paths: Vec::new(),
+-            seconds: Vec::new(),
+-            nanoseconds: Vec::new(),
+         }
+     }
+ 
+     fn read_file(path: &Path) -> Result<Self> {
+         let file = fs::OpenOptions::new().read(true).open(path)?;
+         let reader = io::BufReader::new(file);
++        let mut map = BTreeMap::new();
+-        let mut result = Self::new();
+         for line in reader.lines() {
+             let line = line?;
+             let (timestamp, relpath) = line
+                 .split_once('\t')
+                 .ok_or_else(|| eyre::eyre!("unable to parse fingerprint line '{line}'"))?;
++            let modified = time_from_millis(timestamp.parse::<u64>()?);
++            map.insert(relpath.to_owned(), modified);
+-            let timestamp = timestamp.parse::<u64>()?;
+-            let seconds = timestamp / 1000;
+-            let nanoseconds = ((timestamp % 1000) * 1_000_000) as u32;
+-            match result.paths.binary_search_by(|path| path.as_str().cmp(relpath)) {
+-                Ok(index) => {
+-                    result.seconds[index] = seconds;
+-                    result.nanoseconds[index] = nanoseconds;
+-                }
+-                Err(index) => {
+-                    result.paths.insert(index, relpath.to_owned());
+-                    result.seconds.insert(index, seconds);
+-                    result.nanoseconds.insert(index, nanoseconds);
+-                }
+-            }
+         }
+ 
++        Ok(Self { map })
+-        Ok(result)
+     }
+ 
+     fn write_file(&self, path: &Path) -> Result<()> {
+@@ -628,10 +648,8 @@ impl Fingerprint {
+             .truncate(true)
+             .create(true)
+             .open(path)?;
++        for (relpath, modified) in &self.map {
++            let timestamp = time_to_millis(modified)?;
+-        for (index, relpath) in self.paths.iter().enumerate() {
+-            let timestamp = self.seconds[index] as u128 * 1000
+-                + (self.nanoseconds[index] / 1_000_000) as u128;
+-            let timestamp = timestamp as u64;
+             writeln!(file, "{timestamp}\t{relpath}")?;
+         }
+ 
+@@ -651,20 +669,9 @@ impl Fingerprint {
+                 // we're mounting to the same location, so this should fine
+                 // we need to round the modified date to millis.
+                 let modified = file.metadata()?.modified()?;
++                let rounded = time_from_millis(time_to_millis(&modified)?);
+-                time_to_millis(&modified)?;
+-                let elapsed = modified.duration_since(time::UNIX_EPOCH)?;
+                 let relpath = file.path().strip_prefix(home)?.as_posix_relative()?;
++                self.map.insert(relpath, rounded);
+-                match self.paths.binary_search(&relpath) {
+-                    Ok(index) => {
+-                        self.seconds[index] = elapsed.as_secs();
+-                        self.nanoseconds[index] = elapsed.subsec_nanos();
+-                    }
+-                    Err(index) => {
+-                        self.paths.insert(index, relpath);
+-                        self.seconds.insert(index, elapsed.as_secs());
+-                        self.nanoseconds.insert(index, elapsed.subsec_nanos());
+-                    }
+-                }
+             }
+         }
+ 
+@@ -679,27 +686,18 @@ impl Fingerprint {
+ 
+     // returns to_copy (added + modified) and to_remove (removed).
+     fn difference<'a, 'b>(&'a self, current: &'b Fingerprint) -> (Vec<&'b str>, Vec<&'a str>) {
++        let to_copy: Vec<&str> = current
++            .map
++            .iter()
++            .filter(|(k, v1)| self.map.get(*k).is_none_or(|v2| v1 != &v2))
++            .map(|(k, _)| k.as_str())
++            .collect();
++        let to_remove: Vec<&str> = self
++            .map
++            .iter()
++            .filter(|(k, _)| !current.map.contains_key(*k))
++            .map(|(k, _)| k.as_str())
++            .collect();
+-        let mut to_copy = Vec::new();
+-        let mut to_remove = Vec::new();
+-        let mut previous = 0;
+-        for (index, path) in current.paths.iter().enumerate() {
+-            while previous < self.paths.len() && self.paths[previous] < *path {
+-                to_remove.push(self.paths[previous].as_str());
+-                previous += 1;
+-            }
+-            let same_path = previous < self.paths.len() && self.paths[previous] == *path;
+-            let observed = (current.seconds[index] as u128 * 1000
+-                + (current.nanoseconds[index] / 1_000_000) as u128) as u64;
+-            if !same_path || observed != (self.seconds[previous] as u128 * 1000
+-                + (self.nanoseconds[previous] / 1_000_000) as u128) as u64
+-            {
+-                to_copy.push(path.as_str());
+-            }
+-            if same_path {
+-                previous += 1;
+-            }
+-        }
+-        to_remove.extend(self.paths[previous..].iter().map(String::as_str));
+         (to_copy, to_remove)
+     }
+ }
+@@ -753,17 +751,6 @@ pub(crate) fn run(
+     let target = &options.target;
+     let toolchain_dirs = paths.directories.toolchain_directories();
+     let package_dirs = paths.directories.package_directories();
+-    let project_source = if package_dirs.workspace_root.starts_with(&package_dirs.cwd) {
+-        package_dirs.cwd.as_path()
+-    } else {
+-        package_dirs.workspace_root.as_path()
+-    };
+-    let project_destination = package_dirs.mount_root();
+-    let target_source = package_dirs.target();
+-    let cargo_source = toolchain_dirs.cargo();
+-    let cargo_destination = toolchain_dirs.cargo_mount_path();
+-    let rust_source = toolchain_dirs.get_sysroot();
+-    let rust_destination = toolchain_dirs.sysroot_mount_path();
+ 
+     let mount_prefix = MOUNT_PREFIX;
+ 
+@@ -909,22 +896,13 @@ pub(crate) fn run(
+             .wrap_err("when copying rust")?;
+     } else {
+         // need to copy over the target triple if it hasn't been previously copied
++        data_volume
++            .copy_rust_triple(target.target(), mount_prefix, true, msg_info)
++            .wrap_err("when copying rust target files")?;
+-        let mut copy_target = || -> Result<()> {
+-            let root = rust_destination.strip_prefix('/')
+-                .ok_or_else(|| eyre::eyre!("sysroot directory must be relative to root"))?;
+-            let destination = format!("{root}/lib/rustlib/{}", target.target().triple());
+-            if !data_volume.container_path_exists(&destination, mount_prefix, msg_info)? {
+-                let source = rust_source.join("lib/rustlib").join(target.target().triple());
+-                let parent = format!("{root}/lib/rustlib");
+-                data_volume.copy_files(&source, &parent, mount_prefix, msg_info)?;
+-                data_volume.copy_rust_manifest(mount_prefix, msg_info)?;
+-            }
+-            Ok(())
+-        };
+-        copy_target().wrap_err("when copying rust target files")?;
+     }
+     // cannot panic: absolute unix path, must have root
++    let rel_mount_root = package_dirs
++        .mount_root()
+-    let rel_mount_root = project_destination
+         .strip_prefix('/')
+         .expect("mount root should be absolute");
+     if !rel_mount_root.is_empty() {
+@@ -936,35 +914,31 @@ pub(crate) fn run(
+             )
+             .wrap_err("when creating mount root")?;
+     }
++    copy(package_dirs.host_root(), rel_mount_root, msg_info).wrap_err("when copying project")?;
++    let sysroot = toolchain_dirs.get_sysroot().to_owned();
+-    copy(project_source, rel_mount_root, msg_info).wrap_err("when copying project")?;
+-    let sysroot = rust_source.to_owned();
+     let mut copied = vec![
+         (
++            toolchain_dirs.cargo(),
++            toolchain_dirs.cargo_mount_path_relative()?,
+-            cargo_source,
+-            cargo_destination.strip_prefix('/')
+-                .map(ToOwned::to_owned)
+-                .ok_or_else(|| eyre::eyre!("cargo directory must be relative to root"))?,
+         ),
++        (&sysroot, toolchain_dirs.sysroot_mount_path_relative()?),
++        (package_dirs.host_root(), rel_mount_root.to_owned()),
+-        (&sysroot, rust_destination.strip_prefix('/')
+-            .map(ToOwned::to_owned)
+-            .ok_or_else(|| eyre::eyre!("sysroot directory must be relative to root"))?),
+-        (project_source, rel_mount_root.to_owned()),
+     ];
+     let mut to_symlink = vec![];
++    let target_dir = file::canonicalize(package_dirs.target())?;
++    let target_dir = if let Ok(relpath) = target_dir.strip_prefix(package_dirs.host_root()) {
+-    let target_dir = file::canonicalize(target_source)?;
+-    let target_dir = if let Ok(relpath) = target_dir.strip_prefix(project_source) {
+         relpath.as_posix_relative()?
+     } else {
+         // outside project, need to copy the target data over
+         // only do if we're copying over cached files.
+         let target_dir = "target".to_owned();
+         if copy_cache {
++            copy(package_dirs.target(), &target_dir, msg_info)?;
+-            copy(target_source, &target_dir, msg_info)?;
+         } else {
+             data_volume.create_dir(&target_dir, mount_prefix, msg_info)?;
+         }
+ 
++        copied.push((package_dirs.target(), target_dir.clone()));
+-        copied.push((target_source, target_dir.clone()));
+         target_dir
+     };
+     for (src, dst) in &volumes {
+@@ -1111,17 +1085,18 @@ symlink_recurse \"${{prefix}}\"
+         docker.run_and_get_output_streamed(msg_info, |line| !is_cargo_json_message(line))?;
+     // Per-artifact copies should land inside the host target directory
+     // itself, e.g. <project>/target/<triple>/debug/<bin>.
++    let host_target_dir = package_dirs.target().to_owned();
+-    let host_target_dir = target_source.to_owned();
+     // `docker cp` of a directory into an existing directory creates
+     // <dest>/<source-basename>, so the full-directory fallback must use
+     // the project root to reproduce <project>/target.
++    let host_root_dir = package_dirs
++        .target()
+-    let host_root_dir = target_source
+         .parent()
+         .expect("target directory should have a parent");
+ 
+     // 7. copy data from our target dir back to host
+     bail_container_exited!();
++    let mount_target_dir = format!("{}/{}", package_dirs.mount_root(), target_dir);
+-    let mount_target_dir = format!("{}/{}", project_destination, target_dir);
+ 
+     if !skip_artifacts
+         && data_volume.container_path_exists(&mount_target_dir, mount_prefix, msg_info)?
+diff --git a/src/docker/shared.rs b/src/docker/shared.rs
+index 773de8a..70c81a7 100644
+--- a/src/docker/shared.rs
++++ b/src/docker/shared.rs
+@@ -370,8 +370,7 @@ impl ToolchainDirectories {
+ #[derive(Debug)]
+ pub struct PackageDirectories {
+     target: PathBuf,
++    host_root: PathBuf,
+-    pub(crate) workspace_root: PathBuf,
+-    pub(crate) cwd: PathBuf,
+     // both mount fields are WSL paths on windows: they already are POSIX paths
+     mount_root: String,
+     mount_cwd: String,
+@@ -403,8 +402,7 @@ impl PackageDirectories {
+         Ok((
+             PackageDirectories {
+                 target: mount_finder.find_mount_path(target),
++                host_root,
+-                workspace_root: metadata.workspace_root.clone(),
+-                cwd: cwd.to_owned(),
+                 mount_root,
+                 mount_cwd,
+             },
+@@ -417,11 +415,7 @@ impl PackageDirectories {
+     }
+ 
+     pub fn host_root(&self) -> &Path {
++        &self.host_root
+-        if self.workspace_root.starts_with(&self.cwd) {
+-            &self.cwd
+-        } else {
+-            &self.workspace_root
+-        }
+     }
+ 
+     pub fn mount_root(&self) -> &str {
+@@ -647,10 +641,7 @@ impl Drop for ChildContainer {
+ pub struct ContainerDataVolume<'a, 'b, 'c> {
+     pub(crate) engine: &'a Engine,
+     pub(crate) container: &'b str,
++    pub(crate) toolchain_dirs: &'c ToolchainDirectories,
+-    pub(crate) cargo_source: &'c PathBuf,
+-    pub(crate) cargo_destination: &'c String,
+-    pub(crate) rust_destination: &'c String,
+-    pub(crate) toolchain: &'c QualifiedToolchain,
+ }
+ 
+ impl<'a, 'b, 'c> ContainerDataVolume<'a, 'b, 'c> {
+@@ -662,10 +653,7 @@ impl<'a, 'b, 'c> ContainerDataVolume<'a, 'b, 'c> {
+         Self {
+             engine,
+             container,
++            toolchain_dirs,
+-            cargo_source: &toolchain_dirs.cargo,
+-            cargo_destination: &toolchain_dirs.cargo_mount_path,
+-            rust_destination: &toolchain_dirs.sysroot_mount_path,
+-            toolchain: &toolchain_dirs.toolchain,
+         }
+     }
+ }
+@@ -1462,9 +1450,7 @@ fn dockerinfo_parse_user_mounts(info: &serde_json::Value) -> Vec<MountDetail> {
+ 
+ #[derive(Debug, Default)]
+ pub struct MountFinder {
++    mounts: Vec<MountDetail>,
+-    sources: Vec<PathBuf>,
+-    destinations: std::collections::BTreeMap<PathBuf, Vec<usize>>,
+-    lengths: Vec<usize>,
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+@@ -1475,14 +1461,14 @@ struct MountDetail {
+ 
+ impl MountFinder {
+     fn new(mounts: Vec<MountDetail>) -> MountFinder {
++        // sort by length (reverse), to give mounts with more path components a higher priority;
++        let mut mounts = mounts;
++        mounts.sort_by(|a, b| {
++            let la = a.destination.as_os_str().len();
++            let lb = b.destination.as_os_str().len();
++            la.cmp(&lb).reverse()
++        });
++        MountFinder { mounts }
+-        let mut finder = MountFinder::default();
+-        for mount in mounts {
+-            let index = finder.sources.len();
+-            finder.lengths.push(mount.destination.as_os_str().len());
+-            finder.destinations.entry(mount.destination).or_default().push(index);
+-            finder.sources.push(mount.source);
+-        }
+-        finder
+     }
+ 
+     pub fn create(engine: &Engine, msg_info: &mut MessageInfo) -> Result<MountFinder> {
+@@ -1495,22 +1481,14 @@ impl MountFinder {
+ 
+     pub fn find_mount_path(&self, path: impl AsRef<Path>) -> PathBuf {
+         let path = path.as_ref();
++
++        for info in &self.mounts {
++            if let Ok(stripped) = path.strip_prefix(&info.destination) {
++                return info.source.join(stripped);
+-        let mut selected: Option<(usize, &Path)> = None;
+-        for destination in path.ancestors().chain(std::iter::once(Path::new(""))) {
+-            if let Some(indices) = self.destinations.get(destination) {
+-                for &index in indices {
+-                    if selected.is_none_or(|(previous, _)| {
+-                        self.lengths[index] > self.lengths[previous]
+-                            || (self.lengths[index] == self.lengths[previous] && index < previous)
+-                    }) {
+-                        selected = Some((index, destination));
+-                    }
+-                }
+             }
+         }
++
++        path.to_path_buf()
+-        selected.map_or_else(|| path.to_path_buf(), |(index, destination)| {
+-            self.sources[index].join(path.strip_prefix(destination).expect("ancestor prefix"))
+-        })
+     }
+ 
+     fn find_path(&self, path: &Path, host: bool) -> Result<String> {

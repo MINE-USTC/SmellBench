@@ -1,0 +1,462 @@
+diff --git a/gspread/_records.py b/gspread/_records.py
+deleted file mode 100644
+index 3acc788..0000000
+--- a/gspread/_records.py
++++ /dev/null
+@@ -1,48 +0,0 @@
+-"""Worksheet record utilities."""
+-
+-from .exceptions import GSpreadException
+-
+-
+-class HeaderColumns:
+-    def __init__(self, keys):
+-        self.positions = {}
+-        for position, key in enumerate(keys):
+-            self.positions.setdefault(key, []).append(position)
+-
+-    def duplicates(self):
+-        return [key for key, positions in self.positions.items() if len(positions) > 1]
+-
+-    def records(self, values):
+-        records = []
+-        for row in values:
+-            record = {}
+-            for key, positions in self.positions.items():
+-                for position in reversed(positions):
+-                    if position < len(row):
+-                        record[key] = row[position]
+-                        break
+-            records.append(record)
+-        return records
+-
+-
+-def record_headers(keys, expected_headers):
+-    columns = HeaderColumns(keys)
+-    candidates = columns if expected_headers is None else HeaderColumns(expected_headers)
+-    duplicates = candidates.duplicates()
+-    if duplicates:
+-        if expected_headers is None:
+-            raise GSpreadException(
+-                f"the header row in the worksheet contains duplicates: {duplicates}"
+-                "To manually set the header row, use the `expected_headers` "
+-                "parameter of `get_all_records()`"
+-            )
+-        raise GSpreadException(
+-            f"the given 'expected_headers' contains duplicates: {duplicates}"
+-        )
+-    unknown = candidates.positions.keys() - columns.positions.keys()
+-    if unknown:
+-        raise GSpreadException(
+-            "the given 'expected_headers' contains unknown headers: "
+-            f"{unknown}"
+-        )
+-    return columns
+diff --git a/gspread/_request.py b/gspread/_request.py
+deleted file mode 100644
+index 6c7ea05..0000000
+--- a/gspread/_request.py
++++ /dev/null
+@@ -1,11 +0,0 @@
+-"""Request body utilities."""
+-
+-from json import dumps
+-
+-
+-def prepare_body(data, payload, headers, serializer):
+-    if serializer is not None and payload is not None:
+-        data = dumps(dict(payload), default=serializer)
+-        payload = None
+-        headers = {**(headers or {}), "Content-Type": "application/json"}
+-    return data, payload, headers
+diff --git a/gspread/_validation.py b/gspread/_validation.py
+deleted file mode 100644
+index 76076cc..0000000
+--- a/gspread/_validation.py
++++ /dev/null
+@@ -1,49 +0,0 @@
+-"""Value and coordinate utilities."""
+-
+-from .exceptions import IncorrectCellLabel
+-
+-
+-class CellMatch:
+-    def __init__(self, match):
+-        self.match = match
+-        self.letters = iter((match.group(1) or "").upper())
+-        self.column_value = 0
+-
+-    def group(self, index):
+-        return self.match.group(index)
+-
+-    def groups(self):
+-        return self.match.groups()
+-
+-    @property
+-    def column(self):
+-        for character in self.letters:
+-            self.column_value = self.column_value * 26 + ord(character) - 64
+-        return self.column_value
+-
+-
+-def cell_match(pattern, label):
+-    match = pattern.match(label)
+-    if match is None:
+-        raise IncorrectCellLabel(label)
+-    return CellMatch(match)
+-
+-
+-def positive_coordinates(row, col):
+-    if row < 1 or col < 1:
+-        raise IncorrectCellLabel("({}, {})".format(row, col))
+-    return row, col
+-
+-
+-def ordered_axes(start_row, start_col, end_row, end_col):
+-    if start_row > end_row:
+-        start_row, end_row = end_row, start_row
+-    if start_col > end_col:
+-        start_col, end_col = end_col, start_col
+-    return start_row, start_col, end_row, end_col
+-
+-
+-def column_digits(column):
+-    while column:
+-        column, remainder = divmod(column - 1, 26)
+-        yield remainder + 1
+diff --git a/gspread/_values.py b/gspread/_values.py
+deleted file mode 100644
+index 3066ac4..0000000
+--- a/gspread/_values.py
++++ /dev/null
+@@ -1,93 +0,0 @@
+-"""Cell value utilities."""
+-
+-
+-class NumericToken:
+-    def __init__(self, value, allow_underscores):
+-        self.result = value
+-        self.text = None
+-        if not isinstance(value, str):
+-            return
+-        self.text = value.replace("_", "") if allow_underscores else value
+-        if "_" in self.text:
+-            return
+-        cleaned = self.text.replace(",", "")
+-        for convert in (int, float):
+-            try:
+-                self.result = convert(cleaned)
+-            except ValueError:
+-                continue
+-            self.text = None
+-            break
+-
+-
+-def numeric_token(value, allow_underscores):
+-    return NumericToken(value, allow_underscores)
+-
+-
+-def numeric_slots(values, ignored):
+-    return [index for index in range(len(values)) if index + 1 not in ignored]
+-
+-
+-def hex_channel(value):
+-    return int(value, 16) / 255
+-
+-
+-class ColorToken:
+-    def __init__(self, value):
+-        value = value.lstrip("#")
+-        if len(value) == 8:
+-            value = value[:-2]
+-        if len(value) == 3:
+-            value = "".join(char * 2 for char in value)
+-        if len(value) != 6:
+-            raise ValueError("Hex color code must be in the format '#RRGGBB'.")
+-        self.text = value
+-        self.parts = tuple(
+-            zip(("red", "green", "blue"), (value[0:2], value[2:4], value[4:6]))
+-        )
+-        self.channels = {}
+-        self.position = 0
+-        for name, part in self.parts:
+-            try:
+-                channel = hex_channel(part)
+-            except ValueError:
+-                break
+-            self.channels[name] = channel
+-            self.position += 1
+-
+-    def pending(self):
+-        return iter(self.parts[self.position:])
+-
+-
+-def color_token(value):
+-    return ColorToken(value)
+-
+-
+-def color_channels(red, green, blue):
+-    channels = (red, green, blue)
+-    if any(value < 0 or value > 1 for value in channels):
+-        raise ValueError("Color value out of accepted range 0-1.")
+-    return channels
+-
+-
+-class MatrixRows:
+-    def __init__(self, values, rows, cols):
+-        self.width = max(len(row) for row in values) if cols is None else cols
+-        self.height = len(values) if rows is None else max(rows, len(values))
+-        self.remaining = self.height
+-        self.source = iter(values)
+-        self.blank = []
+-
+-    def __iter__(self):
+-        return self
+-
+-    def __next__(self):
+-        if self.remaining <= 0:
+-            raise StopIteration
+-        row = next(self.source, self.blank)
+-        self.remaining -= 1
+-        return row
+-
+-
+-def matrix_rows(values, rows, cols):
+-    return MatrixRows(values, rows, cols)
+diff --git a/gspread/http_client.py b/gspread/http_client.py
+index 5a66c77..f5aa3a4 100644
+--- a/gspread/http_client.py
++++ b/gspread/http_client.py
+@@ -30,7 +30,6 @@ from google.auth.transport.requests import AuthorizedSession
+ from requests import Response, Session
+ 
+ from .exceptions import APIError, UnSupportedExportFormat
+-from ._request import prepare_body
+ from .urls import (
+     DRIVE_FILES_API_V3_URL,
+     DRIVE_FILES_UPLOAD_API_V2_URL,
+@@ -117,7 +116,6 @@ class HTTPClient:
+         headers: Optional[MutableMapping[str, str]] = None,
+         default_serializer: DefaultSerializerType = None,
+     ) -> Response:
+-        data, json, headers = prepare_body(data, json, headers, default_serializer)
+         if default_serializer is not None and json is not None:
+             data = json_dumps(dict(json), default=default_serializer)
+             json = None
+diff --git a/gspread/utils.py b/gspread/utils.py
+index 89efd4a..1256196 100644
+--- a/gspread/utils.py
++++ b/gspread/utils.py
+@@ -33,15 +33,6 @@ from google.oauth2.credentials import Credentials as UserCredentials
+ from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+ 
+ from .exceptions import IncorrectCellLabel, InvalidInputValue, NoValidUrlKeyFound
+-from ._validation import cell_match, positive_coordinates, ordered_axes, column_digits
+-from ._values import (
+-    numeric_token,
+-    numeric_slots,
+-    color_token,
+-    color_channels,
+-    matrix_rows,
+-    hex_channel,
+-)
+ 
+ if TYPE_CHECKING:
+     from .cell import Cell
+@@ -285,9 +276,7 @@ def numericise(
+     >>> numericise(None)
+     >>>
+     """
++    numericised: Optional[Union[int, float, AnyStr]] = value
+-    token = numeric_token(value, allow_underscores_in_numeric_literals)
+-    numericised: Optional[Union[int, float, AnyStr]] = token.result
+-    value = token.text
+     if isinstance(value, str):
+         if "_" in value:
+             if not allow_underscores_in_numeric_literals:
+@@ -334,9 +323,8 @@ def numericise_all(
+     # in case someone explicitly passes `None` as ignored list
+     ignore = ignore or []
+ 
++    numericised_list = [
++        (
+-    numericised_list = list(values)
+-    for index in numeric_slots(values, ignore):
+-        numericised_list[index] = (
+             values[index]
+             if index + 1 in ignore
+             else numericise(
+@@ -346,6 +334,8 @@ def numericise_all(
+                 allow_underscores_in_numeric_literals=allow_underscores_in_numeric_literals,
+             )
+         )
++        for index in range(len(values))
++    ]
+ 
+     return numericised_list
+ 
+@@ -369,14 +359,14 @@ def rowcol_to_a1(row: int, col: int) -> str:
+     A1
+ 
+     """
+-    row, col = positive_coordinates(row, col)
+     if row < 1 or col < 1:
+         raise IncorrectCellLabel("({}, {})".format(row, col))
+ 
+     div = col
+     column_label = ""
+ 
++    while div:
++        div, mod = divmod(div, 26)
+-    for mod in column_digits(div):
+         if mod == 0:
+             mod = 26
+             div -= 1
+@@ -402,13 +392,13 @@ def a1_to_rowcol(label: str) -> Tuple[int, int]:
+     (1, 1)
+ 
+     """
++    m = CELL_ADDR_RE.match(label)
+-    m = cell_match(CELL_ADDR_RE, label)
+     if m:
+         column_label = m.group(1).upper()
+         row = int(m.group(2))
+ 
++        col = 0
++        for i, c in enumerate(reversed(column_label)):
+-        col = m.column
+-        for i, c in enumerate(m.letters):
+             col += (ord(c) - MAGIC_NUMBER) * (26**i)
+     else:
+         raise IncorrectCellLabel(label)
+@@ -458,14 +448,14 @@ def _a1_to_rowcol_unbounded(label: str) -> Tuple[IntOrInf, IntOrInf]:
+     (inf, inf)
+ 
+     """
++    m = A1_ADDR_ROW_COL_RE.match(label)
+-    m = cell_match(A1_ADDR_ROW_COL_RE, label)
+     if m:
+         column_label, row = m.groups()
+ 
+         col: IntOrInf
+         if column_label:
++            col = 0
++            for i, c in enumerate(reversed(column_label.upper())):
+-            col = m.column
+-            for i, c in enumerate(m.letters):
+                 col += (ord(c) - MAGIC_NUMBER) * (26**i)
+         else:
+             col = float("inf")
+@@ -523,10 +513,6 @@ def a1_range_to_grid_range(name: str, sheet_id: Optional[int] = None) -> Dict[st
+ 
+     end_row_index, end_column_index = _a1_to_rowcol_unbounded(end_label or start_label)
+ 
+-    start_row_index, start_column_index, end_row_index, end_column_index = ordered_axes(
+-        start_row_index, start_column_index, end_row_index, end_column_index
+-    )
+-
+     if start_row_index > end_row_index:
+         start_row_index, end_row_index = end_row_index, start_row_index
+ 
+@@ -697,15 +683,15 @@ def fill_gaps(
+     :rtype: list[list[T]]:
+     """
+     try:
++        max_cols = max(len(row) for row in L) if cols is None else cols
++        max_rows = len(L) if rows is None else rows
++
++        pad_rows = max_rows - len(L)
+-        prepared = matrix_rows(L, rows, cols)
+-        max_cols = prepared.width
+-        L = [rightpad(row, max_cols, padding_value=padding_value) for row in prepared]
+-        pad_rows = prepared.remaining
+ 
+         if pad_rows:
+             L = L + ([[]] * pad_rows)
+ 
++        return [rightpad(row, max_cols, padding_value=padding_value) for row in L]
+-        return L
+     except ValueError:
+         return [[]]
+ 
+@@ -885,8 +871,6 @@ def convert_hex_to_colors_dict(hex_color: str) -> Mapping[str, float]:
+         {'red': 0.2, 'green': 0.0, 'blue': 0.8}
+ 
+     """
+-    token = color_token(hex_color)
+-    hex_color = token.text
+     hex_color = hex_color.lstrip("#")
+ 
+     # Google API ColorStyle Reference:
+@@ -903,10 +887,11 @@ def convert_hex_to_colors_dict(hex_color: str) -> Mapping[str, float]:
+         raise ValueError("Hex color code must be in the format '#RRGGBB'.")
+ 
+     try:
++        rgb_color = {
++            "red": int(hex_color[0:2], 16) / 255,
++            "green": int(hex_color[2:4], 16) / 255,
++            "blue": int(hex_color[4:6], 16) / 255,
++        }
+-        rgb_color = token.channels
+-        for name, part in token.pending():
+-            channel = hex_channel(part)
+-            rgb_color[name] = channel
+ 
+         return rgb_color
+     except ValueError as ex:
+@@ -944,7 +929,6 @@ def convert_colors_to_hex_value(
+         hex_value = hex(round(value * 255))[2:]
+         return hex_value.upper().zfill(2)
+ 
+-    red, green, blue = color_channels(red, green, blue)
+     if any(value < 0 or value > 1 for value in (red, green, blue)):
+         raise ValueError("Color value out of accepted range 0-1.")
+ 
+diff --git a/gspread/worksheet.py b/gspread/worksheet.py
+index dee0a5b..9dbe668 100644
+--- a/gspread/worksheet.py
++++ b/gspread/worksheet.py
+@@ -30,7 +30,6 @@ from typing import (
+ )
+ 
+ from .cell import Cell
+-from ._records import record_headers
+ from .exceptions import GSpreadException
+ from .http_client import DefaultSerializerType, HTTPClient, ParamsType
+ from .urls import WORKSHEET_DRIVE_URL
+@@ -62,6 +61,7 @@ from .utils import (
+     is_full_a1_notation,
+     numericise_all,
+     rowcol_to_a1,
++    to_records,
+ )
+ 
+ if TYPE_CHECKING is True:
+@@ -509,7 +509,8 @@ class Worksheet:
+         dictionaries holding the contents of subsequent rows of cells as
+         values.
+ 
++        This method uses the function :func:`gspread.utils.to_records` to build the resulting
++        records. It mainly wraps around the function and handles the simplest use case
+-        This method uses the header columns to build the resulting records,
+         using a header row (default = 1) and the rest of the entire sheet.
+ 
+         .. note::
+@@ -570,8 +571,6 @@ class Worksheet:
+         keys = entire_sheet[head - 1]
+         values = entire_sheet[head:]
+ 
+-        columns = record_headers(keys, expected_headers)
+-
+         def get_dupes(items):
+             counts = Counter(items)
+             return [item for item in counts if counts[item] > 1]
+@@ -611,7 +610,7 @@ class Worksheet:
+                 for row in values
+             ]
+ 
++        return to_records(keys, values)
+-        return columns.records(values)
+ 
+     def get_all_cells(self) -> List[Cell]:
+         """Returns a list of all `Cell` of the current sheet."""

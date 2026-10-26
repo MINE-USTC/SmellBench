@@ -1,0 +1,613 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "divyam234_teldrive_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "single_access",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Round two expands single-access return and all live consumers.",
+      "baseline_defect": "Owner/root/Owned become a positional tuple selected independently by file, content, upload and view handlers.",
+      "criterion": "Keep the related single-file access facts coherent across resolution and consumers.",
+      "acceptance": "Preserve actor-versus-owner, edit/read checks, public-content bypass and actor-scoped view state. Read-only consumers may project only the owner. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_access.go",
+          "symbol": "resolveAuthenticatedFileAccess",
+          "detail": "Owner/root/Owned become a positional tuple selected independently by file, content, upload and view handlers.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_core.go",
+          "symbol": "MoveFile,TrashFile",
+          "detail": "Owner/root/Owned become a positional tuple selected independently by file, content, upload and view handlers.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_domains.go",
+          "symbol": "CopyFile",
+          "detail": "Owner/root/Owned become a positional tuple selected independently by file, content, upload and view handlers.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_view_states.go",
+          "symbol": "GetFileViewState",
+          "detail": "Owner/root/Owned become a positional tuple selected independently by file, content, upload and view handlers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "bulk_access_contract",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage two moves same-owner interpretation into bulk handlers.",
+      "baseline_defect": "Owners, roots and Owned slices are paired by request index and common owner reconstructed separately.",
+      "criterion": "Give bulk consumers an aligned authorization result and coherent common-owner decision.",
+      "acceptance": "Keep request ordering, empty-input rejection, root-trash restriction, destination-owner comparison and fallback semantics. Per-item records or a batch abstraction are valid. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_parity.go",
+          "symbol": "resolveAuthenticatedFileAccessMany,BulkMoveFiles,BulkTrashFiles",
+          "detail": "Owners, roots and Owned slices are paired by request index and common owner reconstructed separately.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "catalog_scope",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1/R3 disperse API selection and catalog scope/path/default state.",
+      "baseline_defect": "Owner,scope,recursive-root,parent,path,status and bookmark constraints travel as loose state into a long advanced call.",
+      "criterion": "Keep listing location and scope interpretation cohesive through API, catalog and query adaptation.",
+      "acceptance": "Keep recursive parent-to-root mapping, bookmarked drive rules, path conflicts, ownership and validation order. An existing ListInput can carry the data. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_core.go",
+          "symbol": "ListFiles",
+          "detail": "Owner,scope,recursive-root,parent,path,status and bookmark constraints travel as loose state into a long advanced call.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/service.go",
+          "symbol": "List",
+          "detail": "Owner,scope,recursive-root,parent,path,status and bookmark constraints travel as loose state into a long advanced call.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/advanced.go",
+          "symbol": "listAdvanced",
+          "detail": "Owner,scope,recursive-root,parent,path,status and bookmark constraints travel as loose state into a long advanced call.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "catalog_filters",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 advanced filtering becomes scalar query lineage; R3 expands API producer.",
+      "baseline_defect": "Kind/categories/time bounds/search mode/defaults are independently copied between API, List and advanced SQL adaptation.",
+      "criterion": "Give listing filter preparation and adaptation a coherent data boundary.",
+      "acceptance": "Keep optional kind, category validation, nil-to-empty SQL categories, ordered time bounds and regex validation without imposing a filter class. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_core.go",
+          "symbol": "ListFiles",
+          "detail": "Kind/categories/time bounds/search mode/defaults are independently copied between API, List and advanced SQL adaptation.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/service.go",
+          "symbol": "List",
+          "detail": "Kind/categories/time bounds/search mode/defaults are independently copied between API, List and advanced SQL adaptation.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/advanced.go",
+          "symbol": "listAdvanced",
+          "detail": "Kind/categories/time bounds/search mode/defaults are independently copied between API, List and advanced SQL adaptation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "catalog_cursor",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage two moves legacy value fallback into route selection; typed cursor adaptation remains downstream.",
+      "baseline_defect": "ID/name/value/sort/order are carried separately across raw routing and typed SQL conversion.",
+      "criterion": "Keep sort-dependent pagination interpretation cohesive from decoded cursor to query/publication.",
+      "acceptance": "Preserve raw AfterValue deciding basic versus advanced before fallback, fallback only with ID and non-id sort, typed name/time/size conversion, id ignoring value, API sort/scope/fingerprint checks and wire cursor. No unconditional cursor normalization. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_core.go",
+          "symbol": "ListFiles",
+          "detail": "ID/name/value/sort/order are carried separately across raw routing and typed SQL conversion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/service.go",
+          "symbol": "List",
+          "detail": "ID/name/value/sort/order are carried separately across raw routing and typed SQL conversion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/advanced.go",
+          "symbol": "listAdvanced",
+          "detail": "ID/name/value/sort/order are carried separately across raw routing and typed SQL conversion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "bulk_locked_facts",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 decomposes locked file rows.",
+      "baseline_defect": "lockedPositions plus lockedNames/lockedKinds require callers to synchronize identity and metadata for cycle/conflict decisions.",
+      "criterion": "Keep locked-file identity, original name and kind coherently accessible during bulk planning.",
+      "acceptance": "Keep missing-target and ancestor-folder checks; records, keyed views or encapsulated columns are valid. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/bulk.go",
+          "symbol": "bulkMove",
+          "detail": "lockedPositions plus lockedNames/lockedKinds require callers to synchronize identity and metadata for cycle/conflict decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "bulk_name_plan",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Stage two retains planned names in lock order until publication in caller order.",
+      "baseline_defect": "plannedNames uses lock-row indexes while SQL names must align with request IDs.",
+      "criterion": "Own the file-ID to selected-name association through conflict planning and database publication.",
+      "acceptance": "Resolve conflicts in caller order and preserve replacement/invalidation timing. A focused identity-aware ordering adapter is valid; lock and caller order need not become identical. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/bulk.go",
+          "symbol": "bulkMove,MoveFilesWithNames",
+          "detail": "plannedNames uses lock-row indexes while SQL names must align with request IDs.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "purge_nodes",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 splits subtree nodes; stage two stores selected source-row indexes instead of depths.",
+      "baseline_defect": "Selected file metadata and max-depth provenance span maps and aligned nodeFiles/nodeRows.",
+      "criterion": "Keep selected subtree node identity, metadata and depth provenance coherent until bottom-up deletion.",
+      "acceptance": "Choose maximum-depth row per overlapping ID with existing tie behavior, retain trashed-root refusal, pending state and external deletion before catalog transaction. A retained row reference can be as valid as storing depth directly. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/fileops/service.go",
+          "symbol": "PurgeMany",
+          "detail": "Selected file metadata and max-depth provenance span maps and aligned nodeFiles/nodeRows.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "share_access_rows",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 splits Access row state into four maps before result materialization.",
+      "baseline_defect": "Owner,root,permission and Owned must be synchronized by key before rebuilding ordered Access pointers.",
+      "criterion": "Maintain one coherent per-target access decision during batch resolution.",
+      "acceptance": "Keep deduplicated lookup, output request order, duplicate requested IDs sharing result pointer and forbidden/not-found distinction. Private columns can be encapsulated rather than banned. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "ResolveAccessMany",
+          "detail": "Owner,root,permission and Owned must be synchronized by key before rebuilding ordered Access pointers.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metadata_update",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 metadata mutation plus continuation separates payload and presence.",
+      "baseline_defect": "Pointers, has-flags and zero-default payloads are independently managed through preflight, SQL Valid fields and no-row classification.",
+      "criterion": "Keep nullable metadata edit presence and values cohesive through validation, publication and error classification.",
+      "acceptance": "Name empty, explicit zero time and generation pointer-to-zero differ from absence; generation presence controls precondition errors. Preserve value reads after preflight and invalidation timing. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/update.go",
+          "symbol": "Update",
+          "detail": "Pointers, has-flags and zero-default payloads are independently managed through preflight, SQL Valid fields and no-row classification.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_core.go",
+          "symbol": "UpdateFile",
+          "detail": "Pointers, has-flags and zero-default payloads are independently managed through preflight, SQL Valid fields and no-row classification.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "upload_page",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 expands upload-session listing service fields and R3 expands API producers.",
+      "baseline_defect": "The API and domain unpack and reconstruct related selection/cursor/limit state independently.",
+      "criterion": "Keep upload-session listing request and pagination state cohesive across its producer and SQL consumer.",
+      "acceptance": "Keep independently nullable date/ID domain inputs, state filtering and default100/cap200. API sets the pair for nonzero cursor ID; SQL gates on date. Next-page comparison keeps API-requested limit semantics. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_core.go",
+          "symbol": "ListUploads,List",
+          "detail": "The API and domain unpack and reconstruct related selection/cursor/limit state independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/uploads/list.go",
+          "symbol": "ListUploads,List",
+          "detail": "The API and domain unpack and reconstruct related selection/cursor/limit state independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "part_page",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 expands upload-part listing service fields and R3 expands API producers.",
+      "baseline_defect": "The API and domain unpack and reconstruct related selection/cursor/limit state independently.",
+      "criterion": "Keep upload-part listing request and pagination state cohesive across its producer and SQL consumer.",
+      "acceptance": "Keep owner/upload authorization before default100/cap200, optional single part-number bound, API positive-number selection and next-cursor behavior. Do not invent a multi-field part cursor. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_core.go",
+          "symbol": "ListUploadParts,ListParts",
+          "detail": "The API and domain unpack and reconstruct related selection/cursor/limit state independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/uploads/list.go",
+          "symbol": "ListUploadParts,ListParts",
+          "detail": "The API and domain unpack and reconstruct related selection/cursor/limit state independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "share_page",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 expands share-link listing service fields and R3 expands API producers.",
+      "baseline_defect": "The API and domain unpack and reconstruct related selection/cursor/limit state independently.",
+      "criterion": "Keep share-link listing request and pagination state cohesive across its producer and SQL consumer.",
+      "acceptance": "Keep owner/file validation before default100/cap200, independently nullable date/ID service inputs, SQL date-gated continuation and API next-page condition. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_domains.go",
+          "symbol": "ListFileShares,List",
+          "detail": "The API and domain unpack and reconstruct related selection/cursor/limit state independently.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "ListFileShares,List",
+          "detail": "The API and domain unpack and reconstruct related selection/cursor/limit state independently.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "share_password",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2/R3 raw password plus clear intent becomes independent API/service locals.",
+      "baseline_defect": "The password update intent is repeatedly decomposed across API decoding, service validation and SQL publication.",
+      "criterion": "Keep the password update value and operation intent cohesive across the update flow.",
+      "acceptance": "Keep absent/set/clear conflict, trimmed nonempty password, hashing only after current-record checks and SQL hash/clear agreement. Keep overall no-op rejection and optional permission validation in the combined update. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_parity.go",
+          "symbol": "UpdateShare",
+          "detail": "The password update intent is repeatedly decomposed across API decoding, service validation and SQL publication.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "Update",
+          "detail": "The password update intent is repeatedly decomposed across API decoding, service validation and SQL publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "share_expiry",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2/R3 expiry value and clear intent become independent API/service locals.",
+      "baseline_defect": "The expiry update intent is repeatedly decomposed across API decoding, service validation and SQL publication.",
+      "criterion": "Keep the expiry update value and operation intent cohesive across the update flow.",
+      "acceptance": "Keep absent/set/clear distinction, current-clock validation before lookup and existing clear conflict/error order. Keep overall no-op rejection and optional permission validation in the combined update. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_parity.go",
+          "symbol": "UpdateShare",
+          "detail": "The expiry update intent is repeatedly decomposed across API decoding, service validation and SQL publication.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "Update",
+          "detail": "The expiry update intent is repeatedly decomposed across API decoding, service validation and SQL publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "share_quota",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2/R3 optional limit and clear intent cross preflight, current DownloadCount and SQL independently.",
+      "baseline_defect": "The download-limit update intent is repeatedly decomposed across API decoding, service validation and SQL publication.",
+      "criterion": "Keep the download-limit update value and operation intent cohesive across the update flow.",
+      "acceptance": "Keep positive limit, rejection below durable count, clear/set conflicts and original lookup timing. Keep overall no-op rejection and optional permission validation in the combined update. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_parity.go",
+          "symbol": "UpdateShare",
+          "detail": "The download-limit update intent is repeatedly decomposed across API decoding, service validation and SQL publication.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "Update",
+          "detail": "The download-limit update intent is repeatedly decomposed across API decoding, service validation and SQL publication.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "public_listing",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R1 scalarizes public listing inputs through private adapter.",
+      "baseline_defect": "Token/password/path/search/cursor/limit travel as a positional list through root resolution and catalog handoff.",
+      "criterion": "Keep public listing request data coherent through credential and root-scoped path resolution.",
+      "acceptance": "Keep resolved owner/root confinement and public folder cursor semantics; do not add authenticated drive/recursive fingerprints. The original PublicListInput is a valid short repair. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_parity.go",
+          "symbol": "ListPublicShareFiles",
+          "detail": "Token/password/path/search/cursor/limit travel as a positional list through root resolution and catalog handoff.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "ListPublicFiles,listPublicPage",
+          "detail": "Token/password/path/search/cursor/limit travel as a positional list through root resolution and catalog handoff.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "folder_creation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R3 aliases creation metadata through parent validation/default time/publication.",
+      "baseline_defect": "Owner,parent,name and requested time shadow the existing creation input as separately maintained fields.",
+      "criterion": "Keep folder creation data and derived timestamp cohesive through validation and persistence.",
+      "acceptance": "Preserve parent lookup before now, zero-time default and UTC conversion; this default must not be applied to explicit zero Update time. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/service.go",
+          "symbol": "CreateFolder",
+          "detail": "Owner,parent,name and requested time shadow the existing creation input as separately maintained fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "share_creation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 creation fields and stage-two raw permission validation versus effective publication.",
+      "baseline_defect": "Share identity/password/expiry/quota/permission shadow the request, with raw empty permission interpreted separately from published default.",
+      "criterion": "Keep share creation options and effective permission coherent through preflight and persistence.",
+      "acceptance": "Preserve raw empty as default-read at creation, owner lookup, token/password effects and optional expiry/quota order. Existing CreateInput with coherent derived values is valid. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "Create",
+          "detail": "Share identity/password/expiry/quota/permission shadow the request, with raw empty permission interpreted separately from published default.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "grant_creation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 grant creation and stage-two raw/effective permission split.",
+      "baseline_defect": "Owner/file/grantee/permission/expiry are independently copied through eligibility, recipient lookup and SQL.",
+      "criterion": "Keep grant creation identity and options coherent through validation and publication.",
+      "acceptance": "Keep owner!=grantee, recipient enabled check, lookup order, expiry and empty permission default; do not couple grants to link passwords/quotas. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "CreateGrant",
+          "detail": "Owner/file/grantee/permission/expiry are independently copied through eligibility, recipient lookup and SQL.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "grant_update",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "R2 expands GrantUpdateInput into separate permission/expiry/clear/identity fields.",
+      "baseline_defect": "The grant update cohort is decomposed for no-op/conflict checks and independently reconstructed for SQL.",
+      "criterion": "Keep grant update identity and optional edit intent cohesive through validation and SQL.",
+      "acceptance": "Preserve no-op/permission/clock/clear validation and not-found mapping. Empty explicitly provided permission is invalid here, unlike creation default. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "UpdateGrant",
+          "detail": "The grant update cohort is decomposed for no-op/conflict checks and independently reconstructed for SQL.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "search_identity",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Continuation separates raw cursor fingerprint search from effective query text.",
+      "baseline_defect": "rawSearch/querySearch and scope-specific normalization are coordinated independently between API and catalog paths.",
+      "criterion": "Keep raw identity and effective search semantics connected by a coherent query interpretation.",
+      "acceptance": "Fingerprint original raw text; non-folder query uses trimmed text including direct domain calls; advanced folder trims and basic folder retains nonempty raw text. Equivalent focused functions or existing DTOs are legal; no forced two-value object. Reuse of existing public DTOs/Access, focused adapters or equivalent cohesive operations is valid. Encapsulated parallel storage is allowed if callers do not independently maintain its alignment or presence invariant. No required whole-row database model. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming scattered fields or merely forwarding the same positional field pack leaves the relationship dispersed. A real focused conversion may qualify even if short and even if it copies fields internally."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_core.go",
+          "symbol": "ListFiles",
+          "detail": "rawSearch/querySearch and scope-specific normalization are coordinated independently between API and catalog paths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/service.go",
+          "symbol": "List",
+          "detail": "rawSearch/querySearch and scope-specific normalization are coordinated independently between API and catalog paths.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/catalog/advanced.go",
+          "symbol": "listAdvanced",
+          "detail": "rawSearch/querySearch and scope-specific normalization are coordinated independently between API and catalog paths.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "divyam234_teldrive_dc",
+    "rubric_status": "ready",
+    "scoring": "Each item has equal weight; score only independent structural repairs present in the final injected patch.",
+    "excluded_from_scoring": [
+      "The empty post.diff adds no repair obligation.",
+      "Permission normalization timing in share and grant creation and the resulting behavior are correctness controls, not independent data-clump credits.",
+      "Successful compilation, tests, behavior preservation, and cosmetic renaming alone earn no structural credit."
+    ]
+  }
+}

@@ -1,0 +1,410 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "salarcode_smartproxy_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "file_acquisition",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Rounds1/3 + retry FileReader reject dispatch.",
+      "baseline_defect": "The file_acquisition client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let file acquisition depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "FileReader readAsText yields reader.result on load and original event on error. Preserve rule/legacy try-catch around parsing versus proxy no shared outer catch; optional fail noops. Acquisition needs loaded/error handoff, not auth/persistence/country. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/RuleImporter.ts",
+          "symbol": "importRulesBatch,importAutoProxy,readFile",
+          "detail": "The file_acquisition client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "importRulesBatch,importAutoProxy,readFile",
+          "detail": "The file_acquisition client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "request_preparation",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2 + retry bound config/default dispatch.",
+      "baseline_defect": "The request_preparation client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let request preparation depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Use actual rule/proxy source, mark special iff applyProxy!==null (undefined still qualifies), before authorization/fetch. Truthy username builds Basic btoa(username+colon+atob(password)); GET/no-store and caller headers preserved. Rule request no headers when no user; proxy passes empty headers. Auth errors keep synchronous behavior. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ProxyImporter.ts",
+          "symbol": "readFromServer,requestSubscription",
+          "detail": "The request_preparation client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "readFromServer,requestSubscription",
+          "detail": "The request_preparation client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "remote_response_policy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round2/4 nested remote-import completion.",
+      "baseline_defect": "The remote_response_policy client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let remote response policy depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Proxy accepts only status200, otherwise Error(status,statusText); rules reads text regardless status. Rule empty response rejects and returns; proxy empty response rejects then still calls importText. Nested unsuccessful results route fail, successful route success; do not normalize to exactly-once or shared status gate. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/RuleImporter.ts",
+          "symbol": "readFromServerAndImport",
+          "detail": "The remote_response_policy client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "readFromServerAndImport",
+          "detail": "The remote_response_policy client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "encoding_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Rounds1/3 + retry rules/proxy encoding selection.",
+      "baseline_defect": "The encoding_policy client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let encoding policy depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Case-insensitive base64 only; rules Unicode decode and exception routed by caller catch, proxies byte atob and parse returns null on decode error. Absent encoding leaves text, rule config dereference behavior retained. Focused encoding utility may support both without country/network capabilities. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ProxyImporter.ts",
+          "symbol": "parseText,parseJson,decodeSubscription",
+          "detail": "The encoding_policy client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "parseText,parseJson,decodeSubscription",
+          "detail": "The encoding_policy client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "proxy_format_defaults",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 text/JSON parser default capabilities.",
+      "baseline_defect": "The proxy_format_defaults client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let proxy format defaults depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "JSON selected only configured Json enum; text default protocol truthy configured value else HTTP. Keep text input checks, parser-specific grammar/format behavior and options passed to parsers. Plain parsing needs no completion/file/persistence machinery. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ProxyImporter.ts",
+          "symbol": "importText,parseText,proxyJson,proxyProtocol",
+          "detail": "The proxy_format_defaults client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "importText,parseText,proxyJson,proxyProtocol",
+          "detail": "The proxy_format_defaults client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "proxy_validation",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 validation through broad factory.",
+      "baseline_defect": "The proxy_validation client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let proxy validation depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "JSON records copy supported fields then existing Settings.validateProxyServer(item,true).success filters each; errors follow parseJson catch/null. Reuse actual validation policy via direct call or focused dependency, no added rule/country obligations. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ProxyImporter.ts",
+          "symbol": "parseJson,validateProxy",
+          "detail": "The proxy_validation client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "parseJson,validateProxy",
+          "detail": "The proxy_validation client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "proxy_duplicate_policy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round1 proxy identity and append.",
+      "baseline_defect": "The proxy_duplicate_policy client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let proxy duplicate policy depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Imported identity compares host/port/username/password using existing loose equality, not protocol/name. Keep first retained entries/order; append copies current array and filters against current proxies, replace returns imported list. Identity policy belongs near import; generic unique helper may be shared. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ProxyImporter.ts",
+          "symbol": "importText,unique",
+          "detail": "The proxy_duplicate_policy client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "importText,unique",
+          "detail": "The proxy_duplicate_policy client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "legacy_rule_duplicates",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round3 legacy conversion/strict identity.",
+      "baseline_defect": "The legacy_rule_duplicates client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let legacy rule duplicates depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Convert only successful legacy patterns then dedup with strict pattern===; preserve conversion/order and existing append behavior. Original append some callback lacks return, so it does not suppress current duplicates; do not silently fix unrelated logic while narrowing dependencies. Existing generic helper is a valid complete repair. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/RuleImporter.ts",
+          "symbol": "importAutoProxy,unique",
+          "detail": "The legacy_rule_duplicates client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "importAutoProxy,unique",
+          "detail": "The legacy_rule_duplicates client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "result_localization",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Rounds1/3 result messages.",
+      "baseline_defect": "The result_localization client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let result localization depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Keep keys/count substitutions per path: rule black/whitelist count or filtered/parsed totals; proxy append newlyadded/imported versus replace imported/parsed; legacy appended/parsed. Localization needs no transport/decoder/update services. Result policy may share owner with completion. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/RuleImporter.ts",
+          "symbol": "importRulesBatch,importAutoProxy,message",
+          "detail": "The result_localization client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "importRulesBatch,importAutoProxy,message",
+          "detail": "The result_localization client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "completion_dispatch",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round4 bound success/fail defaults used across paths.",
+      "baseline_defect": "The completion_dispatch client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let completion dispatch depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Preserve supplied callback ownership, optional callback no-op, missing source fail, remote missing mandatory success throw, exact result/error objects and existing catches. Rule success exceptions may be caught by its parse scope while proxy direct-text behavior differs; no global swallowing/exactly-once wrapper or required bound context. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ProxyImporter.ts",
+          "symbol": "importText,complete,reject",
+          "detail": "The completion_dispatch client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "importText,complete,reject",
+          "detail": "The completion_dispatch client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "subscription_update_lifecycle",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round5 + retry stats/save/notify/postsave.",
+      "baseline_defect": "The subscription_update_lifecycle client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let subscription update lifecycle depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Consumers validate response/mutate lists+count before stats; failure updates stats/error without saves/followup. Success saveProxyServerSubscriptions then saveAllSync(false); rules notify after saves, server country work after save fire-and-forget. A focused update coordinator may compose whole lifecycle without file/parser/request capabilities. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SubscriptionUpdater.ts",
+          "symbol": "readServerSubscription,readRulesSubscription,finishUpdate",
+          "detail": "The subscription_update_lifecycle client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "readServerSubscription,readRulesSubscription,finishUpdate",
+          "detail": "The subscription_update_lifecycle client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "country_address_resolution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round5 DNS/IP capability.",
+      "baseline_defect": "The country_address_resolution client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let country address resolution depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Skip existing country/no host, isIPRelaxed decides DNS; resolve through PolyFill with empty options, sequential await first address, missing/failure skips. Original proxy references remain; no unrelated file/rule config required. Coherent enrichment owner can also apply countries. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SubscriptionUpdater.ts",
+          "symbol": "updateProxyServersCountryCode,resolveHost",
+          "detail": "The country_address_resolution client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "updateProxyServersCountryCode,resolveHost",
+          "detail": "The country_address_resolution client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "country_application",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round5 + retry local versus delayed database effects.",
+      "baseline_defect": "The country_application client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let country application depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Local branch sets LOCAL only isLocalIP; public branch reads ISO only after ensureInitialized callback, truthy code assigns/marks updated, unknown code leaves value untouched. Do not await the callback as promise completion or force local values through country database. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SubscriptionUpdater.ts",
+          "symbol": "updateProxyServersCountryCode,applyCountry",
+          "detail": "The country_application client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "updateProxyServersCountryCode,applyCountry",
+          "detail": "The country_application client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "country_save_handoff",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Round5 batch versus callback persistence.",
+      "baseline_defect": "The country_save_handoff client uses the complete ImportContext/default factory including unrelated capabilities.",
+      "criterion": "Let country save handoff depend only on relevant capabilities or direct domain operations.",
+      "acceptance": "Single list saves only in nonempty remote lookup callback when updated&&save; local-only does not eagerly save. Aggregate awaits enabled nonempty list calls with save=false then saves once if requested even if unchanged; its async completion need not await database callback. Persistence operation keeps both saves order without full context. Public importer/updater signatures and callback contracts remain supported; shared helpers or cohesive services qualify. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A narrow-looking alias that still requires the full context/default object is insufficient; no fabricated third-party implementor or mandatory one-interface-per-operation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/core/SubscriptionUpdater.ts",
+          "symbol": "updateProxyServerSubscriptionsCountryCode,saveSubscriptions",
+          "detail": "The country_save_handoff client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/lib/ImportContext.ts",
+          "symbol": "updateProxyServerSubscriptionsCountryCode,saveSubscriptions",
+          "detail": "The country_save_handoff client uses the complete ImportContext/default factory including unrelated capabilities.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded.v1",
+    "task_id": "salarcode_smartproxy_isp",
+    "aggregation": "equal_weight_per_item",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "Passing tests, typechecking, behavior preservation, and cosmetic renames earn no independent structural credit",
+      "Historical expansion frontier ideas absent from the final diff are excluded"
+    ]
+  }
+}

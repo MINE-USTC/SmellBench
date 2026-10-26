@@ -1,0 +1,1349 @@
+diff --git a/src/cc_array.c b/src/cc_array.c
+index 9d98127..7b48b82 100644
+--- a/src/cc_array.c
++++ b/src/cc_array.c
+@@ -34,8 +34,7 @@ struct cc_array_s {
+     void  (*mem_free)   (void *block);
+ };
+ 
++static enum cc_stat expand_capacity(CC_Array *ar);
+-static enum cc_stat expand_capacity(size_t *capacity, size_t *count,
+-    void ***buffer, void *(**allocate)(size_t), size_t prefix, void ***replacement);
+ 
+ 
+ /**
+@@ -165,16 +164,9 @@ void cc_array_destroy_cb(CC_Array *ar, void (*cb) (void*))
+ enum cc_stat cc_array_add(CC_Array *ar, void *element)
+ {
+     if (ar->size >= ar->capacity) {
++        enum cc_stat status = expand_capacity(ar);
+-        if (ar->capacity == CC_MAX_ELEMENTS)
+-            return CC_ERR_MAX_CAPACITY;
+-        size_t requested = (size_t)(ar->capacity * ar->exp_factor);
+-        ar->capacity = requested <= ar->capacity ? CC_MAX_ELEMENTS : requested;
+-        void **replacement;
+-        enum cc_stat status = expand_capacity(&ar->capacity, &ar->size, &ar->buffer, &ar->mem_alloc, ar->size, &replacement);
+         if (status != CC_OK)
+             return status;
+-        ar->mem_free(ar->buffer);
+-        ar->buffer = replacement;
+     }
+ 
+     ar->buffer[ar->size] = element;
+@@ -207,23 +199,18 @@ enum cc_stat cc_array_add_at(CC_Array *ar, void *element, size_t index)
+     if ((ar->size == 0 && index != 0) || index > (ar->size - 1))
+         return CC_ERR_OUT_OF_RANGE;
+ 
+-    size_t shift = (ar->size - index) * sizeof(void*);
+     if (ar->size >= ar->capacity) {
++        enum cc_stat status = expand_capacity(ar);
+-        if (ar->capacity == CC_MAX_ELEMENTS)
+-            return CC_ERR_MAX_CAPACITY;
+-        size_t requested = (size_t)(ar->capacity * ar->exp_factor);
+-        ar->capacity = requested <= ar->capacity ? CC_MAX_ELEMENTS : requested;
+-        void **replacement;
+-        enum cc_stat status = expand_capacity(&ar->capacity, &ar->size, &ar->buffer, &ar->mem_alloc, index, &replacement);
+         if (status != CC_OK)
+             return status;
+-        memcpy(replacement + index + 1, ar->buffer + index, shift);
+-        ar->mem_free(ar->buffer);
+-        ar->buffer = replacement;
+-    } else {
+-        memmove(&(ar->buffer[index + 1]), &(ar->buffer[index]), shift);
+     }
+ 
++    size_t shift = (ar->size - index) * sizeof(void*);
++
++    memmove(&(ar->buffer[index + 1]),
++            &(ar->buffer[index]),
++            shift);
++
+     ar->buffer[index] = element;
+     ar->size++;
+ 
+@@ -852,17 +839,29 @@ void cc_array_sort(CC_Array *ar, int (*cmp) (const void*, const void*))
+  * the memory allocation for the new buffer failed, or CC_ERR_MAX_CAPACITY
+  * if the array is already at maximum capacity.
+  */
++static enum cc_stat expand_capacity(CC_Array *ar)
+-static enum cc_stat expand_capacity(size_t *capacity, size_t *count,
+-    void ***buffer, void *(**allocate)(size_t), size_t prefix, void ***replacement)
+ {
++    if (ar->capacity == CC_MAX_ELEMENTS)
++        return CC_ERR_MAX_CAPACITY;
++
++    size_t new_capacity = (size_t)(ar->capacity * ar->exp_factor);
++
++    /* As long as the capacity is greater that the expansion factor
++     * at the point of overflow, this is check is valid. */
++    if (new_capacity <= ar->capacity)
++        ar->capacity = CC_MAX_ELEMENTS;
++    else
++        ar->capacity = new_capacity;
++
++    void **new_buff = ar->mem_alloc(ar->capacity * sizeof(void*));
+-    void **new_buff = (*allocate)((*capacity) * sizeof(void*));
+ 
+     if (!new_buff)
+         return CC_ERR_ALLOC;
+ 
++    memcpy(new_buff, ar->buffer, ar->size * sizeof(void*));
++
++    ar->mem_free(ar->buffer);
++    ar->buffer = new_buff;
+-    size_t copied = prefix < *count ? prefix : *count;
+-    memcpy(new_buff, (*buffer), copied * sizeof(void*));
+-    *replacement = new_buff;
+ 
+     return CC_OK;
+ }
+@@ -1110,28 +1109,10 @@ enum cc_stat cc_array_zip_iter_add(CC_ArrayZipIter *iter, void *e1, void *e2)
+     CC_Array  *ar2  = iter->ar2;
+ 
+     /* Make sure both array buffers have room */
++    if ((ar1->size == ar1->capacity && (expand_capacity(ar1) != CC_OK)) ||
++            (ar2->size == ar2->capacity && (expand_capacity(ar2) != CC_OK)))
++        return CC_ERR_ALLOC;
++
+-    if (ar1->size == ar1->capacity) {
+-        if (ar1->capacity == CC_MAX_ELEMENTS)
+-            return CC_ERR_ALLOC;
+-        size_t requested = (size_t)(ar1->capacity * ar1->exp_factor);
+-        ar1->capacity = requested <= ar1->capacity ? CC_MAX_ELEMENTS : requested;
+-        void **replacement;
+-        if (expand_capacity(&ar1->capacity, &ar1->size, &ar1->buffer, &ar1->mem_alloc, ar1->size, &replacement) != CC_OK)
+-            return CC_ERR_ALLOC;
+-        ar1->mem_free(ar1->buffer);
+-        ar1->buffer = replacement;
+-    }
+-    if (ar2->size == ar2->capacity) {
+-        if (ar2->capacity == CC_MAX_ELEMENTS)
+-            return CC_ERR_ALLOC;
+-        size_t requested = (size_t)(ar2->capacity * ar2->exp_factor);
+-        ar2->capacity = requested <= ar2->capacity ? CC_MAX_ELEMENTS : requested;
+-        void **replacement;
+-        if (expand_capacity(&ar2->capacity, &ar2->size, &ar2->buffer, &ar2->mem_alloc, ar2->size, &replacement) != CC_OK)
+-            return CC_ERR_ALLOC;
+-        ar2->mem_free(ar2->buffer);
+-        ar2->buffer = replacement;
+-    }
+     cc_array_add_at(ar1, e1, index);
+     cc_array_add_at(ar2, e2, index);
+ 
+@@ -1177,4 +1158,4 @@ size_t cc_array_zip_iter_index(CC_ArrayZipIter *iter)
+ size_t cc_array_struct_size()
+ {
+     return sizeof(CC_Array);
++}
+\ No newline at end of file
+-}
+diff --git a/src/cc_deque.c b/src/cc_deque.c
+index 819549b..1415e7c 100644
+--- a/src/cc_deque.c
++++ b/src/cc_deque.c
+@@ -36,12 +36,9 @@ struct cc_deque_s {
+ };
+ 
+ static size_t upper_pow_two (size_t);
++static void   copy_buffer   (CC_Deque const * const deque, void **buff, void *(*cp) (void*));
+-static size_t copy_buffer(size_t const *first, void **const *buffer,
+-    void **buff, size_t leading_count);
+ 
++static enum cc_stat expand_capacity (CC_Deque *deque);
+-static enum cc_stat expand_capacity(size_t *capacity, size_t *count,
+-    size_t *first, size_t *last, void ***buffer,
+-    void *(**allocate)(size_t, size_t), void (**release)(void *));
+ 
+ /**
+  * Creates a new empty deque and returns a status code.
+@@ -162,7 +159,7 @@ enum cc_stat cc_deque_add(CC_Deque *deque, void *element)
+  */
+ enum cc_stat cc_deque_add_first(CC_Deque *deque, void *element)
+ {
++    if (deque->size >= deque->capacity && expand_capacity(deque) != CC_OK)
+-    if (deque->size >= deque->capacity && expand_capacity(&deque->capacity, &deque->size, &deque->first, &deque->last, &deque->buffer, &deque->mem_calloc, &deque->mem_free) != CC_OK)
+         return CC_ERR_ALLOC;
+ 
+     deque->first = (deque->first - 1) & (deque->capacity - 1);
+@@ -183,7 +180,7 @@ enum cc_stat cc_deque_add_first(CC_Deque *deque, void *element)
+  */
+ enum cc_stat cc_deque_add_last(CC_Deque *deque, void *element)
+ {
++    if (deque->capacity == deque->size && expand_capacity(deque) != CC_OK)
+-    if (deque->capacity == deque->size && expand_capacity(&deque->capacity, &deque->size, &deque->first, &deque->last, &deque->buffer, &deque->mem_calloc, &deque->mem_free) != CC_OK)
+         return CC_ERR_ALLOC;
+ 
+     deque->buffer[deque->last] = element;
+@@ -211,7 +208,7 @@ enum cc_stat cc_deque_add_at(CC_Deque *deque, void *element, size_t index)
+     if (index >= deque->size)
+         return CC_ERR_OUT_OF_RANGE;
+ 
++    if (deque->capacity == deque->size && expand_capacity(deque) != CC_OK)
+-    if (deque->capacity == deque->size && expand_capacity(&deque->capacity, &deque->size, &deque->first, &deque->last, &deque->buffer, &deque->mem_calloc, &deque->mem_free) != CC_OK)
+         return CC_ERR_ALLOC;
+ 
+     const size_t c = deque->capacity - 1;
+@@ -592,12 +589,9 @@ enum cc_stat cc_deque_copy_shallow(CC_Deque const * const deque, CC_Deque **out)
+     copy->mem_calloc = deque->mem_calloc;
+     copy->mem_free   = deque->mem_free;
+ 
++    copy_buffer(deque, copy->buffer, NULL);
++
+-    bool wrapped = deque->last <= deque->first;
+-    size_t leading_count = wrapped ? deque->capacity - deque->first : deque->size;
+     copy->first = 0;
+-    size_t copied = copy_buffer(&deque->first, &deque->buffer, copy->buffer, leading_count);
+-    if (wrapped)
+-        memcpy(copy->buffer + copied, deque->buffer, deque->last * sizeof(void*));
+     copy->last  = copy->size;
+ 
+     *out = copy;
+@@ -637,19 +631,9 @@ enum cc_stat cc_deque_copy_deep(CC_Deque const * const deque, void *(*cp) (void*
+     copy->mem_calloc = deque->mem_calloc;
+     copy->mem_free   = deque->mem_free;
+ 
++    copy_buffer(deque, copy->buffer, cp);
++
+-    bool wrapped = deque->last <= deque->first;
+-    size_t leading_count = wrapped ? deque->capacity - deque->first : deque->size;
+     copy->first = 0;
+-    if (cp) {
+-        for (size_t i = 0; i < deque->size; i++) {
+-            size_t physical = (deque->first + i) & (deque->capacity - 1);
+-            copy->buffer[i] = cp(deque->buffer[physical]);
+-        }
+-    } else {
+-        size_t copied = copy_buffer(&deque->first, &deque->buffer, copy->buffer, leading_count);
+-        if (wrapped)
+-            memcpy(copy->buffer + copied, deque->buffer, deque->last * sizeof(void*));
+-    }
+     copy->last  = copy->size;
+ 
+     *out = copy;
+@@ -681,11 +665,7 @@ enum cc_stat cc_deque_trim_capacity(CC_Deque *deque)
+     if (!new_buff)
+         return CC_ERR_ALLOC;
+ 
++    copy_buffer(deque, new_buff, NULL);
+-    bool wrapped = deque->last <= deque->first;
+-    size_t leading_count = wrapped ? deque->capacity - deque->first : deque->size;
+-    size_t copied = copy_buffer(&deque->first, &deque->buffer, new_buff, leading_count);
+-    if (wrapped)
+-        memcpy(new_buff + copied, deque->buffer, deque->last * sizeof(void*));
+     deque->mem_free(deque->buffer);
+ 
+     deque->buffer   = new_buff;
+@@ -926,11 +906,32 @@ enum cc_stat cc_deque_filter(CC_Deque *deque, bool (*pred) (const void*), CC_Deq
+  * @param[in] cp An optional copy function that returns a copy of the element passed to it.
+  *            If NULL is passed, then only a shallow copy will be performed.
+  */
++static void copy_buffer(CC_Deque const * const deque, void **buff, void *(*cp) (void *))
+-static size_t copy_buffer(size_t const *first, void **const *buffer,
+-    void **buff, size_t leading_count)
+ {
++    if (cp == NULL) {
++        if (deque->last > deque->first) {
++            memcpy(buff,
++                   &(deque->buffer[deque->first]),
++                   deque->size * sizeof(void*));
++        } else {
++            size_t l = deque->last;
++            size_t e = deque->capacity - deque->first;
++
++            memcpy(buff,
++                   &(deque->buffer[deque->first]),
++                   e * sizeof(void*));
++
++            memcpy(&(buff[e]),
++                   deque->buffer,
++                   l * sizeof(void*));
++        }
++    } else {
++        size_t i;
++        for (i = 0; i < deque->size; i++) {
++            size_t p = (deque->first + i) & (deque->capacity - 1);
++            buff[i]  = cp(deque->buffer[p]);
++        }
++    }
+-    memcpy(buff, &((*buffer)[(*first)]), leading_count * sizeof(void*));
+-    return leading_count;
+ }
+ 
+ /**
+@@ -944,30 +945,24 @@ static void copy_buffer(CC_Deque const * const deque, void **buff, void *(*cp) (
+  * the memory allocation for the new buffer failed, or CC_ERR_MAX_CAPACITY
+  * if the CC_Deque is already at maximum capacity.
+  */
++static enum cc_stat expand_capacity(CC_Deque *deque)
+-static enum cc_stat expand_capacity(size_t *capacity, size_t *count,
+-    size_t *first, size_t *last, void ***buffer,
+-    void *(**allocate)(size_t, size_t), void (**release)(void *))
+ {
++    if (deque->capacity == MAX_POW_TWO)
+-    if ((*capacity) == MAX_POW_TWO)
+         return CC_ERR_MAX_CAPACITY;
+ 
++    size_t new_capacity = deque->capacity << 1;
++    void **new_buffer = deque->mem_calloc(new_capacity, sizeof(void*));
+-    size_t new_capacity = (*capacity) << 1;
+-    void **new_buffer = (*allocate)(new_capacity, sizeof(void*));
+ 
+     if (!new_buffer)
+         return CC_ERR_ALLOC;
+ 
++    copy_buffer(deque, new_buffer, NULL);
++    deque->mem_free(deque->buffer);
+-    bool wrapped = (*last) <= (*first);
+-    size_t leading_count = wrapped ? (*capacity) - (*first) : (*count);
+-    size_t copied = copy_buffer(first, buffer, new_buffer, leading_count);
+-    if (wrapped)
+-        memcpy(new_buffer + copied, *buffer, *last * sizeof(void*));
+-    (*release)((*buffer));
+ 
++    deque->first    = 0;
++    deque->last     = deque->size;
++    deque->capacity = new_capacity;
++    deque->buffer   = new_buffer;
+-    (*first)    = 0;
+-    (*last)     = (*count);
+-    (*capacity) = new_capacity;
+-    (*buffer)   = new_buffer;
+ 
+     return CC_OK;
+ }
+@@ -1214,8 +1209,8 @@ enum cc_stat cc_deque_zip_iter_add(CC_DequeZipIter *iter, void *e1, void *e2)
+     /* While this check is performed by a call to cc_deque_add_at, it is necessary to know
+        in advance whether both deque buffers have enough room before inserting new elements
+        because this operation must insert either both elements, or none.*/
++    if ((iter->d1->capacity == iter->d1->size && expand_capacity(iter->d1) != CC_OK) ||
++        (iter->d2->capacity == iter->d2->size && expand_capacity(iter->d2) != CC_OK)) {
+-    if ((iter->d1->capacity == iter->d1->size && expand_capacity(&iter->d1->capacity, &iter->d1->size, &iter->d1->first, &iter->d1->last, &iter->d1->buffer, &iter->d1->mem_calloc, &iter->d1->mem_free) != CC_OK) ||
+-        (iter->d2->capacity == iter->d2->size && expand_capacity(&iter->d2->capacity, &iter->d2->size, &iter->d2->first, &iter->d2->last, &iter->d2->buffer, &iter->d2->mem_calloc, &iter->d2->mem_free) != CC_OK)) {
+         return CC_ERR_ALLOC;
+     }
+ 
+@@ -1294,4 +1289,4 @@ size_t cc_deque_zip_iter_index(CC_DequeZipIter *iter)
+ size_t cc_deque_struct_size()
+ {
+     return sizeof(CC_Deque);
++}
+\ No newline at end of file
+-}
+diff --git a/src/cc_hashtable.c b/src/cc_hashtable.c
+index c0549ce..9d8e63c 100644
+--- a/src/cc_hashtable.c
++++ b/src/cc_hashtable.c
+@@ -39,12 +39,12 @@ struct cc_hashtable_s {
+     void    (*mem_free)   (void *block);
+ };
+ 
++static enum cc_stat resize          (CC_HashTable *t, size_t new_capacity);
+-static enum cc_stat resize          (CC_HashTable *t, size_t new_capacity, TableEntry ***retired);
+ static enum cc_stat get_null_key    (CC_HashTable *table, void **out);
+ static enum cc_stat add_null_key    (CC_HashTable *table, void *val);
+ static enum cc_stat remove_null_key (CC_HashTable *table, void **out);
+ 
++static size_t get_table_index  (CC_HashTable *table, void *key);
+-static INLINE size_t get_table_index(size_t *capacity, size_t hash);
+ static size_t round_pow_two    (size_t n);
+ static void   move_entries     (TableEntry **src_bucket, TableEntry **dest_bucket,
+                                  size_t src_size, size_t dest_size);
+@@ -167,11 +167,8 @@ enum cc_stat cc_hashtable_add(CC_HashTable *table, void *key, void *val)
+ {
+     enum cc_stat stat;
+     if (table->size >= table->threshold) {
++        if ((stat = resize(table, table->capacity << 1)) != CC_OK)
+-        TableEntry **retired;
+-        if ((stat = resize(table, table->capacity << 1, &retired)) != CC_OK)
+             return stat;
+-        table->threshold = (size_t)(table->load_factor * table->capacity);
+-        table->mem_free(retired);
+     }
+ 
+     if (!key)
+@@ -260,8 +257,7 @@ enum cc_stat cc_hashtable_get(CC_HashTable *table, void *key, void **out)
+     if (!key)
+         return get_null_key(table, out);
+ 
++    size_t      index  = get_table_index(table, key);
+-    size_t key_hash = table->hash(key, table->key_len, table->hash_seed);
+-    size_t      index  = get_table_index(&table->capacity, key_hash);
+     TableEntry *bucket = table->buckets[index];
+ 
+     while (bucket) {
+@@ -315,8 +311,7 @@ enum cc_stat cc_hashtable_remove(CC_HashTable *table, void *key, void **out)
+     if (!key)
+         return remove_null_key(table, out);
+ 
++    const size_t i = get_table_index(table, key);
+-    size_t key_hash = table->hash(key, table->key_len, table->hash_seed);
+-    const size_t i = get_table_index(&table->capacity, key_hash);
+ 
+     TableEntry *e    = table->buckets[i];
+     TableEntry *prev = NULL;
+@@ -417,7 +412,7 @@ void cc_hashtable_remove_all(CC_HashTable *table)
+  * capacity has been reached, or CC_ERR_ALLOC if the memory allocation for the
+  * new buffer failed.
+  */
++static enum cc_stat resize(CC_HashTable *t, size_t new_capacity)
+-static enum cc_stat resize(CC_HashTable *t, size_t new_capacity, TableEntry ***retired)
+ {
+     if (t->capacity == MAX_POW_TWO)
+         return CC_ERR_MAX_CAPACITY;
+@@ -433,7 +428,9 @@ static enum cc_stat resize(CC_HashTable *t, size_t new_capacity)
+ 
+     t->buckets   = new_buckets;
+     t->capacity  = new_capacity;
++    t->threshold = (size_t) (t->load_factor * new_capacity);
++
++    t->mem_free(old_buckets);
+-    *retired = old_buckets;
+ 
+     return CC_OK;
+ }
+@@ -536,8 +533,7 @@ size_t cc_hashtable_capacity(CC_HashTable *table)
+  */
+ bool cc_hashtable_contains_key(CC_HashTable *table, void *key)
+ {
++    TableEntry *entry = table->buckets[get_table_index(table, key)];
+-    size_t key_hash = table->hash(key, table->key_len, table->hash_seed);
+-    TableEntry *entry = table->buckets[get_table_index(&table->capacity, key_hash)];
+ 
+     while (entry) {
+         if (table->key_cmp(key, entry->key) == 0)
+@@ -635,9 +631,10 @@ enum cc_stat cc_hashtable_get_keys(CC_HashTable *table, CC_Array **out)
+ /**
+  * Returns the bucket index that maps to the specified key.
+  */
++static INLINE size_t get_table_index(CC_HashTable *table, void *key)
+-static INLINE size_t get_table_index(size_t *capacity, size_t hash)
+ {
++    size_t hash = table->hash(key, table->key_len, table->hash_seed);
++    return hash & (table->capacity - 1);
+-    return hash & (*capacity - 1);
+ }
+ 
+ /**
+diff --git a/src/cc_list.c b/src/cc_list.c
+index c71f7e2..f5bf92d 100644
+--- a/src/cc_list.c
++++ b/src/cc_list.c
+@@ -38,10 +38,8 @@ static void  link_behind         (Node *node, Node *inserted);
+ static void  link_after          (Node *base, Node *inserted);
+ static void  swap                (Node *n1, Node *n2);
+ static void  swap_adjacent       (Node *n1, Node *n2);
++static void  splice_between      (CC_List *list1, CC_List *list2, Node *left, Node *right);
++static bool  link_all_externally (CC_List *l, Node **h, Node **t);
+-static void splice_between(CC_List *l1, Node **head,
+-    Node **tail, size_t *count, Node *left, Node *right);
+-static bool link_external_node(Node *source, Node **h, Node **t,
+-    void *(**allocate)(size_t, size_t));
+ static Node *get_node            (CC_List *list, void *element);
+ static enum cc_stat get_node_at  (CC_List *list, size_t index, Node **out);
+ static enum cc_stat add_all_to_empty    (CC_List *l1, CC_List *l2);
+@@ -282,18 +280,8 @@ static enum cc_stat add_all_to_empty(CC_List *list1, CC_List *list2)
+     Node *head = NULL;
+     Node *tail = NULL;
+ 
++    if (!link_all_externally(list2, &head, &tail))
++        return CC_ERR_ALLOC;
+-    Node *copy_source = list2->head;
+-    for (size_t copied = 0; copied < list2->size; copied++) {
+-        if (!link_external_node(copy_source, &head, &tail, &list2->mem_calloc)) {
+-            while (head) {
+-                Node *next = head->next;
+-                list2->mem_free(head);
+-                head = next;
+-            }
+-            return CC_ERR_ALLOC;
+-        }
+-        copy_source = copy_source->next;
+-    }
+ 
+     list1->head = head;
+     list1->tail = tail;
+@@ -329,18 +317,8 @@ enum cc_stat cc_list_add_all_at(CC_List *list1, CC_List *list2, size_t index)
+     Node *head = NULL;
+     Node *tail = NULL;
+ 
++    if (!link_all_externally(list2, &head, &tail))
++        return CC_ERR_ALLOC;
+-    Node *copy_source = list2->head;
+-    for (size_t copied = 0; copied < list2->size; copied++) {
+-        if (!link_external_node(copy_source, &head, &tail, &list2->mem_calloc)) {
+-            while (head) {
+-                Node *next = head->next;
+-                list2->mem_free(head);
+-                head = next;
+-            }
+-            return CC_ERR_ALLOC;
+-        }
+-        copy_source = copy_source->next;
+-    }
+ 
+     /* Now we can safely attach the new nodes. */
+     Node *end = NULL;
+@@ -383,20 +361,35 @@ enum cc_stat cc_list_add_all_at(CC_List *list1, CC_List *list2, size_t index)
+  *
+  * @return true if the operation was successful, false otherwise.
+  */
++static bool link_all_externally(CC_List *list, Node **h, Node **t)
+-static bool link_external_node(Node *source, Node **h, Node **t,
+-    void *(**allocate)(size_t, size_t))
+ {
++    Node *insert = list->head;
++
++    size_t i;
++    for (i = 0; i < list->size; i++) {
++        Node *new = list->mem_calloc(1, sizeof(Node));
++
++        if (!new) {
++            while (*h) {
++                Node *tmp = (*h)->next;
++                list->mem_free(*h);
++                *h = tmp;
++            }
++            return false;
++        }
++
++        new->data = insert->data;
++
++        if (!*h) {
++            *h = new;
++            *t = new;
++        } else {
++            (*t)->next = new;
++            new->prev  = *t;
++            *t         = new;
++        }
++
++        insert = insert->next;
+-    Node *new = (*allocate)(1, sizeof(Node));
+-    if (!new)
+-        return false;
+-    new->data = source->data;
+-    if (!*h) {
+-        *h = new;
+-        *t = new;
+-    } else {
+-        (*t)->next = new;
+-        new->prev = *t;
+-        *t = new;
+     }
+     return true;
+ }
+@@ -460,7 +453,7 @@ enum cc_stat cc_list_splice_at(CC_List *list1, CC_List *list2, size_t index)
+     else
+         get_node_at(list1, index - 1, &base);
+ 
++    splice_between(list1, list2, base, end);
+-    splice_between(list1, &list2->head, &list2->tail, &list2->size, base, end);
+ 
+     return CC_OK;
+ }
+@@ -476,28 +469,27 @@ enum cc_stat cc_list_splice_at(CC_List *list1, CC_List *list2, size_t index)
+  * @param[in] left the node after which the element are being added
+  * @param[in] right the node behind which the elements are being added
+  */
++static void splice_between(CC_List *l1, CC_List *l2, Node *left, Node *right)
+-static void splice_between(CC_List *l1, Node **head,
+-    Node **tail, size_t *count, Node *left, Node *right)
+ {
+     if (!left) {
++        l1->head->prev = l2->tail;
++        l2->tail->next = l1->head;
++        l1->head       = l2->head;
+-        l1->head->prev = (*tail);
+-        (*tail)->next = l1->head;
+-        l1->head       = (*head);
+     } else if (!right) {
++        l1->tail->next = l2->head;
++        l2->head->prev = l1->tail;
++        l1->tail       = l2->tail;
+-        l1->tail->next = (*head);
+-        (*head)->prev = l1->tail;
+-        l1->tail       = (*tail);
+     } else {
++        left->next     = l2->head;
++        l2->head->prev = left;
++        right->prev    = l2->tail;
++        l2->tail->next = right;
+-        left->next     = (*head);
+-        (*head)->prev = left;
+-        right->prev    = (*tail);
+-        (*tail)->next = right;
+     }
++    l1->size += l2->size;
+-    l1->size += (*count);
+ 
++    l2->head = NULL;
++    l2->tail = NULL;
++    l2->size = 0;
+-    (*head) = NULL;
+-    (*tail) = NULL;
+-    (*count) = 0;
+ }
+ 
+ /**
+@@ -2062,4 +2054,4 @@ static Node *get_node(CC_List *list, void *element)
+ size_t cc_list_struct_size()
+ {
+     return sizeof(CC_List);
++}
+\ No newline at end of file
+-}
+diff --git a/src/cc_pqueue.c b/src/cc_pqueue.c
+index 894f6bc..fe996b0 100644
+--- a/src/cc_pqueue.c
++++ b/src/cc_pqueue.c
+@@ -179,18 +179,29 @@ void cc_pqueue_destroy_cb(CC_PQueue *pq, void (*cb) (void*))
+  * the memory allocation for the new buffer failed, or CC_ERR_MAX_CAPACITY
+  * if the pqueue is already at maximum capacity.
+  */
++static enum cc_stat expand_capacity(CC_PQueue *pq)
+-static enum cc_stat expand_capacity(size_t *capacity, size_t *count,
+-    void ***buffer, void *(**allocate)(size_t), void (**release)(void *))
+ {
++    if (pq->capacity == CC_MAX_ELEMENTS)
++        return CC_ERR_MAX_CAPACITY;
++
++    size_t new_capacity = (size_t)(pq->capacity * pq->exp_factor);
++
++    /* As long as the capacity is greater that the expansion factor
++     * at the point of overflow, this is check is valid. */
++    if (new_capacity <= pq->capacity)
++        pq->capacity = CC_MAX_ELEMENTS;
++    else
++        pq->capacity = new_capacity;
++
++    void **new_buff = pq->mem_alloc(pq->capacity * sizeof(void*));
+-    void **new_buff = (*allocate)((*capacity) * sizeof(void*));
+ 
+     if (!new_buff)
+         return CC_ERR_ALLOC;
+ 
++    memcpy(new_buff, pq->buffer, pq->size * sizeof(void*));
+-    memcpy(new_buff, (*buffer), (*count) * sizeof(void*));
+ 
++    pq->mem_free(pq->buffer);
++    pq->buffer = new_buff;
+-    (*release)((*buffer));
+-    (*buffer) = new_buff;
+ 
+     return CC_OK;
+ }
+@@ -209,11 +220,7 @@ enum cc_stat cc_pqueue_push(CC_PQueue *pq, void *element)
+     size_t i = pq->size;
+ 
+     if (i >= pq->capacity) {
++        enum cc_stat status = expand_capacity(pq);
+-        if (pq->capacity == CC_MAX_ELEMENTS)
+-            return CC_ERR_MAX_CAPACITY;
+-        size_t requested = (size_t)(pq->capacity * pq->exp_factor);
+-        pq->capacity = requested <= pq->capacity ? CC_MAX_ELEMENTS : requested;
+-        enum cc_stat status = expand_capacity(&pq->capacity, &pq->size, &pq->buffer, &pq->mem_alloc, &pq->mem_free);
+         if (status != CC_OK)
+             return status;
+     }
+@@ -325,4 +332,4 @@ static void cc_pqueue_heapify(CC_PQueue *pq, size_t index)
+ size_t cc_pqueue_struct_size()
+ {
+     return sizeof(CC_PQueue);
++}
+\ No newline at end of file
+-}
+diff --git a/src/cc_slist.c b/src/cc_slist.c
+index bbd0771..1df65ea 100644
+--- a/src/cc_slist.c
++++ b/src/cc_slist.c
+@@ -34,10 +34,8 @@ struct cc_slist_s {
+ 
+ static void* unlinkn             (CC_SList *list, SNode *node, SNode *prev);
+ static bool  unlinkn_all         (CC_SList *list, void (*cb) (void*));
++static void  splice_between      (CC_SList *list1, CC_SList *list2, SNode *base, SNode *end);
++static bool  link_all_externally (CC_SList *list, SNode **h, SNode **t);
+-static INLINE void splice_between(CC_SList *l1, SNode **head,
+-    SNode **tail, size_t *count, SNode *base, SNode *end);
+-static bool link_external_node(SNode *source, SNode **h, SNode **t,
+-    void *(**allocate)(size_t, size_t));
+ static enum cc_stat get_node_at  (CC_SList *list, size_t index, SNode **node, SNode **prev);
+ static enum cc_stat get_node     (CC_SList *list, void *element, SNode **node, SNode **prev);
+ 
+@@ -264,18 +262,8 @@ enum cc_stat cc_slist_add_all(CC_SList *list1, CC_SList *list2)
+     SNode *head = NULL;
+     SNode *tail = NULL;
+ 
++    if (!link_all_externally(list2, &head, &tail))
++        return CC_ERR_ALLOC;
+-    SNode *copy_source = list2->head;
+-    for (size_t copied = 0; copied < list2->size; copied++) {
+-        if (!link_external_node(copy_source, &head, &tail, &list2->mem_calloc)) {
+-            while (head) {
+-                SNode *next = head->next;
+-                list2->mem_free(head);
+-                head = next;
+-            }
+-            return CC_ERR_ALLOC;
+-        }
+-        copy_source = copy_source->next;
+-    }
+ 
+     if (list1->size == 0) {
+         list1->head = head;
+@@ -319,18 +307,8 @@ enum cc_stat cc_slist_add_all_at(CC_SList *list1, CC_SList *list2, size_t index)
+     SNode *head = NULL;
+     SNode *tail = NULL;
+ 
++    if (!link_all_externally(list2, &head, &tail))
++        return CC_ERR_ALLOC;
+-    SNode *copy_source = list2->head;
+-    for (size_t copied = 0; copied < list2->size; copied++) {
+-        if (!link_external_node(copy_source, &head, &tail, &list2->mem_calloc)) {
+-            while (head) {
+-                SNode *next = head->next;
+-                list2->mem_free(head);
+-                head = next;
+-            }
+-            return CC_ERR_ALLOC;
+-        }
+-        copy_source = copy_source->next;
+-    }
+ 
+     if (!prev) {
+         tail->next  = node;
+@@ -356,19 +334,34 @@ enum cc_stat cc_slist_add_all_at(CC_SList *list1, CC_SList *list2, size_t index)
+  *
+  * @return true if the operation was successful
+  */
++static bool link_all_externally(CC_SList *list, SNode **h, SNode **t)
+-static bool link_external_node(SNode *source, SNode **h, SNode **t,
+-    void *(**allocate)(size_t, size_t))
+ {
++    SNode *ins = list->head;
++
++    size_t i;
++    for (i = 0; i < list->size; i++) {
++        SNode *new = list->mem_calloc(1, sizeof(SNode));
++
++        if (!new) {
++            while (*h) {
++                SNode *tmp = (*h)->next;
++                list->mem_free(*h);
++                *h = tmp;
++            }
++            return false;
++        }
++
++        new->data = ins->data;
++
++        if (!*h) {
++            *h = new;
++            *t = new;
++        } else {
++            (*t)->next = new;
++            *t = new;
++        }
++
++        ins = ins->next;
+-    SNode *new = (*allocate)(1, sizeof(SNode));
+-    if (!new)
+-        return false;
+-    new->data = source->data;
+-    if (!*h) {
+-        *h = new;
+-        *t = new;
+-    } else {
+-        (*t)->next = new;
+-        *t = new;
+     }
+     return true;
+ }
+@@ -434,7 +427,7 @@ enum cc_stat cc_slist_splice_at(CC_SList *list1, CC_SList *list2, size_t index)
+     if (status != CC_OK)
+         return status;
+ 
++    splice_between(list1, list2, prev, node);
+-    splice_between(list1, &list2->head, &list2->tail, &list2->size, prev, node);
+ 
+     return CC_OK;
+ }
+@@ -450,24 +443,23 @@ enum cc_stat cc_slist_splice_at(CC_SList *list1, CC_SList *list2, size_t index)
+  * @param[in] left the node after which the elements are being added
+  * @param[in] right the node behind which the elements are being added
+  */
++static INLINE void splice_between(CC_SList *l1, CC_SList *l2, SNode *base, SNode *end)
+-static INLINE void splice_between(CC_SList *l1, SNode **head,
+-    SNode **tail, size_t *count, SNode *base, SNode *end)
+ {
+     if (!base) {
++        l2->tail->next = l1->head;
++        l1->head = l2->head;
+-        (*tail)->next = l1->head;
+-        l1->head = (*head);
+     } else if (!end) {
++        l1->tail->next = l2->head;
++        l1->tail = l2->tail;
+-        l1->tail->next = (*head);
+-        l1->tail = (*tail);
+     } else {
++        base->next = l2->head;
++        l2->tail->next = end;
+-        base->next = (*head);
+-        (*tail)->next = end;
+     }
++    l1->size += l2->size;
+-    l1->size += (*count);
+ 
++    l2->head = NULL;
++    l2->tail = NULL;
++    l2->size = 0;
+-    (*head) = NULL;
+-    (*tail) = NULL;
+-    (*count) = 0;
+ }
+ 
+ /**
+@@ -1598,4 +1590,4 @@ get_node(CC_SList *list, void *element, SNode **node, SNode **prev)
+ size_t cc_slist_struct_size()
+ {
+     return sizeof(CC_SList);
++}
+\ No newline at end of file
+-}
+diff --git a/src/cc_treetable.c b/src/cc_treetable.c
+index d5d6dde..0b155b4 100644
+--- a/src/cc_treetable.c
++++ b/src/cc_treetable.c
+@@ -50,9 +50,7 @@ static INLINE void  transplant     (CC_TreeTable *table, RBNode *u, RBNode *v);
+ static INLINE RBNode *tree_min     (CC_TreeTable const * const table, RBNode *n);
+ static INLINE RBNode *tree_max     (CC_TreeTable const * const table, RBNode *n);
+ 
++static RBNode *get_tree_node_by_key(CC_TreeTable const * const table, const void *key);
+-static RBNode *get_tree_node_by_key(RBNode *root, RBNode *sentinel,
+-    int (*const *compare)(const void *, const void *), const void *key);
+-static void advance_key_range(RBNode **node, RBNode **lower, RBNode **upper, int comparison);
+ static RBNode *get_successor_node  (CC_TreeTable const * const table, RBNode *x);
+ static RBNode *get_predecessor_node(CC_TreeTable const * const table, RBNode *x);
+ 
+@@ -172,7 +170,7 @@ void cc_treetable_destroy(CC_TreeTable *table)
+  */
+ enum cc_stat cc_treetable_get(CC_TreeTable const * const table, const void *key, void **out)
+ {
++    RBNode *node = get_tree_node_by_key(table, key);
+-    RBNode *node = (table->size ? get_tree_node_by_key(table->root, table->sentinel, &table->cmp, key) : NULL);
+ 
+     if (!node)
+         return CC_ERR_KEY_NOT_FOUND;
+@@ -274,17 +272,10 @@ enum cc_stat cc_treetable_get_last_key(CC_TreeTable const * const table, void **
+  */
+ enum cc_stat cc_treetable_get_greater_than(CC_TreeTable const * const table, const void *key, void **out)
+ {
++    RBNode *n = get_tree_node_by_key(table, key);
++    RBNode *s = get_successor_node(table, n);
++
++    if (n && s) {
+-    RBNode *n = table->root;
+-    RBNode *lower = table->sentinel;
+-    RBNode *upper = table->sentinel;
+-    while (n != table->sentinel) {
+-        int comparison = table->cmp(key, n->key);
+-        if (comparison == 0)
+-            break;
+-        advance_key_range(&n, &lower, &upper, comparison);
+-    }
+-    if (n != table->sentinel) {
+-        RBNode *s = n->right != table->sentinel ? tree_min(table, n->right) : upper;
+         *out = s->key;
+         return CC_OK;
+     }
+@@ -303,17 +294,10 @@ enum cc_stat cc_treetable_get_greater_than(CC_TreeTable const * const table, con
+  */
+ enum cc_stat cc_treetable_get_lesser_than(CC_TreeTable const * const table, const void *key, void **out)
+ {
++    RBNode *n = get_tree_node_by_key(table, key);
++    RBNode *s = get_predecessor_node(table, n);
++
++    if (n && s) {
+-    RBNode *n = table->root;
+-    RBNode *lower = table->sentinel;
+-    RBNode *upper = table->sentinel;
+-    while (n != table->sentinel) {
+-        int comparison = table->cmp(key, n->key);
+-        if (comparison == 0)
+-            break;
+-        advance_key_range(&n, &lower, &upper, comparison);
+-    }
+-    if (n != table->sentinel) {
+-        RBNode *s = n->left != table->sentinel ? tree_max(table, n->left) : lower;
+         *out = s->key;
+         return CC_OK;
+     }
+@@ -343,7 +327,7 @@ size_t cc_treetable_size(CC_TreeTable const * const table)
+  */
+ bool cc_treetable_contains_key(CC_TreeTable const * const table, const void *key)
+ {
++    RBNode *node = get_tree_node_by_key(table, key);
+-    RBNode *node = (table->size ? get_tree_node_by_key(table->root, table->sentinel, &table->cmp, key) : NULL);
+ 
+     if (node)
+         return true;
+@@ -637,7 +621,7 @@ static void remove_node(CC_TreeTable *table, RBNode *z)
+  */
+ enum cc_stat cc_treetable_remove(CC_TreeTable *table, void *key, void **out)
+ {
++    RBNode *node = get_tree_node_by_key(table, key);
+-    RBNode *node = (table->size ? get_tree_node_by_key(table->root, table->sentinel, &table->cmp, key) : NULL);
+ 
+     if (!node)
+         return CC_ERR_KEY_NOT_FOUND;
+@@ -777,26 +761,17 @@ static void rotate_left(CC_TreeTable *table, RBNode *x)
+  *
+  * @return tree node associated with the key
+  */
++static RBNode *get_tree_node_by_key(CC_TreeTable const * const table, const void *key)
+-static void advance_key_range(RBNode **node, RBNode **lower, RBNode **upper, int comparison)
+ {
++    if (table->size == 0)
++        return NULL;
+-    if (comparison < 0) {
+-        *upper = *node;
+-        *node = (*node)->left;
+-    } else {
+-        *lower = *node;
+-        *node = (*node)->right;
+-    }
+-}
+ 
++    RBNode *n = table->root;
++    RBNode *s = table->sentinel;
+-static RBNode *get_tree_node_by_key(RBNode *root, RBNode *sentinel,
+-    int (*const *compare)(const void *, const void *), const void *key)
+-{
+-    RBNode *n = root;
+-    RBNode *s = sentinel;
+ 
+     int cmp;
+     do {
++        cmp = table->cmp(key, n->key);
+-        cmp = (*compare)(key, n->key);
+ 
+         if (cmp < 0)
+             n = n->left;
+diff --git a/src/cc_tsttable.c b/src/cc_tsttable.c
+index b84c793..d3b3aca 100644
+--- a/src/cc_tsttable.c
++++ b/src/cc_tsttable.c
+@@ -122,23 +122,40 @@ void cc_tsttable_destroy (CC_TSTTable *table)
+  * if the key has unmatched chars, then the the location of where to insert
+  * the next char is stored in last_node.
+  */
++static void get_last_node(
++    CC_TSTTable       *table,
++    CC_TSTTableNode ***last_node,
++    CC_TSTTableNode ** last_parent,
++    int            *last_index,
++    char           *key,
++    size_t          key_len)
+-static bool advance_match(CC_TSTTableNode ***last_node,
+-    CC_TSTTableNode **last_parent, int *last_index, int cmp, size_t key_len)
+ {
++    *last_node   = &table->root;
++    *last_index  = -1;
++    *last_parent = NULL;
++
++    while (**last_node && (*last_index + 1) < key_len) {
++        char c   = key[*last_index + 1];
++        int  cmp = table->char_cmp(c, (**last_node)->c);
++
++        if (cmp < 0) {
++            *last_parent = **last_node;
++            *last_node = &((**last_node)->left);
++        }
++        else if (cmp > 0) {
++            *last_parent = **last_node;
++            *last_node = &((**last_node)->right);
++        }
++        else if (cmp == 0) {
++            *last_index += 1;
++            if (*last_index + 1 == key_len)
++                break;
++            else {
++                *last_parent = **last_node;
++                *last_node = &((**last_node)->mid);
++            }
++        }
+-    if (cmp < 0) {
+-        *last_parent = **last_node;
+-        *last_node = &((**last_node)->left);
+-    } else if (cmp > 0) {
+-        *last_parent = **last_node;
+-        *last_node = &((**last_node)->right);
+-    } else {
+-        *last_index += 1;
+-        if (*last_index + 1 == key_len)
+-            return false;
+-        *last_parent = **last_node;
+-        *last_node = &((**last_node)->mid);
+     }
+-    return true;
+ }
+ 
+ 
+@@ -147,13 +164,13 @@ static void get_last_node(
+  * and starts at **begin and ends at **end.
+  * */
+ static enum cc_stat make_mid_subtree(
++    CC_TSTTable      *table,
+-    void *(**allocate)(size_t, size_t),
+     CC_TSTTableNode **begin,
+     CC_TSTTableNode **end,
+     char          *key,
+     size_t         key_len)
+ {
++    *begin = table->mem_calloc(1, sizeof(CC_TSTTableNode));
+-    *begin = (*allocate)(1, sizeof(CC_TSTTableNode));
+ 
+     if (!*begin)
+         return CC_ERR_ALLOC;
+@@ -162,7 +179,7 @@ static enum cc_stat make_mid_subtree(
+     CC_TSTTableNode *node = *begin;
+ 
+     for (size_t i = 1; i < key_len; i++) {
++        node->mid = table->mem_calloc(1, sizeof(CC_TSTTableNode));
+-        node->mid = (*allocate)(1, sizeof(CC_TSTTableNode));
+ 
+         if (!node->mid)
+             return CC_ERR_ALLOC;
+@@ -198,15 +215,7 @@ enum cc_stat cc_tsttable_add(CC_TSTTable *table, char *key, void *val)
+     CC_TSTTableNode  *last_parent;
+     int            last_index;
+ 
++    get_last_node(table, &last_node, &last_parent, &last_index, key, key_len);
+-    last_node = &table->root;
+-    last_parent = NULL;
+-    last_index = -1;
+-    while (*last_node && last_index + 1 < key_len) {
+-        char current = key[last_index + 1];
+-        int order = table->char_cmp(current, (*last_node)->c);
+-        if (!advance_match(&last_node, &last_parent, &last_index, order, key_len))
+-            break;
+-    }
+ 
+     size_t postfix_len = key_len - (last_index + 1);
+     char  *postfix     = key + (last_index + 1);
+@@ -228,7 +237,7 @@ enum cc_stat cc_tsttable_add(CC_TSTTable *table, char *key, void *val)
+     CC_TSTTableNode *begin;
+     CC_TSTTableNode *end;
+ 
++    enum cc_stat status = make_mid_subtree(table, &begin, &end, postfix, postfix_len);
+-    enum cc_stat status = make_mid_subtree(&table->mem_calloc, &begin, &end, postfix, postfix_len);
+ 
+     if (status != CC_OK)
+         return CC_ERR_ALLOC;
+@@ -267,15 +276,7 @@ enum cc_stat cc_tsttable_get (CC_TSTTable *table, char *key, void **out)
+ 
+     int last_index;
+ 
++    get_last_node(table, &last_node, &last_parent, &last_index, key, key_len);
+-    last_node = &table->root;
+-    last_parent = NULL;
+-    last_index = -1;
+-    while (*last_node && last_index + 1 < key_len) {
+-        char current = key[last_index + 1];
+-        int order = table->char_cmp(current, (*last_node)->c);
+-        if (!advance_match(&last_node, &last_parent, &last_index, order, key_len))
+-            break;
+-    }
+ 
+     if (*last_node && (*last_node)->eow && last_index + 1 == key_len) {
+         *out = (*last_node)->data->value;
+@@ -388,15 +389,7 @@ enum cc_stat cc_tsttable_remove (CC_TSTTable *table, char *key, void **out)
+     CC_TSTTableNode  *last_parent;
+ 
+     int last_index;
++    get_last_node(table, &last_node, &last_parent, &last_index, key, key_len);
+-    last_node = &table->root;
+-    last_parent = NULL;
+-    last_index = -1;
+-    while (*last_node && last_index + 1 < key_len) {
+-        char current = key[last_index + 1];
+-        int order = table->char_cmp(current, (*last_node)->c);
+-        if (!advance_match(&last_node, &last_parent, &last_index, order, key_len))
+-            break;
+-    }
+ 
+     if (*last_node && (*last_node)->eow && last_index + 1 == key_len) {
+         if (out)
+@@ -627,4 +620,4 @@ enum cc_stat cc_tsttable_iter_remove (CC_TSTTableIter *iter, void **out)
+ size_t cc_tsttable_struct_size()
+ {
+     return sizeof(CC_TSTTable);
++}
+\ No newline at end of file
+-}
+diff --git a/src/memory/cc_dynamic_pool.c b/src/memory/cc_dynamic_pool.c
+index 2078404..845939b 100644
+--- a/src/memory/cc_dynamic_pool.c
++++ b/src/memory/cc_dynamic_pool.c
+@@ -169,51 +169,41 @@ void cc_dynamic_pool_reset(CC_DynamicPool* pool)
+  * @param[in] pool  - pool inside which the bytes are allocated
+  * @return pointer to the newly allocated block.
+  */
++void* cc_dynamic_pool_malloc(size_t size, CC_DynamicPool* pool)
+-static void *pool_allocate(size_t size, bool needs_growth, size_t next_max,
+-    size_t *limit, bool *fixed, uint8_t **page, uint8_t **high_ptr,
+-    uint8_t **low_ptr, uint8_t **free_ptr, void *(**allocate)(size_t))
+ {
++    if (size >= pool->top_page_size) {
++        return NULL;
++    }
++    uint8_t* page_max = pool->low_ptr + pool->top_page_size;
++    uint8_t* new_high = pool->high_ptr + size;
++
++    if (new_high >= page_max) {
++        size_t next_max = (size_t) (pool->top_page_size * pool->exp_factor);
++        if (pool->is_fixed || size > next_max) {
+-    if (needs_growth) {
+-        if ((*fixed) || size > next_max) {
+             return NULL;
+         }
++        uint8_t*  new_page = pool->mem_alloc(next_max + sizeof(PageInfo));
+-        uint8_t*  new_page = (*allocate)(next_max + sizeof(PageInfo));
+ 
+         if (!new_page) {
+             return NULL;
+         }
+         PageInfo* pinfo     = (PageInfo*)new_page;
++        pinfo->previous     = pool->page;
+-        pinfo->previous     = (*page);
+         pinfo->size         = next_max;
+ 
++        pool->page          = new_page;
++        pool->high_ptr      = new_page + sizeof(PageInfo);
++        pool->low_ptr       = pool->high_ptr;
++        pool->free_ptr      = pool->high_ptr;
++        pool->top_page_size = next_max;
+-        (*page)          = new_page;
+-        (*high_ptr)      = new_page + sizeof(PageInfo);
+-        (*low_ptr)       = (*high_ptr);
+-        (*free_ptr)      = (*high_ptr);
+-        (*limit) = next_max;
+     }
++    uint8_t* ptr   = pool->free_ptr;
++    pool->high_ptr = ptr;
+-    uint8_t* ptr   = (*free_ptr);
+-    (*high_ptr) = ptr;
+-
+-    return ptr;
+-}
+ 
+-void* cc_dynamic_pool_malloc(size_t size, CC_DynamicPool* pool)
+-{
+-    if (size >= pool->top_page_size)
+-        return NULL;
+-    uint8_t *page_max = pool->low_ptr + pool->top_page_size;
+-    uint8_t *new_high = pool->high_ptr + size;
+-    bool needs_growth = new_high >= page_max;
+-    size_t next_max = needs_growth ? (size_t)(pool->top_page_size * pool->exp_factor) : 0;
+-    uint8_t *ptr = pool_allocate(size, needs_growth, next_max, &pool->top_page_size,
+-        &pool->is_fixed, &pool->page, &pool->high_ptr, &pool->low_ptr,
+-        &pool->free_ptr, &pool->mem_alloc);
+-    if (!ptr)
+-        return NULL;
+     size_t padding = 0;
++    if (!pool->is_packed) {
+-    if (!pool->is_packed)
+         padding = size % pool->alignment_boundary;
++    }
+     pool->free_ptr = ptr + size + padding;
+     return ptr;
+ }
+@@ -286,4 +276,4 @@ size_t cc_dynamic_pool_free_bytes(CC_DynamicPool* pool)
+ size_t cc_dynamic_pool_struct_size()
+ {
+     return sizeof(CC_DynamicPool);
++}
+\ No newline at end of file
+-}
+diff --git a/src/memory/cc_static_pool.c b/src/memory/cc_static_pool.c
+index 4536065..29ab242 100644
+--- a/src/memory/cc_static_pool.c
++++ b/src/memory/cc_static_pool.c
+@@ -89,25 +89,18 @@ void cc_static_pool_reset(CC_StaticPool* pool)
+  * @param[in] pool  - pool inside which the bytes are allocated
+  * @return pointer to the newly allocated block.
+  */
++void* cc_static_pool_malloc(size_t size, CC_StaticPool* pool)
+-static void *pool_allocate(uint8_t *page_max, uint8_t *new_high,
+-    uint8_t **high_ptr, uint8_t **free_ptr)
+ {
++    uint8_t* page_max = pool->low_ptr + pool->size;
++    uint8_t* new_high = pool->high_ptr + size;
++
+     if (new_high >= page_max) {
+         return NULL;
+     }
++    uint8_t* ptr     = pool->free_ptr;
++    pool->high_ptr   = ptr;
++    pool->free_ptr   = ptr + size;
+-    uint8_t* ptr     = (*free_ptr);
+-    (*high_ptr)   = ptr;
+-
+-    return ptr;
+-}
+ 
+-void* cc_static_pool_malloc(size_t size, CC_StaticPool* pool)
+-{
+-    uint8_t *page_max = pool->low_ptr + pool->size;
+-    uint8_t *new_high = pool->high_ptr + size;
+-    uint8_t *ptr = pool_allocate(page_max, new_high, &pool->high_ptr, &pool->free_ptr);
+-    if (ptr)
+-        pool->free_ptr = ptr + size;
+     return ptr;
+ }
+ 
+@@ -167,4 +160,4 @@ size_t cc_static_pool_used_bytes(CC_StaticPool* pool)
+ size_t cc_static_pool_free_bytes(CC_StaticPool* pool)
+ {
+     return pool->size - (pool->free_ptr - pool->low_ptr);
++}
+\ No newline at end of file
+-}
+diff --git a/src/sized/cc_array_sized.c b/src/sized/cc_array_sized.c
+index 10dc131..8490a88 100644
+--- a/src/sized/cc_array_sized.c
++++ b/src/sized/cc_array_sized.c
+@@ -40,8 +40,7 @@ struct cc_array_sized_s {
+     void  (*mem_free)   (void *block);
+ };
+ 
++static enum cc_stat expand_capacity(CC_ArraySized *ar);
+-static enum cc_stat expand_capacity(size_t *capacity, size_t *count,
+-    uint8_t **buffer, size_t *width, void *(**allocate)(size_t), size_t prefix, uint8_t **replacement);
+ 
+ 
+ /**
+@@ -160,16 +159,9 @@ void cc_array_sized_destroy(CC_ArraySized *ar)
+ enum cc_stat cc_array_sized_add(CC_ArraySized *ar, uint8_t *element)
+ {
+     if (ar->size >= ar->capacity) {
++        enum cc_stat status = expand_capacity(ar);
+-        if (ar->capacity == CC_MAX_ELEMENTS)
+-            return CC_ERR_MAX_CAPACITY;
+-        size_t requested = (size_t)(ar->capacity * ar->exp_factor);
+-        ar->capacity = requested <= ar->capacity ? CC_MAX_ELEMENTS : requested;
+-        uint8_t *replacement;
+-        enum cc_stat status = expand_capacity(&ar->capacity, &ar->size, &ar->buffer, &ar->data_length, &ar->mem_alloc, ar->size, &replacement);
+         if (status != CC_OK)
+             return status;
+-        ar->mem_free(ar->buffer);
+-        ar->buffer = replacement;
+     }
+ 
+     memcpy(BUF_ADDR(ar, ar->size), element, ar->data_length);
+@@ -202,23 +194,18 @@ enum cc_stat cc_array_sized_add_at(CC_ArraySized *ar, uint8_t *element, size_t i
+     if ((ar->size == 0 && index != 0) || index > (ar->size - 1))
+         return CC_ERR_OUT_OF_RANGE;
+ 
+-    size_t shift = (ar->size - index) * ar->data_length;
+     if (ar->size >= ar->capacity) {
++        enum cc_stat status = expand_capacity(ar);
+-        if (ar->capacity == CC_MAX_ELEMENTS)
+-            return CC_ERR_MAX_CAPACITY;
+-        size_t requested = (size_t)(ar->capacity * ar->exp_factor);
+-        ar->capacity = requested <= ar->capacity ? CC_MAX_ELEMENTS : requested;
+-        uint8_t *replacement;
+-        enum cc_stat status = expand_capacity(&ar->capacity, &ar->size, &ar->buffer, &ar->data_length, &ar->mem_alloc, index, &replacement);
+         if (status != CC_OK)
+             return status;
+-        memcpy(replacement + (index + 1) * ar->data_length, BUF_ADDR(ar, index), shift);
+-        ar->mem_free(ar->buffer);
+-        ar->buffer = replacement;
+-    } else {
+-        memmove(BUF_ADDR(ar, (index + 1)), BUF_ADDR(ar, index), shift);
+     }
+ 
++    size_t shift = (ar->size - index) * ar->data_length;
++
++    memmove(BUF_ADDR(ar, (index + 1)),
++            BUF_ADDR(ar, index),
++            shift);
++
+     memcpy(BUF_ADDR(ar, index), element, ar->data_length);
+     ar->size++;
+ 
+@@ -807,17 +794,30 @@ void cc_array_sized_sort(CC_ArraySized *ar, int (*cmp) (const void*, const void*
+  * the memory allocation for the new buffer failed, or CC_ERR_MAX_CAPACITY
+  * if the array is already at maximum capacity.
+  */
++static enum cc_stat expand_capacity(CC_ArraySized *ar)
+-static enum cc_stat expand_capacity(size_t *capacity, size_t *count,
+-    uint8_t **buffer, size_t *width, void *(**allocate)(size_t), size_t prefix, uint8_t **replacement)
+ {
++    if (ar->capacity == CC_MAX_ELEMENTS) {
++        return CC_ERR_MAX_CAPACITY;
++    }
++
++    size_t new_capacity = (size_t) (ar->capacity * ar->exp_factor);
++
++    /* As long as the capacity is greater that the expansion factor
++     * at the point of overflow, this is check is valid. */
++    if (new_capacity <= ar->capacity) {
++        ar->capacity = CC_MAX_ELEMENTS;
++    } else {
++        ar->capacity = new_capacity;
++    }
++    uint8_t *new_buff = ar->mem_alloc(ar->capacity * ar->data_length);
+-    uint8_t *new_buff = (*allocate)((*capacity) * (*width));
+ 
+     if (!new_buff) {
+         return CC_ERR_ALLOC;
+     }
++    memcpy(new_buff, ar->buffer, ar->size * ar->data_length);
++
++    ar->mem_free(ar->buffer);
++    ar->buffer = new_buff;
+-    size_t copied = prefix < *count ? prefix : *count;
+-    memcpy(new_buff, (*buffer), copied * (*width));
+-    *replacement = new_buff;
+ 
+     return CC_OK;
+ }
+@@ -1066,27 +1066,9 @@ enum cc_stat cc_array_sized_zip_iter_add(CC_ArraySizedZipIter *iter, uint8_t *e1
+     CC_ArraySized  *ar2  = iter->ar2;
+ 
+     /* Make sure both array buffers have room */
++    if ((ar1->size == ar1->capacity && (expand_capacity(ar1) != CC_OK)) ||
++        (ar2->size == ar2->capacity && (expand_capacity(ar2) != CC_OK))) {
++        return CC_ERR_ALLOC;
+-    if (ar1->size == ar1->capacity) {
+-        if (ar1->capacity == CC_MAX_ELEMENTS)
+-            return CC_ERR_ALLOC;
+-        size_t requested = (size_t)(ar1->capacity * ar1->exp_factor);
+-        ar1->capacity = requested <= ar1->capacity ? CC_MAX_ELEMENTS : requested;
+-        uint8_t *replacement;
+-        if (expand_capacity(&ar1->capacity, &ar1->size, &ar1->buffer, &ar1->data_length, &ar1->mem_alloc, ar1->size, &replacement) != CC_OK)
+-            return CC_ERR_ALLOC;
+-        ar1->mem_free(ar1->buffer);
+-        ar1->buffer = replacement;
+-    }
+-    if (ar2->size == ar2->capacity) {
+-        if (ar2->capacity == CC_MAX_ELEMENTS)
+-            return CC_ERR_ALLOC;
+-        size_t requested = (size_t)(ar2->capacity * ar2->exp_factor);
+-        ar2->capacity = requested <= ar2->capacity ? CC_MAX_ELEMENTS : requested;
+-        uint8_t *replacement;
+-        if (expand_capacity(&ar2->capacity, &ar2->size, &ar2->buffer, &ar2->data_length, &ar2->mem_alloc, ar2->size, &replacement) != CC_OK)
+-            return CC_ERR_ALLOC;
+-        ar2->mem_free(ar2->buffer);
+-        ar2->buffer = replacement;
+     }
+     cc_array_sized_add_at(ar1, e1, index);
+     cc_array_sized_add_at(ar2, e2, index);
+@@ -1133,4 +1115,4 @@ size_t cc_array_sized_zip_iter_index(CC_ArraySizedZipIter *iter)
+ size_t cc_array_sized_struct_size()
+ {
+     return sizeof(CC_ArraySized);
++}
+\ No newline at end of file
+-}

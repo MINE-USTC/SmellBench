@@ -1,0 +1,3085 @@
+diff --git a/btreeg.go b/btreeg.go
+index 2616aeb..156b6ff 100644
+--- a/btreeg.go
++++ b/btreeg.go
+@@ -67,13 +67,7 @@ func (tr *BTreeG[T]) init(degree int) {
+ 	if tr.min != 0 {
+ 		return
+ 	}
++	tr.min, tr.max = degreeToMinMax(degree)
+-	if degree <= 0 {
+-		degree = 32
+-	} else if degree == 1 {
+-		degree = 2
+-	}
+-	tr.max = degree*2 - 1
+-	tr.min = tr.max / 2
+ 	_, tr.copyItems = ((interface{})(tr.empty)).(copier[T])
+ 	if !tr.copyItems {
+ 		_, tr.isoCopyItems = ((interface{})(tr.empty)).(isoCopier[T])
+@@ -86,6 +80,15 @@ func (tr *BTreeG[T]) Less(a, b T) bool {
+ 	return tr.less(a, b)
+ }
+ 
++func (tr *BTreeG[T]) newNode(leaf bool) *node[T] {
++	n := &node[T]{isoid: tr.isoid}
++	if !leaf {
++		n.children = new([]*node[T])
++	}
++	return n
++}
++
++// leaf returns true if the node is a leaf.
+ func (n *node[T]) leaf() bool {
+ 	return n.children == nil
+ }
+@@ -106,7 +109,15 @@ func (tr *BTreeG[T]) bsearch(n *node[T], key T) (index int, found bool) {
+ 	return low, false
+ }
+ 
++func (tr *BTreeG[T]) find(n *node[T], key T, hint *PathHint, depth int,
++) (index int, found bool) {
++	if hint == nil {
++		return tr.bsearch(n, key)
++	}
++	return tr.hintsearch(n, key, hint, depth)
++}
++
++func (tr *BTreeG[T]) hintsearch(n *node[T], key T, hint *PathHint, depth int,
+-func (tr *BTreeG[T]) hintProbe(n *node[T], key T, hint *PathHint, depth int,
+ ) (index int, found bool) {
+ 	// Best case finds the exact match, updates the hint and returns.
+ 	// Worst case, updates the low and high bounds to binary search between.
+@@ -163,6 +174,21 @@ func (tr *BTreeG[T]) hintsearch(n *node[T], key T, hint *PathHint, depth int,
+ 	}
+ 
+ path_match:
++	if depth < 8 {
++		hint.used[depth] = true
++		var pathIndex uint8
++		if n.leaf() && found {
++			pathIndex = uint8(index + 1)
++		} else {
++			pathIndex = uint8(index)
++		}
++		if pathIndex != hint.path[depth] {
++			hint.path[depth] = pathIndex
++			for i := depth + 1; i < 8; i++ {
++				hint.used[i] = false
++			}
++		}
++	}
+ 	return index, found
+ }
+ 
+@@ -181,7 +207,7 @@ func (tr *BTreeG[T]) SetHint(item T, hint *PathHint) (prev T, replaced bool) {
+ func (tr *BTreeG[T]) setHint(item T, hint *PathHint) (prev T, replaced bool) {
+ 	if tr.root == nil {
+ 		tr.init(0)
++		tr.root = tr.newNode(true)
+-		tr.root = &node[T]{isoid: tr.isoid}
+ 		tr.root.items = append([]T{}, item)
+ 		tr.root.count = 1
+ 		tr.count = 1
+@@ -189,36 +215,13 @@ func (tr *BTreeG[T]) setHint(item T, hint *PathHint) (prev T, replaced bool) {
+ 	}
+ 	prev, replaced, split := tr.nodeSet(&tr.root, item, hint, 0)
+ 	if split {
++		left := tr.isoLoad(&tr.root, true)
+-		leftSlot1 := &tr.root
+-		if (*leftSlot1).isoid != tr.isoid {
+-			sourceNode := *leftSlot1
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*leftSlot1 = isolated
+-		}
+-		left := *leftSlot1
+-		total := left.count
+ 		right, median := tr.nodeSplit(left)
++		tr.root = tr.newNode(false)
+-		tr.root = &node[T]{isoid: tr.isoid}
+-		tr.root.children = new([]*node[T])
+ 		*tr.root.children = make([]*node[T], 0, tr.max+1)
+ 		*tr.root.children = append([]*node[T]{}, left, right)
+ 		tr.root.items = append([]T{}, median)
++		tr.root.updateCount()
+-		tr.root.count = total
+-		left.count = total - right.count - len(tr.root.items)
+ 		return tr.setHint(item, hint)
+ 	}
+ 	if replaced {
+@@ -238,20 +241,12 @@ func (tr *BTreeG[T]) nodeSplit(n *node[T]) (right *node[T], median T) {
+ 	median = n.items[i]
+ 
+ 	// right node
++	right = tr.newNode(n.leaf())
+-	right = &node[T]{isoid: tr.isoid}
+-	if !n.leaf() {
+-		right.children = new([]*node[T])
+-	}
+ 	right.items = n.items[i+1:]
+ 	if !n.leaf() {
+ 		*right.children = (*n.children)[i+1:]
+ 	}
++	right.updateCount()
+-	right.count = len(n.items) - i - 1
+-	if n.children != nil {
+-		for _, child := range (*n.children)[i+1:] {
+-			right.count += child.count
+-		}
+-	}
+ 
+ 	// left node
+ 	n.items[i] = tr.empty
+@@ -259,40 +254,57 @@ func (tr *BTreeG[T]) nodeSplit(n *node[T]) (right *node[T], median T) {
+ 	if !n.leaf() {
+ 		*n.children = (*n.children)[: i+1 : i+1]
+ 	}
++	n.updateCount()
+ 
+ 	return right, median
+ }
+ 
++func (n *node[T]) updateCount() {
++	n.count = len(n.items)
++	if !n.leaf() {
++		for i := 0; i < len(*n.children); i++ {
++			n.count += (*n.children)[i].count
++		}
++	}
++}
++
++// Copy the node for safe isolation.
+ func (tr *BTreeG[T]) copy(n *node[T]) *node[T] {
+ 	n2 := new(node[T])
+ 	n2.isoid = tr.isoid
+ 	n2.count = n.count
+ 	n2.items = make([]T, len(n.items), cap(n.items))
+ 	copy(n2.items, n.items)
++	if tr.copyItems {
++		for i := 0; i < len(n2.items); i++ {
++			n2.items[i] = ((interface{})(n2.items[i])).(copier[T]).Copy()
++		}
++	} else if tr.isoCopyItems {
++		for i := 0; i < len(n2.items); i++ {
++			n2.items[i] = ((interface{})(n2.items[i])).(isoCopier[T]).IsoCopy()
++		}
++	}
++	if !n.leaf() {
++		n2.children = new([]*node[T])
++		*n2.children = make([]*node[T], len(*n.children), tr.max+1)
++		copy(*n2.children, *n.children)
++	}
+ 	return n2
+ }
+ 
++// isoLoad loads the provided node and, if needed, performs a copy-on-write.
++func (tr *BTreeG[T]) isoLoad(cn **node[T], mut bool) *node[T] {
++	if mut && (*cn).isoid != tr.isoid {
++		*cn = tr.copy(*cn)
++	}
++	return *cn
++}
++
+ func (tr *BTreeG[T]) nodeSet(cn **node[T], item T,
+ 	hint *PathHint, depth int,
+ ) (prev T, replaced bool, split bool) {
+ 	if (*cn).isoid != tr.isoid {
++		*cn = tr.copy(*cn)
+-		sourceNode := *cn
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*cn = isolated
+ 	}
+ 	n := *cn
+ 	var i int
+@@ -300,20 +312,7 @@ func (tr *BTreeG[T]) nodeSet(cn **node[T], item T,
+ 	if hint == nil {
+ 		i, found = tr.bsearch(n, item)
+ 	} else {
++		i, found = tr.hintsearch(n, item, hint, depth)
+-		i, found = tr.hintProbe(n, item, hint, depth)
+-		if depth < len((hint).path) {
+-			(hint).used[depth] = true
+-			pathIndex := uint8(i)
+-			if n.children == nil && found {
+-				pathIndex++
+-			}
+-			if (hint).path[depth] != pathIndex {
+-				(hint).path[depth] = pathIndex
+-				for next := depth + 1; next < len((hint).used); next++ {
+-					(hint).used[next] = false
+-				}
+-			}
+-		}
+ 	}
+ 	if found {
+ 		prev = n.items[i]
+@@ -335,16 +334,13 @@ func (tr *BTreeG[T]) nodeSet(cn **node[T], item T,
+ 		if len(n.items) == tr.max {
+ 			return tr.empty, false, true
+ 		}
++		right, median := tr.nodeSplit((*n.children)[i])
+-		left := (*n.children)[i]
+-		total := left.count
+-		right, median := tr.nodeSplit(left)
+ 		*n.children = append(*n.children, nil)
+ 		copy((*n.children)[i+1:], (*n.children)[i:])
+ 		(*n.children)[i+1] = right
+ 		n.items = append(n.items, tr.empty)
+ 		copy(n.items[i+1:], n.items[i:])
+ 		n.items[i] = median
+-		left.count = total - (*n.children)[i+1].count - 1
+ 		return tr.nodeSet(&n, item, hint, depth)
+ 	}
+ 	if !replaced {
+@@ -372,23 +368,8 @@ func (tr *BTreeG[T]) scan(iter func(item T) bool, mut bool) {
+ 
+ func (tr *BTreeG[T]) nodeScan(cn **node[T], iter func(item T) bool, mut bool,
+ ) bool {
++	n := tr.isoLoad(cn, mut)
++	if n.leaf() {
+-	nSlot1 := cn
+-	sourceNode := *nSlot1
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	if sourceNode.leaf() {
+ 		for i := 0; i < len(n.items); i++ {
+ 			if !iter(n.items[i]) {
+ 				return false
+@@ -396,11 +377,6 @@ func (tr *BTreeG[T]) nodeScan(cn **node[T], iter func(item T) bool, mut bool,
+ 		}
+ 		return true
+ 	}
+-	if n != sourceNode {
+-		n.children = new([]*node[T])
+-		*n.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-		copy(*n.children, *sourceNode.children)
+-	}
+ 	for i := 0; i < len(n.items); i++ {
+ 		if !tr.nodeScan(&(*n.children)[i], iter, mut) {
+ 			return false
+@@ -437,87 +413,17 @@ func (tr *BTreeG[T]) getHint(key T, hint *PathHint, mut bool) (T, bool) {
+ 	if tr.root == nil {
+ 		return tr.empty, false
+ 	}
++	n := tr.isoLoad(&tr.root, mut)
+-	nSlot1 := &tr.root
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	depth := 0
+ 	for {
++		i, found := tr.find(n, key, hint, depth)
+-		i, found := 0, false
+-		if hint != nil {
+-			i, found = tr.hintProbe(n, key, hint, depth)
+-			if depth < len((hint).path) {
+-				(hint).used[depth] = true
+-				pathIndex := uint8(i)
+-				if n.children == nil && found {
+-					pathIndex++
+-				}
+-				if (hint).path[depth] != pathIndex {
+-					(hint).path[depth] = pathIndex
+-					for next := depth + 1; next < len((hint).used); next++ {
+-						(hint).used[next] = false
+-					}
+-				}
+-			}
+-		} else {
+-			low, high := 0, len(n.items)
+-			for low < high {
+-				probe := int(uint(low+high) >> 1)
+-				if !(tr.less(key, n.items[probe])) {
+-					low = probe + 1
+-				} else {
+-					high = probe
+-				}
+-			}
+-			i, found = low, false
+-			if low > 0 && !(tr.less(n.items[low-1], key)) {
+-				i, found = low-1, true
+-			}
+-		}
+ 		if found {
+ 			return n.items[i], true
+ 		}
+ 		if n.children == nil {
+ 			return tr.empty, false
+ 		}
++		n = tr.isoLoad(&(*n.children)[i], mut)
+-		nSlot2 := &(*n.children)[i]
+-		if mut && (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 		depth++
+ 	}
+ }
+@@ -549,60 +455,10 @@ restart:
+ 	if tr.root == nil {
+ 		return
+ 	}
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	stack = append(stack, stackItem{n, 0})
+ 	for {
++		i, found := tr.find(n, pivot, &hint, len(stack)-1)
+-		i, found := 0, false
+-		if &hint != nil {
+-			i, found = tr.hintProbe(n, pivot, &hint, len(stack)-1)
+-			if len(stack)-1 < len((&hint).path) {
+-				(&hint).used[len(stack)-1] = true
+-				pathIndex := uint8(i)
+-				if n.children == nil && found {
+-					pathIndex++
+-				}
+-				if (&hint).path[len(stack)-1] != pathIndex {
+-					(&hint).path[len(stack)-1] = pathIndex
+-					for next := len(stack) - 1 + 1; next < len((&hint).used); next++ {
+-						(&hint).used[next] = false
+-					}
+-				}
+-			}
+-		} else {
+-			low, high := 0, len(n.items)
+-			for low < high {
+-				probe := int(uint(low+high) >> 1)
+-				if !(tr.less(pivot, n.items[probe])) {
+-					low = probe + 1
+-				} else {
+-					high = probe
+-				}
+-			}
+-			i, found = low, false
+-			if low > 0 && !(tr.less(n.items[low-1], pivot)) {
+-				i, found = low-1, true
+-			}
+-		}
+ 	next:
+ 		if n.children != nil {
+ 			if found {
+@@ -614,51 +470,11 @@ restart:
+ 					stack = stack[:0]
+ 					goto restart
+ 				case Keep:
++					n = tr.isoLoad(&(*n.children)[i+1], true)
+-					nSlot2 := &(*n.children)[i+1]
+-					if (*nSlot2).isoid != tr.isoid {
+-						sourceNode := *nSlot2
+-						isolated := tr.copy(sourceNode)
+-						if tr.copyItems {
+-							for itemIndex := range isolated.items {
+-								isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-							}
+-						} else if tr.isoCopyItems {
+-							for itemIndex := range isolated.items {
+-								isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-							}
+-						}
+-						if sourceNode.children != nil {
+-							isolated.children = new([]*node[T])
+-							*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-							copy(*isolated.children, *sourceNode.children)
+-						}
+-						*nSlot2 = isolated
+-					}
+-					n = *nSlot2
+ 					stack = append(stack, stackItem{n, i + 1})
+ 					i = 0
+ 					for !n.leaf() {
++						n = tr.isoLoad(&(*n.children)[i], true)
+-						nSlot3 := &(*n.children)[i]
+-						if (*nSlot3).isoid != tr.isoid {
+-							sourceNode := *nSlot3
+-							isolated := tr.copy(sourceNode)
+-							if tr.copyItems {
+-								for itemIndex := range isolated.items {
+-									isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-								}
+-							} else if tr.isoCopyItems {
+-								for itemIndex := range isolated.items {
+-									isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-								}
+-							}
+-							if sourceNode.children != nil {
+-								isolated.children = new([]*node[T])
+-								*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-								copy(*isolated.children, *sourceNode.children)
+-							}
+-							*nSlot3 = isolated
+-						}
+-						n = *nSlot3
+ 						stack = append(stack, stackItem{n, i})
+ 					}
+ 				default:
+@@ -667,27 +483,7 @@ restart:
+ 				}
+ 			} else {
+ 				// at branch, continue to leaf
++				n = tr.isoLoad(&(*n.children)[i], true)
+-				nSlot4 := &(*n.children)[i]
+-				if (*nSlot4).isoid != tr.isoid {
+-					sourceNode := *nSlot4
+-					isolated := tr.copy(sourceNode)
+-					if tr.copyItems {
+-						for itemIndex := range isolated.items {
+-							isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-						}
+-					} else if tr.isoCopyItems {
+-						for itemIndex := range isolated.items {
+-							isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-						}
+-					}
+-					if sourceNode.children != nil {
+-						isolated.children = new([]*node[T])
+-						*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-						copy(*isolated.children, *sourceNode.children)
+-					}
+-					*nSlot4 = isolated
+-				}
+-				n = *nSlot4
+ 				stack = append(stack, stackItem{n, i})
+ 				continue
+ 			}
+@@ -944,60 +740,10 @@ restart:
+ 	if tr.root == nil {
+ 		return *deleted
+ 	}
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	stack = append(stack, stackItem{n, 0})
+ 	for {
++		i, found := tr.find(n, pivot, &hint, len(stack)-1)
+-		i, found := 0, false
+-		if &hint != nil {
+-			i, found = tr.hintProbe(n, pivot, &hint, len(stack)-1)
+-			if len(stack)-1 < len((&hint).path) {
+-				(&hint).used[len(stack)-1] = true
+-				pathIndex := uint8(i)
+-				if n.children == nil && found {
+-					pathIndex++
+-				}
+-				if (&hint).path[len(stack)-1] != pathIndex {
+-					(&hint).path[len(stack)-1] = pathIndex
+-					for next := len(stack) - 1 + 1; next < len((&hint).used); next++ {
+-						(&hint).used[next] = false
+-					}
+-				}
+-			}
+-		} else {
+-			low, high := 0, len(n.items)
+-			for low < high {
+-				probe := int(uint(low+high) >> 1)
+-				if !(tr.less(pivot, n.items[probe])) {
+-					low = probe + 1
+-				} else {
+-					high = probe
+-				}
+-			}
+-			i, found = low, false
+-			if low > 0 && !(tr.less(n.items[low-1], pivot)) {
+-				i, found = low-1, true
+-			}
+-		}
+ 	next:
+ 		if n.children != nil {
+ 			// Can the item and child to the right be completely deleted?
+@@ -1039,27 +785,7 @@ restart:
+ 				goto restart
+ 			}
+ 			// at branch, continue to leaf
++			n = tr.isoLoad(&(*n.children)[i], true)
+-			nSlot2 := &(*n.children)[i]
+-			if (*nSlot2).isoid != tr.isoid {
+-				sourceNode := *nSlot2
+-				isolated := tr.copy(sourceNode)
+-				if tr.copyItems {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-					}
+-				} else if tr.isoCopyItems {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-					}
+-				}
+-				if sourceNode.children != nil {
+-					isolated.children = new([]*node[T])
+-					*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-					copy(*isolated.children, *sourceNode.children)
+-				}
+-				*nSlot2 = isolated
+-			}
+-			n = *nSlot2
+ 			stack = append(stack, stackItem{n, i})
+ 			continue
+ 		}
+@@ -1176,63 +902,13 @@ func (tr *BTreeG[T]) deleteHint(key T, hint *PathHint) (T, bool) {
+ func (tr *BTreeG[T]) delete(cn **node[T], max bool, key T,
+ 	hint *PathHint, depth int,
+ ) (T, bool) {
++	n := tr.isoLoad(cn, true)
+-	nSlot1 := cn
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	var i int
+ 	var found bool
+ 	if max {
+ 		i, found = len(n.items)-1, true
+ 	} else {
++		i, found = tr.find(n, key, hint, depth)
+-		i, found = 0, false
+-		if hint != nil {
+-			i, found = tr.hintProbe(n, key, hint, depth)
+-			if depth < len((hint).path) {
+-				(hint).used[depth] = true
+-				pathIndex := uint8(i)
+-				if n.children == nil && found {
+-					pathIndex++
+-				}
+-				if (hint).path[depth] != pathIndex {
+-					(hint).path[depth] = pathIndex
+-					for next := depth + 1; next < len((hint).used); next++ {
+-						(hint).used[next] = false
+-					}
+-				}
+-			}
+-		} else {
+-			low, high := 0, len(n.items)
+-			for low < high {
+-				probe := int(uint(low+high) >> 1)
+-				if !(tr.less(key, n.items[probe])) {
+-					low = probe + 1
+-				} else {
+-					high = probe
+-				}
+-			}
+-			i, found = low, false
+-			if low > 0 && !(tr.less(n.items[low-1], key)) {
+-				i, found = low-1, true
+-			}
+-		}
+ 	}
+ 	if n.leaf() {
+ 		if found {
+@@ -1267,18 +943,7 @@ func (tr *BTreeG[T]) delete(cn **node[T], max bool, key T,
+ 	}
+ 	n.count--
+ 	if len((*n.children)[i].items) < tr.min {
+-		pair := i
+-		if pair == len(n.items) {
+-			pair--
+-		}
+-		total := (*n.children)[pair].count + (*n.children)[pair+1].count + 1
+-		width := len(n.items)
+ 		tr.nodeRebalance(n, i)
+-		left := (*n.children)[pair]
+-		left.count = total
+-		if len(n.items) == width {
+-			left.count -= (*n.children)[pair+1].count + 1
+-		}
+ 	}
+ 	return prev, true
+ }
+@@ -1292,48 +957,8 @@ func (tr *BTreeG[T]) nodeRebalance(n *node[T], i int) {
+ 	}
+ 
+ 	// ensure copy-on-write
++	left := tr.isoLoad(&(*n.children)[i], true)
++	right := tr.isoLoad(&(*n.children)[i+1], true)
+-	leftSlot1 := &(*n.children)[i]
+-	if (*leftSlot1).isoid != tr.isoid {
+-		sourceNode := *leftSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*leftSlot1 = isolated
+-	}
+-	left := *leftSlot1
+-	rightSlot2 := &(*n.children)[i+1]
+-	if (*rightSlot2).isoid != tr.isoid {
+-		sourceNode := *rightSlot2
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*rightSlot2 = isolated
+-	}
+-	right := *rightSlot2
+ 
+ 	if len(left.items)+len(right.items) < tr.max {
+ 		// Merges the left and right children nodes together as a single node
+@@ -1347,6 +972,7 @@ func (tr *BTreeG[T]) nodeRebalance(n *node[T], i int) {
+ 		if !left.leaf() {
+ 			*left.children = append(*left.children, *right.children...)
+ 		}
++		left.count += right.count + 1
+ 
+ 		// move the items over one slot
+ 		copy(n.items[i:], n.items[i+1:])
+@@ -1370,6 +996,7 @@ func (tr *BTreeG[T]) nodeRebalance(n *node[T], i int) {
+ 		n.items[i] = left.items[len(left.items)-1]
+ 		left.items[len(left.items)-1] = tr.empty
+ 		left.items = left.items[:len(left.items)-1]
++		left.count--
+ 
+ 		if !left.leaf() {
+ 			// move the left-node last child into the right-node first slot
+@@ -1378,6 +1005,7 @@ func (tr *BTreeG[T]) nodeRebalance(n *node[T], i int) {
+ 			(*right.children)[0] = (*left.children)[len(*left.children)-1]
+ 			(*left.children)[len(*left.children)-1] = nil
+ 			(*left.children) = (*left.children)[:len(*left.children)-1]
++			left.count -= (*right.children)[0].count
+ 			right.count += (*right.children)[0].count
+ 		}
+ 	} else {
+@@ -1385,6 +1013,7 @@ func (tr *BTreeG[T]) nodeRebalance(n *node[T], i int) {
+ 
+ 		// Same as above but the other direction
+ 		left.items = append(left.items, n.items[i])
++		left.count++
+ 		n.items[i] = right.items[0]
+ 		copy(right.items, right.items[1:])
+ 		right.items[len(right.items)-1] = tr.empty
+@@ -1396,6 +1025,7 @@ func (tr *BTreeG[T]) nodeRebalance(n *node[T], i int) {
+ 			copy(*right.children, (*right.children)[1:])
+ 			(*right.children)[len(*right.children)-1] = nil
+ 			*right.children = (*right.children)[:len(*right.children)-1]
++			left.count += (*left.children)[len(*left.children)-1].count
+ 			right.count -= (*left.children)[len(*left.children)-1].count
+ 		}
+ 	}
+@@ -1436,58 +1066,8 @@ func (tr *BTreeG[T]) AscendHintMut(pivot T, iter func(item T) bool,
+ func (tr *BTreeG[T]) nodeAscend(cn **node[T], pivot T, hint *PathHint,
+ 	depth int, iter func(item T) bool, mut bool,
+ ) bool {
++	n := tr.isoLoad(cn, mut)
++	i, found := tr.find(n, pivot, hint, depth)
+-	nSlot1 := cn
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	i, found := 0, false
+-	if hint != nil {
+-		i, found = tr.hintProbe(n, pivot, hint, depth)
+-		if depth < len((hint).path) {
+-			(hint).used[depth] = true
+-			pathIndex := uint8(i)
+-			if n.children == nil && found {
+-				pathIndex++
+-			}
+-			if (hint).path[depth] != pathIndex {
+-				(hint).path[depth] = pathIndex
+-				for next := depth + 1; next < len((hint).used); next++ {
+-					(hint).used[next] = false
+-				}
+-			}
+-		}
+-	} else {
+-		low, high := 0, len(n.items)
+-		for low < high {
+-			probe := int(uint(low+high) >> 1)
+-			if !(tr.less(pivot, n.items[probe])) {
+-				low = probe + 1
+-			} else {
+-				high = probe
+-			}
+-		}
+-		i, found = low, false
+-		if low > 0 && !(tr.less(n.items[low-1], pivot)) {
+-			i, found = low-1, true
+-		}
+-	}
+ 	if !found {
+ 		if !n.leaf() {
+ 			if !tr.nodeAscend(&(*n.children)[i], pivot, hint, depth+1, iter,
+@@ -1531,23 +1111,8 @@ func (tr *BTreeG[T]) reverse(iter func(item T) bool, mut bool) {
+ 
+ func (tr *BTreeG[T]) nodeReverse(cn **node[T], iter func(item T) bool, mut bool,
+ ) bool {
++	n := tr.isoLoad(cn, mut)
++	if n.leaf() {
+-	nSlot1 := cn
+-	sourceNode := *nSlot1
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	if sourceNode.leaf() {
+ 		for i := len(n.items) - 1; i >= 0; i-- {
+ 			if !iter(n.items[i]) {
+ 				return false
+@@ -1555,11 +1120,6 @@ func (tr *BTreeG[T]) nodeReverse(cn **node[T], iter func(item T) bool, mut bool,
+ 		}
+ 		return true
+ 	}
+-	if n != sourceNode {
+-		n.children = new([]*node[T])
+-		*n.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-		copy(*n.children, *sourceNode.children)
+-	}
+ 	if !tr.nodeReverse(&(*n.children)[len(*n.children)-1], iter, mut) {
+ 		return false
+ 	}
+@@ -1609,58 +1169,8 @@ func (tr *BTreeG[T]) DescendHintMut(pivot T, iter func(item T) bool,
+ func (tr *BTreeG[T]) nodeDescend(cn **node[T], pivot T, hint *PathHint,
+ 	depth int, iter func(item T) bool, mut bool,
+ ) bool {
++	n := tr.isoLoad(cn, mut)
++	i, found := tr.find(n, pivot, hint, depth)
+-	nSlot1 := cn
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	i, found := 0, false
+-	if hint != nil {
+-		i, found = tr.hintProbe(n, pivot, hint, depth)
+-		if depth < len((hint).path) {
+-			(hint).used[depth] = true
+-			pathIndex := uint8(i)
+-			if n.children == nil && found {
+-				pathIndex++
+-			}
+-			if (hint).path[depth] != pathIndex {
+-				(hint).path[depth] = pathIndex
+-				for next := depth + 1; next < len((hint).used); next++ {
+-					(hint).used[next] = false
+-				}
+-			}
+-		}
+-	} else {
+-		low, high := 0, len(n.items)
+-		for low < high {
+-			probe := int(uint(low+high) >> 1)
+-			if !(tr.less(pivot, n.items[probe])) {
+-				low = probe + 1
+-			} else {
+-				high = probe
+-			}
+-		}
+-		i, found = low, false
+-		if low > 0 && !(tr.less(n.items[low-1], pivot)) {
+-			i, found = low-1, true
+-		}
+-	}
+ 	if !found {
+ 		if !n.leaf() {
+ 			if !tr.nodeDescend(&(*n.children)[i], pivot, hint, depth+1, iter,
+@@ -1691,27 +1201,7 @@ func (tr *BTreeG[T]) Load(item T) (T, bool) {
+ 	if tr.root == nil {
+ 		return tr.setHint(item, nil)
+ 	}
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		n.count++ // optimistically update counts
+ 		if n.leaf() {
+@@ -1724,27 +1214,7 @@ func (tr *BTreeG[T]) Load(item T) (T, bool) {
+ 			}
+ 			break
+ 		}
++		n = tr.isoLoad(&(*n.children)[len(*n.children)-1], true)
+-		nSlot2 := &(*n.children)[len(*n.children)-1]
+-		if (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	// revert the counts
+ 	n = tr.root
+@@ -1775,52 +1245,12 @@ func (tr *BTreeG[T]) minMut(mut bool) (T, bool) {
+ 	if tr.root == nil {
+ 		return tr.empty, false
+ 	}
++	n := tr.isoLoad(&tr.root, mut)
+-	nSlot1 := &tr.root
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		if n.leaf() {
+ 			return n.items[0], true
+ 		}
++		n = tr.isoLoad(&(*n.children)[0], mut)
+-		nSlot2 := &(*n.children)[0]
+-		if mut && (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ }
+ 
+@@ -1841,52 +1271,12 @@ func (tr *BTreeG[T]) maxMut(mut bool) (T, bool) {
+ 	if tr.root == nil {
+ 		return tr.empty, false
+ 	}
++	n := tr.isoLoad(&tr.root, mut)
+-	nSlot1 := &tr.root
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		if n.leaf() {
+ 			return n.items[len(n.items)-1], true
+ 		}
++		n = tr.isoLoad(&(*n.children)[len(*n.children)-1], mut)
+-		nSlot2 := &(*n.children)[len(*n.children)-1]
+-		if mut && (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ }
+ 
+@@ -1899,27 +1289,7 @@ func (tr *BTreeG[T]) PopMin() (T, bool) {
+ 	if tr.root == nil {
+ 		return tr.empty, false
+ 	}
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	var item T
+ 	for {
+ 		n.count-- // optimistically update counts
+@@ -1937,27 +1307,7 @@ func (tr *BTreeG[T]) PopMin() (T, bool) {
+ 			}
+ 			return item, true
+ 		}
++		n = tr.isoLoad(&(*n.children)[0], true)
+-		nSlot2 := &(*n.children)[0]
+-		if (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	// revert the counts
+ 	n = tr.root
+@@ -1980,27 +1330,7 @@ func (tr *BTreeG[T]) PopMax() (T, bool) {
+ 	if tr.root == nil {
+ 		return tr.empty, false
+ 	}
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	var item T
+ 	for {
+ 		n.count-- // optimistically update counts
+@@ -2017,27 +1347,7 @@ func (tr *BTreeG[T]) PopMax() (T, bool) {
+ 			}
+ 			return item, true
+ 		}
++		n = tr.isoLoad(&(*n.children)[len(*n.children)-1], true)
+-		nSlot2 := &(*n.children)[len(*n.children)-1]
+-		if (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	// revert the counts
+ 	n = tr.root
+@@ -2066,27 +1376,7 @@ func (tr *BTreeG[T]) getAt(index int, mut bool) (T, bool) {
+ 	if tr.root == nil || index < 0 || index >= tr.count {
+ 		return tr.empty, false
+ 	}
++	n := tr.isoLoad(&tr.root, mut)
+-	nSlot1 := &tr.root
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		if n.leaf() {
+ 			return n.items[index], true
+@@ -2100,27 +1390,7 @@ func (tr *BTreeG[T]) getAt(index int, mut bool) (T, bool) {
+ 			}
+ 			index -= (*n.children)[i].count + 1
+ 		}
++		n = tr.isoLoad(&(*n.children)[i], mut)
+-		nSlot2 := &(*n.children)[i]
+-		if mut && (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ }
+ 
+@@ -2136,27 +1406,7 @@ func (tr *BTreeG[T]) DeleteAt(index int) (T, bool) {
+ 	var pathbuf [8]uint8 // track the path
+ 	path := pathbuf[:0]
+ 	var item T
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ outer:
+ 	for {
+ 		n.count-- // optimistically update counts
+@@ -2188,27 +1438,7 @@ outer:
+ 			index -= (*n.children)[i].count + 1
+ 		}
+ 		path = append(path, uint8(i))
++		n = tr.isoLoad(&(*n.children)[i], true)
+-		nSlot2 := &(*n.children)[i]
+-		if (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	// revert the counts
+ 	var hint PathHint
+@@ -2266,32 +1496,12 @@ func (tr *BTreeG[T]) walk(iter func(item []T) bool, mut bool) {
+ 
+ func (tr *BTreeG[T]) nodeWalk(cn **node[T], iter func(item []T) bool, mut bool,
+ ) bool {
++	n := tr.isoLoad(cn, mut)
++	if n.leaf() {
+-	nSlot1 := cn
+-	sourceNode := *nSlot1
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	if sourceNode.leaf() {
+ 		if !iter(n.items) {
+ 			return false
+ 		}
+ 	} else {
+-		if n != sourceNode {
+-			n.children = new([]*node[T])
+-			*n.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-			copy(*n.children, *sourceNode.children)
+-		}
+ 		for i := 0; i < len(n.items); i++ {
+ 			if !tr.nodeWalk(&(*n.children)[i], iter, mut) {
+ 				return false
+@@ -2402,60 +1612,10 @@ func (iter *IterG[T]) seek(key T, hint *PathHint) bool {
+ 	if iter.tr.root == nil {
+ 		return false
+ 	}
++	n := iter.tr.isoLoad(&iter.tr.root, iter.mut)
+-	nSlot1 := &iter.tr.root
+-	if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := iter.tr.copy(sourceNode)
+-		if iter.tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if iter.tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	var depth int
+ 	for {
++		i, found := iter.tr.find(n, key, hint, depth)
+-		i, found := 0, false
+-		if hint != nil {
+-			i, found = iter.tr.hintProbe(n, key, hint, depth)
+-			if depth < len((hint).path) {
+-				(hint).used[depth] = true
+-				pathIndex := uint8(i)
+-				if n.children == nil && found {
+-					pathIndex++
+-				}
+-				if (hint).path[depth] != pathIndex {
+-					(hint).path[depth] = pathIndex
+-					for next := depth + 1; next < len((hint).used); next++ {
+-						(hint).used[next] = false
+-					}
+-				}
+-			}
+-		} else {
+-			low, high := 0, len(n.items)
+-			for low < high {
+-				probe := int(uint(low+high) >> 1)
+-				if !(iter.tr.less(key, n.items[probe])) {
+-					low = probe + 1
+-				} else {
+-					high = probe
+-				}
+-			}
+-			i, found = low, false
+-			if low > 0 && !(iter.tr.less(n.items[low-1], key)) {
+-				i, found = low-1, true
+-			}
+-		}
+ 		iter.stack = append(iter.stack, iterStackItemG[T]{n, i})
+ 		if found {
+ 			iter.item = n.items[i]
+@@ -2465,27 +1625,7 @@ func (iter *IterG[T]) seek(key T, hint *PathHint) bool {
+ 			iter.stack[len(iter.stack)-1].i--
+ 			return iter.Next()
+ 		}
++		n = iter.tr.isoLoad(&(*n.children)[i], iter.mut)
+-		nSlot2 := &(*n.children)[i]
+-		if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if iter.tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 		depth++
+ 	}
+ }
+@@ -2503,53 +1643,13 @@ func (iter *IterG[T]) First() bool {
+ 	if iter.tr.root == nil {
+ 		return false
+ 	}
++	n := iter.tr.isoLoad(&iter.tr.root, iter.mut)
+-	nSlot1 := &iter.tr.root
+-	if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := iter.tr.copy(sourceNode)
+-		if iter.tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if iter.tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		iter.stack = append(iter.stack, iterStackItemG[T]{n, 0})
+ 		if n.leaf() {
+ 			break
+ 		}
++		n = iter.tr.isoLoad(&(*n.children)[0], iter.mut)
+-		nSlot2 := &(*n.children)[0]
+-		if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if iter.tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	s := &iter.stack[len(iter.stack)-1]
+ 	iter.item = s.n.items[s.i]
+@@ -2567,54 +1667,14 @@ func (iter *IterG[T]) Last() bool {
+ 	if iter.tr.root == nil {
+ 		return false
+ 	}
++	n := iter.tr.isoLoad(&iter.tr.root, iter.mut)
+-	nSlot1 := &iter.tr.root
+-	if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := iter.tr.copy(sourceNode)
+-		if iter.tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if iter.tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*node[T])
+-			*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		iter.stack = append(iter.stack, iterStackItemG[T]{n, len(n.items)})
+ 		if n.leaf() {
+ 			iter.stack[len(iter.stack)-1].i--
+ 			break
+ 		}
++		n = iter.tr.isoLoad(&(*n.children)[len(n.items)], iter.mut)
+-		nSlot2 := &(*n.children)[len(n.items)]
+-		if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if iter.tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	s := &iter.stack[len(iter.stack)-1]
+ 	iter.item = s.n.items[s.i]
+@@ -2690,53 +1750,13 @@ func (iter *IterG[T]) Next() bool {
+ 			}
+ 		}
+ 	} else {
++		n := iter.tr.isoLoad(&(*s.n.children)[s.i], iter.mut)
+-		nSlot1 := &(*s.n.children)[s.i]
+-		if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot1
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if iter.tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot1 = isolated
+-		}
+-		n := *nSlot1
+ 		for {
+ 			iter.stack = append(iter.stack, iterStackItemG[T]{n, 0})
+ 			if n.leaf() {
+ 				break
+ 			}
++			n = iter.tr.isoLoad(&(*n.children)[0], iter.mut)
+-			nSlot2 := &(*n.children)[0]
+-			if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-				sourceNode := *nSlot2
+-				isolated := iter.tr.copy(sourceNode)
+-				if iter.tr.copyItems {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-					}
+-				} else if iter.tr.isoCopyItems {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-					}
+-				}
+-				if sourceNode.children != nil {
+-					isolated.children = new([]*node[T])
+-					*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-					copy(*isolated.children, *sourceNode.children)
+-				}
+-				*nSlot2 = isolated
+-			}
+-			n = *nSlot2
+ 		}
+ 	}
+ 	s = &iter.stack[len(iter.stack)-1]
+@@ -2778,54 +1798,14 @@ func (iter *IterG[T]) Prev() bool {
+ 			}
+ 		}
+ 	} else {
++		n := iter.tr.isoLoad(&(*s.n.children)[s.i], iter.mut)
+-		nSlot1 := &(*s.n.children)[s.i]
+-		if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot1
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-				}
+-			} else if iter.tr.isoCopyItems {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*node[T])
+-				*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot1 = isolated
+-		}
+-		n := *nSlot1
+ 		for {
+ 			iter.stack = append(iter.stack, iterStackItemG[T]{n, len(n.items)})
+ 			if n.leaf() {
+ 				iter.stack[len(iter.stack)-1].i--
+ 				break
+ 			}
++			n = iter.tr.isoLoad(&(*n.children)[len(n.items)], iter.mut)
+-			nSlot2 := &(*n.children)[len(n.items)]
+-			if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-				sourceNode := *nSlot2
+-				isolated := iter.tr.copy(sourceNode)
+-				if iter.tr.copyItems {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-					}
+-				} else if iter.tr.isoCopyItems {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-					}
+-				}
+-				if sourceNode.children != nil {
+-					isolated.children = new([]*node[T])
+-					*isolated.children = make([]*node[T], len(*sourceNode.children), iter.tr.max+1)
+-					copy(*isolated.children, *sourceNode.children)
+-				}
+-				*nSlot2 = isolated
+-			}
+-			n = *nSlot2
+ 		}
+ 	}
+ 	s = &iter.stack[len(iter.stack)-1]
+@@ -2859,30 +1839,10 @@ func (tr *BTreeG[T]) items(mut bool) []T {
+ }
+ 
+ func (tr *BTreeG[T]) nodeItems(cn **node[T], items []T, mut bool) []T {
++	n := tr.isoLoad(cn, mut)
++	if n.leaf() {
+-	nSlot1 := cn
+-	sourceNode := *nSlot1
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(copier[T]).Copy()
+-			}
+-		} else if tr.isoCopyItems {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex] = any(isolated.items[itemIndex]).(isoCopier[T]).IsoCopy()
+-			}
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	if sourceNode.leaf() {
+ 		return append(items, n.items...)
+ 	}
+-	if n != sourceNode {
+-		n.children = new([]*node[T])
+-		*n.children = make([]*node[T], len(*sourceNode.children), tr.max+1)
+-		copy(*n.children, *sourceNode.children)
+-	}
+ 	for i := 0; i < len(n.items); i++ {
+ 		items = tr.nodeItems(&(*n.children)[i], items, mut)
+ 		items = append(items, n.items[i])
+diff --git a/map.go b/map.go
+index 95e8226..a4d7c04 100644
+--- a/map.go
++++ b/map.go
+@@ -68,15 +68,40 @@ type mapNode[K ordered, V any] struct {
+ 	children *[]*mapNode[K, V]
+ }
+ 
++// Copy the node for safe isolation.
+ func (tr *Map[K, V]) copy(n *mapNode[K, V]) *mapNode[K, V] {
+ 	n2 := new(mapNode[K, V])
+ 	n2.isoid = tr.isoid
+ 	n2.count = n.count
+ 	n2.items = make([]mapPair[K, V], len(n.items), cap(n.items))
+ 	copy(n2.items, n.items)
++	if tr.copyValues {
++		for i := 0; i < len(n2.items); i++ {
++			n2.items[i].value =
++				((interface{})(n2.items[i].value)).(copier[V]).Copy()
++		}
++	} else if tr.isoCopyValues {
++		for i := 0; i < len(n2.items); i++ {
++			n2.items[i].value =
++				((interface{})(n2.items[i].value)).(isoCopier[V]).IsoCopy()
++		}
++	}
++	if !n.leaf() {
++		n2.children = new([]*mapNode[K, V])
++		*n2.children = make([]*mapNode[K, V], len(*n.children), tr.max+1)
++		copy(*n2.children, *n.children)
++	}
+ 	return n2
+ }
+ 
++// isoLoad loads the provided node and, if needed, performs a copy-on-write.
++func (tr *Map[K, V]) isoLoad(cn **mapNode[K, V], mut bool) *mapNode[K, V] {
++	if mut && (*cn).isoid != tr.isoid {
++		*cn = tr.copy(*cn)
++	}
++	return *cn
++}
++
+ func (tr *Map[K, V]) Copy() *Map[K, V] {
+ 	return tr.IsoCopy()
+ }
+@@ -89,6 +114,16 @@ func (tr *Map[K, V]) IsoCopy() *Map[K, V] {
+ 	return tr2
+ }
+ 
++func (tr *Map[K, V]) newNode(leaf bool) *mapNode[K, V] {
++	n := new(mapNode[K, V])
++	n.isoid = tr.isoid
++	if !leaf {
++		n.children = new([]*mapNode[K, V])
++	}
++	return n
++}
++
++// leaf returns true if the node is a leaf.
+ func (n *mapNode[K, V]) leaf() bool {
+ 	return n.children == nil
+ }
+@@ -113,13 +148,7 @@ func (tr *Map[K, V]) init(degree int) {
+ 	if tr.min != 0 {
+ 		return
+ 	}
++	tr.min, tr.max = degreeToMinMax(degree)
+-	if degree <= 0 {
+-		degree = 32
+-	} else if degree == 1 {
+-		degree = 2
+-	}
+-	tr.max = degree*2 - 1
+-	tr.min = tr.max / 2
+ 	_, tr.copyValues = ((interface{})(tr.empty.value)).(copier[V])
+ 	if !tr.copyValues {
+ 		_, tr.isoCopyValues = ((interface{})(tr.empty.value)).(isoCopier[V])
+@@ -131,7 +160,7 @@ func (tr *Map[K, V]) Set(key K, value V) (V, bool) {
+ 	item := mapPair[K, V]{key: key, value: value}
+ 	if tr.root == nil {
+ 		tr.init(0)
++		tr.root = tr.newNode(true)
+-		tr.root = &mapNode[K, V]{isoid: tr.isoid}
+ 		tr.root.items = append([]mapPair[K, V]{}, item)
+ 		tr.root.count = 1
+ 		tr.count = 1
+@@ -140,15 +169,12 @@ func (tr *Map[K, V]) Set(key K, value V) (V, bool) {
+ 	prev, replaced, split := tr.nodeSet(&tr.root, item)
+ 	if split {
+ 		left := tr.root
+-		total := left.count
+ 		right, median := tr.nodeSplit(left)
++		tr.root = tr.newNode(false)
+-		tr.root = &mapNode[K, V]{isoid: tr.isoid}
+-		tr.root.children = new([]*mapNode[K, V])
+ 		*tr.root.children = make([]*mapNode[K, V], 0, tr.max+1)
+ 		*tr.root.children = append([]*mapNode[K, V]{}, left, right)
+ 		tr.root.items = append([]mapPair[K, V]{}, median)
++		tr.root.updateCount()
+-		tr.root.count = total
+-		left.count = total - right.count - len(tr.root.items)
+ 		return tr.Set(item.key, item.value)
+ 	}
+ 	if replaced {
+@@ -164,20 +190,12 @@ func (tr *Map[K, V]) nodeSplit(n *mapNode[K, V],
+ 	median = n.items[i]
+ 
+ 	// right node
++	right = tr.newNode(n.leaf())
+-	right = &mapNode[K, V]{isoid: tr.isoid}
+-	if !n.leaf() {
+-		right.children = new([]*mapNode[K, V])
+-	}
+ 	right.items = n.items[i+1:]
+ 	if !n.leaf() {
+ 		*right.children = (*n.children)[i+1:]
+ 	}
++	right.updateCount()
+-	right.count = len(n.items) - i - 1
+-	if n.children != nil {
+-		for _, child := range (*n.children)[i+1:] {
+-			right.count += child.count
+-		}
+-	}
+ 
+ 	// left node
+ 	n.items[i] = tr.empty
+@@ -185,33 +203,22 @@ func (tr *Map[K, V]) nodeSplit(n *mapNode[K, V],
+ 	if !n.leaf() {
+ 		*n.children = (*n.children)[: i+1 : i+1]
+ 	}
++	n.updateCount()
++	return right, median
++}
+ 
++func (n *mapNode[K, V]) updateCount() {
++	n.count = len(n.items)
++	if !n.leaf() {
++		for i := 0; i < len(*n.children); i++ {
++			n.count += (*n.children)[i].count
++		}
++	}
+-	return right, median
+ }
+ 
+ func (tr *Map[K, V]) nodeSet(pn **mapNode[K, V], item mapPair[K, V],
+ ) (prev V, replaced bool, split bool) {
++	n := tr.isoLoad(pn, true)
+-	nSlot1 := pn
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	i, found := tr.search(n, item.key)
+ 	if found {
+ 		prev = n.items[i].value
+@@ -233,16 +240,13 @@ func (tr *Map[K, V]) nodeSet(pn **mapNode[K, V], item mapPair[K, V],
+ 		if len(n.items) == tr.max {
+ 			return tr.empty.value, false, true
+ 		}
++		right, median := tr.nodeSplit((*n.children)[i])
+-		left := (*n.children)[i]
+-		total := left.count
+-		right, median := tr.nodeSplit(left)
+ 		*n.children = append(*n.children, nil)
+ 		copy((*n.children)[i+1:], (*n.children)[i:])
+ 		(*n.children)[i+1] = right
+ 		n.items = append(n.items, tr.empty)
+ 		copy(n.items[i+1:], n.items[i:])
+ 		n.items[i] = median
+-		left.count = total - (*n.children)[i+1].count - 1
+ 		return tr.nodeSet(&n, item)
+ 	}
+ 	if !replaced {
+@@ -269,23 +273,8 @@ func (tr *Map[K, V]) scan(iter func(key K, value V) bool, mut bool) {
+ func (tr *Map[K, V]) nodeScan(cn **mapNode[K, V],
+ 	iter func(key K, value V) bool, mut bool,
+ ) bool {
++	n := tr.isoLoad(cn, mut)
++	if n.leaf() {
+-	nSlot1 := cn
+-	sourceNode := *nSlot1
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	if sourceNode.leaf() {
+ 		for i := 0; i < len(n.items); i++ {
+ 			if !iter(n.items[i].key, n.items[i].value) {
+ 				return false
+@@ -293,11 +282,6 @@ func (tr *Map[K, V]) nodeScan(cn **mapNode[K, V],
+ 		}
+ 		return true
+ 	}
+-	if n != sourceNode {
+-		n.children = new([]*mapNode[K, V])
+-		*n.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-		copy(*n.children, *sourceNode.children)
+-	}
+ 	for i := 0; i < len(n.items); i++ {
+ 		if !tr.nodeScan(&(*n.children)[i], iter, mut) {
+ 			return false
+@@ -333,64 +317,16 @@ func (tr *Map[K, V]) get(key K, mut bool) (V, bool) {
+ 	if tr.root == nil {
+ 		return tr.empty.value, false
+ 	}
++	n := tr.isoLoad(&tr.root, mut)
+-	nSlot1 := &tr.root
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
++		i, found := tr.search(n, key)
++		if found {
++			return n.items[i].value, true
+-		low, high := 0, len(n.items)
+-		for low < high {
+-			probe := int(uint(low+high) >> 1)
+-			if !(key < n.items[probe].key) {
+-				low = probe + 1
+-			} else {
+-				high = probe
+-			}
+-		}
+-		if low > 0 && !(n.items[low-1].key < key) {
+-			return n.items[low-1].value, true
+ 		}
+ 		if n.leaf() {
+ 			return tr.empty.value, false
+ 		}
++		n = tr.isoLoad(&(*n.children)[i], mut)
+-		nSlot2 := &(*n.children)[low]
+-		if mut && (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ }
+ 
+@@ -421,27 +357,7 @@ func (tr *Map[K, V]) Delete(key K) (V, bool) {
+ 
+ func (tr *Map[K, V]) delete(pn **mapNode[K, V], max bool, key K,
+ ) (mapPair[K, V], bool) {
++	n := tr.isoLoad(pn, true)
+-	nSlot1 := pn
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	var i int
+ 	var found bool
+ 	if max {
+@@ -482,18 +398,7 @@ func (tr *Map[K, V]) delete(pn **mapNode[K, V], max bool, key K,
+ 	}
+ 	n.count--
+ 	if len((*n.children)[i].items) < tr.min {
+-		pair := i
+-		if pair == len(n.items) {
+-			pair--
+-		}
+-		total := (*n.children)[pair].count + (*n.children)[pair+1].count + 1
+-		width := len(n.items)
+ 		tr.nodeRebalance(n, i)
+-		left := (*n.children)[pair]
+-		left.count = total
+-		if len(n.items) == width {
+-			left.count -= (*n.children)[pair+1].count + 1
+-		}
+ 	}
+ 	return prev, true
+ }
+@@ -507,48 +412,8 @@ func (tr *Map[K, V]) nodeRebalance(n *mapNode[K, V], i int) {
+ 	}
+ 
+ 	// ensure copy-on-write
++	left := tr.isoLoad(&(*n.children)[i], true)
++	right := tr.isoLoad(&(*n.children)[i+1], true)
+-	leftSlot1 := &(*n.children)[i]
+-	if (*leftSlot1).isoid != tr.isoid {
+-		sourceNode := *leftSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*leftSlot1 = isolated
+-	}
+-	left := *leftSlot1
+-	rightSlot2 := &(*n.children)[i+1]
+-	if (*rightSlot2).isoid != tr.isoid {
+-		sourceNode := *rightSlot2
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*rightSlot2 = isolated
+-	}
+-	right := *rightSlot2
+ 
+ 	if len(left.items)+len(right.items) < tr.max {
+ 		// Merges the left and right children nodes together as a single node
+@@ -562,6 +427,7 @@ func (tr *Map[K, V]) nodeRebalance(n *mapNode[K, V], i int) {
+ 		if !left.leaf() {
+ 			*left.children = append(*left.children, *right.children...)
+ 		}
++		left.count += right.count + 1
+ 
+ 		// move the items over one slot
+ 		copy(n.items[i:], n.items[i+1:])
+@@ -585,6 +451,7 @@ func (tr *Map[K, V]) nodeRebalance(n *mapNode[K, V], i int) {
+ 		n.items[i] = left.items[len(left.items)-1]
+ 		left.items[len(left.items)-1] = tr.empty
+ 		left.items = left.items[:len(left.items)-1]
++		left.count--
+ 
+ 		if !left.leaf() {
+ 			// move the left-node last child into the right-node first slot
+@@ -593,6 +460,7 @@ func (tr *Map[K, V]) nodeRebalance(n *mapNode[K, V], i int) {
+ 			(*right.children)[0] = (*left.children)[len(*left.children)-1]
+ 			(*left.children)[len(*left.children)-1] = nil
+ 			(*left.children) = (*left.children)[:len(*left.children)-1]
++			left.count -= (*right.children)[0].count
+ 			right.count += (*right.children)[0].count
+ 		}
+ 	} else {
+@@ -600,6 +468,7 @@ func (tr *Map[K, V]) nodeRebalance(n *mapNode[K, V], i int) {
+ 
+ 		// Same as above but the other direction
+ 		left.items = append(left.items, n.items[i])
++		left.count++
+ 		n.items[i] = right.items[0]
+ 		copy(right.items, right.items[1:])
+ 		right.items[len(right.items)-1] = tr.empty
+@@ -611,6 +480,7 @@ func (tr *Map[K, V]) nodeRebalance(n *mapNode[K, V], i int) {
+ 			copy(*right.children, (*right.children)[1:])
+ 			(*right.children)[len(*right.children)-1] = nil
+ 			*right.children = (*right.children)[:len(*right.children)-1]
++			left.count += (*left.children)[len(*left.children)-1].count
+ 			right.count -= (*left.children)[len(*left.children)-1].count
+ 		}
+ 	}
+@@ -639,45 +509,14 @@ func (tr *Map[K, V]) ascend(pivot K, iter func(key K, value V) bool, mut bool) {
+ func (tr *Map[K, V]) nodeAscend(cn **mapNode[K, V], pivot K,
+ 	iter func(key K, value V) bool, mut bool,
+ ) bool {
++	n := tr.isoLoad(cn, mut)
++	i, found := tr.search(n, pivot)
++	if !found {
+-	nSlot1 := cn
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	low, high := 0, len(n.items)
+-	for low < high {
+-		probe := int(uint(low+high) >> 1)
+-		if !(pivot < n.items[probe].key) {
+-			low = probe + 1
+-		} else {
+-			high = probe
+-		}
+-	}
+-	i := low
+-	if low == 0 || n.items[low-1].key < pivot {
+ 		if !n.leaf() {
+ 			if !tr.nodeAscend(&(*n.children)[i], pivot, iter, mut) {
+ 				return false
+ 			}
+ 		}
+-	} else {
+-		i--
+ 	}
+ 	// We are either in the case that
+ 	// - node is found, we should iterate through it starting at `i`,
+@@ -714,23 +553,8 @@ func (tr *Map[K, V]) reverse(iter func(key K, value V) bool, mut bool) {
+ func (tr *Map[K, V]) nodeReverse(cn **mapNode[K, V],
+ 	iter func(key K, value V) bool, mut bool,
+ ) bool {
++	n := tr.isoLoad(cn, mut)
++	if n.leaf() {
+-	nSlot1 := cn
+-	sourceNode := *nSlot1
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	if sourceNode.leaf() {
+ 		for i := len(n.items) - 1; i >= 0; i-- {
+ 			if !iter(n.items[i].key, n.items[i].value) {
+ 				return false
+@@ -738,11 +562,6 @@ func (tr *Map[K, V]) nodeReverse(cn **mapNode[K, V],
+ 		}
+ 		return true
+ 	}
+-	if n != sourceNode {
+-		n.children = new([]*mapNode[K, V])
+-		*n.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-		copy(*n.children, *sourceNode.children)
+-	}
+ 	if !tr.nodeReverse(&(*n.children)[len(*n.children)-1], iter, mut) {
+ 		return false
+ 	}
+@@ -782,43 +601,15 @@ func (tr *Map[K, V]) descend(
+ func (tr *Map[K, V]) nodeDescend(cn **mapNode[K, V], pivot K,
+ 	iter func(key K, value V) bool, mut bool,
+ ) bool {
++	n := tr.isoLoad(cn, mut)
++	i, found := tr.search(n, pivot)
++	if !found {
+-	nSlot1 := cn
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+-	low, high := 0, len(n.items)
+-	for low < high {
+-		probe := int(uint(low+high) >> 1)
+-		if !(pivot < n.items[probe].key) {
+-			low = probe + 1
+-		} else {
+-			high = probe
+-		}
+-	}
+-	i := low - 1
+-	if low == 0 || n.items[low-1].key < pivot {
+ 		if !n.leaf() {
++			if !tr.nodeDescend(&(*n.children)[i], pivot, iter, mut) {
+-			if !tr.nodeDescend(&(*n.children)[i+1], pivot, iter, mut) {
+ 				return false
+ 			}
+ 		}
++		i--
+ 	}
+ 	for ; i >= 0; i-- {
+ 		if !iter(n.items[i].key, n.items[i].value) {
+@@ -839,27 +630,7 @@ func (tr *Map[K, V]) Load(key K, value V) (V, bool) {
+ 	if tr.root == nil {
+ 		return tr.Set(item.key, item.value)
+ 	}
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		n.count++ // optimistically update counts
+ 		if n.leaf() {
+@@ -872,27 +643,7 @@ func (tr *Map[K, V]) Load(key K, value V) (V, bool) {
+ 			}
+ 			break
+ 		}
++		n = tr.isoLoad(&(*n.children)[len(*n.children)-1], true)
+-		nSlot2 := &(*n.children)[len(*n.children)-1]
+-		if (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	// revert the counts
+ 	n = tr.root
+@@ -920,53 +671,13 @@ func (tr *Map[K, V]) minMut(mut bool) (key K, value V, ok bool) {
+ 	if tr.root == nil {
+ 		return key, value, false
+ 	}
++	n := tr.isoLoad(&tr.root, mut)
+-	nSlot1 := &tr.root
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		if n.leaf() {
+ 			item := n.items[0]
+ 			return item.key, item.value, true
+ 		}
++		n = tr.isoLoad(&(*n.children)[0], mut)
+-		nSlot2 := &(*n.children)[0]
+-		if mut && (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ }
+ 
+@@ -984,53 +695,13 @@ func (tr *Map[K, V]) maxMut(mut bool) (K, V, bool) {
+ 	if tr.root == nil {
+ 		return tr.empty.key, tr.empty.value, false
+ 	}
++	n := tr.isoLoad(&tr.root, mut)
+-	nSlot1 := &tr.root
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		if n.leaf() {
+ 			item := n.items[len(n.items)-1]
+ 			return item.key, item.value, true
+ 		}
++		n = tr.isoLoad(&(*n.children)[len(*n.children)-1], mut)
+-		nSlot2 := &(*n.children)[len(*n.children)-1]
+-		if mut && (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ }
+ 
+@@ -1040,27 +711,7 @@ func (tr *Map[K, V]) PopMin() (K, V, bool) {
+ 	if tr.root == nil {
+ 		return tr.empty.key, tr.empty.value, false
+ 	}
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	var item mapPair[K, V]
+ 	for {
+ 		n.count-- // optimistically update counts
+@@ -1078,27 +729,7 @@ func (tr *Map[K, V]) PopMin() (K, V, bool) {
+ 			}
+ 			return item.key, item.value, true
+ 		}
++		n = tr.isoLoad(&(*n.children)[0], true)
+-		nSlot2 := &(*n.children)[0]
+-		if (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	// revert the counts
+ 	n = tr.root
+@@ -1122,27 +753,7 @@ func (tr *Map[K, V]) PopMax() (K, V, bool) {
+ 	if tr.root == nil {
+ 		return tr.empty.key, tr.empty.value, false
+ 	}
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	var item mapPair[K, V]
+ 	for {
+ 		n.count-- // optimistically update counts
+@@ -1159,27 +770,7 @@ func (tr *Map[K, V]) PopMax() (K, V, bool) {
+ 			}
+ 			return item.key, item.value, true
+ 		}
++		n = tr.isoLoad(&(*n.children)[len(*n.children)-1], true)
+-		nSlot2 := &(*n.children)[len(*n.children)-1]
+-		if (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	// revert the counts
+ 	n = tr.root
+@@ -1211,27 +802,7 @@ func (tr *Map[K, V]) getAt(index int, mut bool) (K, V, bool) {
+ 	if tr.root == nil || index < 0 || index >= tr.count {
+ 		return tr.empty.key, tr.empty.value, false
+ 	}
++	n := tr.isoLoad(&tr.root, mut)
+-	nSlot1 := &tr.root
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		if n.leaf() {
+ 			return n.items[index].key, n.items[index].value, true
+@@ -1245,27 +816,7 @@ func (tr *Map[K, V]) getAt(index int, mut bool) (K, V, bool) {
+ 			}
+ 			index -= (*n.children)[i].count + 1
+ 		}
++		n = tr.isoLoad(&(*n.children)[i], mut)
+-		nSlot2 := &(*n.children)[i]
+-		if mut && (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ }
+ 
+@@ -1278,27 +829,7 @@ func (tr *Map[K, V]) DeleteAt(index int) (K, V, bool) {
+ 	var pathbuf [8]uint8 // track the path
+ 	path := pathbuf[:0]
+ 	var item mapPair[K, V]
++	n := tr.isoLoad(&tr.root, true)
+-	nSlot1 := &tr.root
+-	if (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ outer:
+ 	for {
+ 		n.count-- // optimistically update counts
+@@ -1330,27 +861,7 @@ outer:
+ 			index -= (*n.children)[i].count + 1
+ 		}
+ 		path = append(path, uint8(i))
++		n = tr.isoLoad(&(*n.children)[i], true)
+-		nSlot2 := &(*n.children)[i]
+-		if (*nSlot2).isoid != tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := tr.copy(sourceNode)
+-			if tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	// revert the counts
+ 	n = tr.root
+@@ -1427,68 +938,19 @@ func (iter *MapIter[K, V]) Seek(key K) bool {
+ 	if iter.tr.root == nil {
+ 		return false
+ 	}
++	n := iter.tr.isoLoad(&iter.tr.root, iter.mut)
+-	nSlot1 := &iter.tr.root
+-	if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := iter.tr.copy(sourceNode)
+-		if iter.tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if iter.tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
++		i, found := iter.tr.search(n, key)
++		iter.stack = append(iter.stack, mapIterStackItem[K, V]{n, i})
++		if found {
++			iter.item = n.items[i]
+-		low, high := 0, len(n.items)
+-		for low < high {
+-			probe := int(uint(low+high) >> 1)
+-			if !(key < n.items[probe].key) {
+-				low = probe + 1
+-			} else {
+-				high = probe
+-			}
+-		}
+-		if low > 0 && !(n.items[low-1].key < key) {
+-			iter.stack = append(iter.stack, mapIterStackItem[K, V]{n, low - 1})
+-			iter.item = n.items[low-1]
+ 			return true
+ 		}
+-		iter.stack = append(iter.stack, mapIterStackItem[K, V]{n, low})
+ 		if n.leaf() {
+ 			iter.stack[len(iter.stack)-1].i--
+ 			return iter.Next()
+ 		}
++		n = iter.tr.isoLoad(&(*n.children)[i], iter.mut)
+-		nSlot2 := &(*n.children)[low]
+-		if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if iter.tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ }
+ 
+@@ -1505,53 +967,13 @@ func (iter *MapIter[K, V]) First() bool {
+ 	if iter.tr.root == nil {
+ 		return false
+ 	}
++	n := iter.tr.isoLoad(&iter.tr.root, iter.mut)
+-	nSlot1 := &iter.tr.root
+-	if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := iter.tr.copy(sourceNode)
+-		if iter.tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if iter.tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		iter.stack = append(iter.stack, mapIterStackItem[K, V]{n, 0})
+ 		if n.leaf() {
+ 			break
+ 		}
++		n = iter.tr.isoLoad(&(*n.children)[0], iter.mut)
+-		nSlot2 := &(*n.children)[0]
+-		if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if iter.tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	s := &iter.stack[len(iter.stack)-1]
+ 	iter.item = s.n.items[s.i]
+@@ -1569,54 +991,14 @@ func (iter *MapIter[K, V]) Last() bool {
+ 	if iter.tr.root == nil {
+ 		return false
+ 	}
++	n := iter.tr.isoLoad(&iter.tr.root, iter.mut)
+-	nSlot1 := &iter.tr.root
+-	if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := iter.tr.copy(sourceNode)
+-		if iter.tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if iter.tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	for {
+ 		iter.stack = append(iter.stack, mapIterStackItem[K, V]{n, len(n.items)})
+ 		if n.leaf() {
+ 			iter.stack[len(iter.stack)-1].i--
+ 			break
+ 		}
++		n = iter.tr.isoLoad(&(*n.children)[len(n.items)], iter.mut)
+-		nSlot2 := &(*n.children)[len(n.items)]
+-		if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot2
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if iter.tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot2 = isolated
+-		}
+-		n = *nSlot2
+ 	}
+ 	s := &iter.stack[len(iter.stack)-1]
+ 	iter.item = s.n.items[s.i]
+@@ -1656,53 +1038,13 @@ func (iter *MapIter[K, V]) Next() bool {
+ 			}
+ 		}
+ 	} else {
++		n := iter.tr.isoLoad(&(*s.n.children)[s.i], iter.mut)
+-		nSlot1 := &(*s.n.children)[s.i]
+-		if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot1
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if iter.tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot1 = isolated
+-		}
+-		n := *nSlot1
+ 		for {
+ 			iter.stack = append(iter.stack, mapIterStackItem[K, V]{n, 0})
+ 			if n.leaf() {
+ 				break
+ 			}
++			n = iter.tr.isoLoad(&(*n.children)[0], iter.mut)
+-			nSlot2 := &(*n.children)[0]
+-			if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-				sourceNode := *nSlot2
+-				isolated := iter.tr.copy(sourceNode)
+-				if iter.tr.copyValues {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-					}
+-				} else if iter.tr.isoCopyValues {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-					}
+-				}
+-				if sourceNode.children != nil {
+-					isolated.children = new([]*mapNode[K, V])
+-					*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-					copy(*isolated.children, *sourceNode.children)
+-				}
+-				*nSlot2 = isolated
+-			}
+-			n = *nSlot2
+ 		}
+ 	}
+ 	s = &iter.stack[len(iter.stack)-1]
+@@ -1744,27 +1086,7 @@ func (iter *MapIter[K, V]) Prev() bool {
+ 			}
+ 		}
+ 	} else {
++		n := iter.tr.isoLoad(&(*s.n.children)[s.i], iter.mut)
+-		nSlot1 := &(*s.n.children)[s.i]
+-		if iter.mut && (*nSlot1).isoid != iter.tr.isoid {
+-			sourceNode := *nSlot1
+-			isolated := iter.tr.copy(sourceNode)
+-			if iter.tr.copyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-				}
+-			} else if iter.tr.isoCopyValues {
+-				for itemIndex := range isolated.items {
+-					isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-				}
+-			}
+-			if sourceNode.children != nil {
+-				isolated.children = new([]*mapNode[K, V])
+-				*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-				copy(*isolated.children, *sourceNode.children)
+-			}
+-			*nSlot1 = isolated
+-		}
+-		n := *nSlot1
+ 		for {
+ 			iter.stack = append(iter.stack,
+ 				mapIterStackItem[K, V]{n, len(n.items)})
+@@ -1772,27 +1094,7 @@ func (iter *MapIter[K, V]) Prev() bool {
+ 				iter.stack[len(iter.stack)-1].i--
+ 				break
+ 			}
++			n = iter.tr.isoLoad(&(*n.children)[len(n.items)], iter.mut)
+-			nSlot2 := &(*n.children)[len(n.items)]
+-			if iter.mut && (*nSlot2).isoid != iter.tr.isoid {
+-				sourceNode := *nSlot2
+-				isolated := iter.tr.copy(sourceNode)
+-				if iter.tr.copyValues {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-					}
+-				} else if iter.tr.isoCopyValues {
+-					for itemIndex := range isolated.items {
+-						isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-					}
+-				}
+-				if sourceNode.children != nil {
+-					isolated.children = new([]*mapNode[K, V])
+-					*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), iter.tr.max+1)
+-					copy(*isolated.children, *sourceNode.children)
+-				}
+-				*nSlot2 = isolated
+-			}
+-			n = *nSlot2
+ 		}
+ 	}
+ 	s = &iter.stack[len(iter.stack)-1]
+@@ -1828,27 +1130,7 @@ func (tr *Map[K, V]) values(mut bool) []V {
+ }
+ 
+ func (tr *Map[K, V]) nodeValues(cn **mapNode[K, V], values []V, mut bool) []V {
++	n := tr.isoLoad(cn, mut)
+-	nSlot1 := cn
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	if n.leaf() {
+ 		for i := 0; i < len(n.items); i++ {
+ 			values = append(values, n.items[i].value)
+@@ -1906,27 +1188,7 @@ func (tr *Map[K, V]) keyValues(mut bool) ([]K, []V) {
+ func (tr *Map[K, V]) nodeKeyValues(cn **mapNode[K, V], keys []K, values []V,
+ 	mut bool,
+ ) ([]K, []V) {
++	n := tr.isoLoad(cn, mut)
+-	nSlot1 := cn
+-	if mut && (*nSlot1).isoid != tr.isoid {
+-		sourceNode := *nSlot1
+-		isolated := tr.copy(sourceNode)
+-		if tr.copyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(copier[V]).Copy()
+-			}
+-		} else if tr.isoCopyValues {
+-			for itemIndex := range isolated.items {
+-				isolated.items[itemIndex].value = any(isolated.items[itemIndex].value).(isoCopier[V]).IsoCopy()
+-			}
+-		}
+-		if sourceNode.children != nil {
+-			isolated.children = new([]*mapNode[K, V])
+-			*isolated.children = make([]*mapNode[K, V], len(*sourceNode.children), tr.max+1)
+-			copy(*isolated.children, *sourceNode.children)
+-		}
+-		*nSlot1 = isolated
+-	}
+-	n := *nSlot1
+ 	if n.leaf() {
+ 		for i := 0; i < len(n.items); i++ {
+ 			keys = append(keys, n.items[i].key)

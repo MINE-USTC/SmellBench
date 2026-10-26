@@ -1,0 +1,627 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "leptonai_leptonai_gc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "job_lifecycle",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 job operations absorbed into APIResourse.",
+      "baseline_defect": "Base owns job routes, validation, request and response decisions.",
+      "criterion": "Give job lifecycle coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Keep create validator before safe_json/POST, update raw spec as JSON, get/delete conditional query mode and defaults; replicas always passes query mode, events decode their own model. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_job_create,_job_update,_job_get,_job_delete",
+          "detail": "Base owns job routes, validation, request and response decisions.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "job_pagination",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 pagination; stage2 page-local decoding into global result.",
+      "baseline_defect": "Base controls query projection, page loop, row model and completion.",
+      "criterion": "Give job pagination coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Explicit page or page_size even0\u2192single ensure_list jobs call. Auto starts1/500; valid models append, page-local indices and aggregated stderr diagnostics; stop on no valid additions, not merely empty raw page. Custom ensure_list remains honored; optional filters truthy, job_query_mode always included. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_job_list_all",
+          "detail": "Base controls query projection, page loop, row model and completion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "finetune_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 finetune model/trainer lifecycle.",
+      "baseline_defect": "Base owns fine-tune lifecycle and catalog semantics separate from job.",
+      "criterion": "Give finetune lifecycle coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Create/update safe_json, correct FineTune types, conditional query modes; supported model/trainer routes and lowercase default_only query preserved. Shared reusable mechanics with jobs valid, policy no longer catch-all. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_finetune_create,_finetune_update,_finetune_list_trainers",
+          "detail": "Base owns fine-tune lifecycle and catalog semantics separate from job.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "finetune_pagination",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 and stage2 fine-tune page decoding.",
+      "baseline_defect": "Base embeds fine-tune route/model/list_key and paging completion.",
+      "criterion": "Give finetune pagination coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Explicit page/page_size present\u2192single request; auto1/500; finetune_jobs key, page-local error indices, skip malformed rows and stop if no valid additions. Supported ensure_list override controls page decoding; share policy-neutral pagination with job if desired. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_finetune_list_all",
+          "detail": "Base embeds fine-tune route/model/list_key and paging completion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "template_resolution",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 templates; stage2/retry full public decode before selection.",
+      "baseline_defect": "Base owns namespace resolution and model selection.",
+      "criterion": "Give template resolution coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Explicit is_private avoids listing; automatic public ID match else private. Default public decoding processes ALL rows and reports malformed rows even after matching ID before render POST; preserve custom list_public and ensure_list. Raw render payload and pod Deployment versus Job result, public/private get/list routes retained. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_template_render,_template_list_public",
+          "detail": "Base owns namespace resolution and model selection.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "legacy_deployment_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 legacy deployment lifecycle.",
+      "baseline_defect": "Base owns deployment endpoint routes, normalization sequencing and response mode.",
+      "criterion": "Give legacy deployment lifecycle coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Validate no HTTP; create bool versus create_with_response model/optional empty-success True; require metadata name/id and spec on decoded legacy creation. Pod create_with_response delegates create. dryrun query, stop min_replicas0, restart/readiness/termination/events/replicas retain domain routes/types. Deprecated create_pod warning before None check then mutates is_pod. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_deployment_create,_deployment_update,_deployment_stop",
+          "detail": "Base owns deployment endpoint routes, normalization sequencing and response mode.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 new endpoint lifecycle.",
+      "baseline_defect": "Base owns pod routing, endpoint create/stop/read operations and unsupported capabilities.",
+      "criterion": "Give endpoint lifecycle coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Pod-flavoured operations delegate to client.pod where supported; update pod branch drops dryrun. Endpoint create converts after auth, bool versus response modes and optional empty legacy success unchanged. Stop fetches raw then full-component stop patch; readiness/termination unsupported and pod replicas/events unsupported, not invented routes. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_endpoint_create,_endpoint_get,_endpoint_stop",
+          "detail": "Base owns pod routing, endpoint create/stop/read operations and unsupported capabilities.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_decoding",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 endpoint translation and tolerant listing.",
+      "baseline_defect": "Base owns endpoint input admission, model conversion and row diagnostics.",
+      "criterion": "Give endpoint decoding coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Reject non-dict/misplaced token, translate legacy, require metadata name/id, sanitize exception literal values and suppress cause. List preserves valid row order and reports all skipped indices; converter overrides honored. Generic transport redaction utilities may stay shared. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_endpoint__http_endpoint_to_model,_endpoint_list_all",
+          "detail": "Base owns endpoint input admission, model conversion and row diagnostics.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "authentication_policy",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 expands authentication through eight lifecycle paths and standalone helper.",
+      "baseline_defect": "Generic base owns token transition policy and each lifecycle controls application.",
+      "criterion": "Give authentication policy coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Shared policy supports create/update and standalone normalizer: explicit true conflicts with tokens else clears[], update false with no tokens rejects, token clearing requires same-update true, *** sentinel rejects. Pod excludes auth key evenNone in serialized dict; non-dict spec bypasses. Preserve per-flow normalization order before conversion/request. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_apply_authentication,_deployment_validate_create,_endpoint_update",
+          "detail": "Generic base owns token transition policy and each lifecycle controls application.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "credential_diagnostics",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 token-sensitive lifecycle diagnostics.",
+      "baseline_defect": "Base domain workflows choose generated-credential versus literal-value error handling.",
+      "criterion": "Give credential diagnostics coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "On int status>=400, create >=500 and possible generated token uses fully redacted response; other failures literal-value diagnostics. Update uses literal-value diagnostics. Legacy bool create warns before request; response-returning create does not introduce warning. Preserve safe decoding errors and not exposing successful generated token through bool mode. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_deployment_create,_endpoint_create_with_response,_deployment_update",
+          "detail": "Base domain workflows choose generated-credential versus literal-value error handling.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "endpoint_patch_conversion",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 field/snapshot/metadata coupling.",
+      "baseline_defect": "Generic base owns frontend conversion and standalone translation forwards back.",
+      "criterion": "Give endpoint patch conversion coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "After fetch and auth, resource/field admission precedes raw snapshot validation/front-end selection and RFC7386 merge; endpoint-level projection precedes metadata label validation. Preserve siblings/order/unknown fields, None pruning versus empty clear, public translator callable. No forced prepared-array or helper split. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_endpoint_patch_fields,_endpoint_patch_body,_endpoint_update",
+          "detail": "Generic base owns frontend conversion and standalone translation forwards back.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "pod_normalization",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2/retry warning then live mutation before next decision.",
+      "baseline_defect": "Base decision generator and repeated consumers split pod normalization ownership.",
+      "criterion": "Give pod normalization coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "None warns and returnsNone; is_pod/auth checks before normalization. min/max not(None,1) warn then reset1, auto_scaler/api_tokens truthy warn then clear. Warnings can mutate live receiver: decide next step only after warning and current mutation, resolve current nested owner after warning. Preserve custom sanity-check overrides; eager collection generally changes behavior. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_pod_adjustments,_pod_create,_devpod_create",
+          "detail": "Base decision generator and repeated consumers split pod normalization ownership.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "legacy_pod_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 legacy pod routing separate from new DevPod.",
+      "baseline_defect": "Base owns pod subset listing and internal deployment accessor routing.",
+      "criterion": "Give legacy pod lifecycle coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "List filters decoded deployment spec.is_pod; create POST deployments after normalization. Other operations use _deployment_api_for_legacy_pod, honoring injected wrapper; update rejects. Log requires exactly1 replica then delegates with timeout, preserving return timing. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_pod_list_all,_pod_get,_pod_get_log",
+          "detail": "Base owns pod subset listing and internal deployment accessor routing.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "devpod_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 new DevPod resource lifecycle.",
+      "baseline_defect": "Base owns validation versus mutating create and DevPod route/error contracts.",
+      "criterion": "Give devpod lifecycle coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Validate does not normalize/mutate supplied model and rejects present spec.is_pod not True/auth field nonNone; create normalizes then converts, honoring custom conversion override. Stop uses stoppedTrue, restart/get raise status before JSON decode. Update/readiness/termination/live-log unsupported remain explicit; no new request. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_devpod_validate_create,_devpod_create,_devpod_stop",
+          "detail": "Base owns validation versus mutating create and DevPod route/error contracts.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "devpod_decoding",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 DevPod inbound model and tolerant list.",
+      "baseline_defect": "Base owns DevPod inbound admission and invalid row handling.",
+      "criterion": "Give devpod decoding coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Non-dict TypeError, translation then model metadata name/id requirement. list valid order and aggregated index/error/item diagnostics retained; preserve differences from Endpoint sanitizing wrapper rather than unifying exceptions blindly. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_devpod__http_devpod_to_model,_devpod_list_all",
+          "detail": "Base owns DevPod inbound admission and invalid row handling.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "devpod_wire_conversion",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2/retry phased resources/fields/metadata across public translator/create.",
+      "baseline_defect": "Base splits resource admission, lazy field extraction and late metadata into generic internals.",
+      "criterion": "Give devpod wire conversion coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Unsupported spec then direct resources, then all port protocol validation, then field read/assembly, then flattened resource fields, late metadata label/name/id/truthy owner/visibility. Preserve None-only pruning and live field read order; public translator and custom override remain usable. No required generator or result representation. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_devpod_wire_resources,_devpod_wire_fields,_devpod_wire_metadata",
+          "detail": "Base splits resource admission, lazy field extraction and late metadata into generic internals.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "historical_log_bounds",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 log bounds; retry inlines epoch helper with override fallback.",
+      "baseline_defect": "Generic base owns historical log time admission.",
+      "criterion": "Give historical log bounds coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Zero rejected first, parse int or stripped str integer for comparison (unparseable\u2192None), negative rejection before paired-bound check. Both supplied compare if both parsed and require end>start; one supplied rejects. Keep original bound values in query, both omitted retain default range; custom _to_epoch_int honored. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_log_get_log",
+          "detail": "Generic base owns historical log time admission.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "log_query_routing",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 endpoint/deployment routing and query fields.",
+      "baseline_defect": "Base chooses workload identities and query inclusion per log API.",
+      "criterion": "Give log query routing coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Workload priority deployment\u2192job\u2192history (history only get_log); new API selects endpoint key. replica independent; timeseries includes nonNone bounds/interval/limit/q and truthy mode/direction, historical-only fields absent when no bounds for get_log. timeout only if nonNone, overrides _workload_log_param honored. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_log__workload_log_param,_log_get_log,_log_get_log_time_series",
+          "detail": "Base chooses workload identities and query inclusion per log API.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "log_error_policy",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3/retry status and retry delay parsing.",
+      "baseline_defect": "Base owns LogAPIError and Retry-After interpretation.",
+      "criterion": "Give log error policy coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "All nonOK historical responses raise LogAPIError with status and details; positive integer Retry-After converted float, malformed/nonpositive\u2192None, custom parser honored. Timeseries RuntimeError remains distinct; do not restrict retry metadata to429 unless original behavior does. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_log_get_log",
+          "detail": "Base owns LogAPIError and Retry-After interpretation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "live_log_streaming",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1/R2 replicas and live stream domains.",
+      "baseline_defect": "Base embeds workload routes and stream error/body handling.",
+      "criterion": "Give live log streaming coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Lazy request/iteration, streamTrue and timeout passed, skip empty chunks and decode utf8 per nonempty chunk. Job error raw text, deployment/endpoint diagnostic text; pod endpoint delegates with yield from. Coherent shared streaming primitive with domain-owned route/error policy is valid. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_job_get_log,_deployment_get_log,_endpoint_get_log",
+          "detail": "Base embeds workload routes and stream error/body handling.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ingress_membership",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 ingress CRUD and endpoint membership.",
+      "baseline_defect": "Base owns ingress-specific routes, identities and model responses.",
+      "criterion": "Give ingress membership coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Ingress CRUD plus /endpoint/deployment membership use original safe_json and name/model-ID conversion; delete membership resolves both IDs, decodes updated Ingress whereas ordinary delete ensure_ok. A declarative domain route map is valid. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_ingress_create_endpoint,_ingress_delete_endpoint,_ingress_update",
+          "detail": "Base owns ingress-specific routes, identities and model responses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "node_inventory",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 nodegroup inventory.",
+      "baseline_defect": "Base owns group/node/machine/reservation routes and response types.",
+      "criterion": "Give node inventory coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Group object/string identity, group/node/machine/reservation response models and idle query string true preserved; list/get need no unrelated resource policy. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_dedicated_node_groups_list_nodes,_dedicated_node_groups_list_idle_nodes",
+          "detail": "Base owns group/node/machine/reservation routes and response types.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "node_storage_sources",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 storage source/volume lifecycle.",
+      "baseline_defect": "Base owns source and volume route/schema choices.",
+      "criterion": "Give node storage sources coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Source list uses items key; source name quote safe empty, create/update safe_json, correct type/ok responses; add/delete volume returns group and escapes volume name. May share domain owner with permissions, not forced separate class. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_dedicated_node_groups_get_storage_data_source,_dedicated_node_groups_add_volume",
+          "detail": "Base owns source and volume route/schema choices.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "storage_permissions",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 node-group scoped permission changes.",
+      "baseline_defect": "Base owns permission object validation, binding and path escaping.",
+      "criterion": "Give storage permissions coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "safe_json must be dict before nodegroup_id overwrite, volume quoted safe empty; deletion ensures leading slash then quotes prefix preserving slash and sends nodegroup_id query. List model versus mutation boolean results retained. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_dedicated_node_groups_set_storage_permission,_dedicated_node_groups_delete_storage_permission",
+          "detail": "Base owns permission object validation, binding and path escaping.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "node_batch_collection",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 concurrent node retrieval.",
+      "baseline_defect": "Base owns concurrency/error mode and ordered collection.",
+      "criterion": "Give node batch collection coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Empty\u2192[] no executor; workers=min(max(1,concurrency),len). Preserve input order under both modes, list_nodes overrides, raise first observed ordered exception when false and collect Exception objects when true. Equivalent executor abstraction valid; no forced threadpool shape. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_dedicated_node_groups_batch_fetch_nodes",
+          "detail": "Base owns concurrency/error mode and ordered collection.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ray_update_policy",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 restricted scale; retry lazy group validation and delayed assembly.",
+      "baseline_defect": "Base owns Ray envelope, group-field validation and reconstructed request.",
+      "criterion": "Give ray update policy coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Top spec only, require dict/nonempty groups or bool suspend; group keys whitelist then min int>=0, max optionalNone or int>0, segment optionalNone or dict positive integer count dividing min, group_name required None/string. Preserve Python bool-is-int acceptance and error order, retain supplied key order/nulls. Complete validation before PATCH, custom validator honored, standalone drains same policy; no required generator. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_raycluster_checked_groups,_raycluster_update",
+          "detail": "Base owns Ray envelope, group-field validation and reconstructed request.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "ray_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 Ray CRUD beyond restrictive updates.",
+      "baseline_defect": "Base embeds Ray routing/model and create/delete response choices.",
+      "criterion": "Give ray lifecycle coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Ray list/get type models, safe_json create\u2192ensure_ok and delete\u2192ensure_ok, ID conversion and original failure propagation maintained; shared Ray owner can also satisfy update item. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_raycluster_list_all,_raycluster_create,_raycluster_delete",
+          "detail": "Base embeds Ray routing/model and create/delete response choices.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "secret_lifecycle",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 secret operations omitted by old12.",
+      "baseline_defect": "Base owns user-secret collection routes and response types.",
+      "criterion": "Give secret lifecycle coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "List SecretItem, create safe_json sequence to usersecrets, delete original name route, ensure_ok mutations. Domain policy may be concise data-driven configuration, no need a new class for three methods. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_secret_list_all,_secret_create,_secret_delete",
+          "detail": "Base owns user-secret collection routes and response types.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "shape_filter_policy",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 shape filters.",
+      "baseline_defect": "Base owns Shape route/model and filter vocabulary.",
+      "criterion": "Give shape filter policy coherent domain ownership so changing that policy does not require editing a catch-all transport owner.",
+      "acceptance": "Truthy node_group maps node_groups, truthy purpose included, empty params still passed, Shape list decoding. Changing filters must not require generic domain-switch modification. A domain facade, focused shared policy, declarative route/model mapping or equivalent redesign qualifies; public compatibility surfaces and supported overrides remain usable. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Forwarding wrappers, renaming the base, or transferring all unrelated domain decisions into another catch-all owner is insufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "leptonai/api/v2/api_resource.py",
+          "symbol": "_resource_shape_list_shapes",
+          "detail": "Base owns Shape route/model and filter vocabulary.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "leptonai_leptonai_gc",
+    "aggregation": "equal_weight_per_item",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ]
+  }
+}

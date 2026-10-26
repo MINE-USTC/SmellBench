@@ -1,0 +1,917 @@
+diff --git a/go/dpagg/aggregation_state.go b/go/dpagg/aggregation_state.go
+index fb86139..203d87e 100644
+--- a/go/dpagg/aggregation_state.go
++++ b/go/dpagg/aggregation_state.go
+@@ -16,6 +16,8 @@
+ 
+ package dpagg
+ 
++import "fmt"
++
+ type aggregationState int
+ 
+ var errorMessages = map[int]string{
+@@ -45,3 +47,46 @@ func (s aggregationState) errorMessage() string {
+ func (s aggregationState) String() string {
+ 	return stateName[int(s)]
+ }
++
++type aggregationOperation uint8
++
++const (
++	amendOperation aggregationOperation = iota
++	resultOperation
++	repeatResultOperation
++	intervalOperation
++	serializeOperation
++)
++
++func (s aggregationState) permits(op aggregationOperation) bool {
++	switch op {
++	case amendOperation, resultOperation:
++		return s == defaultState
++	case repeatResultOperation:
++		return s == defaultState || s == resultReturned
++	case intervalOperation:
++		return s == resultReturned
++	case serializeOperation:
++		return s == defaultState || s == serialized
++	}
++	return false
++}
++
++func aggregationAccess(s aggregationState, op aggregationOperation, message string) error {
++	if s.permits(op) {
++		return nil
++	}
++	return fmt.Errorf(message, s.errorMessage())
++}
++
++func beginAggregationResult(state *aggregationState, repeated bool, message string) error {
++	op := resultOperation
++	if repeated {
++		op = repeatResultOperation
++	}
++	if err := aggregationAccess(*state, op, message); err != nil {
++		return err
++	}
++	*state = resultReturned
++	return nil
++}
+diff --git a/go/dpagg/coders.go b/go/dpagg/coders.go
+index ef38d1d..33a9d1c 100644
+--- a/go/dpagg/coders.go
++++ b/go/dpagg/coders.go
+@@ -33,3 +33,8 @@ func encode(v interface{}) ([]byte, error) {
+ func decode(v interface{}, data []byte) error {
+ 	return gob.NewDecoder(bytes.NewReader(data)).Decode(v)
+ }
++
++func encodeAggregation(state *aggregationState, value interface{}) ([]byte, error) {
++	*state = serialized
++	return encode(value)
++}
+diff --git a/go/dpagg/count.go b/go/dpagg/count.go
+index 0126bfd..59941ae 100644
+--- a/go/dpagg/count.go
++++ b/go/dpagg/count.go
+@@ -133,6 +133,9 @@ func (c *Count) Increment() error {
+ // Note that decrementing counts by inputting a negative value is allowed,
+ // for example if you want to remove some users you have previously added.
+ func (c *Count) IncrementBy(count int64) error {
++	if accessErr := aggregationAccess(c.state, amendOperation, "Count cannot be amended: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if c.state != defaultState {
+ 		return fmt.Errorf("Count cannot be amended: %v", c.state.errorMessage())
+ 	}
+@@ -153,9 +156,15 @@ func (c *Count) Merge(c2 *Count) error {
+ }
+ 
+ func checkMergeCount(c1, c2 *Count) error {
++	if accessErr := aggregationAccess(c1.state, amendOperation, "checkMergeCount: c1 cannot be merged with another Count instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if c1.state != defaultState {
+ 		return fmt.Errorf("checkMergeCount: c1 cannot be merged with another Count instance: %v", c1.state.errorMessage())
+ 	}
++	if accessErr := aggregationAccess(c2.state, amendOperation, "checkMergeCount: c2 cannot be merged with another Count instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if c2.state != defaultState {
+ 		return fmt.Errorf("checkMergeCount: c2 cannot be merged with another Count instance: %v", c2.state.errorMessage())
+ 	}
+@@ -176,10 +185,12 @@ func checkMergeCount(c1, c2 *Count) error {
+ // negative results to 0. Note that such post processing introduces bias to the
+ // result.
+ func (c *Count) Result() (int64, error) {
+-	if c.state != defaultState {
++	if accessErr := beginAggregationResult(&c.state, false, "Count's noised result cannot be computed: %s"); accessErr != nil {
++		return 0, accessErr
++	}
++	if c.state == merged || c.state == serialized {
+ 		return 0, fmt.Errorf("Count's noised result cannot be computed: %s", c.state.errorMessage())
+ 	}
+-	c.state = resultReturned
+ 	var err error
+ 	c.noisedCount, err = c.Noise.AddNoiseInt64(c.count, c.l0Sensitivity, c.lInfSensitivity, c.epsilon, c.delta)
+ 	return c.noisedCount, err
+@@ -283,6 +294,9 @@ type encodableCount struct {
+ 
+ // GobEncode encodes Count.
+ func (c *Count) GobEncode() ([]byte, error) {
++	if accessErr := aggregationAccess(c.state, serializeOperation, "Count object cannot be serialized: %s"); accessErr != nil {
++		return nil, accessErr
++	}
+ 	if c.state != defaultState && c.state != serialized {
+ 		return nil, fmt.Errorf("Count object cannot be serialized: %s", c.state.errorMessage())
+ 	}
+@@ -294,8 +308,12 @@ func (c *Count) GobEncode() ([]byte, error) {
+ 		NoiseKind:       noise.ToKind(c.Noise),
+ 		Count:           c.count,
+ 	}
+-	c.state = serialized
+-	return encode(enc)
++	data, encodeErr := encodeAggregation(&c.state, enc)
++	if c.state == defaultState {
++		c.state = serialized
++		return encode(enc)
++	}
++	return data, encodeErr
+ }
+ 
+ // GobDecode decodes Count.
+diff --git a/go/dpagg/helpers.go b/go/dpagg/helpers.go
+index 820fb75..3911ab6 100644
+--- a/go/dpagg/helpers.go
++++ b/go/dpagg/helpers.go
+@@ -24,6 +24,29 @@ import (
+ // LargestRepresentableDelta is the largest delta we could support in 64 bit precision, approximately equal to one.
+ var LargestRepresentableDelta = 1 - math.Pow(2, -53)
+ 
++func populateQuantileCount(bq *BoundedQuantiles, index int) error {
++	count, err := bq.Noise.AddNoiseFloat64(float64(bq.tree[index]), bq.l0Sensitivity, bq.lInfSensitivity, bq.epsilon, bq.delta)
++	if err != nil {
++		return err
++	}
++	bq.noisedTree[index] = count
++	return nil
++}
++
++func quantileChildrenTotal(bq *BoundedQuantiles, parent int) (float64, error) {
++	total := 0.0
++	leftmost, rightmost := bq.getLeftmostChild(parent), bq.getRightmostChild(parent)
++	for index := leftmost; index <= rightmost; index++ {
++		if _, found := bq.noisedTree[index]; !found {
++			if err := populateQuantileCount(bq, index); err != nil {
++				return 0, fmt.Errorf("couldn't get noised count for node %d: %w", index, err)
++			}
++		}
++		total += math.Max(0.0, bq.noisedTree[index])
++	}
++	return total, nil
++}
++
+ // ClampFloat64 clamps e within lower and upper, such that lower is returned
+ // if e < lower, and upper is returned if e > upper. Otherwise, e is returned.
+ func ClampFloat64(e, lower, upper float64) (float64, error) {
+diff --git a/go/dpagg/mean.go b/go/dpagg/mean.go
+index 292b69e..8e81aac 100644
+--- a/go/dpagg/mean.go
++++ b/go/dpagg/mean.go
+@@ -194,6 +194,9 @@ func NewBoundedMean(opt *BoundedMeanOptions) (*BoundedMean, error) {
+ // regardless of other entries, which would break the indistinguishability
+ // property required for differential privacy.
+ func (bm *BoundedMean) Add(e float64) error {
++	if accessErr := aggregationAccess(bm.state, amendOperation, "BoundedMean cannot be amended: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bm.state != defaultState {
+ 		return fmt.Errorf("BoundedMean cannot be amended: %v", bm.state.errorMessage())
+ 	}
+@@ -228,11 +231,13 @@ func (bm *BoundedMean) Result() (float64, error) {
+ // Note that none of the returned values are the unbiased estimate of the raw bounded statistics.
+ func (bm *BoundedMean) ResultWithCount() (BoundedMeanResult, error) {
+ 	nullResult := BoundedMeanResult{}
+-	if bm.state != defaultState {
++	if err := beginAggregationResult(&bm.state, false, "BoundedMean's noised result cannot be computed: %s"); err != nil {
++		return nullResult, err
++	}
++	if bm.state == merged || bm.state == serialized {
+ 		return nullResult, fmt.Errorf(
+ 			"BoundedMean's noised result cannot be computed: %s", bm.state.errorMessage())
+ 	}
+-	bm.state = resultReturned
+ 	noisedCount, err := bm.Count.Result()
+ 	if err != nil {
+ 		return nullResult, fmt.Errorf("couldn't compute dp count: %w", err)
+@@ -342,9 +347,15 @@ func (bm *BoundedMean) Merge(bm2 *BoundedMean) error {
+ }
+ 
+ func checkMergeBoundedMean(bm1, bm2 *BoundedMean) error {
++	if accessErr := aggregationAccess(bm1.state, amendOperation, "checkMergeBoundedMean: bm1 cannot be merged with another BoundedMean instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bm1.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedMean: bm1 cannot be merged with another BoundedMean instance: %v", bm1.state.errorMessage())
+ 	}
++	if accessErr := aggregationAccess(bm2.state, amendOperation, "checkMergeBoundedMean: bm2 cannot be merged with another BoundedMean instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bm2.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedMean: bm2 cannot be merged with another BoundedMean instance: %v", bm2.state.errorMessage())
+ 	}
+@@ -358,6 +369,9 @@ func checkMergeBoundedMean(bm1, bm2 *BoundedMean) error {
+ 
+ // GobEncode encodes Count.
+ func (bm *BoundedMean) GobEncode() ([]byte, error) {
++	if accessErr := aggregationAccess(bm.state, serializeOperation, "BoundedMean object cannot be serialized: %s"); accessErr != nil {
++		return nil, accessErr
++	}
+ 	if bm.state != defaultState && bm.state != serialized {
+ 		return nil, fmt.Errorf("BoundedMean object cannot be serialized: %s", bm.state.errorMessage())
+ 	}
+@@ -368,8 +382,12 @@ func (bm *BoundedMean) GobEncode() ([]byte, error) {
+ 		EncodableNormalizedSum: &bm.NormalizedSum,
+ 		MidPoint:               bm.midPoint,
+ 	}
+-	bm.state = serialized
+-	return encode(enc)
++	data, encodeErr := encodeAggregation(&bm.state, enc)
++	if bm.state == defaultState {
++		bm.state = serialized
++		return encode(enc)
++	}
++	return data, encodeErr
+ }
+ 
+ // GobDecode decodes Count.
+diff --git a/go/dpagg/quantiles.go b/go/dpagg/quantiles.go
+index b25dc6c..0f0dc70 100644
+--- a/go/dpagg/quantiles.go
++++ b/go/dpagg/quantiles.go
+@@ -181,6 +181,9 @@ func NewBoundedQuantiles(opt *BoundedQuantilesOptions) (*BoundedQuantiles, error
+ // Add adds an entry to BoundedQuantiles. It skips (ignores) NaN values because their
+ // contribution to the final result is not well defined.
+ func (bq *BoundedQuantiles) Add(e float64) error {
++	if accessErr := aggregationAccess(bq.state, amendOperation, "BoundedQuantiles cannot be amended: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bq.state != defaultState {
+ 		return fmt.Errorf("BoundedQuantiles cannot be amended: %v", bq.state.errorMessage())
+ 	}
+@@ -211,10 +214,12 @@ func (bq *BoundedQuantiles) Add(e float64) error {
+ //
+ // Note that the returned values is not an unbiased estimate of the raw bounded quantile.
+ func (bq *BoundedQuantiles) Result(rank float64) (float64, error) {
+-	if bq.state != defaultState && bq.state != resultReturned {
++	if accessErr := beginAggregationResult(&bq.state, true, "BoundedQuantiles' noised result cannot be computed: %v"); accessErr != nil {
++		return 0, accessErr
++	}
++	if bq.state == merged || bq.state == serialized {
+ 		return 0, fmt.Errorf("BoundedQuantiles' noised result cannot be computed: %v", bq.state.errorMessage())
+ 	}
+-	bq.state = resultReturned
+ 
+ 	if rank < 0.0 || rank > 1.0 {
+ 		return 0, fmt.Errorf("rank %f must be >= 0 and <= 1", rank)
+@@ -227,22 +232,21 @@ func (bq *BoundedQuantiles) Result(rank float64) (float64, error) {
+ 		leftmostChildIndex := bq.getLeftmostChild(index)
+ 		rightmostChildIndex := bq.getRightmostChild(index)
+ 
+-		totalCount := 0.0
+-		for i := leftmostChildIndex; i <= rightmostChildIndex; i++ {
+-			noisedCount, err := bq.getNoisedCount(i)
+-			if err != nil {
+-				return 0, fmt.Errorf("couldn't get noised count for node %d: %w", i, err)
+-			}
+-			totalCount += math.Max(0.0, noisedCount)
++		totalCount, err := quantileChildrenTotal(bq, index)
++		if err != nil {
++			return 0, err
+ 		}
+ 
+ 		correctedTotalCount := 0.0
+ 		for i := leftmostChildIndex; i <= rightmostChildIndex; i++ {
+ 			// Treat child nodes contributing less than an alpha fraction to the total count as empty
+ 			// subtrees.
+-			noisedCount, err := bq.getNoisedCount(i)
+-			if err != nil {
+-				return 0, fmt.Errorf("couldn't get noised count for node %d: %w", i, err)
++			noisedCount, found := bq.noisedTree[i]
++			if !found {
++				noisedCount, err = bq.getNoisedCount(i)
++				if err != nil {
++					return 0, fmt.Errorf("couldn't get noised count for node %d: %w", i, err)
++				}
+ 			}
+ 			if noisedCount >= totalCount*alpha {
+ 				correctedTotalCount += noisedCount
+@@ -259,9 +263,12 @@ func (bq *BoundedQuantiles) Result(rank float64) (float64, error) {
+ 		// Determine the child node whose subtree contains the quantile.
+ 		partialCount := 0.0
+ 		for i := leftmostChildIndex; true; i++ {
+-			count, err := bq.getNoisedCount(i)
+-			if err != nil {
+-				return 0, fmt.Errorf("couldn't get noised count for node %d: %w", i, err)
++			count, found := bq.noisedTree[i]
++			if !found {
++				count, err = bq.getNoisedCount(i)
++				if err != nil {
++					return 0, fmt.Errorf("couldn't get noised count for node %d: %w", i, err)
++				}
+ 			}
+ 			// Skip child nodes contributing less than alpha to the total count.
+ 			if count >= totalCount*alpha {
+@@ -330,6 +337,12 @@ func (bq *BoundedQuantiles) getParent(index int) int {
+ }
+ 
+ func (bq *BoundedQuantiles) getNoisedCount(index int) (float64, error) {
++	if noisedCount, ok := bq.noisedTree[index]; ok {
++		return noisedCount, nil
++	}
++	if err := populateQuantileCount(bq, index); err != nil {
++		return 0, err
++	}
+ 	if noisedCount, ok := bq.noisedTree[index]; ok {
+ 		return noisedCount, nil
+ 	}
+@@ -372,9 +385,15 @@ func (bq *BoundedQuantiles) Merge(bq2 *BoundedQuantiles) error {
+ }
+ 
+ func checkMergeBoundedQuantiles(bq1, bq2 *BoundedQuantiles) error {
++	if accessErr := aggregationAccess(bq1.state, amendOperation, "checkMergeBoundedQuantiles: bq1 cannot be merged with another BoundedQuantiles instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bq1.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedQuantiles: bq1 cannot be merged with another BoundedQuantiles instance: %v", bq1.state.errorMessage())
+ 	}
++	if accessErr := aggregationAccess(bq2.state, amendOperation, "checkMergeBoundedQuantiles: bq2 cannot be merged with another BoundedQuantiles instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bq2.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedQuantiles: bq2 cannot be merged with another BoundedQuantiles instance: %v", bq2.state.errorMessage())
+ 	}
+@@ -417,6 +436,9 @@ type encodableBoundedQuantiles struct {
+ 
+ // GobEncode encodes BoundedQuantiles.
+ func (bq *BoundedQuantiles) GobEncode() ([]byte, error) {
++	if accessErr := aggregationAccess(bq.state, serializeOperation, "BoundedQuantiles object cannot be serialized: %s"); accessErr != nil {
++		return nil, accessErr
++	}
+ 	if bq.state != defaultState && bq.state != serialized {
+ 		return nil, fmt.Errorf("BoundedQuantiles object cannot be serialized: %s", bq.state.errorMessage())
+ 	}
+@@ -434,8 +456,12 @@ func (bq *BoundedQuantiles) GobEncode() ([]byte, error) {
+ 		NoiseKind:         noise.ToKind(bq.Noise),
+ 		QuantileTree:      bq.tree,
+ 	}
+-	bq.state = serialized
+-	return encode(enc)
++	data, encodeErr := encodeAggregation(&bq.state, enc)
++	if bq.state == defaultState {
++		bq.state = serialized
++		return encode(enc)
++	}
++	return data, encodeErr
+ }
+ 
+ // GobDecode decodes BoundedQuantiles.
+diff --git a/go/dpagg/select_partition.go b/go/dpagg/select_partition.go
+index 805fc56..5e01431 100644
+--- a/go/dpagg/select_partition.go
++++ b/go/dpagg/select_partition.go
+@@ -201,6 +201,9 @@ func (s *PreAggSelectPartition) Increment() error {
+ // Note that decrementing counts by inputting a negative value is allowed,
+ // for example if you want to remove some users you have previously added.
+ func (s *PreAggSelectPartition) IncrementBy(count int64) error {
++	if accessErr := aggregationAccess(s.state, amendOperation, "PreAggSelectPartition cannot be amended: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if s.state != defaultState {
+ 		return fmt.Errorf("PreAggSelectPartition cannot be amended: %v", s.state.errorMessage())
+ 	}
+@@ -225,9 +228,15 @@ func (s *PreAggSelectPartition) Merge(s2 *PreAggSelectPartition) error {
+ }
+ 
+ func checkMergePreAggSelectPartition(s1, s2 *PreAggSelectPartition) error {
++	if accessErr := aggregationAccess(s1.state, amendOperation, "checkMergePreAggSelectPartition: s1 cannot be merged with another PreAggSelectPartition instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if s1.state != defaultState {
+ 		return fmt.Errorf("checkMergePreAggSelectPartition: s1 cannot be merged with another PreAggSelectPartition instance: %v", s1.state.errorMessage())
+ 	}
++	if accessErr := aggregationAccess(s2.state, amendOperation, "checkMergePreAggSelectPartition: s2 cannot be merged with another PreAggSelectPartition instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if s2.state != defaultState {
+ 		return fmt.Errorf("checkMergePreAggSelectPartition: s2 cannot be merged with another PreAggSelectPartition instance: %v", s2.state.errorMessage())
+ 	}
+@@ -241,10 +250,12 @@ func checkMergePreAggSelectPartition(s1, s2 *PreAggSelectPartition) error {
+ 
+ // ShouldKeepPartition returns whether the partition should be materialized.
+ func (s *PreAggSelectPartition) ShouldKeepPartition() (bool, error) {
+-	if s.state != defaultState {
++	if accessErr := beginAggregationResult(&s.state, false, "PreAggSelectPartition's ShouldKeepPartition cannot be computed: %v"); accessErr != nil {
++		return false, accessErr
++	}
++	if s.state == merged || s.state == serialized {
+ 		return false, fmt.Errorf("PreAggSelectPartition's ShouldKeepPartition cannot be computed: %v", s.state.errorMessage())
+ 	}
+-	s.state = resultReturned
+ 
+ 	// Pre-thresholding guarantees that at least this number of unique contributions are in the
+ 	// partition.
+@@ -417,6 +428,9 @@ type encodablePreAggSelectPartition struct {
+ 
+ // GobEncode encodes PreAggSelectPartition.
+ func (s *PreAggSelectPartition) GobEncode() ([]byte, error) {
++	if accessErr := aggregationAccess(s.state, serializeOperation, "PreAggSelectPartition object cannot be serialized: %s"); accessErr != nil {
++		return nil, accessErr
++	}
+ 	if s.state != defaultState && s.state != serialized {
+ 		return nil, fmt.Errorf("PreAggSelectPartition object cannot be serialized: %s", s.state.errorMessage())
+ 	}
+@@ -428,8 +442,12 @@ func (s *PreAggSelectPartition) GobEncode() ([]byte, error) {
+ 		State:         s.state,
+ 		PreThreshold:  s.preThreshold,
+ 	}
+-	s.state = serialized
+-	return encode(enc)
++	data, encodeErr := encodeAggregation(&s.state, enc)
++	if s.state == defaultState {
++		s.state = serialized
++		return encode(enc)
++	}
++	return data, encodeErr
+ }
+ 
+ // GobDecode decodes PreAggSelectPartition.
+diff --git a/go/dpagg/standard_deviation.go b/go/dpagg/standard_deviation.go
+index 96747db..bd9e2ae 100644
+--- a/go/dpagg/standard_deviation.go
++++ b/go/dpagg/standard_deviation.go
+@@ -90,6 +90,9 @@ func NewBoundedStandardDeviation(opt *BoundedStandardDeviationOptions) (*Bounded
+ // a NaN standard deviation regardless of other entries, which would break the
+ // indistinguishability property required for differential privacy.
+ func (bstdv *BoundedStandardDeviation) Add(e float64) error {
++	if accessErr := aggregationAccess(bstdv.state, amendOperation, "BoundedStandardDeviation cannot be amended: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bstdv.state != defaultState {
+ 		return fmt.Errorf("BoundedStandardDeviation cannot be amended: %v", bstdv.state.errorMessage())
+ 	}
+@@ -102,10 +105,12 @@ func (bstdv *BoundedStandardDeviation) Add(e float64) error {
+ // Note that the returned value is not an unbiased estimate of the raw bounded standard
+ // deviation.
+ func (bstdv *BoundedStandardDeviation) Result() (float64, error) {
+-	if bstdv.state != defaultState {
++	if accessErr := beginAggregationResult(&bstdv.state, false, "BoundedStandardDeviation's noised result cannot be computed: %s"); accessErr != nil {
++		return 0, accessErr
++	}
++	if bstdv.state == merged || bstdv.state == serialized {
+ 		return 0, fmt.Errorf("BoundedStandardDeviation's noised result cannot be computed: %s", bstdv.state.errorMessage())
+ 	}
+-	bstdv.state = resultReturned
+ 	variance, err := bstdv.Variance.Result()
+ 	if err != nil {
+ 		return 0, err
+@@ -126,9 +131,15 @@ func (bstdv *BoundedStandardDeviation) Merge(bstdv2 *BoundedStandardDeviation) e
+ }
+ 
+ func checkMergeBoundedStandardDeviation(bstdv1, bstdv2 *BoundedStandardDeviation) error {
++	if accessErr := aggregationAccess(bstdv1.state, amendOperation, "checkMergeBoundedStandardDeviation: bv1 cannot be merged with another BoundedStandardDeviation instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bstdv1.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedStandardDeviation: bv1 cannot be merged with another BoundedStandardDeviation instance: %v", bstdv1.state.errorMessage())
+ 	}
++	if accessErr := aggregationAccess(bstdv2.state, amendOperation, "checkMergeBoundedStandardDeviation: bv2 cannot be merged with another BoundedStandardDeviation instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bstdv2.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedStandardDeviation: bv2 cannot be merged with another BoundedStandardDeviation instance: %v", bstdv2.state.errorMessage())
+ 	}
+@@ -142,14 +153,21 @@ func checkMergeBoundedStandardDeviation(bstdv1, bstdv2 *BoundedStandardDeviation
+ 
+ // GobEncode encodes BoundedStandardDeviation.
+ func (bstdv *BoundedStandardDeviation) GobEncode() ([]byte, error) {
++	if accessErr := aggregationAccess(bstdv.state, serializeOperation, "StandardDeviation object cannot be serialized: %s"); accessErr != nil {
++		return nil, accessErr
++	}
+ 	if bstdv.state != defaultState && bstdv.state != serialized {
+ 		return nil, fmt.Errorf("StandardDeviation object cannot be serialized: %s", bstdv.state.errorMessage())
+ 	}
+ 	enc := encodableBoundedStandardDeviation{
+ 		EncodableVariance: &bstdv.Variance,
+ 	}
+-	bstdv.state = serialized
+-	return encode(enc)
++	data, encodeErr := encodeAggregation(&bstdv.state, enc)
++	if bstdv.state == defaultState {
++		bstdv.state = serialized
++		return encode(enc)
++	}
++	return data, encodeErr
+ }
+ 
+ // GobDecode decodes BoundedStandardDeviation.
+diff --git a/go/dpagg/sum.go b/go/dpagg/sum.go
+index 5c84938..bae8b3a 100644
+--- a/go/dpagg/sum.go
++++ b/go/dpagg/sum.go
+@@ -229,6 +229,9 @@ func getLInfInt(lower, upper, maxContributionsPerPartition int64) (int64, error)
+ 
+ // Add adds a new summand to the BoundedSumInt64.
+ func (bs *BoundedSumInt64) Add(e int64) error {
++	if accessErr := aggregationAccess(bs.state, amendOperation, "BoundedSumInt64 cannot be amended: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bs.state != defaultState {
+ 		return fmt.Errorf("BoundedSumInt64 cannot be amended: %v", bs.state.errorMessage())
+ 	}
+@@ -253,9 +256,15 @@ func (bs *BoundedSumInt64) Merge(bs2 *BoundedSumInt64) error {
+ }
+ 
+ func checkMergeBoundedSumInt64(bs1, bs2 *BoundedSumInt64) error {
++	if accessErr := aggregationAccess(bs1.state, amendOperation, "checkMergeBoundedSumInt64: bs1 cannot be merged with another BoundedSum instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bs1.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedSumInt64: bs1 cannot be merged with another BoundedSum instance: %v", bs1.state.errorMessage())
+ 	}
++	if accessErr := aggregationAccess(bs2.state, amendOperation, "checkMergeBoundedSumInt64: bs2 cannot be merged with another BoundedSum instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bs2.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedSumInt64: bs2 cannot be merged with another BoundedSum instance: %v", bs2.state.errorMessage())
+ 	}
+@@ -278,10 +287,12 @@ func checkMergeBoundedSumInt64(bs1, bs2 *BoundedSumInt64) error {
+ // value representing a bounded sum that is possible. Note that such post
+ // processing introduces bias to the result.
+ func (bs *BoundedSumInt64) Result() (int64, error) {
+-	if bs.state != defaultState {
++	if accessErr := beginAggregationResult(&bs.state, false, "BoundedSumInt64's noised result cannot be computed: %s"); accessErr != nil {
++		return 0, accessErr
++	}
++	if bs.state == merged || bs.state == serialized {
+ 		return 0, fmt.Errorf("BoundedSumInt64's noised result cannot be computed: %s", bs.state.errorMessage())
+ 	}
+-	bs.state = resultReturned
+ 	var err error
+ 	bs.noisedSum, err = bs.Noise.AddNoiseInt64(bs.sum, bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta)
+ 	return bs.noisedSum, err
+@@ -353,6 +364,9 @@ type encodableBoundedSumInt64 struct {
+ 
+ // GobEncode encodes BoundedSumInt64.
+ func (bs *BoundedSumInt64) GobEncode() ([]byte, error) {
++	if accessErr := aggregationAccess(bs.state, serializeOperation, "BoundedSumInt64 object cannot be serialized: %s"); accessErr != nil {
++		return nil, accessErr
++	}
+ 	if bs.state != defaultState && bs.state != serialized {
+ 		return nil, fmt.Errorf("BoundedSumInt64 object cannot be serialized: %s", bs.state.errorMessage())
+ 	}
+@@ -366,8 +380,12 @@ func (bs *BoundedSumInt64) GobEncode() ([]byte, error) {
+ 		NoiseKind:       noise.ToKind(bs.Noise),
+ 		Sum:             bs.sum,
+ 	}
+-	bs.state = serialized
+-	return encode(enc)
++	data, encodeErr := encodeAggregation(&bs.state, enc)
++	if bs.state == defaultState {
++		bs.state = serialized
++		return encode(enc)
++	}
++	return data, encodeErr
+ }
+ 
+ // GobDecode decodes BoundedSumInt64.
+@@ -550,6 +568,9 @@ func getLInfFloat(lower, upper float64, maxContributionsPerPartition int64) (flo
+ // regardless of other summands, which would break the indistinguishability
+ // property required for differential privacy.
+ func (bs *BoundedSumFloat64) Add(e float64) error {
++	if accessErr := aggregationAccess(bs.state, amendOperation, "BoundedSumFloat64 cannot be amended: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bs.state != defaultState {
+ 		return fmt.Errorf("BoundedSumFloat64 cannot be amended: %v", bs.state.errorMessage())
+ 	}
+@@ -576,9 +597,15 @@ func (bs *BoundedSumFloat64) Merge(bs2 *BoundedSumFloat64) error {
+ }
+ 
+ func checkMergeBoundedSumFloat64(bs1, bs2 *BoundedSumFloat64) error {
++	if accessErr := aggregationAccess(bs1.state, amendOperation, "checkMergeBoundedSumFloat64: bs1 cannot be merged with another BoundedSum instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bs1.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedSumFloat64: bs1 cannot be merged with another BoundedSum instance: %v", bs1.state.errorMessage())
+ 	}
++	if accessErr := aggregationAccess(bs2.state, amendOperation, "checkMergeBoundedSumFloat64: bs2 cannot be merged with another BoundedSum instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bs2.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedSumFloat64: bs2 cannot be merged with another BoundedSum instance: %v", bs2.state.errorMessage())
+ 	}
+@@ -601,10 +628,12 @@ func checkMergeBoundedSumFloat64(bs1, bs2 *BoundedSumFloat64) error {
+ // value representing a bounded sum that is possible. Note that such post
+ // processing introduces bias to the result.
+ func (bs *BoundedSumFloat64) Result() (float64, error) {
+-	if bs.state != defaultState {
++	if accessErr := beginAggregationResult(&bs.state, false, "BoundedSumFloat64's noised result cannot be computed: %s"); accessErr != nil {
++		return 0, accessErr
++	}
++	if bs.state == merged || bs.state == serialized {
+ 		return 0, fmt.Errorf("BoundedSumFloat64's noised result cannot be computed: %s", bs.state.errorMessage())
+ 	}
+-	bs.state = resultReturned
+ 	var err error
+ 	bs.noisedSum, err = bs.Noise.AddNoiseFloat64(bs.sum, bs.l0Sensitivity, bs.lInfSensitivity, bs.epsilon, bs.delta)
+ 	return bs.noisedSum, err
+@@ -670,6 +699,9 @@ type encodableBoundedSumFloat64 struct {
+ 
+ // GobEncode encodes BoundedSumInt64.
+ func (bs *BoundedSumFloat64) GobEncode() ([]byte, error) {
++	if accessErr := aggregationAccess(bs.state, serializeOperation, "BoundedSumFloat64 object cannot be serialized: %s"); accessErr != nil {
++		return nil, accessErr
++	}
+ 	if bs.state != defaultState && bs.state != serialized {
+ 		return nil, fmt.Errorf("BoundedSumFloat64 object cannot be serialized: %s", bs.state.errorMessage())
+ 	}
+@@ -683,8 +715,12 @@ func (bs *BoundedSumFloat64) GobEncode() ([]byte, error) {
+ 		NoiseKind:       noise.ToKind(bs.Noise),
+ 		Sum:             bs.sum,
+ 	}
+-	bs.state = serialized
+-	return encode(enc)
++	data, encodeErr := encodeAggregation(&bs.state, enc)
++	if bs.state == defaultState {
++		bs.state = serialized
++		return encode(enc)
++	}
++	return data, encodeErr
+ }
+ 
+ // GobDecode decodes BoundedSumInt64.
+diff --git a/go/dpagg/variance.go b/go/dpagg/variance.go
+index 3a6352d..54dc4c9 100644
+--- a/go/dpagg/variance.go
++++ b/go/dpagg/variance.go
+@@ -221,6 +221,9 @@ func computeMaxVariance(lower, upper float64) float64 {
+ // variance regardless of other entries, which would break the indistinguishability
+ // property required for differential privacy.
+ func (bv *BoundedVariance) Add(e float64) error {
++	if accessErr := aggregationAccess(bv.state, amendOperation, "BoundedVariance cannot be amended: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bv.state != defaultState {
+ 		return fmt.Errorf("BoundedVariance cannot be amended: %v", bv.state.errorMessage())
+ 	}
+@@ -257,11 +260,13 @@ func (bv *BoundedVariance) Result() (float64, error) {
+ // Note that none of the returned values are the unbiased estimate of the raw bounded statistics.
+ func (bv *BoundedVariance) ResultWithCountAndMean() (BoundedVarianceResult, error) {
+ 	nullResult := BoundedVarianceResult{}
+-	if bv.state != defaultState {
++	if err := beginAggregationResult(&bv.state, false, "BoundedVariance's noised result cannot be computed: %s"); err != nil {
++		return nullResult, err
++	}
++	if bv.state == merged || bv.state == serialized {
+ 		return nullResult, fmt.Errorf(
+ 			"BoundedVariance's noised result cannot be computed: %s", bv.state.errorMessage())
+ 	}
+-	bv.state = resultReturned
+ 
+ 	noisedCountInt, err := bv.Count.Result()
+ 	if err != nil {
+@@ -312,9 +317,15 @@ func (bv *BoundedVariance) Merge(bv2 *BoundedVariance) error {
+ }
+ 
+ func checkMergeBoundedVariance(bv1, bv2 *BoundedVariance) error {
++	if accessErr := aggregationAccess(bv1.state, amendOperation, "checkMergeBoundedVariance: bv1 cannot be merged with another BoundedVariance instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bv1.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedVariance: bv1 cannot be merged with another BoundedVariance instance: %v", bv1.state.errorMessage())
+ 	}
++	if accessErr := aggregationAccess(bv2.state, amendOperation, "checkMergeBoundedVariance: bv2 cannot be merged with another BoundedVariance instance: %v"); accessErr != nil {
++		return accessErr
++	}
+ 	if bv2.state != defaultState {
+ 		return fmt.Errorf("checkMergeBoundedVariance: bv2 cannot be merged with another BoundedVariance instance: %v", bv2.state.errorMessage())
+ 	}
+@@ -328,6 +339,9 @@ func checkMergeBoundedVariance(bv1, bv2 *BoundedVariance) error {
+ 
+ // GobEncode encodes BoundedVariance.
+ func (bv *BoundedVariance) GobEncode() ([]byte, error) {
++	if accessErr := aggregationAccess(bv.state, serializeOperation, "BoundedVariance object cannot be serialized: %s"); accessErr != nil {
++		return nil, accessErr
++	}
+ 	if bv.state != defaultState && bv.state != serialized {
+ 		return nil, fmt.Errorf("BoundedVariance object cannot be serialized: %s", bv.state.errorMessage())
+ 	}
+@@ -339,8 +353,12 @@ func (bv *BoundedVariance) GobEncode() ([]byte, error) {
+ 		EncodableNormalizedSumOfSquares: &bv.NormalizedSumOfSquares,
+ 		Midpoint:                        bv.midPoint,
+ 	}
+-	bv.state = serialized
+-	return encode(enc)
++	data, encodeErr := encodeAggregation(&bv.state, enc)
++	if bv.state == defaultState {
++		bv.state = serialized
++		return encode(enc)
++	}
++	return data, encodeErr
+ }
+ 
+ // GobDecode decodes BoundedVariance.
+diff --git a/go/noise/gaussian_noise.go b/go/noise/gaussian_noise.go
+index eb60895..81f22ca 100644
+--- a/go/noise/gaussian_noise.go
++++ b/go/noise/gaussian_noise.go
+@@ -59,7 +59,7 @@ func Gaussian() Noise {
+ // AddNoiseFloat64 adds Gaussian noise to the specified float64, so that its
+ // output is (ε,δ)-differentially private.
+ func (gaussian) AddNoiseFloat64(x float64, l0Sensitivity int64, lInfSensitivity, epsilon, delta float64) (float64, error) {
+-	if err := checkArgsGaussian(l0Sensitivity, lInfSensitivity, epsilon, delta); err != nil {
++	if err := checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, true); err != nil {
+ 		return 0, err
+ 	}
+ 
+@@ -70,7 +70,7 @@ func (gaussian) AddNoiseFloat64(x float64, l0Sensitivity int64, lInfSensitivity,
+ // AddNoiseInt64 adds Gaussian noise to the specified int64, so that the
+ // output is (ε,δ)-differentially private.
+ func (gaussian) AddNoiseInt64(x, l0Sensitivity, lInfSensitivity int64, epsilon, delta float64) (int64, error) {
+-	if err := checkArgsGaussian(l0Sensitivity, float64(lInfSensitivity), epsilon, delta); err != nil {
++	if err := checkNoiseParameters(l0Sensitivity, float64(lInfSensitivity), epsilon, delta, true); err != nil {
+ 		return 0, err
+ 	}
+ 
+@@ -83,7 +83,7 @@ func (gaussian) AddNoiseInt64(x, l0Sensitivity, lInfSensitivity int64, epsilon,
+ //
+ // See https://github.com/google/differential-privacy/blob/main/common_docs/Delta_For_Thresholding.pdf for details on the math underlying this.
+ func (gaussian) Threshold(l0Sensitivity int64, lInfSensitivity, epsilon, noiseDelta, thresholdDelta float64) (float64, error) {
+-	if err := checkArgsGaussian(l0Sensitivity, lInfSensitivity, epsilon, noiseDelta); err != nil {
++	if err := checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, noiseDelta, true); err != nil {
+ 		return 0, err
+ 	}
+ 	if err := checks.CheckThresholdDelta(thresholdDelta, noiseDelta); err != nil {
+@@ -100,7 +100,7 @@ func (gaussian) Threshold(l0Sensitivity int64, lInfSensitivity, epsilon, noiseDe
+ //
+ // See https://github.com/google/differential-privacy/blob/main/common_docs/Delta_For_Thresholding.pdf for details on the math underlying this.
+ func (gaussian) DeltaForThreshold(l0Sensitivity int64, lInfSensitivity, epsilon, delta, threshold float64) (float64, error) {
+-	if err := checkArgsGaussian(l0Sensitivity, lInfSensitivity, epsilon, delta); err != nil {
++	if err := checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, true); err != nil {
+ 		return 0, err
+ 	}
+ 	sigma := SigmaForGaussian(l0Sensitivity, lInfSensitivity, epsilon, delta)
+@@ -113,7 +113,7 @@ func (gaussian) DeltaForThreshold(l0Sensitivity int64, lInfSensitivity, epsilon,
+ //
+ // See https://github.com/google/differential-privacy/tree/main/common_docs/confidence_intervals.md.
+ func (gaussian) ComputeConfidenceIntervalInt64(noisedX, l0Sensitivity, lInfSensitivity int64, epsilon, delta, alpha float64) (ConfidenceInterval, error) {
+-	err := checkArgsConfidenceIntervalGaussian(l0Sensitivity, float64(lInfSensitivity), epsilon, delta, alpha)
++	err := checkIntervalParameters(l0Sensitivity, float64(lInfSensitivity), epsilon, delta, alpha, true)
+ 	if err != nil {
+ 		return ConfidenceInterval{}, err
+ 	}
+@@ -134,7 +134,7 @@ func (gaussian) ComputeConfidenceIntervalInt64(noisedX, l0Sensitivity, lInfSensi
+ //
+ // See https://github.com/google/differential-privacy/tree/main/common_docs/confidence_intervals.md.
+ func (gaussian) ComputeConfidenceIntervalFloat64(noisedX float64, l0Sensitivity int64, lInfSensitivity, epsilon, delta, alpha float64) (ConfidenceInterval, error) {
+-	err := checkArgsConfidenceIntervalGaussian(l0Sensitivity, lInfSensitivity, epsilon, delta, alpha)
++	err := checkIntervalParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, alpha, true)
+ 	if err != nil {
+ 		return ConfidenceInterval{}, err
+ 	}
+@@ -143,6 +143,9 @@ func (gaussian) ComputeConfidenceIntervalFloat64(noisedX float64, l0Sensitivity
+ }
+ 
+ func checkArgsGaussian(l0Sensitivity int64, lInfSensitivity, epsilon, delta float64) error {
++	if err := checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, true); err != nil {
++		return err
++	}
+ 	if err := checks.CheckL0Sensitivity(l0Sensitivity); err != nil {
+ 		return err
+ 	}
+@@ -164,7 +167,7 @@ func checkArgsConfidenceIntervalGaussian(l0Sensitivity int64, lInfSensitivity, e
+ 	if err := checks.CheckAlpha(alpha); err != nil {
+ 		return err
+ 	}
+-	return checkArgsGaussian(l0Sensitivity, lInfSensitivity, epsilon, delta)
++	return checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, true)
+ }
+ 
+ // addGaussianFloat64 adds Gaussian noise of scale σ to the specified float64.
+diff --git a/go/noise/laplace_noise.go b/go/noise/laplace_noise.go
+index 9f8621d..c740281 100644
+--- a/go/noise/laplace_noise.go
++++ b/go/noise/laplace_noise.go
+@@ -58,7 +58,7 @@ func Laplace() Noise {
+ // output is ε-differentially private given the L_0 and L_∞ sensitivities of the
+ // database.
+ func (laplace) AddNoiseFloat64(x float64, l0Sensitivity int64, lInfSensitivity, epsilon, delta float64) (float64, error) {
+-	if err := checkArgsLaplace(l0Sensitivity, lInfSensitivity, epsilon, delta); err != nil {
++	if err := checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, false); err != nil {
+ 		return 0, err
+ 	}
+ 	return addLaplaceFloat64(x, epsilon, lInfSensitivity*float64(l0Sensitivity) /* l1Sensitivity */), nil
+@@ -68,7 +68,7 @@ func (laplace) AddNoiseFloat64(x float64, l0Sensitivity int64, lInfSensitivity,
+ // output is ε-differentially private given the L_0 and L_∞ sensitivities of the
+ // database.
+ func (laplace) AddNoiseInt64(x, l0Sensitivity, lInfSensitivity int64, epsilon, delta float64) (int64, error) {
+-	if err := checkArgsLaplace(l0Sensitivity, float64(lInfSensitivity), epsilon, delta); err != nil {
++	if err := checkNoiseParameters(l0Sensitivity, float64(lInfSensitivity), epsilon, delta, false); err != nil {
+ 		return 0, err
+ 	}
+ 	return addLaplaceInt64(x, epsilon, lInfSensitivity*l0Sensitivity /* l1Sensitivity */), nil
+@@ -78,7 +78,7 @@ func (laplace) AddNoiseInt64(x, l0Sensitivity, lInfSensitivity int64, epsilon, d
+ // histogram with added Laplace noise. Like other functions for Laplace noise,
+ // it fails if noiseDelta is non-zero.
+ func (laplace) Threshold(l0Sensitivity int64, lInfSensitivity, epsilon, noiseDelta, thresholdDelta float64) (float64, error) {
+-	if err := checkArgsLaplace(l0Sensitivity, lInfSensitivity, epsilon, noiseDelta); err != nil {
++	if err := checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, noiseDelta, false); err != nil {
+ 		return 0, err
+ 	}
+ 	if err := checks.CheckThresholdDelta(thresholdDelta, noiseDelta); err != nil {
+@@ -135,7 +135,7 @@ func (laplace) Threshold(l0Sensitivity int64, lInfSensitivity, epsilon, noiseDel
+ // thresholding. Just like other functions for Laplace noise, it fails if
+ // delta is non-zero.
+ func (laplace) DeltaForThreshold(l0Sensitivity int64, lInfSensitivity, epsilon, delta, threshold float64) (float64, error) {
+-	if err := checkArgsLaplace(l0Sensitivity, lInfSensitivity, epsilon, delta); err != nil {
++	if err := checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, false); err != nil {
+ 		return 0, err
+ 	}
+ 	lambda := laplaceLambda(l0Sensitivity, lInfSensitivity, epsilon)
+@@ -160,7 +160,7 @@ func (laplace) DeltaForThreshold(l0Sensitivity int64, lInfSensitivity, epsilon,
+ //
+ // See https://github.com/google/differential-privacy/tree/main/common_docs/confidence_intervals.md.
+ func (laplace) ComputeConfidenceIntervalInt64(noisedX, l0Sensitivity, lInfSensitivity int64, epsilon, delta, alpha float64) (ConfidenceInterval, error) {
+-	err := checkArgsConfidenceIntervalLaplace(l0Sensitivity, float64(lInfSensitivity), epsilon, delta, alpha)
++	err := checkIntervalParameters(l0Sensitivity, float64(lInfSensitivity), epsilon, delta, alpha, false)
+ 	if err != nil {
+ 		return ConfidenceInterval{}, err
+ 	}
+@@ -181,7 +181,7 @@ func (laplace) ComputeConfidenceIntervalInt64(noisedX, l0Sensitivity, lInfSensit
+ //
+ // See https://github.com/google/differential-privacy/tree/main/common_docs/confidence_intervals.md.
+ func (laplace) ComputeConfidenceIntervalFloat64(noisedX float64, l0Sensitivity int64, lInfSensitivity, epsilon, delta, alpha float64) (ConfidenceInterval, error) {
+-	err := checkArgsConfidenceIntervalLaplace(l0Sensitivity, lInfSensitivity, epsilon, delta, alpha)
++	err := checkIntervalParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, alpha, false)
+ 	if err != nil {
+ 		return ConfidenceInterval{}, err
+ 	}
+@@ -194,6 +194,9 @@ func (laplace) String() string {
+ }
+ 
+ func checkArgsLaplace(l0Sensitivity int64, lInfSensitivity, epsilon, delta float64) error {
++	if err := checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, false); err != nil {
++		return err
++	}
+ 	if err := checks.CheckL0Sensitivity(l0Sensitivity); err != nil {
+ 		return err
+ 	}
+@@ -210,7 +213,7 @@ func checkArgsConfidenceIntervalLaplace(l0Sensitivity int64, lInfSensitivity, ep
+ 	if err := checks.CheckAlpha(alpha); err != nil {
+ 		return err
+ 	}
+-	return checkArgsLaplace(l0Sensitivity, lInfSensitivity, epsilon, delta)
++	return checkNoiseParameters(l0Sensitivity, lInfSensitivity, epsilon, delta, false)
+ }
+ 
+ // addLaplaceFloat64 adds Laplace noise scaled to the given epsilon and l1Sensitivity to the
+diff --git a/go/noise/secure_noise_math.go b/go/noise/secure_noise_math.go
+index d318c5a..f97eb3a 100644
+--- a/go/noise/secure_noise_math.go
++++ b/go/noise/secure_noise_math.go
+@@ -18,8 +18,33 @@ package noise
+ 
+ import (
+ 	"math"
++
++	"github.com/google/differential-privacy/go/v4/checks"
+ )
+ 
++func checkNoiseParameters(l0 int64, lInf, epsilon, delta float64, gaussian bool) error {
++	if err := checks.CheckL0Sensitivity(l0); err != nil {
++		return err
++	}
++	if err := checks.CheckLInfSensitivity(lInf); err != nil {
++		return err
++	}
++	if err := checks.CheckEpsilonVeryStrict(epsilon); err != nil {
++		return err
++	}
++	if gaussian {
++		return checks.CheckDeltaStrict(delta)
++	}
++	return checks.CheckNoDelta(delta)
++}
++
++func checkIntervalParameters(l0 int64, lInf, epsilon, delta, alpha float64, gaussian bool) error {
++	if err := checks.CheckAlpha(alpha); err != nil {
++		return err
++	}
++	return checkNoiseParameters(l0, lInf, epsilon, delta, gaussian)
++}
++
+ // ceilPowerOfTwo returns the smallest power of 2 larger or equal to x. The
+ // value of x must be a finite positive number not greater than 2^1023. The
+ // result of this method is guaranteed to be an exact power of 2.

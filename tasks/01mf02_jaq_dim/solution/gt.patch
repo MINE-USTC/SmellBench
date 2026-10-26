@@ -1,0 +1,1681 @@
+diff --git a/jaq/src/filter.rs a/jaq/src/filter.rs
+new file mode 100644
+index 0000000..d346656
+--- /dev/null
++++ b/jaq/src/filter.rs
+@@ -0,0 +1,69 @@
++//! Filter parsing, compilation, and execution.
++use crate::{funs, read, Error, Runner, Val};
++use jaq_all::data::Filter;
++use jaq_all::jaq_core::{compile, load, Exn, ValT, Vars};
++use jaq_all::load::{compile_errors, load_errors, FileReports};
++use std::{io, path::PathBuf};
++
++pub fn parse_compile(
++    path: &PathBuf,
++    code: &str,
++    vars: &[String],
++    paths: &[PathBuf],
++) -> Result<(Vec<Val>, Filter), Vec<FileReports<PathBuf>>> {
++    use compile::Compiler;
++    use load::{import, Arena, File, Loader};
++
++    let default = ["~/.jq", "$ORIGIN/../lib/jq", "$ORIGIN/../lib"].map(|x| x.into());
++    let paths = if paths.is_empty() { &default } else { paths };
++
++    let vars: Vec<_> = vars.iter().map(|v| format!("${v}")).collect();
++    let arena = Arena::default();
++    let loader = Loader::new(jaq_all::defs().chain(defs())).with_std_read(paths);
++    //let loader = Loader::new([]).with_std_read(paths);
++    let path = path.into();
++    let modules = loader
++        .load(&arena, File { path, code })
++        .map_err(load_errors)?;
++
++    let mut vals = Vec::new();
++    import(&modules, |p| {
++        let path = p.find(paths, "json")?;
++        vals.push(read::json_array(path).map_err(|e| e.to_string())?);
++        Ok(())
++    })
++    .map_err(load_errors)?;
++
++    let compiler = Compiler::default()
++        .with_funs(funs::funs())
++        .with_global_vars(vars.iter().map(|v| &**v));
++    let filter = compiler.compile(modules).map_err(compile_errors)?;
++    Ok((vals, filter))
++}
++
++/// Run a filter with given input values and run `f` for every value output.
++pub(crate) fn run(
++    runner: &Runner,
++    filter: &Filter,
++    vars: Vars<Val>,
++    inputs: impl Iterator<Item = io::Result<Val>>,
++    mut f: impl FnMut(Val) -> io::Result<()>,
++) -> Result<Option<bool>, Error> {
++    let mut last = None;
++    jaq_all::data::run(runner, filter, vars, inputs, Error::Parse, |v| {
++        let halt = |e: Exn<_>| Error::Halt(e.get_halt().ok().unwrap());
++        let v = v.map_err(|e| e.get_err().map_or_else(halt, Error::Jaq))?;
++
++        last = Some(v.as_bool());
++        f(v).map_err(Into::into)
++    })?;
++    Ok(last)
++}
++
++fn defs() -> impl Iterator<Item = load::parse::Def<&'static str>> {
++    core::iter::once(load::parse::Def {
++        name: "input_filename",
++        args: Vec::new(),
++        body: load::parse::Term::Var("$!input_filename"),
++    })
++}
+diff --git a/jaq/src/funs.rs b/jaq/src/funs.rs
+index 576c2ce..77803a7 100644
+--- a/jaq/src/funs.rs
++++ b/jaq/src/funs.rs
+@@ -1,4 +1,4 @@
++use crate::{filter, run, with_stdout, write, Error, ErrorColor, Runner, Val};
+-use crate::{read, write, Error, ErrorColor, Val};
+ use jaq_all::data::DataKind;
+ use jaq_all::jaq_core::native::{self, v, Filter, Fun};
+ use jaq_all::jaq_core::{RunPtr, Vars};
+@@ -19,114 +19,64 @@ pub fn repl() -> Filter<RunPtr<DataKind>> {
+     ("repl", v(0), |cv| {
+         let depth = REPL_DEPTH.fetch_add(1, Ordering::Relaxed);
+         let runner = cv.0.data().runner;
++        repl_with(runner, depth, |s| match eval(runner, s, cv.1.clone()) {
++            Ok(()) => (),
++            Err(e) => eprint!("{}", ErrorColor::new(&e, runner.color_err)),
++        })
++        .unwrap();
+-        (|| -> Result<(), ReadlineError> {
+-            use rustyline::config::{Behavior, Config};
+-            let config = Config::builder()
+-                .behavior(Behavior::PreferTerm)
+-                .auto_add_history(true)
+-                .build();
+-            let mut rl = DefaultEditor::with_config(config)?;
+-            let history = dirs::cache_dir().map(|dir| dir.join("jaq-history"));
+-            let color = runner.color_stdout();
+-            let prompt = if color { "\x1b[1m>\x1b[0m" } else { ">" };
+-            let _ = history.iter().try_for_each(|path| rl.load_history(path));
+-            let prompt = format!("{}{} ", str::repeat("  ", depth), prompt);
+-            let mut first = true;
+-            loop {
+-                use core::cmp::Ordering::{Equal, Greater, Less};
+-                match (depth + 1).cmp(&REPL_KILL_DEPTH.load(Ordering::Relaxed)) {
+-                    Equal => break,
+-                    Less => REPL_KILL_DEPTH.store(0, Ordering::Relaxed),
+-                    Greater => (),
+-                }
+-                match rl.readline(&prompt) {
+-                    Ok(line) if line.chars().all(char::is_whitespace) => (),
+-                    Ok(line) => {
+-                        let evaluated = (|| -> Result<(), Error> {
+-                            let input = cv.1.clone();
+-                            use jaq_all::jaq_core::{compile::Compiler, load};
+-                            use jaq_all::load::{compile_errors, load_errors};
+-                            let paths = ["~/.jq", "$ORIGIN/../lib/jq", "$ORIGIN/../lib"]
+-                                .map(std::path::PathBuf::from);
+-                            let arena = load::Arena::default();
+-                            let filename_def = core::iter::once(load::parse::Def {
+-                                name: "input_filename", args: Vec::new(),
+-                                body: load::parse::Term::Var("$!input_filename"),
+-                            });
+-                            let modules = load::Loader::new(jaq_all::defs().chain(filename_def))
+-                                .with_std_read(&paths)
+-                                .load(&arena, load::File {
+-                                    path: std::path::PathBuf::from("<repl>"), code: &line,
+-                                }).map_err(load_errors).map_err(Error::Report)?;
+-                            let mut vars = Vec::new();
+-                            load::import(&modules, |import| {
+-                                let path = import.find(&paths, "json")?;
+-                                let bytes = read::load_file(path).map_err(|error| error.to_string())?;
+-                                vars.push(read::json::parse_many(&bytes).map(|value| {
+-                                    value.map_err(|error| std::io::Error::new(
+-                                        std::io::ErrorKind::InvalidData, error,
+-                                    ))
+-                                }).collect::<std::io::Result<Val>>()
+-                                    .map_err(|error| error.to_string())?);
+-                                Ok(())
+-                            }).map_err(load_errors).map_err(Error::Report)?;
+-                            let filter = Compiler::default().with_funs(crate::funs::funs())
+-                                .with_global_vars(core::iter::empty::<&str>())
+-                                .compile(modules).map_err(compile_errors).map_err(Error::Report)?;
+-                            let vars = Vars::new(vars);
+-                            let inputs = Box::new(core::iter::once(Ok(input)));
+-                            let writer = &runner.writer;
+-                            use std::io::IsTerminal;
+-                            let stdout = std::io::stdout();
+-                            let mut terminal;
+-                            let mut buffered;
+-                            let output: &mut dyn std::io::Write = if stdout.is_terminal() {
+-                                terminal = stdout.lock();
+-                                &mut terminal
+-                            } else {
+-                                buffered = std::io::BufWriter::new(stdout.lock());
+-                                &mut buffered
+-                            };
+-                            let null = Box::new(core::iter::once(Ok(Val::Null)));
+-                            let null = &jaq_all::jaq_std::input::RcIter::new(null);
+-                            let data = jaq_all::data::Data {
+-                                runner,
+-                                lut: &filter.lut,
+-                                inputs: &jaq_all::jaq_std::input::RcIter::new(inputs),
+-                            };
+-                            let ctx = jaq_all::data::Ctx::new(&data, vars);
+-                            for input in if runner.null_input { null } else { data.inputs } {
+-                                let input = input.unwrap();
+-                                for value in filter.id.run((ctx.clone(), input)) {
+-                                    let value = value.map_err(|error: jaq_all::jaq_core::Exn<_>| {
+-                                        error.get_err().map_or_else(
+-                                            |error| Error::Halt(error.get_halt().ok().unwrap()),
+-                                            Error::Jaq,
+-                                        )
+-                                    })?;
+-                                    write(output, writer, &value)?;
+-                                }
+-                            }
+-                            Ok(())
+-                        })();
+-                        if let Err(error) = evaluated {
+-                            eprint!("{}", ErrorColor::new(&error, runner.color_err));
+-                        }
+-                    },
+-                    Err(ReadlineError::Interrupted) => (),
+-                    Err(ReadlineError::Eof) => break,
+-                    Err(error) => Err(error)?,
+-                }
+-                first = false;
+-            }
+-            if first {
+-                REPL_KILL_DEPTH.store(depth + 1, Ordering::Relaxed);
+-            }
+-            let _ = history.iter().try_for_each(|path| rl.append_history(path));
+-            Ok(())
+-        })().unwrap();
+         REPL_DEPTH.fetch_sub(1, Ordering::Relaxed);
+ 
+         Box::new(core::iter::empty())
+     })
+ }
++
++fn eval(runner: &Runner, code: String, input: Val) -> Result<(), Error> {
++    let (ctx, filter) =
++        filter::parse_compile(&"<repl>".into(), &code, &[], &[]).map_err(Error::Report)?;
++    let ctx = Vars::new(ctx);
++    let inputs = core::iter::once(Ok(input));
++    let writer = &runner.writer;
++    with_stdout(&mut std::io::stdout(), |out| {
++        run(runner, &filter, ctx, inputs, |v| write(out, writer, &v))
++    })?;
++    Ok(())
++}
++
++fn repl_with(runner: &Runner, depth: usize, f: impl Fn(String)) -> Result<(), ReadlineError> {
++    use rustyline::config::{Behavior, Config};
++    let config = Config::builder()
++        .behavior(Behavior::PreferTerm)
++        .auto_add_history(true)
++        .build();
++    let mut rl = DefaultEditor::with_config(config)?;
++    let history = dirs::cache_dir().map(|dir| dir.join("jaq-history"));
++    let color = runner.color_stdout();
++    let prompt = if color { "\x1b[1m>\x1b[0m" } else { ">" };
++    let _ = history.iter().try_for_each(|h| rl.load_history(h));
++    let prompt = format!("{}{} ", str::repeat("  ", depth), prompt);
++    let mut first = true;
++    loop {
++        use core::cmp::Ordering::{Equal, Greater, Less};
++        match (depth + 1).cmp(&REPL_KILL_DEPTH.load(Ordering::Relaxed)) {
++            Equal => break,
++            // reset kill depth if we are below the level where REPL was killed
++            Less => REPL_KILL_DEPTH.store(0, Ordering::Relaxed),
++            // in this case, kill depth is zero; that is, inactive
++            Greater => (),
++        }
++        match rl.readline(&prompt) {
++            Ok(line) if line.chars().all(char::is_whitespace) => (),
++            Ok(line) => f(line),
++            Err(ReadlineError::Interrupted) => (),
++            Err(ReadlineError::Eof) => break,
++            Err(err) => Err(err)?,
++        }
++        first = false;
++    }
++    // only kill subsequent REPLs at this depth if the first command was "^D" (EOF)
++    if first {
++        REPL_KILL_DEPTH.store(depth + 1, Ordering::Relaxed);
++    }
++    let _ = history.iter().try_for_each(|h| rl.append_history(h));
++    Ok(())
++}
+diff --git a/jaq/src/main.rs b/jaq/src/main.rs
+index e381bf4..5d85e15 100644
+--- a/jaq/src/main.rs
++++ b/jaq/src/main.rs
+@@ -1,4 +1,5 @@
+ mod cli;
++mod filter;
+ mod funs;
+ mod tests;
+ #[cfg(target_os = "windows")]
+@@ -6,9 +7,10 @@ mod windows;
+ 
+ use cli::{Cli, Format};
+ use core::fmt::{self, Display, Formatter};
++use filter::run;
+ use jaq_all::data::{Filter, Runner};
+ use jaq_all::fmts::read;
++use jaq_all::fmts::write::{with_stdout, write, Writer};
+-use jaq_all::fmts::write::{write, Writer};
+ use jaq_all::jaq_core::Vars;
+ use jaq_all::json::write::{Pp, Styles};
+ use jaq_all::json::Val;
+@@ -112,42 +114,7 @@ impl Cli {
+ }
+ 
+ fn real_main(cli: &Cli, inp: &mut io::Stdin, out: &mut io::Stdout) -> Result<ExitCode, Error> {
++    let mut var_val = binds(cli)?;
+-    use std::io::IsTerminal;
+-    let positional = cli.args.iter().cloned().map(Val::from).collect::<Vec<_>>();
+-    let mut var_val = Vec::new();
+-    for (name, text) in &cli.arg {
+-        var_val.push((name.to_owned(), Val::utf8_str(text.to_owned())));
+-    }
+-    for (name, path) in &cli.rawfile {
+-        let bytes = read::load_file(path)
+-            .map_err(|error| Error::Io(Some(format!("{path:?}")), error))?;
+-        var_val.push((name.to_owned(), Val::utf8_str(bytes)));
+-    }
+-    for (name, path) in &cli.slurpfile {
+-        let bytes = read::load_file(path)
+-            .map_err(|error| Error::Io(Some(format!("{path:?}")), error))?;
+-        let value = read::json::parse_many(&bytes).map(|value| {
+-            value.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+-        }).collect::<io::Result<Val>>()
+-            .map_err(|error| Error::Io(Some(format!("{path:?}")), error))?;
+-        var_val.push((name.to_owned(), value));
+-    }
+-    for (name, text) in &cli.argjson {
+-        let value = read::json::parse_single(text.as_bytes()).map_err(|error| {
+-            Error::Parse(format!("{error} (for value passed to `--argjson {name}`)"))
+-        })?;
+-        var_val.push((name.to_owned(), value));
+-    }
+-    let named = var_val.iter().map(|(name, value)| {
+-        (Val::from(name.to_string()), value.clone())
+-    }).collect();
+-    let args = Val::obj([
+-        (Val::from("positional".to_string()), positional.into_iter().collect()),
+-        (Val::from("named".to_string()), Val::obj(named)),
+-    ].into_iter().collect());
+-    var_val.push(("ARGS".to_string(), args));
+-    let env = std::env::vars().map(|(name, value)| (name.into(), Val::from(value)));
+-    var_val.push(("ENV".to_string(), Val::obj(env.collect())));
+     let input_filename_idx = var_val.len();
+     var_val.push(("!input_filename".to_string(), Val::Null));
+     let (var_names, mut vars): (Vec<String>, Vec<Val>) = var_val.into_iter().unzip();
+@@ -155,38 +122,12 @@ fn real_main(cli: &Cli, inp: &mut io::Stdin, out: &mut io::Stdout) -> Result<Exi
+     let (var_vals, filter) = match &cli.filter {
+         None => (Vec::new(), Filter::default()),
+         Some(filter) => {
++            let (path, code) = match filter {
+-            let (path, code): (PathBuf, String) = match filter {
+                 cli::Filter::FromFile(path) => (path.into(), std::fs::read_to_string(path)?),
+                 cli::Filter::Inline(filter) => ("<inline>".into(), filter.clone()),
+             };
++            filter::parse_compile(&path, &code, &var_names, &cli.library_path)
++                .map_err(Error::Report)?
+-            use jaq_all::jaq_core::{compile::Compiler, load};
+-            use jaq_all::load::{compile_errors, load_errors};
+-            let default = ["~/.jq", "$ORIGIN/../lib/jq", "$ORIGIN/../lib"].map(|path| path.into());
+-            let paths = if cli.library_path.is_empty() { &default } else { &cli.library_path[..] };
+-            let globals: Vec<_> = var_names.iter().map(|name| format!("${name}")).collect();
+-            let arena = load::Arena::default();
+-            let filename_def = core::iter::once(load::parse::Def {
+-                name: "input_filename",
+-                args: Vec::new(),
+-                body: load::parse::Term::Var("$!input_filename"),
+-            });
+-            let modules = load::Loader::new(jaq_all::defs().chain(filename_def))
+-                .with_std_read(paths)
+-                .load(&arena, load::File { path: (&path).into(), code: &code })
+-                .map_err(load_errors).map_err(Error::Report)?;
+-            let mut imported = Vec::new();
+-            load::import(&modules, |import| {
+-                let path = import.find(paths, "json")?;
+-                let bytes = read::load_file(path).map_err(|error| error.to_string())?;
+-                imported.push(read::json::parse_many(&bytes).map(|value| {
+-                    value.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+-                }).collect::<io::Result<Val>>().map_err(|error| error.to_string())?);
+-                Ok(())
+-            }).map_err(load_errors).map_err(Error::Report)?;
+-            let compiled = Compiler::default().with_funs(funs::funs())
+-                .with_global_vars(globals.iter().map(|name| &**name))
+-                .compile(modules).map_err(compile_errors).map_err(Error::Report)?;
+-            (imported, compiled)
+         }
+     };
+     vars.extend(var_vals);
+@@ -203,39 +144,9 @@ fn real_main(cli: &Cli, inp: &mut io::Stdin, out: &mut io::Stdout) -> Result<Exi
+         let format = unwrap_or_json(cli.from);
+         let s = read::read_string(format, inp.lock())?;
+         let inputs = read::read(format, inp.lock(), &s, cli.slurp);
++        with_stdout(out, |out| {
++            run(runner, &filter, vars, inputs, |v| write(out, writer, &v))
++        })?
+-        let mut terminal;
+-        let mut buffered;
+-        let output: &mut dyn Write = if out.is_terminal() {
+-            terminal = out.lock();
+-            &mut terminal
+-        } else {
+-            buffered = io::BufWriter::new(out.lock());
+-            &mut buffered
+-        };
+-        let mut last = None;
+-        let inputs = Box::new(inputs.map(|value| value.map_err(|error| error.to_string())));
+-        let null = Box::new(core::iter::once(Ok(Val::Null)));
+-        let null = &jaq_all::jaq_std::input::RcIter::new(null);
+-        let data = jaq_all::data::Data {
+-            runner,
+-            lut: &filter.lut,
+-            inputs: &jaq_all::jaq_std::input::RcIter::new(inputs),
+-        };
+-        let ctx = jaq_all::data::Ctx::new(&data, vars);
+-        for input in if runner.null_input { null } else { data.inputs } {
+-            let input = input.map_err(Error::Parse)?;
+-            for value in filter.id.run((ctx.clone(), input)) {
+-                let value = value.map_err(|error: jaq_all::jaq_core::Exn<_>| {
+-                    error.get_err().map_or_else(
+-                        |error| Error::Halt(error.get_halt().ok().unwrap()), Error::Jaq,
+-                    )
+-                })?;
+-                use jaq_all::jaq_core::ValT;
+-                last = Some(value.as_bool());
+-                write(output, writer, &value)?;
+-            }
+-        }
+-        last
+     } else {
+         let mut last = None;
+         for file in &cli.files {
+@@ -257,32 +168,9 @@ fn real_main(cli: &Cli, inp: &mut io::Stdin, out: &mut io::Stdout) -> Result<Exi
+                     .prefix("jaq")
+                     .tempfile_in(location)?;
+ 
++                last = run(runner, &filter, vars.clone(), inputs, |output| {
++                    write(tmp.as_file_mut(), writer, &output)
++                })?;
+-                last = None;
+-                {
+-                    use jaq_all::jaq_core::{Exn, ValT};
+-                    let inputs = Box::new(inputs.map(|value| value.map_err(|error| error.to_string())));
+-                    let null = Box::new(core::iter::once(Ok(Val::Null)));
+-                    let null = &jaq_all::jaq_std::input::RcIter::new(null);
+-                    let data = jaq_all::data::Data {
+-                        runner,
+-                        lut: &filter.lut,
+-                        inputs: &jaq_all::jaq_std::input::RcIter::new(inputs),
+-                    };
+-                    let ctx = jaq_all::data::Ctx::new(&data, vars.clone());
+-                    for input in if runner.null_input { null } else { data.inputs } {
+-                        let input = input.map_err(Error::Parse)?;
+-                        for value in filter.id.run((ctx.clone(), input)) {
+-                            let value = value.map_err(|error: Exn<_>| {
+-                                error.get_err().map_or_else(
+-                                    |error| Error::Halt(error.get_halt().ok().unwrap()),
+-                                    Error::Jaq,
+-                                )
+-                            })?;
+-                            last = Some(value.as_bool());
+-                            write(tmp.as_file_mut(), writer, &value)?;
+-                        }
+-                    }
+-                }
+ 
+                 // replace the input file with the temporary file
+                 std::mem::drop(bytes);
+@@ -290,38 +178,11 @@ fn real_main(cli: &Cli, inp: &mut io::Stdin, out: &mut io::Stdout) -> Result<Exi
+                 tmp.persist(path).map_err(|e| Error::Io(None, e.into()))?;
+                 std::fs::set_permissions(path, perms)?;
+             } else {
++                last = with_stdout(out, |out| {
++                    run(runner, &filter, vars.clone(), inputs, |v| {
++                        write(out, writer, &v)
++                    })
++                })?;
+-                let mut terminal;
+-                let mut buffered;
+-                let output: &mut dyn Write = if out.is_terminal() {
+-                    terminal = out.lock();
+-                    &mut terminal
+-                } else {
+-                    buffered = io::BufWriter::new(out.lock());
+-                    &mut buffered
+-                };
+-                last = None;
+-                let inputs = Box::new(inputs.map(|value| value.map_err(|error| error.to_string())));
+-                let null = Box::new(core::iter::once(Ok(Val::Null)));
+-                let null = &jaq_all::jaq_std::input::RcIter::new(null);
+-                let data = jaq_all::data::Data {
+-                    runner,
+-                    lut: &filter.lut,
+-                    inputs: &jaq_all::jaq_std::input::RcIter::new(inputs),
+-                };
+-                let ctx = jaq_all::data::Ctx::new(&data, vars.clone());
+-                for input in if runner.null_input { null } else { data.inputs } {
+-                    let input = input.map_err(Error::Parse)?;
+-                    for value in filter.id.run((ctx.clone(), input)) {
+-                        let value = value.map_err(|error: jaq_all::jaq_core::Exn<_>| {
+-                            error.get_err().map_or_else(
+-                                |error| Error::Halt(error.get_halt().ok().unwrap()), Error::Jaq,
+-                            )
+-                        })?;
+-                        use jaq_all::jaq_core::ValT;
+-                        last = Some(value.as_bool());
+-                        write(output, writer, &value)?;
+-                    }
+-                }
+             }
+         }
+         last
+@@ -337,6 +198,50 @@ fn real_main(cli: &Cli, inp: &mut io::Stdin, out: &mut io::Stdout) -> Result<Exi
+     }
+ }
+ 
++fn binds(cli: &Cli) -> Result<Vec<(String, Val)>, Error> {
++    let arg = cli.arg.iter().map(|(k, s)| {
++        let s = s.to_owned();
++        Ok((k.to_owned(), Val::utf8_str(s)))
++    });
++    let argjson = cli.argjson.iter().map(|(k, s)| {
++        let err = |e| Error::Parse(format!("{e} (for value passed to `--argjson {k}`)"));
++        let s = s.as_bytes();
++        Ok((k.to_owned(), read::json::parse_single(s).map_err(err)?))
++    });
++    let rawfile = cli.rawfile.iter().map(|(k, path)| {
++        let err = |e| Error::Io(Some(format!("{path:?}")), e);
++        let s = read::load_file(path).map_err(err)?;
++        Ok((k.to_owned(), Val::utf8_str(s)))
++    });
++    let slurpfile = cli.slurpfile.iter().map(|(k, path)| {
++        let err = |e| Error::Io(Some(format!("{path:?}")), e);
++        Ok((k.to_owned(), read::json_array(path).map_err(err)?))
++    });
++
++    let positional = cli.args.iter().cloned().map(|s| Ok(Val::from(s)));
++    let positional = positional.collect::<Result<Vec<_>, Error>>()?;
++
++    let var_val = arg.chain(rawfile).chain(slurpfile).chain(argjson);
++    let mut var_val = var_val.collect::<Result<Vec<_>, Error>>()?;
++
++    var_val.push(("ARGS".to_string(), args(&positional, &var_val)));
++    let env = std::env::vars().map(|(k, v)| (k.into(), Val::from(v)));
++    var_val.push(("ENV".to_string(), Val::obj(env.collect())));
++
++    Ok(var_val)
++}
++
++fn args(positional: &[Val], named: &[(String, Val)]) -> Val {
++    let key = |k: &str| k.to_string().into();
++    let positional = positional.iter().cloned();
++    let named = named.iter().map(|(var, val)| (key(var), val.clone()));
++    let obj = [
++        (key("positional"), positional.collect()),
++        (key("named"), Val::obj(named.collect())),
++    ];
++    Val::obj(obj.into_iter().collect())
++}
++
+ #[derive(Debug)]
+ enum Error {
+     Io(Option<String>, io::Error),
+diff --git a/jaq-core/src/compile.rs b/jaq-core/src/compile.rs
+index a9488d3..fa28241 100644
+--- a/jaq-core/src/compile.rs
++++ b/jaq-core/src/compile.rs
+@@ -388,6 +388,35 @@ impl<S: Copy + Ord> Locals<S> {
+         y
+     }
+ 
++    fn push_parent(&mut self, name: S, args: Box<[Arg<S>]>, id: TermId) {
++        let vars = self.vars.total;
++
++        for arg in args.iter() {
++            match arg {
++                Arg::Var(v) => self.vars.push(Bind::Var(*v)),
++                Arg::Fun(f) => self.push_arg(*f),
++            }
++        }
++
++        self.funs
++            .push((name, args.len()), (Fun::Parent(args, id), vars));
++    }
++
++    fn pop_parent(&mut self, name: S, arity: Arity) -> TermId {
++        let (args, id, vars) = match self.funs.pop(&(name, arity)) {
++            Some((Fun::Parent(args, def), vars)) => (args, def, vars),
++            _ => panic!(),
++        };
++        for arg in args.iter().rev() {
++            match arg {
++                Arg::Var(v) => self.vars.pop(&Bind::Var(*v)),
++                Arg::Fun(f) => self.pop_arg(*f),
++            }
++        }
++        assert_eq!(self.vars.total, vars);
++        id
++    }
++
+     fn push_arg(&mut self, name: S) {
+         self.vars.push(Bind::Fun(name));
+         self.funs.push((name, 0), (Fun::Arg, self.vars.total));
+@@ -502,6 +531,23 @@ impl<'s, F> Compiler<&'s str, F> {
+         errs.is_empty().then(|| Filter { id, lut }).ok_or(errs)
+     }
+ 
++    fn with_label<T>(&mut self, label: &'s str, f: impl FnOnce(&mut Self) -> T) -> T {
++        self.locals.vars.push(Bind::Label(label));
++        let y = f(self);
++        self.locals.vars.pop(&Bind::Label(label));
++        y
++    }
++
++    fn with_vars<T>(&mut self, vars: &[&'s str], f: impl FnOnce(&mut Self) -> T) -> T {
++        vars.iter()
++            .for_each(|v| self.locals.vars.push(Bind::Var(v)));
++        let y = f(self);
++        vars.iter()
++            .rev()
++            .for_each(|v| self.locals.vars.pop(&Bind::Var(v)));
++        y
++    }
++
+     fn open_module<B>(&mut self, m: load::Module<&'s str, B>) -> B {
+         self.imported_mods.clear();
+         self.included_mods.clear();
+@@ -521,6 +567,14 @@ impl<'s, F> Compiler<&'s str, F> {
+         assert!(self.locals.is_empty());
+     }
+ 
++    fn open_def(&mut self, def: parse::Def<&'s str>, tr: &Tr) -> (&'s str, usize) {
++        let args: Box<[_]> = def.args.iter().map(|a| bind_from(a, *a)).collect();
++        let arity = args.len();
++        let (sig, def, tr_) = self.def(def, tr);
++        self.locals.push_sibling(sig.name, args, def, tr_);
++        (sig.name, arity)
++    }
++
+     fn close_def(&mut self, (name, arity): (&'s str, usize)) -> Def<&'s str> {
+         let (args, id, tr) = self.locals.pop_sibling(name, arity);
+         let args = args.into_vec().into_iter().map(|a| a.map(|_| ())).collect();
+@@ -528,37 +582,7 @@ impl<'s, F> Compiler<&'s str, F> {
+     }
+ 
+     fn module(&mut self, defs: Vec<parse::Def<&'s str>>) -> Vec<Def<&'s str>> {
++        let siblings = defs.into_iter().map(|def| self.open_def(def, &Tr::new()));
+-        let siblings = defs.into_iter().map(|def| {
+-            let args: Box<[_]> = def.args.iter().map(|arg| bind_from(arg, *arg)).collect();
+-            let arity = args.len();
+-            let id = self.lut.insert_term(Term::default());
+-            let variable_base = self.locals.vars.total;
+-            for arg in args.iter() {
+-                match arg {
+-                    Arg::Var(name) => self.locals.vars.push(Bind::Var(*name)),
+-                    Arg::Fun(name) => self.locals.push_arg(*name),
+-                }
+-            }
+-            self.locals.funs.push((def.name, arity), (Fun::Parent(args, id), variable_base));
+-            let mut tail_calls = Tr::new();
+-            assert!(tail_calls.insert(id));
+-            let (body, used_tail_calls) = self.term(def.body, &tail_calls);
+-            self.lut.terms[id.0] = body;
+-            let (args, parent_id, variable_base) = match self.locals.funs.pop(&(def.name, arity)) {
+-                Some((Fun::Parent(args, parent_id), variable_base)) => (args, parent_id, variable_base),
+-                _ => panic!(),
+-            };
+-            for arg in args.iter().rev() {
+-                match arg {
+-                    Arg::Var(name) => self.locals.vars.pop(&Bind::Var(*name)),
+-                    Arg::Fun(name) => self.locals.pop_arg(*name),
+-                }
+-            }
+-            assert_eq!(self.locals.vars.total, variable_base);
+-            assert_eq!(parent_id, id);
+-            self.locals.push_sibling(def.name, args, id, used_tail_calls);
+-            (def.name, arity)
+-        });
+         let siblings: Vec<_> = siblings.collect();
+ 
+         let defs = siblings.into_iter().rev().map(|sig| self.close_def(sig));
+@@ -568,6 +592,26 @@ impl<'s, F> Compiler<&'s str, F> {
+         defs
+     }
+ 
++    /// Compile a definition LHS.
++    fn def(&mut self, d: parse::Def<&'s str>, tr: &Tr) -> (Sig<&'s str>, TermId, Tr) {
++        // insert placeholder
++        let id = self.lut.insert_term(Term::default());
++        let args = d.args.iter().map(|a| bind_from(a, *a)).collect();
++
++        self.locals.push_parent(d.name, args, id);
++        let mut tr = tr.clone();
++        // any function can call itself tail-recursively
++        assert!(tr.insert(id));
++        let (body, tr_) = self.term(d.body, &tr);
++        self.lut.terms[id.0] = body;
++        assert_eq!(self.locals.pop_parent(d.name, d.args.len()), id);
++        let sig = Sig {
++            name: d.name,
++            args: d.args.iter().map(|a| bind_from(a, ())).collect(),
++        };
++        (sig, id, tr_)
++    }
++
+     /// Compile a term that may call any function in `tr` tail-recursively.
+     ///
+     /// Returns which of the functions in `tr` it actually calls tail-recursively.
+@@ -591,15 +635,7 @@ impl<'s, F> Compiler<&'s str, F> {
+             Recurse => Term::Recurse,
+             Arr(t) => Term::Arr(self.iterm(t.map_or_else(|| Call("!empty", Vec::new()), |t| *t))),
+             Neg(t) => Term::Neg(self.iterm(*t)),
++            Label(x, t) => Term::Label(self.with_label(x, |c| c.iterm(*t))),
+-            Label(x, t) => {
+-                self.locals.vars.push(Bind::Label(x));
+-                let id = self.lut.insert_term(Term::default());
+-                let (body, used_tail_calls) = self.term(*t, &Tr::new());
+-                debug_assert!(used_tail_calls.is_empty());
+-                self.lut.terms[id.0] = body;
+-                self.locals.vars.pop(&Bind::Label(x));
+-                Term::Label(id)
+-            },
+             Break(x) => self.break_(x),
+             IfThenElse(if_thens, else_) => {
+                 let f = |(if_, then_)| (self.iterm(if_), self.iterm_tr(then_, tr));
+@@ -621,37 +657,7 @@ impl<'s, F> Compiler<&'s str, F> {
+                 }
+             }
+             Def(defs, t) => {
++                let siblings: Vec<_> = defs.into_iter().map(|def| self.open_def(def, tr)).collect();
+-                let siblings: Vec<_> = defs.into_iter().map(|def| {
+-                    let args: Box<[_]> = def.args.iter().map(|arg| bind_from(arg, *arg)).collect();
+-                    let arity = args.len();
+-                    let id = self.lut.insert_term(Term::default());
+-                    let variable_base = self.locals.vars.total;
+-                    for arg in args.iter() {
+-                        match arg {
+-                            Arg::Var(name) => self.locals.vars.push(Bind::Var(*name)),
+-                            Arg::Fun(name) => self.locals.push_arg(*name),
+-                        }
+-                    }
+-                    self.locals.funs.push((def.name, arity), (Fun::Parent(args, id), variable_base));
+-                    let mut tail_calls = tr.clone();
+-                    assert!(tail_calls.insert(id));
+-                    let (body, used_tail_calls) = self.term(def.body, &tail_calls);
+-                    self.lut.terms[id.0] = body;
+-                    let (args, parent_id, variable_base) = match self.locals.funs.pop(&(def.name, arity)) {
+-                        Some((Fun::Parent(args, parent_id), variable_base)) => (args, parent_id, variable_base),
+-                        _ => panic!(),
+-                    };
+-                    for arg in args.iter().rev() {
+-                        match arg {
+-                            Arg::Var(name) => self.locals.vars.pop(&Bind::Var(*name)),
+-                            Arg::Fun(name) => self.locals.pop_arg(*name),
+-                        }
+-                    }
+-                    assert_eq!(self.locals.vars.total, variable_base);
+-                    assert_eq!(parent_id, id);
+-                    self.locals.push_sibling(def.name, args, id, used_tail_calls);
+-                    (def.name, arity)
+-                }).collect();
+                 let (t, tr_) = self.term(*t, tr);
+                 siblings.into_iter().rev().for_each(|sig| {
+                     self.close_def(sig);
+@@ -676,28 +682,13 @@ impl<'s, F> Compiler<&'s str, F> {
+                 let xs = self.iterm(*xs);
+                 let pat = self.pattern(pat);
+                 let init = self.iterm(init);
++                let update = self.with_vars(&vars, |c| c.iterm(update));
+-                vars.iter().for_each(|var| self.locals.vars.push(Bind::Var(var)));
+-                let update_id = self.lut.insert_term(Term::default());
+-                let (update, used_tail_calls) = self.term(update, &Tr::new());
+-                debug_assert!(used_tail_calls.is_empty());
+-                self.lut.terms[update_id.0] = update;
+-                let update = update_id;
+-                vars.iter().rev().for_each(|var| self.locals.vars.pop(&Bind::Var(var)));
+ 
+                 match (name, args.next(), args.next()) {
+                     ("reduce", None, None) => Term::Fold(xs, pat, init, update, Reduce),
+                     ("foreach", proj, None) => {
+                         let (proj, tr_) = proj
++                            .map(|p| self.with_vars(&vars, |c| c.iterm_tr(p, tr)))
+-                            .map(|projection| {
+-                                vars.iter().for_each(|var| self.locals.vars.push(Bind::Var(var)));
+-                                let projection_id = self.lut.insert_term(Term::default());
+-                                let (projection, used_tail_calls) = self.term(projection, tr);
+-                                debug_assert!(used_tail_calls.is_subset(tr));
+-                                self.lut.terms[projection_id.0] = projection;
+-                                let projection = projection_id;
+-                                vars.iter().rev().for_each(|var| self.locals.vars.pop(&Bind::Var(var)));
+-                                (projection, used_tail_calls)
+-                            })
+                             .unzip();
+                         let tr_ = tr_.unwrap_or_default();
+                         return (Term::Fold(xs, pat, init, update, Foreach(proj)), tr_);
+@@ -717,14 +708,7 @@ impl<'s, F> Compiler<&'s str, F> {
+                     Pipe(ref pat) => {
+                         let l = self.iterm(*l);
+                         let vars: Vec<_> = pat.iter().flat_map(|p| p.vars()).copied().collect();
++                        (l, self.with_vars(&vars, |c| c.iterm_tr(*r, tr)))
+-                        vars.iter().for_each(|var| self.locals.vars.push(Bind::Var(var)));
+-                        let right_id = self.lut.insert_term(Term::default());
+-                        let (r, used_tail_calls) = self.term(*r, tr);
+-                        debug_assert!(used_tail_calls.is_subset(tr));
+-                        self.lut.terms[right_id.0] = r;
+-                        let r = right_id;
+-                        vars.iter().rev().for_each(|var| self.locals.vars.pop(&Bind::Var(var)));
+-                        (l, (r, used_tail_calls))
+                     }
+                     _ => (self.iterm(*l), (self.iterm(*r), Tr::new())),
+                 };
+diff --git a/jaq-core/src/load/lex.rs b/jaq-core/src/load/lex.rs
+index 7689a6b..9cd94cf 100644
+--- a/jaq-core/src/load/lex.rs
++++ b/jaq-core/src/load/lex.rs
+@@ -195,6 +195,72 @@ impl<'a> Lexer<&'a str> {
+         }
+     }
+ 
++    /// Lex a non-empty digit sequence.
++    fn digits1(&mut self) {
++        if let Some(rest) = self.i.strip_prefix(|c: char| c.is_ascii_digit()) {
++            self.i = rest.trim_start_matches(|c: char| c.is_ascii_digit());
++        } else {
++            self.e.push((Expect::Digit, self.i));
++        }
++    }
++
++    /// Decimal with optional exponent.
++    fn num(&mut self) {
++        self.trim(|c| c.is_ascii_digit());
++        if let Some(i) = self.i.strip_prefix('.') {
++            self.i = i;
++            self.digits1();
++        }
++        if let Some(i) = self.i.strip_prefix(['e', 'E']) {
++            self.i = i.strip_prefix(['+', '-']).unwrap_or(i);
++            self.digits1();
++        }
++    }
++
++    fn escape(&mut self) -> Option<StrPart<&'a str, Token<&'a str>>> {
++        let mut chars = self.i.chars();
++        let part = match chars.next() {
++            Some(c @ ('\\' | '/' | '"')) => StrPart::Char(c),
++            Some('b') => StrPart::Char('\x08'),
++            Some('f') => StrPart::Char('\x0C'),
++            Some('n') => StrPart::Char('\n'),
++            Some('r') => StrPart::Char('\r'),
++            Some('t') => StrPart::Char('\t'),
++            Some('u') => {
++                let err_at = |lex: &mut Self, pos| {
++                    lex.i = pos;
++                    lex.e.push((Expect::Unicode, lex.i));
++                    None
++                };
++                let mut hex = 0;
++                let start_i = chars.as_str();
++                for _ in 0..4 {
++                    let cur_i = chars.as_str();
++                    if let Some(digit) = chars.next().and_then(|c| c.to_digit(16)) {
++                        hex = (hex << 4) + digit;
++                    } else {
++                        return err_at(self, cur_i);
++                    }
++                }
++                match char::from_u32(hex) {
++                    None => return err_at(self, start_i),
++                    Some(c) => StrPart::Char(c),
++                }
++            }
++            Some('(') => {
++                let (full, block) = self.with_consumed(Self::block);
++                return Some(StrPart::Term(Token(full, block)));
++            }
++            Some(_) | None => {
++                self.e.push((Expect::Escape, self.i));
++                return None;
++            }
++        };
++
++        self.i = chars.as_str();
++        Some(part)
++    }
++
+     /// Lex a (possibly interpolated) string.
+     ///
+     /// The input string has to start with '"'.
+@@ -203,61 +269,14 @@ impl<'a> Lexer<&'a str> {
+         assert_eq!(start, "\"");
+         let mut parts = Vec::new();
+ 
++        loop {
++            let s = self.consumed(0, |lex| lex.trim(|c| c != '\\' && c != '"'));
+-        'string: loop {
+-            let remaining = self.i;
+-            self.i = self.i.trim_start_matches(|c| c != '\\' && c != '"');
+-            let s = &remaining[..remaining.len() - self.i.len()];
+             if !s.is_empty() {
+                 parts.push(StrPart::Str(s));
+             }
+             match self.next() {
+                 Some('"') => break,
++                Some('\\') => self.escape().map(|part| parts.push(part)),
+-                Some('\\') => {
+-                    let mut chars = self.i.chars();
+-                    let escaped = match chars.next() {
+-                        Some(character @ ('\\' | '/' | '"')) => character,
+-                        Some('b') => '\x08',
+-                        Some('f') => '\x0C',
+-                        Some('n') => '\n',
+-                        Some('r') => '\r',
+-                        Some('t') => '\t',
+-                        Some('u') => {
+-                            let start_digits = chars.as_str();
+-                            let mut value = 0;
+-                            for _ in 0..4 {
+-                                let digit_position = chars.as_str();
+-                                if let Some(digit) = chars.next().and_then(|character| character.to_digit(16)) {
+-                                    value = (value << 4) + digit;
+-                                } else {
+-                                    self.i = digit_position;
+-                                    self.e.push((Expect::Unicode, self.i));
+-                                    continue 'string;
+-                                }
+-                            }
+-                            match char::from_u32(value) {
+-                                Some(character) => character,
+-                                None => {
+-                                    self.i = start_digits;
+-                                    self.e.push((Expect::Unicode, self.i));
+-                                    continue 'string;
+-                                }
+-                            }
+-                        },
+-                        Some('(') => {
+-                            let start_block = self.i;
+-                            let block = self.block();
+-                            let full = &start_block[..start_block.len() - self.i.len()];
+-                            parts.push(StrPart::Term(Token(full, block)));
+-                            continue 'string;
+-                        },
+-                        Some(_) | None => {
+-                            self.e.push((Expect::Escape, self.i));
+-                            continue 'string;
+-                        },
+-                    };
+-                    self.i = chars.as_str();
+-                    parts.push(StrPart::Char(escaped));
+-                },
+                 // SAFETY: due to `lex.trim()`
+                 Some(_) => unreachable!(),
+                 None => {
+@@ -278,38 +297,9 @@ impl<'a> Lexer<&'a str> {
+         let mut chars = self.i.chars();
+         let (s, tok) = match chars.next()? {
+             'a'..='z' | 'A'..='Z' | '_' => (self.consumed(1, Self::mod_then_ident), Tok::Word),
++            '$' => (self.consumed(1, Self::ident1), Tok::Var),
++            '@' => (self.consumed(1, Self::ident1), Tok::Fmt),
++            '0'..='9' => (self.consumed(1, Self::num), Tok::Num),
+-            kind @ ('$' | '@') => {
+-                let start = self.i;
+-                self.i = &self.i[1..];
+-                if let Some(rest) = self.i.strip_prefix(|c: char| c.is_ascii_alphabetic() || c == '_') {
+-                    self.i = rest.trim_start_matches(|c: char| c.is_ascii_alphanumeric() || c == '_');
+-                } else {
+-                    self.e.push((Expect::Ident, self.i));
+-                }
+-                let source = &start[..start.len() - self.i.len()];
+-                (source, if kind == '$' { Tok::Var } else { Tok::Fmt })
+-            },
+-            '0'..='9' => {
+-                let start = self.i;
+-                self.i = self.i[1..].trim_start_matches(|c: char| c.is_ascii_digit());
+-                if let Some(rest) = self.i.strip_prefix('.') {
+-                    self.i = rest;
+-                    if let Some(rest) = self.i.strip_prefix(|c: char| c.is_ascii_digit()) {
+-                        self.i = rest.trim_start_matches(|c: char| c.is_ascii_digit());
+-                    } else {
+-                        self.e.push((Expect::Digit, self.i));
+-                    }
+-                }
+-                if let Some(rest) = self.i.strip_prefix(['e', 'E']) {
+-                    self.i = rest.strip_prefix(['+', '-']).unwrap_or(rest);
+-                    if let Some(rest) = self.i.strip_prefix(|c: char| c.is_ascii_digit()) {
+-                        self.i = rest.trim_start_matches(|c: char| c.is_ascii_digit());
+-                    } else {
+-                        self.e.push((Expect::Digit, self.i));
+-                    }
+-                }
+-                (&start[..start.len() - self.i.len()], Tok::Num)
+-            },
+             c if hd_op(c) => (self.consumed(1, |lex| lex.trim(tl_op)), Tok::Sym),
+             '.' => match chars.next() {
+                 Some('.') => (self.take(2), Tok::Sym),
+diff --git a/jaq-core/src/load/mod.rs b/jaq-core/src/load/mod.rs
+index 36ba2b2..90efdce 100644
+--- a/jaq-core/src/load/mod.rs
++++ b/jaq-core/src/load/mod.rs
+@@ -138,6 +138,37 @@ impl<S, P> Modules<S, P> {
+ /// [`Errors`] will contain each file with a different [`Error`].
+ pub type Errors<S, P, E = Error<S>> = Vec<(File<S, P>, E)>;
+ 
++impl<S: core::ops::Deref<Target = str>, B> parse::Module<S, B> {
++    fn map(
++        self,
++        mut f: impl FnMut(&S, Option<Term<S>>) -> Result<usize, String>,
++    ) -> Result<Module<S, B>, Error<S>> {
++        // the prelude module is included implicitly in every module (except itself)
++        let mut mods = Vec::from([(0, None)]);
++        let mut vars = Vec::new();
++        let mut errs = Vec::new();
++        for (path, as_, meta) in self.deps {
++            match as_ {
++                Some(x) if x.starts_with('$') => vars.push((path, x, meta)),
++                as_ => match f(&path, meta) {
++                    Ok(mid) => mods.push((mid, as_)),
++                    Err(e) => errs.push((path, e)),
++                },
++            }
++        }
++        if errs.is_empty() {
++            Ok(Module {
++                meta: self.meta,
++                mods,
++                vars,
++                body: self.body,
++            })
++        } else {
++            Err(Error::Io(errs))
++        }
++    }
++}
++
+ type ReadResult<P> = Result<File<String, P>, String>;
+ type ReadFn<P> = fn(Import<&str, P>) -> ReadResult<P>;
+ 
+@@ -310,12 +341,11 @@ impl<'s, P: Clone + Eq, R: FnMut(Import<&'s str, P>) -> ReadResult<P>> Loader<&'
+         arena: &'s Arena,
+         file: File<&'s str, P>,
+     ) -> Result<Modules<&'s str, P>, Errors<&'s str, P>> {
++        let result = parse_main(file.code).and_then(|m| {
++            m.map(|path, meta| {
++                let (parent, meta) = (&file.path, &meta);
++                self.find(arena, Import { parent, path, meta })
++            })
+-        let result = lex::Lexer::new(file.code).lex().map_err(Error::Lex).and_then(|tokens| {
+-            parse::Parser::new(&tokens)
+-                .parse(|parser| parser.module(|parser| parser.term()))
+-                .map_err(|errors| Error::Parse(errors.into_iter().map(|(expected, found)| {
+-                    (expected, Token::opt_as_str(found, file.code))
+-                }).collect()))
+         });
+ 
+         let mut main = None;
+@@ -323,29 +353,7 @@ impl<'s, P: Clone + Eq, R: FnMut(Import<&'s str, P>) -> ReadResult<P>> Loader<&'
+         let mut errs = Vec::new();
+ 
+         match result {
++            Ok(m) => main = Some((file, m)),
+-            Ok(parsed) => {
+-                let mut modules = Vec::from([(0, None)]);
+-                let mut vars = Vec::new();
+-                let mut missing = Vec::new();
+-                for (path, alias, meta) in parsed.deps {
+-                    match alias {
+-                        Some(name) if name.starts_with('$') => vars.push((path, name, meta)),
+-                        alias => match self.find(arena, Import {
+-                            parent: &file.path, path: &path, meta: &meta,
+-                        }) {
+-                            Ok(id) => modules.push((id, alias)),
+-                            Err(error) => missing.push((path, error)),
+-                        },
+-                    }
+-                }
+-                if missing.is_empty() {
+-                    main = Some((file, Module {
+-                        meta: parsed.meta, mods: modules, vars, body: parsed.body,
+-                    }));
+-                } else {
+-                    errs.push((file, Error::Io(missing)));
+-                }
+-            },
+             Err(e) => errs.push((file, e)),
+         };
+         for (file, result) in self.mods {
+@@ -374,32 +382,11 @@ impl<'s, P: Clone + Eq, R: FnMut(Import<&'s str, P>) -> ReadResult<P>> Loader<&'
+ 
+         let code = &**arena.alloc(file.code);
+         self.open.push(file.path.clone());
++        let defs = parse_defs(code).and_then(|m| {
++            m.map(|path, meta| {
++                let (parent, meta) = (&file.path, &meta);
++                self.find(arena, Import { parent, path, meta })
++            })
+-        let defs = lex::Lexer::new(code).lex().map_err(Error::Lex).and_then(|tokens| {
+-            parse::Parser::new(&tokens)
+-                .parse(|parser| parser.module(|parser| parser.defs()))
+-                .map_err(|errors| Error::Parse(errors.into_iter().map(|(expected, found)| {
+-                    (expected, Token::opt_as_str(found, code))
+-                }).collect()))
+-        }).and_then(|parsed| {
+-            let mut modules = Vec::from([(0, None)]);
+-            let mut vars = Vec::new();
+-            let mut missing = Vec::new();
+-            for (path, alias, meta) in parsed.deps {
+-                match alias {
+-                    Some(name) if name.starts_with('$') => vars.push((path, name, meta)),
+-                    alias => match self.find(arena, Import {
+-                        parent: &file.path, path: &path, meta: &meta,
+-                    }) {
+-                        Ok(id) => modules.push((id, alias)),
+-                        Err(error) => missing.push((path, error)),
+-                    },
+-                }
+-            }
+-            if missing.is_empty() {
+-                Ok(Module { meta: parsed.meta, mods: modules, vars, body: parsed.body })
+-            } else {
+-                Err(Error::Io(missing))
+-            }
+         });
+         assert!(self.open.pop().as_ref() == Some(&file.path));
+ 
+@@ -410,6 +397,22 @@ impl<'s, P: Clone + Eq, R: FnMut(Import<&'s str, P>) -> ReadResult<P>> Loader<&'
+     }
+ }
+ 
++fn parse_main(code: &str) -> Result<parse::Module<&str, Term<&str>>, Error<&str>> {
++    let tokens = lex::Lexer::new(code).lex().map_err(Error::Lex)?;
++    let conv_err = |(expected, found)| (expected, Token::opt_as_str(found, code));
++    parse::Parser::new(&tokens)
++        .parse(|p| p.module(|p| p.term()))
++        .map_err(|e| Error::Parse(e.into_iter().map(conv_err).collect()))
++}
++
++fn parse_defs(code: &str) -> Result<parse::Module<&str, Vec<Def<&str>>>, Error<&str>> {
++    let tokens = lex::Lexer::new(code).lex().map_err(Error::Lex)?;
++    let conv_err = |(expected, found)| (expected, Token::opt_as_str(found, code));
++    parse::Parser::new(&tokens)
++        .parse(|p| p.module(|p| p.defs()))
++        .map_err(|e| Error::Parse(e.into_iter().map(conv_err).collect()))
++}
++
+ /// Lex a string and parse resulting tokens, returning [`None`] if any error occurred.
+ ///
+ /// Example:
+diff --git a/jaq-fmts/src/read/formats.rs b/jaq-fmts/src/read/formats.rs
+index 433ca82..0a3764c 100644
+--- a/jaq-fmts/src/read/formats.rs
++++ b/jaq-fmts/src/read/formats.rs
+@@ -42,14 +42,7 @@ pub fn read<'a>(fmt: Format, read: impl io::BufRead + 'a, s: &'a str, slurp: boo
+         Format::Raw => Box::new(read.byte_lines().map(|r| r.map(Val::utf8_str))),
+         Format::Raw0 => collect_if(slurp, read.byte_records(0).map(|r| r.map(Val::utf8_str))),
+         Format::Cbor => collect_if(slurp, cbor::read_many(read)),
++        Format::Json => collect_if(slurp, json::read_many(read)),
+-        Format::Json => {
+-            let values = json::read_many(read);
+-            if slurp {
+-                Box::new(core::iter::once(values.collect()))
+-            } else {
+-                Box::new(values)
+-            }
+-        },
+         Format::Toml => box_once(toml::parse(s).map_err(invalid_data)),
+         Format::Xml => collect_if(slurp, xml::parse_many(s).map(map_invalid_data)),
+         Format::Yaml => collect_if(slurp, yaml::parse_many(s).map(map_invalid_data)),
+@@ -70,23 +63,7 @@ pub fn parse<'a>(fmt: Format, bytes: &'a Bytes, s: &'a str, slurp: bool) -> Vals
+         Format::Raw0 => collect_if(slurp, nul_sep(bytes).map(slice_to_str)),
+         Format::Json => collect_if(slurp, json::parse_many(bytes).map(map_invalid_data)),
+         Format::Cbor => collect_if(slurp, cbor::parse_many(bytes).map(map_invalid_data)),
++        Format::Toml | Format::Xml | Format::Yaml => read(fmt, &[][..], s, slurp),
+-        Format::Toml => box_once(toml::parse(s).map_err(invalid_data)),
+-        Format::Xml => {
+-            let values = xml::parse_many(s).map(map_invalid_data);
+-            if slurp {
+-                Box::new(core::iter::once(values.collect()))
+-            } else {
+-                Box::new(values)
+-            }
+-        },
+-        Format::Yaml => {
+-            let values = yaml::parse_many(s).map(map_invalid_data);
+-            if slurp {
+-                Box::new(core::iter::once(values.collect()))
+-            } else {
+-                Box::new(values)
+-            }
+-        },
+         Format::Csv => collect_if(slurp, tabular::read_csv(iter).map(map_invalid_data)),
+         Format::Tsv => collect_if(slurp, tabular::read_tsv(iter).map(map_invalid_data)),
+     }
+diff --git a/jaq-fmts/src/read/tabular.rs b/jaq-fmts/src/read/tabular.rs
+index 4b2b2c8..bdb5bd0 100644
+--- a/jaq-fmts/src/read/tabular.rs
++++ b/jaq-fmts/src/read/tabular.rs
+@@ -1,143 +1,135 @@
+ //! CSV and TSV support.
+ use jaq_json::{read::parse_single_num, Val};
+ 
++#[derive(Debug, Default)]
++struct Field {
++    /// normalised contents of the field
++    bytes: Vec<u8>,
++    /// character immediately after the field
++    next: Option<u8>,
++    /// were there any escape characters or quotes in the field?
++    quote: bool,
++}
++
++impl Field {
++    fn is_empty(&self) -> bool {
++        self.bytes.is_empty() && !self.quote
++    }
++}
++
++impl From<Field> for Val {
++    fn from(field: Field) -> Self {
++        if field.quote {
++            Val::utf8_str(field.bytes)
++        } else if field.bytes.is_empty() {
++            Val::Null
++        } else if &*field.bytes == b"true" {
++            Val::Bool(true)
++        } else if &*field.bytes == b"false" {
++            Val::Bool(false)
++        } else if let Some(num) = parse_single_num(&field.bytes) {
++            Val::Num(num)
++        } else {
++            Val::utf8_str(field.bytes)
++        }
++    }
++}
++
++fn field<E, I, F>(iter: &mut I, sep: u8, quote: u8, f: F) -> Result<Field, E>
++where
++    I: Iterator<Item = Result<u8, E>>,
++    F: Fn(&mut I, &mut Field) -> Result<(), E>,
++{
++    let mut field = Field::default();
++    field.next = loop {
++        let next = field.next.take().map(Ok).or_else(|| iter.next());
++        match next.transpose()? {
++            None => break None,
++            Some(c) if c == sep || c == b'\n' => break Some(c),
++            Some(b'\r') => match iter.next().transpose()? {
++                Some(c @ b'\n') => break Some(c),
++                c @ (Some(_) | None) => {
++                    field.bytes.push(b'\r');
++                    field.next = c
++                }
++            },
++            Some(c) if c == quote => {
++                field.quote = true;
++                f(iter, &mut field)?
++            }
++            Some(byte) => field.bytes.push(byte),
++        }
++    };
++    Ok(field)
++}
++
++fn csv_field<E>(iter: &mut impl Iterator<Item = Result<u8, E>>) -> Result<Field, E> {
++    field(iter, b',', b'"', |iter, field| loop {
++        match iter.next().transpose()? {
++            Some(b'"') => match iter.next().transpose()? {
++                Some(b'"') => field.bytes.push(b'"'),
++                c @ Some(_) => {
++                    field.next = c;
++                    return Ok(());
+-/// Read rows of a CSV file.
+-pub fn read_csv<E>(
+-    mut iter: impl Iterator<Item = Result<u8, E>>,
+-) -> impl Iterator<Item = Result<Val, E>> {
+-    core::iter::from_fn(move || {
+-        let mut fields = Vec::new();
+-        loop {
+-            let mut bytes = Vec::new();
+-            let mut quoted = false;
+-            let mut pending = None;
+-            let end = loop {
+-                let byte = match pending.take().map(Ok).or_else(|| iter.next()) {
+-                    Some(Ok(byte)) => byte,
+-                    Some(Err(error)) => return Some(Err(error)),
+-                    None => break None,
+-                };
+-                match byte {
+-                    b',' | b'\n' => break Some(byte),
+-                    b'\r' => match iter.next() {
+-                        Some(Ok(b'\n')) => break Some(b'\n'),
+-                        Some(Err(error)) => return Some(Err(error)),
+-                        Some(Ok(next)) => {
+-                            bytes.push(b'\r');
+-                            pending = Some(next);
+-                        },
+-                        None => bytes.push(b'\r'),
+-                    },
+-                    b'"' => {
+-                        quoted = true;
+-                        loop {
+-                            match iter.next() {
+-                                Some(Err(error)) => return Some(Err(error)),
+-                                Some(Ok(b'"')) => match iter.next() {
+-                                    Some(Ok(b'"')) => bytes.push(b'"'),
+-                                    Some(Err(error)) => return Some(Err(error)),
+-                                    Some(Ok(next)) => {
+-                                        pending = Some(next);
+-                                        break;
+-                                    },
+-                                    None => break,
+-                                },
+-                                Some(Ok(byte)) => bytes.push(byte),
+-                                None => break,
+-                            }
+-                        }
+-                    },
+-                    byte => bytes.push(byte),
+                 }
++                None => return Ok(()),
++            },
++            Some(c) => field.bytes.push(c),
++            None => return Ok(()),
++        }
++    })
++}
++
++fn tsv_field<E>(iter: &mut impl Iterator<Item = Result<u8, E>>) -> Result<Field, E> {
++    field(iter, b'\t', b'\\', |iter, field| {
++        match iter.next().transpose()? {
++            None => (),
++            Some(b'n') => field.bytes.push(b'\n'),
++            Some(b't') => field.bytes.push(b'\t'),
++            Some(b'r') => field.bytes.push(b'\r'),
++            Some(b'0') => field.bytes.push(b'\0'),
++            Some(b'\\') => field.bytes.push(b'\\'),
++            c @ Some(_) => {
++                field.bytes.push(b'\\');
++                field.next = c
+-            };
+-            if end.is_none() && fields.is_empty() && bytes.is_empty() && !quoted {
+-                return None;
+             }
++        };
++        Ok(())
++    })
++}
++
++/// Read single table row.
++fn row<E, I: Iterator<Item = Result<u8, E>>>(
++    iter: &mut I,
++    field: fn(&mut I) -> Result<Field, E>,
++) -> Option<Result<Val, E>> {
++    let mut fields = Vec::new();
++    loop {
++        let field = match field(iter) {
++            Ok(ok) => ok,
++            Err(e) => return Some(Err(e)),
++        };
++        match field.next {
++            None if fields.is_empty() && field.is_empty() => return None,
++            None | Some(b'\n') => {
++                fields.push(field.into());
+-            fields.push(if quoted {
+-                Val::utf8_str(bytes)
+-            } else if bytes.is_empty() {
+-                Val::Null
+-            } else if bytes == b"true" {
+-                Val::Bool(true)
+-            } else if bytes == b"false" {
+-                Val::Bool(false)
+-            } else if let Some(number) = parse_single_num(&bytes) {
+-                Val::Num(number)
+-            } else {
+-                Val::utf8_str(bytes)
+-            });
+-            if matches!(end, None | Some(b'\n')) {
+                 return Some(Ok(Val::Arr(fields.into())));
+             }
++            _ => fields.push(field.into()),
+         }
++    }
++}
++
++/// Read rows of a CSV file.
++pub fn read_csv<E>(
++    mut iter: impl Iterator<Item = Result<u8, E>>,
++) -> impl Iterator<Item = Result<Val, E>> {
++    core::iter::from_fn(move || row(&mut iter, csv_field))
+-    })
+ }
+ 
+ /// Read rows of a TSV file.
+ pub fn read_tsv<E>(
+     mut iter: impl Iterator<Item = Result<u8, E>>,
+ ) -> impl Iterator<Item = Result<Val, E>> {
++    core::iter::from_fn(move || row(&mut iter, tsv_field))
+-    core::iter::from_fn(move || {
+-        let mut fields = Vec::new();
+-        loop {
+-            let mut bytes = Vec::new();
+-            let mut escaped = false;
+-            let mut pending = None;
+-            let end = loop {
+-                let byte = match pending.take().map(Ok).or_else(|| iter.next()) {
+-                    Some(Ok(byte)) => byte,
+-                    Some(Err(error)) => return Some(Err(error)),
+-                    None => break None,
+-                };
+-                match byte {
+-                    b'\t' | b'\n' => break Some(byte),
+-                    b'\r' => match iter.next() {
+-                        Some(Ok(b'\n')) => break Some(b'\n'),
+-                        Some(Err(error)) => return Some(Err(error)),
+-                        Some(Ok(next)) => {
+-                            bytes.push(b'\r');
+-                            pending = Some(next);
+-                        },
+-                        None => bytes.push(b'\r'),
+-                    },
+-                    b'\\' => {
+-                        escaped = true;
+-                        match iter.next() {
+-                            Some(Err(error)) => return Some(Err(error)),
+-                            None => (),
+-                            Some(Ok(b'n')) => bytes.push(b'\n'),
+-                            Some(Ok(b't')) => bytes.push(b'\t'),
+-                            Some(Ok(b'r')) => bytes.push(b'\r'),
+-                            Some(Ok(b'0')) => bytes.push(b'\0'),
+-                            Some(Ok(b'\\')) => bytes.push(b'\\'),
+-                            Some(Ok(next)) => {
+-                                bytes.push(b'\\');
+-                                pending = Some(next);
+-                            },
+-                        }
+-                    },
+-                    byte => bytes.push(byte),
+-                }
+-            };
+-            if end.is_none() && fields.is_empty() && bytes.is_empty() && !escaped {
+-                return None;
+-            }
+-            fields.push(if escaped {
+-                Val::utf8_str(bytes)
+-            } else if bytes.is_empty() {
+-                Val::Null
+-            } else if bytes == b"true" {
+-                Val::Bool(true)
+-            } else if bytes == b"false" {
+-                Val::Bool(false)
+-            } else if let Some(number) = parse_single_num(&bytes) {
+-                Val::Num(number)
+-            } else {
+-                Val::utf8_str(bytes)
+-            });
+-            if matches!(end, None | Some(b'\n')) {
+-                return Some(Ok(Val::Arr(fields.into())));
+-            }
+-        }
+-    })
+ }
+diff --git a/jaq-fmts/src/write/formats.rs b/jaq-fmts/src/write/formats.rs
+index 35794cd..60c7c78 100644
+--- a/jaq-fmts/src/write/formats.rs
++++ b/jaq-fmts/src/write/formats.rs
+@@ -30,45 +30,8 @@ pub fn write(w: &mut dyn Write, writer: &Writer, val: &Val) -> Result {
+         (_, Format::Yaml) => yaml::write(w, pp, 0, val)?,
+         (_, Format::Toml) => write!(w, "{}", map_err_to_string(toml::Root::try_from(val))?)?,
+         (_, Format::Xml) => map_err_to_string(xml::Xml::try_from(val))?.write(w)?,
++        (_, Format::Csv) => map_err_to_string(tabular::Row::try_from(val))?.write_csv(w)?,
++        (_, Format::Tsv) => map_err_to_string(tabular::Row::try_from(val))?.write_tsv(w)?,
+-        (_, Format::Csv | Format::Tsv) => {
+-            let fields = match val {
+-                Val::Arr(fields) => fields,
+-                _ => return Err(invalid_data(tabular::Error::Row(val.clone()).to_string())),
+-            };
+-            for field in fields.iter() {
+-                if !matches!(field, Val::Null | Val::Bool(_) | Val::Num(_) | Val::TStr(_)) {
+-                    return Err(invalid_data(tabular::Error::Field(field.clone()).to_string()));
+-                }
+-            }
+-            let mut fields = fields.iter();
+-            let mut first = true;
+-            while let Some(field) = fields.next() {
+-                if !first {
+-                    if matches!(format, Format::Csv) {
+-                        write!(w, "{}", ',')?;
+-                    } else {
+-                        write!(w, "{}", '\t')?;
+-                    }
+-                }
+-                first = false;
+-                match field {
+-                    Val::Null => {},
+-                    Val::TStr(bytes) if matches!(format, Format::Csv) => {
+-                        use bstr::ByteSlice;
+-                        write!(w, "\"")?;
+-                        w.write_all(&bytes.replace(b"\"", b"\"\""))?;
+-                        write!(w, "\"")?;
+-                    },
+-                    Val::TStr(bytes) => {
+-                        let patterns = ["\n", "\r", "\t", "\\", "\0"];
+-                        let replacements = ["\\n", "\\r", "\\t", "\\\\", "\\0"];
+-                        let matcher = aho_corasick::AhoCorasick::new(patterns).unwrap();
+-                        w.write_all(&matcher.replace_all_bytes(bytes, &replacements))?;
+-                    },
+-                    field => write!(w, "{field}")?,
+-                }
+-            }
+-        },
+     };
+ 
+     w.write_all(match format {
+diff --git a/jaq-json/src/num.rs b/jaq-json/src/num.rs
+index 8d6867b..92ee3c6 100644
+--- a/jaq-json/src/num.rs
++++ b/jaq-json/src/num.rs
+@@ -48,27 +48,9 @@ impl Num {
+ 
+     /// Try to parse an integer from a string with given radix.
+     pub fn from_str_radix(i: &str, radix: u32) -> Option<Self> {
++        let int = || isize::from_str_radix(i, radix).ok().map(Num::Int);
++        let big = || bigint_from_str_radix(i, radix).map(Self::big_int);
++        int().or_else(big)
+-        isize::from_str_radix(i, radix).ok().map(Num::Int).or_else(|| {
+-            let (sign, digits) = if let Some(digits) = i.strip_prefix('-') {
+-                (Sign::Minus, digits)
+-            } else {
+-                (Sign::Plus, i.strip_prefix('+').unwrap_or(i))
+-            };
+-            assert!((2..=36).contains(&radix));
+-            if digits.is_empty() {
+-                return None;
+-            }
+-            let digits = digits.bytes().map(|byte| {
+-                Some(match byte {
+-                    b'0'..=b'9' => byte - b'0',
+-                    b'a'..=b'z' => byte - b'a' + 10,
+-                    b'A'..=b'Z' => byte - b'A' + 10,
+-                    _ => return None,
+-                }).filter(|digit| *digit < radix as u8)
+-            }).collect::<Option<Vec<_>>>()?;
+-            BigUint::from_radix_be(&digits, radix)
+-                .map(|magnitude| Num::BigInt(BigInt::from_biguint(sign, magnitude).into()))
+-        })
+     }
+ 
+     /// Try to parse a decimal string to a [`Self::Float`], else return NaN.
+@@ -153,6 +135,34 @@ fn int_or_big<const N: usize>(
+     i.map_or_else(|| Num::big_int(f(x.map(BigInt::from))), Num::Int)
+ }
+ 
++// Do not use `BigInt::parse_bytes`, because it accepts arbitrary underscores between digits.
++// https://github.com/rust-num/num-bigint/issues/340
++fn bigint_from_str_radix(s: &str, radix: u32) -> Option<BigInt> {
++    use num_bigint::Sign::{Minus, Plus};
++    let f = |c, sign| s.strip_prefix(c).map(|s| (sign, s));
++    let (sign, num) = f('-', Minus).or_else(|| f('+', Plus)).unwrap_or((Plus, s));
++    biguint_from_str_radix(num, radix).map(|bu| BigInt::from_biguint(sign, bu))
++}
++
++fn biguint_from_str_radix(s: &str, radix: u32) -> Option<BigUint> {
++    assert!((2..=36).contains(&radix));
++    if s.is_empty() {
++        return None;
++    }
++
++    // normalize all characters to plain digit values
++    let digits = s.bytes().map(|b| {
++        Some(match b {
++            b'0'..=b'9' => b - b'0',
++            b'a'..=b'z' => b - b'a' + 10,
++            b'A'..=b'Z' => b - b'A' + 10,
++            _ => return None,
++        })
++        .filter(|d| *d < radix as u8)
++    });
++    BigUint::from_radix_be(&digits.collect::<Option<Vec<_>>>()?, radix)
++}
++
+ impl core::ops::Add for Num {
+     type Output = Num;
+     fn add(self, rhs: Self) -> Self::Output {
+diff --git a/jaq-json/src/read.rs b/jaq-json/src/read.rs
+index 669edd2..aeba642 100644
+--- a/jaq-json/src/read.rs
++++ b/jaq-json/src/read.rs
+@@ -3,7 +3,7 @@ use crate::{Map, Num, Val};
+ use alloc::{string::ToString, vec::Vec};
+ use core::fmt::{self, Formatter};
+ use hifijson::token::{Expect, Lex};
++use hifijson::{LexAlloc, SliceLexer};
+-use hifijson::{LexAlloc, Read as _, SliceLexer};
+ #[cfg(feature = "std")]
+ use std::io;
+ 
+@@ -45,14 +45,7 @@ pub fn parse_many(slice: &[u8]) -> impl Iterator<Item = Result<Val, Error>> + '_
+     let offset = |rest: &[u8]| rest.as_ptr() as usize - slice.as_ptr() as usize;
+     let mut lexer = SliceLexer::new(slice);
+     core::iter::from_fn(move || {
++        Some(parse(ws_tk(&mut lexer)?, &mut lexer).map_err(|e| Error(offset(lexer.as_slice()), e)))
+-        let next = loop {
+-            lexer.eat_whitespace();
+-            match lexer.peek_next() {
+-                Some(b'#') => lexer.skip_until(|byte| byte == b'\n'),
+-                next => break next,
+-            }
+-        }?;
+-        Some(parse(next, &mut lexer).map_err(|error| Error(offset(lexer.as_slice()), error)))
+     })
+ }
+ 
+@@ -62,14 +55,7 @@ pub fn read_many<'a>(read: impl io::BufRead + 'a) -> impl Iterator<Item = io::Re
+     let invalid_data = |e| io::Error::new(io::ErrorKind::InvalidData, e);
+     let mut lexer = hifijson::IterLexer::new(read.bytes());
+     core::iter::from_fn(move || {
++        let v = ws_tk(&mut lexer).map(|next| parse(next, &mut lexer).map_err(invalid_data));
+-        let next = loop {
+-            lexer.eat_whitespace();
+-            match lexer.peek_next() {
+-                Some(b'#') => lexer.skip_until(|byte| byte == b'\n'),
+-                next => break next,
+-            }
+-        };
+-        let v = next.map(|next| parse(next, &mut lexer).map_err(invalid_data));
+         // always return I/O error if present, regardless of the output value!
+         lexer.error.take().map(Err).or(v)
+     })
+@@ -89,6 +75,24 @@ pub fn parse_single_num(slice: &[u8]) -> Option<Num> {
+     })
+ }
+ 
++/// Parse a JSON string as byte or text string, preserving invalid UTF-8 as-is.
++fn parse_string<L: LexAlloc>(lexer: &mut L, bytes: bool) -> Result<Vec<u8>, hifijson::Error> {
++    let on_string = |bytes: &mut L::Bytes, out: &mut Vec<u8>| {
++        out.extend(bytes.as_ref());
++        Ok(())
++    };
++    let s = lexer.str_fold(Vec::new(), on_string, |lexer, out| {
++        use hifijson::escape::Error;
++        match lexer.take_next().ok_or(Error::Eof)? {
++            b'u' if bytes => Err(Error::InvalidKind(b'u'))?,
++            b'x' if bytes => out.push(lexer.hex()?),
++            c => out.extend(lexer.escape(c)?.encode_utf8(&mut [0; 4]).as_bytes()),
++        }
++        Ok(())
++    });
++    s.map_err(hifijson::Error::Str)
++}
++
+ fn parse_num<L: LexAlloc>(lexer: &mut L) -> Result<Num, hifijson::Error> {
+     let num = hifijson::num::Num::signed_digits();
+     let (num, parts) = lexer.num_string_with(num).unvalidated();
+@@ -117,50 +121,11 @@ fn parse<L: LexAlloc>(next: u8, lexer: &mut L) -> Result<Val, hifijson::Error> {
+         b'n' if lexer.strip_prefix(b"null") => Val::Null,
+         b't' if lexer.strip_prefix(b"true") => Val::Bool(true),
+         b'f' if lexer.strip_prefix(b"false") => Val::Bool(false),
++        b'b' if lexer.strip_prefix(b"b\"") => Val::byte_str(parse_string(lexer, true)?),
+-        b'b' if lexer.strip_prefix(b"b\"") => Val::byte_str(
+-            lexer.str_fold(Vec::new(), |bytes, out| {
+-                out.extend(bytes.as_ref());
+-                Ok(())
+-            }, |lexer, out| {
+-                use hifijson::escape::Error;
+-                match lexer.take_next().ok_or(Error::Eof)? {
+-                    b'u' => Err(Error::InvalidKind(b'u'))?,
+-                    b'x' => out.push(lexer.hex()?),
+-                    c => out.extend(lexer.escape(c)?.encode_utf8(&mut [0; 4]).as_bytes()),
+-                }
+-                Ok(())
+-            }).map_err(hifijson::Error::Str)?
+-        ),
+         b'N' if lexer.strip_prefix(b"NaN") => Val::Num(Num::Float(f64::NAN)),
+         b'I' if lexer.strip_prefix(b"Infinity") => Val::Num(Num::Float(f64::INFINITY)),
++        b'0'..=b'9' | b'+' | b'-' => Val::Num(parse_num(lexer)?),
++        b'"' => Val::utf8_str(parse_string(lexer.discarded(), false)?),
+-        b'0'..=b'9' | b'+' | b'-' => Val::Num({
+-            let num = hifijson::num::Num::signed_digits();
+-            let (num, parts) = lexer.num_string_with(num).unvalidated();
+-            let num = num.as_ref();
+-            match num {
+-                "+" if lexer.strip_prefix(b"Infinity") => Num::Float(f64::INFINITY),
+-                "-" if lexer.strip_prefix(b"Infinity") => Num::Float(f64::NEG_INFINITY),
+-                _ if num.ends_with(|c: char| c.is_ascii_digit()) => {
+-                    if parts.is_int() {
+-                        Num::from_str_radix(num, 10).unwrap()
+-                    } else {
+-                        Num::Dec(num.to_string().into())
+-                    }
+-                }
+-                _ => Err(hifijson::num::Error::ExpectedDigit)?,
+-            }
+-        }),
+-        b'"' => Val::utf8_str(
+-            lexer.discarded().str_fold(Vec::new(), |bytes, out| {
+-                out.extend(bytes.as_ref());
+-                Ok(())
+-            }, |lexer, out| {
+-                use hifijson::escape::Error;
+-                let c = lexer.take_next().ok_or(Error::Eof)?;
+-                out.extend(lexer.escape(c)?.encode_utf8(&mut [0; 4]).as_bytes());
+-                Ok(())
+-            }).map_err(hifijson::Error::Str)?
+-        ),
+         b'[' => Val::Arr({
+             let mut arr = Vec::new();
+             lexer.discarded().seq(b']', ws_tk, |next, lexer| {

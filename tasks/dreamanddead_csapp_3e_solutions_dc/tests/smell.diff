@@ -1,0 +1,1175 @@
+diff --git a/site/content/chapter4/code/sim/misc/isa.c b/site/content/chapter4/code/sim/misc/isa.c
+index d1ad212..a0b319b 100644
+--- a/site/content/chapter4/code/sim/misc/isa.c
++++ b/site/content/chapter4/code/sim/misc/isa.c
+@@ -144,7 +144,12 @@ mem_t init_mem(int len)
+ 
+ void clear_mem(mem_t m)
+ {
+-  memset(m->contents, 0, m->len);
++  memory_clear_parts(m->contents, m->len);
++}
++
++void memory_clear_parts(byte_t *contents, int capacity)
++{
++  memset(contents, 0, capacity);
+ }
+ 
+ void free_mem(mem_t m)
+@@ -155,22 +160,32 @@ void free_mem(mem_t m)
+ 
+ mem_t copy_mem(mem_t oldm)
+ {
+-  mem_t newm = init_mem(oldm->len);
+-  memcpy(newm->contents, oldm->contents, oldm->len);
++  return memory_copy_parts(oldm->contents, oldm->len);
++}
++
++mem_t memory_copy_parts(byte_t *contents, int capacity)
++{
++  mem_t newm = init_mem(capacity);
++  memcpy(newm->contents, contents, capacity);
+   return newm;
+ }
+ 
+ bool_t diff_mem(mem_t oldm, mem_t newm, FILE *outfile)
++{
++  return memory_compare_parts(oldm->contents, oldm->len, newm->contents, newm->len, outfile);
++}
++
++bool_t memory_compare_parts(byte_t *old_contents, int old_capacity, byte_t *new_contents, int new_capacity, FILE *outfile)
+ {
+   word_t pos;
+-  int len = oldm->len;
++  int len = old_capacity;
+   bool_t diff = FALSE;
+-  if (newm->len < len)
+-    len = newm->len;
++  if (new_capacity < len)
++    len = new_capacity;
+   for (pos = 0; (!diff || outfile) && pos < len; pos += 8) {
+     word_t ov = 0;  word_t nv = 0;
+-    get_word_val(oldm, pos, &ov);
+-    get_word_val(newm, pos, &nv);
++    memory_read_word_limit(old_contents, (word_t) (old_capacity) - 8, pos, &ov);
++    memory_read_word_limit(new_contents, (word_t) (new_capacity) - 8, pos, &nv);
+     if (nv != ov) {
+       diff = TRUE;
+       if (outfile)
+@@ -192,6 +207,11 @@ int hex2dig(char c)
+ 
+ #define LINELEN 4096
+ int load_mem(mem_t m, FILE *infile, int report_error)
++{
++  return memory_load_parts(m->contents, m->len, infile, report_error);
++}
++
++int memory_load_parts(byte_t *contents, int capacity, FILE *infile, int report_error)
+ {
+   /* Read contents of .yo file */
+   char buf[LINELEN];
+@@ -255,7 +275,7 @@ int load_mem(mem_t m, FILE *infile, int report_error)
+     while (isxdigit((int)(ch=buf[cpos++])) &&
+         isxdigit((int)(cl=buf[cpos++]))) {
+       byte_t byte = 0;
+-      if (bytepos >= m->len) {
++      if (bytepos >= capacity) {
+         if (report_error) {
+           fprintf(stderr,
+               "Error reading file. Invalid address. 0x%llx\n",
+@@ -265,7 +285,7 @@ int load_mem(mem_t m, FILE *infile, int report_error)
+         return 0;
+       }
+       byte = hex2dig(ch)*16+hex2dig(cl);
+-      m->contents[bytepos++] = byte;
++      contents[bytepos++] = byte;
+       byte_cnt++;
+ #ifdef HAS_GUI
+       empty_line = 0;
+@@ -301,21 +321,36 @@ int load_mem(mem_t m, FILE *infile, int report_error)
+ 
+ bool_t get_byte_val(mem_t m, word_t pos, byte_t *dest)
+ {
+-  if (pos < 0 || pos >= m->len)
++  return memory_read_byte_parts(m->contents, m->len, pos, dest);
++}
++
++bool_t memory_read_byte_parts(byte_t *contents, int capacity, word_t pos, byte_t *dest)
++{
++  if (pos < 0 || pos >= capacity)
+     return FALSE;
+-  *dest = m->contents[pos];
++  *dest = contents[pos];
+   return TRUE;
+ }
+ 
+ bool_t get_word_val(mem_t m, word_t pos, word_t *dest)
++{
++  return memory_read_word_limit(m->contents, (word_t) (m->len) - 8, pos, dest);
++}
++
++bool_t memory_read_word_parts(byte_t *contents, int capacity, word_t pos, word_t *dest)
++{
++  return memory_read_word_limit(contents, (word_t) capacity - 8, pos, dest);
++}
++
++bool_t memory_read_word_limit(byte_t *contents, word_t last_start, word_t pos, word_t *dest)
+ {
+   int i;
+   word_t val;
+-  if (pos < 0 || pos + 8 > m->len)
++  if (pos < 0 || pos > last_start)
+     return FALSE;
+   val = 0;
+   for (i = 0; i < 8; i++) {
+-    word_t b =  m->contents[pos+i] & 0xFF;
++    word_t b =  contents[pos+i] & 0xFF;
+     val = val | (b <<(8*i));
+   }
+   *dest = val;
+@@ -324,25 +359,45 @@ bool_t get_word_val(mem_t m, word_t pos, word_t *dest)
+ 
+ bool_t set_byte_val(mem_t m, word_t pos, byte_t val)
+ {
+-  if (pos < 0 || pos >= m->len)
++  return memory_write_byte_parts(m->contents, m->len, pos, val);
++}
++
++bool_t memory_write_byte_parts(byte_t *contents, int capacity, word_t pos, byte_t val)
++{
++  if (pos < 0 || pos >= capacity)
+     return FALSE;
+-  m->contents[pos] = val;
++  contents[pos] = val;
+   return TRUE;
+ }
+ 
+ bool_t set_word_val(mem_t m, word_t pos, word_t val)
++{
++  return memory_write_word_limit(m->contents, (word_t) (m->len) - 8, pos, val);
++}
++
++bool_t memory_write_word_parts(byte_t *contents, int capacity, word_t pos, word_t val)
++{
++  return memory_write_word_limit(contents, (word_t) capacity - 8, pos, val);
++}
++
++bool_t memory_write_word_limit(byte_t *contents, word_t last_start, word_t pos, word_t val)
+ {
+   int i;
+-  if (pos < 0 || pos + 8 > m->len)
++  if (pos < 0 || pos > last_start)
+     return FALSE;
+   for (i = 0; i < 8; i++) {
+-    m->contents[pos+i] = (byte_t) val & 0xFF;
++    contents[pos+i] = (byte_t) val & 0xFF;
+     val >>= 8;
+   }
+   return TRUE;
+ }
+ 
+ void dump_memory(FILE *outfile, mem_t m, word_t pos, int len)
++{
++  memory_dump_parts(outfile, m->contents, m->len, pos, len);
++}
++
++void memory_dump_parts(FILE *outfile, byte_t *contents, int capacity, word_t pos, int len)
+ {
+   int i, j;
+   while (pos % BPL) {
+@@ -352,14 +407,14 @@ void dump_memory(FILE *outfile, mem_t m, word_t pos, int len)
+ 
+   len = ((len+BPL-1)/BPL)*BPL;
+ 
+-  if (pos+len > m->len)
+-    len = m->len-pos;
++  if (pos+len > capacity)
++    len = capacity-pos;
+ 
+   for (i = 0; i < len; i+=BPL) {
+     word_t val = 0;
+     fprintf(outfile, "0x%.4llx:", pos+i);
+     for (j = 0; j < BPL; j+= 8) {
+-      get_word_val(m, pos+i+j, &val);
++      memory_read_word_limit(contents, (word_t) (capacity) - 8, pos+i+j, &val);
+       fprintf(outfile, " %.16llx", val);
+     }
+   }
+@@ -377,7 +432,7 @@ void free_reg(mem_t r)
+ 
+ mem_t copy_reg(mem_t oldr)
+ {
+-  return copy_mem(oldr);
++  return memory_copy_parts(oldr->contents, oldr->len);
+ }
+ 
+ bool_t diff_reg(mem_t oldr, mem_t newr, FILE *outfile)
+@@ -390,8 +445,8 @@ bool_t diff_reg(mem_t oldr, mem_t newr, FILE *outfile)
+   for (pos = 0; (!diff || outfile) && pos < len; pos += 8) {
+     word_t ov = 0;
+     word_t nv = 0;
+-    get_word_val(oldr, pos, &ov);
+-    get_word_val(newr, pos, &nv);
++    memory_read_word_limit(oldr->contents, (word_t) (oldr->len) - 8, pos, &ov);
++    memory_read_word_limit(newr->contents, (word_t) (newr->len) - 8, pos, &nv);
+     if (nv != ov) {
+       diff = TRUE;
+       if (outfile)
+@@ -403,18 +458,28 @@ bool_t diff_reg(mem_t oldr, mem_t newr, FILE *outfile)
+ }
+ 
+ word_t get_reg_val(mem_t r, reg_id_t id)
++{
++  return register_read_parts(r->contents, r->len, id);
++}
++
++word_t register_read_parts(byte_t *contents, int capacity, reg_id_t id)
+ {
+   word_t val = 0;
+   if (id >= REG_NONE)
+     return 0;
+-  get_word_val(r,id*8, &val);
++  memory_read_word_limit(contents, (word_t) (capacity) - 8,id*8, &val);
+   return val;
+ }
+ 
+ void set_reg_val(mem_t r, reg_id_t id, word_t val)
++{
++  register_write_parts(r->contents, r->len, id, val);
++}
++
++void register_write_parts(byte_t *contents, int capacity, reg_id_t id, word_t val)
+ {
+   if (id < REG_NONE) {
+-    set_word_val(r,id*8,val);
++    memory_write_word_limit(contents, (word_t) (capacity) - 8,id*8,val);
+ #ifdef HAS_GUI
+     if (gui_mode) {
+       signal_register_update(id, val);
+@@ -431,7 +496,7 @@ void dump_reg(FILE *outfile, mem_t r) {
+   fprintf(outfile, "\n");
+   for (id = 0; reg_valid(id); id++) {
+     word_t val = 0;
+-    get_word_val(r, id*8, &val);
++    memory_read_word_limit(r->contents, (word_t) (r->len) - 8, id*8, &val);
+     fprintf(outfile, " %llx", val);
+   }
+   fprintf(outfile, "\n");
+@@ -558,7 +623,7 @@ state_ptr copy_state(state_ptr s) {
+   state_ptr result = (state_ptr) malloc(sizeof(state_rec));
+   result->pc = s->pc;
+   result->r = copy_reg(s->r);
+-  result->m = copy_mem(s->m);
++  result->m = memory_copy_parts(s->m->contents, s->m->len);
+   result->cc = s->cc;
+   return result;
+ }
+@@ -580,7 +645,7 @@ bool_t diff_state(state_ptr olds, state_ptr news, FILE *outfile) {
+   }
+   if (diff_reg(olds->r, news->r, outfile))
+     diff = TRUE;
+-  if (diff_mem(olds->m, news->m, outfile))
++  if (memory_compare_parts(olds->m->contents, olds->m->len, news->m->contents, news->m->len, outfile))
+     diff = TRUE;
+   return diff;
+ }
+@@ -625,6 +690,11 @@ bool_t cond_holds(cc_t cc, cond_t bcond) {
+ 
+ /* Execute single instruction.  Return status. */
+ stat_t step_state(state_ptr s, FILE *error_file)
++{
++  return machine_step_parts(&s->pc, s->r->contents, s->r->len, s->m->contents, s->m->len, &s->cc, error_file);
++}
++
++stat_t machine_step_parts(word_t *pc, byte_t *register_bytes, int register_capacity, byte_t *memory_bytes, int memory_capacity, cc_t *condition_codes, FILE *error_file)
+ {
+   word_t argA, argB;
+   byte_t byte0 = 0;
+@@ -639,12 +709,12 @@ stat_t step_state(state_ptr s, FILE *error_file)
+   word_t val, dval;
+   bool_t need_regids;
+   bool_t need_imm;
+-  word_t ftpc = s->pc;  /* Fall-through PC */
++  word_t ftpc = (*pc);  /* Fall-through PC */
+ 
+-  if (!get_byte_val(s->m, ftpc, &byte0)) {
++  if (!memory_read_byte_parts(memory_bytes, memory_capacity, ftpc, &byte0)) {
+     if (error_file)
+       fprintf(error_file,
+-          "PC = 0x%llx, Invalid instruction address\n", s->pc);
++          "PC = 0x%llx, Invalid instruction address\n", (*pc));
+     return STAT_ADR;
+   }
+   ftpc++;
+@@ -658,7 +728,7 @@ stat_t step_state(state_ptr s, FILE *error_file)
+      hi0 == I_MRMOVQ || hi0 == I_IADDQ);
+ 
+   if (need_regids) {
+-    ok1 = get_byte_val(s->m, ftpc, &byte1);
++    ok1 = memory_read_byte_parts(memory_bytes, memory_capacity, ftpc, &byte1);
+     ftpc++;
+     hi1 = HI4(byte1);
+     lo1 = LO4(byte1);
+@@ -669,13 +739,13 @@ stat_t step_state(state_ptr s, FILE *error_file)
+      hi0 == I_JMP || hi0 == I_CALL || hi0 == I_IADDQ);
+ 
+   if (need_imm) {
+-    okc = get_word_val(s->m, ftpc, &cval);
++    okc = memory_read_word_limit(memory_bytes, (word_t) (memory_capacity) - 8, ftpc, &cval);
+     ftpc += 8;
+   }
+ 
+   switch (hi0) {
+     case I_NOP:
+-      s->pc = ftpc;
++      (*pc) = ftpc;
+       break;
+     case I_HALT:
+       return STAT_HLT;
+@@ -684,259 +754,259 @@ stat_t step_state(state_ptr s, FILE *error_file)
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+       if (!reg_valid(hi1)) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid register ID 0x%.1x\n",
+-              s->pc, hi1);
++              (*pc), hi1);
+         return STAT_INS;
+       }
+       if (!reg_valid(lo1)) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid register ID 0x%.1x\n",
+-              s->pc, lo1);
++              (*pc), lo1);
+         return STAT_INS;
+       }
+-      val = get_reg_val(s->r, hi1);
+-      if (cond_holds(s->cc, lo0))
+-        set_reg_val(s->r, lo1, val);
+-      s->pc = ftpc;
++      val = register_read_parts(register_bytes, register_capacity, hi1);
++      if (cond_holds((*condition_codes), lo0))
++        register_write_parts(register_bytes, register_capacity, lo1, val);
++      (*pc) = ftpc;
+       break;
+     case I_IRMOVQ:
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+       if (!okc) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid instruction address",
+-              s->pc);
++              (*pc));
+         return STAT_INS;
+       }
+       if (!reg_valid(lo1)) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid register ID 0x%.1x\n",
+-              s->pc, lo1);
++              (*pc), lo1);
+         return STAT_INS;
+       }
+-      set_reg_val(s->r, lo1, cval);
+-      s->pc = ftpc;
++      register_write_parts(register_bytes, register_capacity, lo1, cval);
++      (*pc) = ftpc;
+       break;
+     case I_RMMOVQ:
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+       if (!okc) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_INS;
+       }
+       if (!reg_valid(hi1)) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid register ID 0x%.1x\n",
+-              s->pc, hi1);
++              (*pc), hi1);
+         return STAT_INS;
+       }
+       if (reg_valid(lo1))
+-        cval += get_reg_val(s->r, lo1);
+-      val = get_reg_val(s->r, hi1);
+-      if (!set_word_val(s->m, cval, val)) {
++        cval += register_read_parts(register_bytes, register_capacity, lo1);
++      val = register_read_parts(register_bytes, register_capacity, hi1);
++      if (!memory_write_word_limit(memory_bytes, (word_t) (memory_capacity) - 8, cval, val)) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid data address 0x%llx\n",
+-              s->pc, cval);
++              (*pc), cval);
+         return STAT_ADR;
+       }
+-      s->pc = ftpc;
++      (*pc) = ftpc;
+       break;
+     case I_MRMOVQ:
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+       if (!okc) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction addres\n", s->pc);
++              "PC = 0x%llx, Invalid instruction addres\n", (*pc));
+         return STAT_INS;
+       }
+       if (!reg_valid(hi1)) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid register ID 0x%.1x\n",
+-              s->pc, hi1);
++              (*pc), hi1);
+         return STAT_INS;
+       }
+       if (reg_valid(lo1))
+-        cval += get_reg_val(s->r, lo1);
+-      if (!get_word_val(s->m, cval, &val))
++        cval += register_read_parts(register_bytes, register_capacity, lo1);
++      if (!memory_read_word_limit(memory_bytes, (word_t) (memory_capacity) - 8, cval, &val))
+         return STAT_ADR;
+-      set_reg_val(s->r, hi1, val);
+-      s->pc = ftpc;
++      register_write_parts(register_bytes, register_capacity, hi1, val);
++      (*pc) = ftpc;
+       break;
+     case I_ALU:
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+-      argA = get_reg_val(s->r, hi1);
+-      argB = get_reg_val(s->r, lo1);
++      argA = register_read_parts(register_bytes, register_capacity, hi1);
++      argB = register_read_parts(register_bytes, register_capacity, lo1);
+       val = compute_alu(lo0, argA, argB);
+-      set_reg_val(s->r, lo1, val);
+-      s->cc = compute_cc(lo0, argA, argB);
+-      s->pc = ftpc;
++      register_write_parts(register_bytes, register_capacity, lo1, val);
++      (*condition_codes) = compute_cc(lo0, argA, argB);
++      (*pc) = ftpc;
+       break;
+     case I_JMP:
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+       if (!okc) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+-      if (cond_holds(s->cc, lo0))
+-        s->pc = cval;
++      if (cond_holds((*condition_codes), lo0))
++        (*pc) = cval;
+       else
+-        s->pc = ftpc;
++        (*pc) = ftpc;
+       break;
+     case I_CALL:
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+       if (!okc) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+-      val = get_reg_val(s->r, REG_RSP) - 8;
+-      set_reg_val(s->r, REG_RSP, val);
+-      if (!set_word_val(s->m, val, ftpc)) {
++      val = register_read_parts(register_bytes, register_capacity, REG_RSP) - 8;
++      register_write_parts(register_bytes, register_capacity, REG_RSP, val);
++      if (!memory_write_word_limit(memory_bytes, (word_t) (memory_capacity) - 8, val, ftpc)) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid stack address 0x%llx\n", s->pc, val);
++              "PC = 0x%llx, Invalid stack address 0x%llx\n", (*pc), val);
+         return STAT_ADR;
+       }
+-      s->pc = cval;
++      (*pc) = cval;
+       break;
+     case I_RET:
+       /* Return Instruction.  Pop address from stack */
+-      dval = get_reg_val(s->r, REG_RSP);
+-      if (!get_word_val(s->m, dval, &val)) {
++      dval = register_read_parts(register_bytes, register_capacity, REG_RSP);
++      if (!memory_read_word_limit(memory_bytes, (word_t) (memory_capacity) - 8, dval, &val)) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid stack address 0x%llx\n",
+-              s->pc, dval);
++              (*pc), dval);
+         return STAT_ADR;
+       }
+-      set_reg_val(s->r, REG_RSP, dval + 8);
+-      s->pc = val;
++      register_write_parts(register_bytes, register_capacity, REG_RSP, dval + 8);
++      (*pc) = val;
+       break;
+     case I_PUSHQ:
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+       if (!reg_valid(hi1)) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid register ID 0x%.1x\n", s->pc, hi1);
++              "PC = 0x%llx, Invalid register ID 0x%.1x\n", (*pc), hi1);
+         return STAT_INS;
+       }
+-      val = get_reg_val(s->r, hi1);
+-      dval = get_reg_val(s->r, REG_RSP) - 8;
+-      set_reg_val(s->r, REG_RSP, dval);
+-      if  (!set_word_val(s->m, dval, val)) {
++      val = register_read_parts(register_bytes, register_capacity, hi1);
++      dval = register_read_parts(register_bytes, register_capacity, REG_RSP) - 8;
++      register_write_parts(register_bytes, register_capacity, REG_RSP, dval);
++      if  (!memory_write_word_limit(memory_bytes, (word_t) (memory_capacity) - 8, dval, val)) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid stack address 0x%llx\n", s->pc, dval);
++              "PC = 0x%llx, Invalid stack address 0x%llx\n", (*pc), dval);
+         return STAT_ADR;
+       }
+-      s->pc = ftpc;
++      (*pc) = ftpc;
+       break;
+     case I_POPQ:
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+       if (!reg_valid(hi1)) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid register ID 0x%.1x\n", s->pc, hi1);
++              "PC = 0x%llx, Invalid register ID 0x%.1x\n", (*pc), hi1);
+         return STAT_INS;
+       }
+-      dval = get_reg_val(s->r, REG_RSP);
+-      set_reg_val(s->r, REG_RSP, dval+8);
+-      if (!get_word_val(s->m, dval, &val)) {
++      dval = register_read_parts(register_bytes, register_capacity, REG_RSP);
++      register_write_parts(register_bytes, register_capacity, REG_RSP, dval+8);
++      if (!memory_read_word_limit(memory_bytes, (word_t) (memory_capacity) - 8, dval, &val)) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid stack address 0x%llx\n",
+-              s->pc, dval);
++              (*pc), dval);
+         return STAT_ADR;
+       }
+-      set_reg_val(s->r, hi1, val);
+-      s->pc = ftpc;
++      register_write_parts(register_bytes, register_capacity, hi1, val);
++      (*pc) = ftpc;
+       break;
+     case I_IADDQ:
+       if (!ok1) {
+         if (error_file)
+           fprintf(error_file,
+-              "PC = 0x%llx, Invalid instruction address\n", s->pc);
++              "PC = 0x%llx, Invalid instruction address\n", (*pc));
+         return STAT_ADR;
+       }
+       if (!okc) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid instruction address",
+-              s->pc);
++              (*pc));
+         return STAT_INS;
+       }
+       if (!reg_valid(lo1)) {
+         if (error_file)
+           fprintf(error_file,
+               "PC = 0x%llx, Invalid register ID 0x%.1x\n",
+-              s->pc, lo1);
++              (*pc), lo1);
+         return STAT_INS;
+       }
+-      argB = get_reg_val(s->r, lo1);
++      argB = register_read_parts(register_bytes, register_capacity, lo1);
+       val = argB + cval;
+-      set_reg_val(s->r, lo1, val);
+-      s->cc = compute_cc(A_ADD, cval, argB);
+-      s->pc = ftpc;
++      register_write_parts(register_bytes, register_capacity, lo1, val);
++      (*condition_codes) = compute_cc(A_ADD, cval, argB);
++      (*pc) = ftpc;
+       break;
+     default:
+       if (error_file)
+         fprintf(error_file,
+-            "PC = 0x%llx, Invalid instruction %.2x\n", s->pc, byte0);
++            "PC = 0x%llx, Invalid instruction %.2x\n", (*pc), byte0);
+       return STAT_INS;
+   }
+   return STAT_AOK;
+diff --git a/site/content/chapter4/code/sim/misc/isa.h b/site/content/chapter4/code/sim/misc/isa.h
+index 227cbff..726a8dc 100644
+--- a/site/content/chapter4/code/sim/misc/isa.h
++++ b/site/content/chapter4/code/sim/misc/isa.h
+@@ -208,3 +208,20 @@ void report_line(word_t line_no, word_t addr, char *hexcode, char *line);
+ void signal_register_update(reg_id_t r, word_t val);
+ 
+ #endif
++
++void memory_clear_parts(byte_t *contents, int capacity);
++mem_t memory_copy_parts(byte_t *contents, int capacity);
++bool_t memory_read_byte_parts(byte_t *contents, int capacity, word_t pos, byte_t *dest);
++bool_t memory_read_word_parts(byte_t *contents, int capacity, word_t pos, word_t *dest);
++bool_t memory_write_byte_parts(byte_t *contents, int capacity, word_t pos, byte_t val);
++bool_t memory_write_word_parts(byte_t *contents, int capacity, word_t pos, word_t val);
++int memory_load_parts(byte_t *contents, int capacity, FILE *infile, int report_error);
++stat_t machine_step_parts(word_t *pc, byte_t *register_bytes, int register_capacity, byte_t *memory_bytes, int memory_capacity, cc_t *condition_codes, FILE *error_file);
++
++void memory_dump_parts(FILE *outfile, byte_t *contents, int capacity, word_t pos, int len);
++bool_t memory_compare_parts(byte_t *old_contents, int old_capacity, byte_t *new_contents, int new_capacity, FILE *outfile);
++
++word_t register_read_parts(byte_t *contents, int capacity, reg_id_t id);
++void register_write_parts(byte_t *contents, int capacity, reg_id_t id, word_t val);
++bool_t memory_read_word_limit(byte_t *contents, word_t last_start, word_t pos, word_t *dest);
++bool_t memory_write_word_limit(byte_t *contents, word_t last_start, word_t pos, word_t val);
+diff --git a/site/content/chapter4/code/sim/misc/yis.c b/site/content/chapter4/code/sim/misc/yis.c
+index 88e49d1..6edd86f 100644
+--- a/site/content/chapter4/code/sim/misc/yis.c
++++ b/site/content/chapter4/code/sim/misc/yis.c
+@@ -34,18 +34,18 @@ int main(int argc, char *argv[])
+ 	exit(1);
+     }
+ 
+-    if (!load_mem(s->m, code_file, 1)) {
++    if (!memory_load_parts(s->m->contents, s->m->len, code_file, 1)) {
+ 	printf("Exiting\n");
+ 	return 1;
+     }
+ 
+-    savem = copy_mem(s->m);
++    savem = memory_copy_parts(s->m->contents, s->m->len);
+   
+     if (argc > 2)
+ 	max_steps = atoi(argv[2]);
+ 
+     for (step = 0; step < max_steps && e == STAT_AOK; step++)
+-	e = step_state(s, stdout);
++	e = machine_step_parts(&s->pc, s->r->contents, s->r->len, s->m->contents, s->m->len, &s->cc, stdout);
+ 
+     printf("Stopped in %d steps at PC = 0x%llx.  Status '%s', CC %s\n",
+ 	   step, s->pc, stat_name(e), cc_name(s->cc));
+@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
+     diff_reg(saver, s->r, stdout);
+ 
+     printf("\nChanges to memory:\n");
+-    diff_mem(savem, s->m, stdout);
++    memory_compare_parts(savem->contents, savem->len, s->m->contents, s->m->len, stdout);
+ 
+     free_state(s);
+     free_reg(saver);
+diff --git a/site/content/chapter4/code/sim/pipe/psim.c b/site/content/chapter4/code/sim/pipe/psim.c
+index c08508e..6f9964e 100644
+--- a/site/content/chapter4/code/sim/pipe/psim.c
++++ b/site/content/chapter4/code/sim/pipe/psim.c
+@@ -201,7 +201,7 @@ static void run_tty_sim()
+     if (verbosity >= 2)
+ 	printf("%s\n", simname);
+ 
+-    byte_cnt = load_mem(mem, object_file, 1);
++    byte_cnt = memory_load_parts(mem->contents, mem->len, object_file, 1);
+     if (byte_cnt == 0) {
+ 	fprintf(stderr, "No lines of code found\n");
+ 	exit(1);
+@@ -213,13 +213,13 @@ static void run_tty_sim()
+ 	isa_state = new_state(0);
+ 	free_mem(isa_state->r);
+ 	free_mem(isa_state->m);
+-	isa_state->m = copy_mem(mem);
+-	isa_state->r = copy_mem(reg);
++	isa_state->m = memory_copy_parts(mem->contents, mem->len);
++	isa_state->r = memory_copy_parts(reg->contents, reg->len);
+ 	isa_state->cc = cc;
+     }
+ 
+-    mem0 = copy_mem(mem);
+-    reg0 = copy_mem(reg);
++    mem0 = memory_copy_parts(mem->contents, mem->len);
++    reg0 = memory_copy_parts(reg->contents, reg->len);
+     
+     icount = sim_run_pipe(instr_limit, 5*instr_limit, &run_status, &result_cc);
+     if (verbosity > 0) {
+@@ -229,7 +229,7 @@ static void run_tty_sim()
+ 	printf("Changed Register State:\n");
+ 	diff_reg(reg0, reg, stdout);
+ 	printf("Changed Memory State:\n");
+-	diff_mem(mem0, mem, stdout);
++	memory_compare_parts(mem0->contents, mem0->len, mem->contents, mem->len, stdout);
+     }
+     if (do_check) {
+ 	byte_t e = STAT_AOK;
+@@ -237,7 +237,7 @@ static void run_tty_sim()
+ 	bool_t match = TRUE;
+ 
+ 	for (step = 0; step < instr_limit && e == STAT_AOK; step++) {
+-	    e = step_state(isa_state, stdout);
++	    e = machine_step_parts(&isa_state->pc, isa_state->r->contents, isa_state->r->len, isa_state->m->contents, isa_state->m->len, &isa_state->cc, stdout);
+ 	}
+ 
+ 	if (diff_reg(isa_state->r, reg, NULL)) {
+@@ -247,11 +247,11 @@ static void run_tty_sim()
+ 		diff_reg(isa_state->r, reg, stdout);
+ 	    }
+ 	}
+-	if (diff_mem(isa_state->m, mem, NULL)) {
++	if (memory_compare_parts(isa_state->m->contents, isa_state->m->len, mem->contents, mem->len, NULL)) {
+ 	    match = FALSE;
+ 	    if (verbosity > 0) {
+ 		printf("ISA Memory != Pipeline Memory\n");
+-		diff_mem(isa_state->m, mem, stdout);
++		memory_compare_parts(isa_state->m->contents, isa_state->m->len, mem->contents, mem->len, stdout);
+ 	    }
+ 	}
+ 	if (isa_state->cc != result_cc) {
+@@ -605,12 +605,12 @@ static void update_state(bool_t update_mem, bool_t update_cc)
+     if (wb_destE != REG_NONE) {
+ 	sim_log("\tWriteback: Wrote 0x%llx to register %s\n",
+ 		wb_valE, reg_name(wb_destE));
+-	set_reg_val(reg, wb_destE, wb_valE);
++	register_write_parts(reg->contents, reg->len, wb_destE, wb_valE);
+     }
+     if (wb_destM != REG_NONE) {
+ 	sim_log("\tWriteback: Wrote 0x%llx to register %s\n",
+ 		wb_valM, reg_name(wb_destM));
+-	set_reg_val(reg, wb_destM, wb_valM);
++	register_write_parts(reg->contents, reg->len, wb_destM, wb_valM);
+     }
+ 
+     /* Memory write */
+@@ -618,7 +618,7 @@ static void update_state(bool_t update_mem, bool_t update_cc)
+ 	sim_log("\tDisabled write of 0x%llx to address 0x%llx\n", mem_data, mem_addr);
+     }
+     if (update_mem && mem_write) {
+-	if (!set_word_val(mem, mem_addr, mem_data)) {
++	if (!memory_write_word_limit(mem->contents, (word_t) (mem->len) - 8, mem_addr, mem_data)) {
+ 	    sim_log("\tCouldn't write to address 0x%llx\n", mem_addr);
+ 	} else {
+ 	    sim_log("\tWrote 0x%llx to address 0x%llx\n", mem_data, mem_addr);
+@@ -630,10 +630,10 @@ static void update_state(bool_t update_mem, bool_t update_cc)
+ 		       Need to display both words */
+ 		    word_t align_addr = mem_addr & ~0x3;
+ 		    word_t val;
+-		    get_word_val(mem, align_addr, &val);
++		    memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, align_addr, &val);
+ 		    set_memory(align_addr, val);
+ 		    align_addr+=8;
+-		    get_word_val(mem, align_addr, &val);
++		    memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, align_addr, &val);
+ 		    set_memory(align_addr, val);
+ 		} else {
+ 		    set_memory(mem_addr, mem_data);
+@@ -856,7 +856,7 @@ int simResetCmd(ClientData clientData, Tcl_Interp *interp,
+     sim_reset();
+     if (post_load_mem) {
+ 	free_mem(mem);
+-	mem = copy_mem(post_load_mem);
++	mem = memory_copy_parts(post_load_mem->contents, post_load_mem->len);
+     }
+     interp->result = stat_name(STAT_AOK);
+     return TCL_OK;
+@@ -879,8 +879,8 @@ int simLoadCodeCmd(ClientData clientData, Tcl_Interp *interp,
+ 	return TCL_ERROR;
+     }
+     sim_reset();
+-    code_count = load_mem(mem, code_file, 0);
+-    post_load_mem = copy_mem(mem);
++    code_count = memory_load_parts(mem->contents, mem->len, code_file, 0);
++    post_load_mem = memory_copy_parts(mem->contents, mem->len);
+     sprintf(tcl_msg, "%lld", code_count);
+     interp->result = tcl_msg;
+     fclose(code_file);
+@@ -1008,7 +1008,7 @@ void create_memory_display() {
+ 	for (i = 0; i < memCnt && code == TCL_OK; i+=8) {
+ 	    word_t addr = minAddr+i;
+ 	    word_t val;
+-	    if (!get_word_val(mem, addr, &val)) {
++	    if (!memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, addr, &val)) {
+ 		fprintf(stderr, "Out of bounds memory display\n");
+ 		return;
+ 	    }
+@@ -1276,45 +1276,57 @@ pipe_ptr new_pipe(int count, void *bubble_val)
+ }
+ 
+ /* Update all pipes */
++static void advance_pipe_parts(void *current, void *selected, int count,
++                               int transfer)
++{
++  if (transfer)
++    memcpy(current, selected, count);
++}
++
+ void update_pipes()
+ {
+   int s;
+   for (s = 0; s < pipe_count; s++) {
+     pipe_ptr p = pipes[s];
+-    switch (p->op)
+-      {
++    void *selected = NULL;
++    int transfer = 1;
++    p_stat_t following_operation = P_LOAD;
++    switch (p->op) {
+       case P_BUBBLE:
+-      	/* insert a bubble into the next stage */
+-      	memcpy(p->current, p->bubble_val, p->count);
+-      	break;
+-      
+-      case P_LOAD:
+-      	/* copy calculated state from previous stage */
+-      	memcpy(p->current, p->next, p->count);
+-      	break;
++        selected = p->bubble_val;
++        break;
+       case P_ERROR:
+-	  /* Like a bubble, but insert error condition */
+-      	memcpy(p->current, p->bubble_val, p->count);
+-      	break;
++        selected = p->bubble_val;
++        following_operation = P_ERROR;
++        break;
++      case P_LOAD:
++        selected = p->next;
++        break;
+       case P_STALL:
+       default:
+-      	/* do nothing: next stage gets same instr again */
+-      	;
+-      }
+-    if (p->op != P_ERROR)
+-	p->op = P_LOAD;
++        transfer = 0;
++        break;
++    }
++    advance_pipe_parts(p->current, selected, p->count, transfer);
++    p->op = following_operation;
+   }
+ }
+ 
+ /* Set all pipes to bubble values */
++static void clear_pipe_parts(void *current, void *next, void *bubble,
++                             int count, p_stat_t *operation)
++{
++  memcpy(current, bubble, count);
++  memcpy(next, bubble, count);
++  *operation = P_LOAD;
++}
++
+ void clear_pipes()
+ {
+   int s;
+   for (s = 0; s < pipe_count; s++) {
+     pipe_ptr p = pipes[s];
+-    memcpy(p->current, p->bubble_val, p->count);
+-    memcpy(p->next, p->bubble_val, p->count);
+-    p->op = P_LOAD;
++    clear_pipe_parts(p->current, p->next, p->bubble_val, p->count, &p->op);
+   }
+ }
+ 
+@@ -1394,13 +1406,13 @@ void do_if_stage()
+     /* Ready to fetch instruction.  Speculatively fetch register byte
+        and immediate word
+     */
+-    imem_error = !get_byte_val(mem, valp, &instr);
++    imem_error = !memory_read_byte_parts(mem->contents, mem->len, valp, &instr);
+     imem_icode = HI4(instr);
+     imem_ifun = LO4(instr);
+     if (!imem_error) {
+       byte_t junk;
+       /* Make sure can read maximum length instruction */
+-      imem_error = !get_byte_val(mem, valp+5, &junk);
++      imem_error = !memory_read_byte_parts(mem->contents, mem->len, valp+5, &junk);
+     }
+     if_id_next->icode = gen_f_icode();
+     if_id_next->ifun  = gen_f_ifun();
+@@ -1417,13 +1429,13 @@ void do_if_stage()
+ 
+     valp++;
+     if (gen_need_regids()) {
+-	get_byte_val(mem, valp, &regids);
++	memory_read_byte_parts(mem->contents, mem->len, valp, &regids);
+ 	valp ++;
+     }
+     if_id_next->ra = HI4(regids);
+     if_id_next->rb = LO4(regids);
+     if (gen_need_valC()) {
+-	get_word_val(mem, valp, &valc);
++	memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, valp, &valc);
+ 	valp+= 8;
+     }
+     if_id_next->valp = valp;
+@@ -1466,8 +1478,8 @@ void do_id_wb_stages()
+     id_ex_next->destm = gen_d_dstM();
+ 
+     /* Read the registers */
+-    d_regvala = get_reg_val(reg, id_ex_next->srca);
+-    d_regvalb = get_reg_val(reg, id_ex_next->srcb);
++    d_regvala = register_read_parts(reg->contents, reg->len, id_ex_next->srca);
++    d_regvalb = register_read_parts(reg->contents, reg->len, id_ex_next->srcb);
+ 
+     /* Do forwarding and valA selection */
+     id_ex_next->vala = gen_d_valA();
+@@ -1546,7 +1558,7 @@ void do_mem_stage()
+     dmem_error = FALSE;
+ 
+     if (read) {
+-	dmem_error = dmem_error || !get_word_val(mem, mem_addr, &valm);
++	dmem_error = dmem_error || !memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, mem_addr, &valm);
+ 	if (!dmem_error)
+ 	  sim_log("\tMemory: Read 0x%llx from 0x%llx\n",
+ 		  valm, mem_addr);
+@@ -1554,7 +1566,7 @@ void do_mem_stage()
+     if (mem_write) {
+ 	word_t sink;
+ 	/* Do a read of address just to check validity */
+-	dmem_error = dmem_error || !get_word_val(mem, mem_addr, &sink);
++	dmem_error = dmem_error || !memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, mem_addr, &sink);
+ 	if (dmem_error)
+ 	  sim_log("\tMemory: Invalid address 0x%llx\n",
+ 		  mem_addr);
+diff --git a/site/content/chapter4/code/sim/seq/ssim.c b/site/content/chapter4/code/sim/seq/ssim.c
+index 4cae5a9..fb8403d 100644
+--- a/site/content/chapter4/code/sim/seq/ssim.c
++++ b/site/content/chapter4/code/sim/seq/ssim.c
+@@ -213,7 +213,7 @@ static void run_tty_sim()
+     /* Emit simulator name */
+     printf("%s\n", simname);
+ 
+-    byte_cnt = load_mem(mem, object_file, 1);
++    byte_cnt = memory_load_parts(mem->contents, mem->len, object_file, 1);
+     if (byte_cnt == 0) {
+ 	fprintf(stderr, "No lines of code found\n");
+ 	exit(1);
+@@ -225,13 +225,13 @@ static void run_tty_sim()
+ 	isa_state = new_state(0);
+ 	free_mem(isa_state->r);
+ 	free_mem(isa_state->m);
+-	isa_state->m = copy_mem(mem);
+-	isa_state->r = copy_mem(reg);
++	isa_state->m = memory_copy_parts(mem->contents, mem->len);
++	isa_state->r = memory_copy_parts(reg->contents, reg->len);
+ 	isa_state->cc = cc;
+     }
+ 
+-    mem0 = copy_mem(mem);
+-    reg0 = copy_mem(reg);
++    mem0 = memory_copy_parts(mem->contents, mem->len);
++    reg0 = memory_copy_parts(reg->contents, reg->len);
+     
+ 
+     icount = sim_run(instr_limit, &status, &result_cc);
+@@ -242,7 +242,7 @@ static void run_tty_sim()
+ 	printf("Changed Register State:\n");
+ 	diff_reg(reg0, reg, stdout);
+ 	printf("Changed Memory State:\n");
+-	diff_mem(mem0, mem, stdout);
++	memory_compare_parts(mem0->contents, mem0->len, mem->contents, mem->len, stdout);
+     }
+     if (do_check) {
+ 	byte_t e = STAT_AOK;
+@@ -250,7 +250,7 @@ static void run_tty_sim()
+ 	bool_t match = TRUE;
+ 
+ 	for (step = 0; step < instr_limit && e == STAT_AOK; step++) {
+-	    e = step_state(isa_state, stdout);
++	    e = machine_step_parts(&isa_state->pc, isa_state->r->contents, isa_state->r->len, isa_state->m->contents, isa_state->m->len, &isa_state->cc, stdout);
+ 	}
+ 
+ 	if (diff_reg(isa_state->r, reg, NULL)) {
+@@ -260,11 +260,11 @@ static void run_tty_sim()
+ 		diff_reg(isa_state->r, reg, stdout);
+ 	    }
+ 	}
+-	if (diff_mem(isa_state->m, mem, NULL)) {
++	if (memory_compare_parts(isa_state->m->contents, isa_state->m->len, mem->contents, mem->len, NULL)) {
+ 	    match = FALSE;
+ 	    if (verbosity > 0) {
+ 		printf("ISA Memory != Pipeline Memory\n");
+-		diff_mem(isa_state->m, mem, stdout);
++		memory_compare_parts(isa_state->m->contents, isa_state->m->len, mem->contents, mem->len, stdout);
+ 	    }
+ 	}
+ 	if (isa_state->cc != result_cc) {
+@@ -627,13 +627,13 @@ static void update_state()
+     cc = cc_in;
+     /* Writeback */
+     if (destE != REG_NONE)
+-	set_reg_val(reg, destE, vale);
++	register_write_parts(reg->contents, reg->len, destE, vale);
+     if (destM != REG_NONE)
+-	set_reg_val(reg, destM, valm);
++	register_write_parts(reg->contents, reg->len, destM, valm);
+ 
+     if (mem_write) {
+       /* Should have already tested this address */
+-      set_word_val(mem, mem_addr, mem_data);
++      memory_write_word_limit(mem->contents, (word_t) (mem->len) - 8, mem_addr, mem_data);
+ 	sim_log("Wrote 0x%llx to address 0x%llx\n", mem_data, mem_addr);
+ #ifdef HAS_GUI
+ 	    if (gui_mode) {
+@@ -642,10 +642,10 @@ static void update_state()
+ 		       Need to display both words */
+ 		    word_t align_addr = mem_addr & ~0x3;
+ 		    word_t val;
+-		    get_word_val(mem, align_addr, &val);
++		    memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, align_addr, &val);
+ 		    set_memory(align_addr, val);
+ 		    align_addr+=8;
+-		    get_word_val(mem, align_addr, &val);
++		    memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, align_addr, &val);
+ 		    set_memory(align_addr, val);
+ 		} else {
+ 		    set_memory(mem_addr, mem_data);
+@@ -673,7 +673,7 @@ static byte_t sim_step()
+     }
+     valp = pc;
+     instr = HPACK(I_NOP, F_NONE);
+-    imem_error = !get_byte_val(mem, valp, &instr);
++    imem_error = !memory_read_byte_parts(mem->contents, mem->len, valp, &instr);
+     if (imem_error) {
+ 	sim_log("Couldn't fetch at address 0x%llx\n", valp);
+     }
+@@ -685,7 +685,7 @@ static byte_t sim_step()
+     valp++;
+     if (gen_need_regids()) {
+ 	byte_t regids;
+-	if (get_byte_val(mem, valp, &regids)) {
++	if (memory_read_byte_parts(mem->contents, mem->len, valp, &regids)) {
+ 	    ra = GET_RA(regids);
+ 	    rb = GET_RB(regids);
+ 	} else {
+@@ -701,7 +701,7 @@ static byte_t sim_step()
+     }
+ 
+     if (gen_need_valC()) {
+-	if (get_word_val(mem, valp, &valc)) {
++	if (memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, valp, &valc)) {
+ 	} else {
+ 	    valc = 0;
+ 	    status = STAT_ADR;
+@@ -720,14 +720,14 @@ static byte_t sim_step()
+     
+     srcA = gen_srcA();
+     if (srcA != REG_NONE) {
+-	vala = get_reg_val(reg, srcA);
++	vala = register_read_parts(reg->contents, reg->len, srcA);
+     } else {
+ 	vala = 0;
+     }
+     
+     srcB = gen_srcB();
+     if (srcB != REG_NONE) {
+-	valb = get_reg_val(reg, srcB);
++	valb = register_read_parts(reg->contents, reg->len, srcB);
+     } else {
+ 	valb = 0;
+     }
+@@ -752,7 +752,7 @@ static byte_t sim_step()
+ 
+ 
+     if (gen_mem_read()) {
+-      dmem_error = dmem_error || !get_word_val(mem, mem_addr, &valm);
++      dmem_error = dmem_error || !memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, mem_addr, &valm);
+       if (dmem_error) {
+ 	sim_log("Couldn't read at address 0x%llx\n", mem_addr);
+       }
+@@ -763,7 +763,7 @@ static byte_t sim_step()
+     if (mem_write) {
+       /* Do a test read of the data memory to make sure address is OK */
+       word_t junk;
+-      dmem_error = dmem_error || !get_word_val(mem, mem_addr, &junk);
++      dmem_error = dmem_error || !memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, mem_addr, &junk);
+     }
+ 
+     status = gen_Stat();
+@@ -883,7 +883,7 @@ int simResetCmd(ClientData clientData, Tcl_Interp *interp,
+     sim_reset();
+     if (post_load_mem) {
+ 	free_mem(mem);
+-	mem = copy_mem(post_load_mem);
++	mem = memory_copy_parts(post_load_mem->contents, post_load_mem->len);
+     }
+     interp->result = stat_name(STAT_AOK);
+     return TCL_OK;
+@@ -906,8 +906,8 @@ int simLoadCodeCmd(ClientData clientData, Tcl_Interp *interp,
+ 	return TCL_ERROR;
+     }
+     sim_reset();
+-    code_count = load_mem(mem, object_file, 0);
+-    post_load_mem = copy_mem(mem);
++    code_count = memory_load_parts(mem->contents, mem->len, object_file, 0);
++    post_load_mem = memory_copy_parts(mem->contents, mem->len);
+     sprintf(tcl_msg, "%lld", code_count);
+     interp->result = tcl_msg;
+     fclose(object_file);
+@@ -1009,7 +1009,7 @@ void create_memory_display() {
+ 	for (i = 0; i < memCnt && code == TCL_OK; i+=8) {
+ 	    word_t addr = minAddr+i;
+ 	    word_t val;
+-	    if (!get_word_val(mem, addr, &val)) {
++	    if (!memory_read_word_limit(mem->contents, (word_t) (mem->len) - 8, addr, &val)) {
+ 		fprintf(stderr, "Out of bounds memory display\n");
+ 		return;
+ 	    }

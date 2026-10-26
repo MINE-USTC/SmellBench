@@ -1,0 +1,491 @@
+diff --git a/src/graph/connectivity.rs b/src/graph/connectivity.rs
+index a012b84..aaf854c 100644
+--- a/src/graph/connectivity.rs
++++ b/src/graph/connectivity.rs
+@@ -1,6 +1,41 @@
+ //! Graph connectivity structures.
+ use super::Graph;
+ 
++/// Helper struct that carries data needed for the depth-first searches in
++/// ConnectivityGraph's constructor.
++struct ConnectivityData {
++    time: usize,
++    vis: Box<[usize]>,
++    low: Box<[usize]>,
++    v_stack: Vec<usize>,
++    e_stack: Vec<usize>,
++}
++
++impl ConnectivityData {
++    fn new(num_v: usize) -> Self {
++        Self {
++            time: 0,
++            vis: vec![0; num_v].into_boxed_slice(),
++            low: vec![0; num_v].into_boxed_slice(),
++            v_stack: vec![],
++            e_stack: vec![],
++        }
++    }
++
++    fn visit(&mut self, u: usize) {
++        self.time += 1;
++        self.vis[u] = self.time;
++        self.low[u] = self.time;
++        self.v_stack.push(u);
++    }
++
++    fn lower(&mut self, u: usize, val: usize) {
++        if self.low[u] > val {
++            self.low[u] = val
++        }
++    }
++}
++
+ /// Represents the decomposition of a graph into any of its constituent parts:
+ ///
+ /// - Connected components (CC),
+@@ -38,44 +73,32 @@ impl<'a> ConnectivityGraph<'a> {
+             num_cc: 0,
+             num_vcc: 0,
+         };
++        let mut data = ConnectivityData::new(graph.num_v());
+-        let mut time = 0;
+-        let mut vis = vec![0; graph.num_v()].into_boxed_slice();
+-        let mut low = vec![0; graph.num_v()].into_boxed_slice();
+-        let mut v_stack = vec![];
+-        let mut e_stack = vec![];
+         for u in 0..graph.num_v() {
++            if data.vis[u] == 0 {
+-            if vis[u] == 0 {
+-                time += 1;
+-                vis[u] = time;
+-                v_stack.push(u);
+                 if is_directed {
++                    connect.scc(&mut data, u);
+-                    connect.scc(&mut time, &mut vis, &mut low, &mut v_stack, u);
+                 } else {
++                    connect.bcc(&mut data, u, graph.num_e() + 1);
+-                    connect.bcc(&mut time, &mut vis, &mut low, &mut v_stack, &mut e_stack, u, graph.num_e() + 1);
+                 }
+             }
+         }
+         connect
+     }
+ 
++    fn scc(&mut self, data: &mut ConnectivityData, u: usize) {
++        data.visit(u);
+-    fn scc(&mut self, time: &mut usize, vis: &mut [usize], low: &mut [usize], v_stack: &mut Vec<usize>, u: usize) {
+-        low[u] = vis[u];
+         for (_, v) in self.graph.adj_list(u) {
++            if data.vis[v] == 0 {
++                self.scc(data, v);
+-            if vis[v] == 0 {
+-                *time += 1;
+-                vis[v] = *time;
+-                v_stack.push(v);
+-                self.scc(time, vis, low, v_stack, v);
+             }
+             if self.cc[v] == 0 {
++                data.lower(u, data.low[v]);
+-                if low[u] > low[v] {
+-                    low[u] = low[v];
+-                }
+             }
+         }
++        if data.vis[u] == data.low[u] {
+-        if vis[u] == low[u] {
+             self.num_cc += 1;
++            while let Some(v) = data.v_stack.pop() {
+-            while let Some(v) = v_stack.pop() {
+                 self.cc[v] = self.num_cc;
+                 if v == u {
+                     break;
+@@ -108,22 +131,17 @@ impl<'a> ConnectivityGraph<'a> {
+         vertices
+     }
+ 
++    fn bcc(&mut self, data: &mut ConnectivityData, u: usize, par: usize) {
++        data.visit(u);
+-    fn bcc(&mut self, time: &mut usize, vis: &mut [usize], low: &mut [usize], v_stack: &mut Vec<usize>, e_stack: &mut Vec<usize>, u: usize, par: usize) {
+-        low[u] = vis[u];
+         for (e, v) in self.graph.adj_list(u) {
++            if data.vis[v] == 0 {
++                data.e_stack.push(e);
++                self.bcc(data, v, e);
++                data.lower(u, data.low[v]);
++                if data.vis[u] <= data.low[v] {
+-            if vis[v] == 0 {
+-                e_stack.push(e);
+-                *time += 1;
+-                vis[v] = *time;
+-                v_stack.push(v);
+-                self.bcc(time, vis, low, v_stack, e_stack, v, e);
+-                if low[u] > low[v] {
+-                    low[u] = low[v];
+-                }
+-                if vis[u] <= low[v] {
+                     // u is a cut vertex unless it's a one-child root
+                     self.num_vcc += 1;
++                    while let Some(top_e) = data.e_stack.pop() {
+-                    while let Some(top_e) = e_stack.pop() {
+                         self.vcc[top_e] = self.num_vcc;
+                         self.vcc[top_e ^ 1] = self.num_vcc;
+                         if e ^ top_e <= 1 {
+@@ -131,11 +149,9 @@ impl<'a> ConnectivityGraph<'a> {
+                         }
+                     }
+                 }
++            } else if data.vis[v] < data.vis[u] && e ^ par != 1 {
++                data.lower(u, data.vis[v]);
++                data.e_stack.push(e);
+-            } else if vis[v] < vis[u] && e ^ par != 1 {
+-                if low[u] > vis[v] {
+-                    low[u] = vis[v];
+-                }
+-                e_stack.push(e);
+             } else if v == u {
+                 // e is a self-loop
+                 self.num_vcc += 1;
+@@ -143,10 +159,10 @@ impl<'a> ConnectivityGraph<'a> {
+                 self.vcc[e ^ 1] = self.num_vcc;
+             }
+         }
++        if data.vis[u] == data.low[u] {
+-        if vis[u] == low[u] {
+             // par is a cut edge unless par==-1
+             self.num_cc += 1;
++            while let Some(v) = data.v_stack.pop() {
+-            while let Some(v) = v_stack.pop() {
+                 self.cc[v] = self.num_cc;
+                 if v == u {
+                     break;
+diff --git a/src/graph/flow.rs b/src/graph/flow.rs
+index e21176a..41af65a 100644
+--- a/src/graph/flow.rs
++++ b/src/graph/flow.rs
+@@ -1,5 +1,5 @@
+ //! Maximum flows, matchings, and minimum cuts.
++use super::{AdjListIterator, Graph};
+-use super::Graph;
+ 
+ /// Representation of a network flow problem with (optional) costs.
+ pub struct FlowGraph {
+@@ -46,26 +46,28 @@ impl FlowGraph {
+         let mut flow = vec![0; self.graph.num_e()];
+         let mut max_flow = 0;
+         loop {
++            let dist = self.dinic_search(s, &flow);
+-            let dist = Self::dinic_search(&self.graph, &self.cap, s, &flow);
+             if dist[t] == Self::INF {
+                 break;
+             }
+             // Keep track of adjacency lists to avoid revisiting blocked edges.
++            let mut adj_iters = (0..self.graph.num_v())
++                .map(|u| self.graph.adj_list(u).peekable())
++                .collect::<Vec<_>>();
++            max_flow += self.dinic_augment(s, t, Self::INF, &dist, &mut adj_iters, &mut flow);
+-            let mut next_edges = self.graph.first.clone();
+-            max_flow += self.dinic_augment(s, t, Self::INF, &dist, &self.graph.endp, &self.graph.next, &mut next_edges, &mut flow);
+         }
+         (max_flow, flow)
+     }
+ 
+     // Compute BFS distances to restrict attention to shortest path edges.
++    fn dinic_search(&self, s: usize, flow: &[i64]) -> Vec<i64> {
++        let mut dist = vec![Self::INF; self.graph.num_v()];
+-    fn dinic_search(graph: &Graph, cap: &[i64], s: usize, flow: &[i64]) -> Vec<i64> {
+-        let mut dist = vec![Self::INF; graph.num_v()];
+         let mut q = ::std::collections::VecDeque::new();
+         dist[s] = 0;
+         q.push_back(s);
+         while let Some(u) = q.pop_front() {
++            for (e, v) in self.graph.adj_list(u) {
++                if dist[v] == Self::INF && flow[e] < self.cap[e] {
+-            for (e, v) in graph.adj_list(u) {
+-                if dist[v] == Self::INF && flow[e] < cap[e] {
+                     dist[v] = dist[u] + 1;
+                     q.push_back(v);
+                 }
+@@ -81,50 +83,29 @@ impl FlowGraph {
+         t: usize,
+         f: i64,
+         dist: &[i64],
++        adj: &mut [::std::iter::Peekable<AdjListIterator>],
+-        endp: &[usize],
+-        next: &[Option<usize>],
+-        next_edges: &mut [Option<usize>],
+         flow: &mut [i64],
+     ) -> i64 {
++        if u == t {
++            return f;
++        }
++        let mut df = 0;
++
++        while let Some(&(e, v)) = adj[u].peek() {
++            let rem_cap = (self.cap[e] - flow[e]).min(f - df);
++            if rem_cap > 0 && dist[v] == dist[u] + 1 {
++                let cf = self.dinic_augment(v, t, rem_cap, dist, adj, flow);
++                flow[e] += cf;
++                flow[e ^ 1] -= cf;
++                df += cf;
++                if df == f {
++                    break;
+-        let mut vertices = vec![u];
+-        let mut limits = vec![f];
+-        let mut sent = vec![0];
+-        let mut incoming = Vec::new();
+-        loop {
+-            let depth = vertices.len() - 1;
+-            let vertex = vertices[depth];
+-            let complete = vertex == t || next_edges[vertex].is_none()
+-                || sent[depth] == limits[depth];
+-            if complete {
+-                let amount = if vertex == t { limits[depth] } else { sent[depth] };
+-                vertices.pop();
+-                limits.pop();
+-                sent.pop();
+-                if let Some(e) = incoming.pop() {
+-                    flow[e] += amount;
+-                    flow[e ^ 1] -= amount;
+-                    let parent = vertices.len() - 1;
+-                    sent[parent] += amount;
+-                    if sent[parent] < limits[parent] {
+-                        next_edges[vertices[parent]] = next[e];
+-                    }
+-                } else {
+-                    return amount;
+-                }
+-            } else {
+-                let e = next_edges[vertex].unwrap();
+-                let v = endp[e];
+-                let rem_cap = (self.cap[e] - flow[e]).min(limits[depth] - sent[depth]);
+-                if rem_cap > 0 && dist[v] == dist[vertex] + 1 {
+-                    incoming.push(e);
+-                    vertices.push(v);
+-                    limits.push(rem_cap);
+-                    sent.push(0);
+-                } else {
+-                    next_edges[vertex] = next[e];
+                 }
+             }
++            // The current edge is either saturated or blocked.
++            adj[u].next();
+         }
++        df
+     }
+ 
+     /// After running maximum flow, use this to recover the dual minimum cut.
+@@ -161,63 +142,57 @@ impl FlowGraph {
+         let mut flow = vec![0; self.graph.num_e()];
+         let (mut min_cost, mut max_flow) = (0, 0);
+         loop {
++            let par = self.mcf_search(s, &flow, &mut pot);
++            if par[t].is_none() {
+-            let mut path = Vec::new();
+-            let mut charges = Vec::new();
+-            let mut available = Self::INF;
+-            Self::mcf_search(&self.graph, &self.cap, &self.cost, s, t, &flow, &mut pot, &mut path, &mut charges, &mut available);
+-            if path.is_empty() {
+                 break;
+             }
++            let (dc, df) = self.mcf_augment(t, &par, &mut flow);
+-            let dc = Self::mcf_augment(&path, &charges, available, &mut flow);
+             min_cost += dc;
++            max_flow += df;
+-            max_flow += available;
+         }
+         (min_cost, max_flow, flow)
+     }
+ 
+     // Maintains Johnson's potentials to prevent negative-cost residual edges.
+     // This allows running Dijkstra instead of the slower Bellman-Ford.
++    fn mcf_search(&self, s: usize, flow: &[i64], pot: &mut [i64]) -> Vec<Option<usize>> {
++        let mut vis = vec![false; self.graph.num_v()];
++        let mut dist = vec![Self::INF; self.graph.num_v()];
++        let mut par = vec![None; self.graph.num_v()];
+-    fn mcf_search(graph: &Graph, cap: &[i64], cost: &[i64], s: usize, t: usize, flow: &[i64], pot: &mut [i64], path: &mut Vec<usize>, charges: &mut Vec<i64>, available: &mut i64) {
+-        let mut vis = vec![false; graph.num_v()];
+-        let mut dist = vec![Self::INF; graph.num_v()];
+-        let mut par = vec![None; graph.num_v()];
+-        let mut capacities = vec![0; graph.num_v()];
+-        let mut prices = vec![0; graph.num_v()];
+ 
+         dist[s] = 0;
++        while let Some(u) = (0..self.graph.num_v())
+-        while let Some(u) = (0..graph.num_v())
+             .filter(|&u| !vis[u] && dist[u] < Self::INF)
+             .min_by_key(|&u| dist[u] - pot[u])
+         {
+             vis[u] = true;
+             pot[u] = dist[u];
++            for (e, v) in self.graph.adj_list(u) {
++                if dist[v] > dist[u] + self.cost[e] && flow[e] < self.cap[e] {
++                    dist[v] = dist[u] + self.cost[e];
+-            for (e, v) in graph.adj_list(u) {
+-                if dist[v] > dist[u] + cost[e] && flow[e] < cap[e] {
+-                    dist[v] = dist[u] + cost[e];
+                     par[v] = Some(e);
+-                    capacities[v] = cap[e];
+-                    prices[v] = cost[e];
+                 }
+             }
+         }
++        par
++    }
++
++    // Pushes flow along an augmenting path of minimum cost.
++    fn mcf_augment(&self, t: usize, par: &[Option<usize>], flow: &mut [i64]) -> (i64, i64) {
++        let (mut dc, mut df) = (0, Self::INF);
+         let mut u = t;
+         while let Some(e) = par[u] {
++            df = df.min(self.cap[e] - flow[e]);
++            u = self.graph.endp[e ^ 1];
+-            *available = (*available).min(capacities[u] - flow[e]);
+-            path.push(e);
+-            charges.push(prices[u]);
+-            u = graph.endp[e ^ 1];
+         }
++        u = t;
++        while let Some(e) = par[u] {
+-    }
+-
+-    // Pushes flow along an augmenting path of minimum cost.
+-    fn mcf_augment(path: &[usize], charges: &[i64], df: i64, flow: &mut [i64]) -> i64 {
+-        let mut dc = 0;
+-        for (i, &e) in path.iter().enumerate() {
+             flow[e] += df;
+             flow[e ^ 1] -= df;
++            dc += df * self.cost[e];
++            u = self.graph.endp[e ^ 1];
+-            dc += df * charges[i];
+         }
++        (dc, df)
+-        dc
+     }
+ }
+ 
+diff --git a/src/graph/mod.rs b/src/graph/mod.rs
+index 8eff985..f5a4c9e 100644
+--- a/src/graph/mod.rs
++++ b/src/graph/mod.rs
+@@ -99,8 +99,7 @@ impl Graph {
+     /// Gets vertex u's adjacency list.
+     pub fn adj_list(&self, u: usize) -> AdjListIterator {
+         AdjListIterator {
++            graph: self,
+-            endp: &self.endp,
+-            next: &self.next,
+             next_e: self.first[u],
+         }
+     }
+@@ -108,8 +107,7 @@ impl Graph {
+ 
+ /// An iterator for convenient adjacency list traversal.
+ pub struct AdjListIterator<'a> {
++    graph: &'a Graph,
+-    endp: &'a [usize],
+-    next: &'a [Option<usize>],
+     next_e: Option<usize>,
+ }
+ 
+@@ -119,8 +117,8 @@ impl Iterator for AdjListIterator<'_> {
+     /// Produces an outgoing edge and vertex.
+     fn next(&mut self) -> Option<Self::Item> {
+         self.next_e.map(|e| {
++            let v = self.graph.endp[e];
++            self.next_e = self.graph.next[e];
+-            let v = self.endp[e];
+-            self.next_e = self.next[e];
+             (e, v)
+         })
+     }
+diff --git a/src/graph/util.rs b/src/graph/util.rs
+index 5dd51d9..bf38f19 100644
+--- a/src/graph/util.rs
++++ b/src/graph/util.rs
+@@ -1,4 +1,5 @@
+ use super::{DisjointSets, Graph};
++use crate::graph::AdjListIterator;
+ use std::cmp::Reverse;
+ 
+ impl Graph {
+@@ -7,26 +8,24 @@ impl Graph {
+     /// precondition is violated. To extend this to undirected graphs, maintain
+     /// a visited array to skip the reverse edge.
+     pub fn euler_path(&self, u: usize) -> Vec<usize> {
++        let mut adj_iters = (0..self.num_v())
++            .map(|u| self.adj_list(u))
++            .collect::<Vec<_>>();
+-        let mut next_edges = self.first.clone();
+         let mut edges = Vec::with_capacity(self.num_e());
++        Self::euler_recurse(u, &mut adj_iters, &mut edges);
+-        let mut vertices = vec![u];
+-        let mut incoming = Vec::new();
+-        while let Some(&u) = vertices.last() {
+-            if let Some(e) = next_edges[u] {
+-                next_edges[u] = self.next[e];
+-                incoming.push(e);
+-                vertices.push(self.endp[e]);
+-            } else {
+-                vertices.pop();
+-                if let Some(e) = incoming.pop() {
+-                    edges.push(e);
+-                }
+-            }
+-        }
+         edges.reverse();
+         edges
+     }
+ 
++    // Helper function used by euler_path. Note that we can't use a for-loop
++    // that would consume the adjacency list as recursive calls may need it.
++    fn euler_recurse(u: usize, adj: &mut [AdjListIterator], edges: &mut Vec<usize>) {
++        while let Some((e, v)) = adj[u].next() {
++            Self::euler_recurse(v, adj, edges);
++            edges.push(e);
++        }
++    }
++
+     /// Kruskal's minimum spanning tree algorithm on an undirected graph.
+     pub fn min_spanning_tree(&self, weights: &[i64]) -> Vec<usize> {
+         assert_eq!(self.num_e(), 2 * weights.len());
+@@ -65,12 +64,14 @@ impl Graph {
+     pub fn dfs(&self, root: usize) -> DfsIterator {
+         let mut visited = vec![false; self.num_v()];
+         visited[root] = true;
++        let adj_iters = (0..self.num_v())
++            .map(|u| self.adj_list(u))
++            .collect::<Vec<_>>();
++
+         DfsIterator {
+             visited,
+             stack: vec![root],
++            adj_iters,
+-            next_edges: self.first.clone(),
+-            endp: &self.endp,
+-            next: &self.next,
+         }
+     }
+ }
+@@ -78,9 +79,7 @@ impl Graph {
+ pub struct DfsIterator<'a> {
+     visited: Vec<bool>,
+     stack: Vec<usize>,
++    adj_iters: Vec<AdjListIterator<'a>>,
+-    next_edges: Vec<Option<usize>>,
+-    endp: &'a [usize],
+-    next: &'a [Option<usize>],
+ }
+ 
+ impl Iterator for DfsIterator<'_> {
+@@ -92,9 +91,7 @@ impl Iterator for DfsIterator<'_> {
+     fn next(&mut self) -> Option<Self::Item> {
+         loop {
+             let &u = self.stack.last()?;
++            for (e, v) in self.adj_iters[u].by_ref() {
+-            while let Some(e) = self.next_edges[u] {
+-                let v = self.endp[e];
+-                self.next_edges[u] = self.next[e];
+                 if !self.visited[v] {
+                     self.visited[v] = true;
+                     self.stack.push(v);

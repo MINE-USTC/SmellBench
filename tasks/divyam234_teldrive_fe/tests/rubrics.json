@@ -1,0 +1,333 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "divyam234_teldrive_fe",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "public_parent",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 expands editable destination policy; stage two flattens root/child validation.",
+      "baseline_defect": "Two creation handlers interpret share edit permission, folder kind, root/default parent and child resolution.",
+      "criterion": "Give public editable destination resolution a coherent share-access policy used by both creation paths.",
+      "acceptance": "Keep nil/zero/root parent fallback, child permission before child-kind error, resolved child owner and creation-specific conflict/upload behavior. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_access.go",
+          "symbol": "CreatePublicShareFolder,CreatePublicShareUpload",
+          "detail": "Two creation handlers interpret share edit permission, folder kind, root/default parent and child resolution.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "public_edit",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R3 copies editable-file access into update/trash.",
+      "baseline_defect": "Metadata/trash handlers interpret share permission after generic ResolveFile.",
+      "criterion": "Give editable-file eligibility a coherent access boundary consumed by update and trash.",
+      "acceptance": "Keep permission check before generation parsing or trash action and distinct root-trash restriction. No need to move existing operation-specific root refusal merely to earn this item. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_access.go",
+          "symbol": "UpdatePublicShareFile,TrashPublicShareFile",
+          "detail": "Metadata/trash handlers interpret share permission after generic ResolveFile.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "public_upload_owner",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1/R3 parent lookup becomes flattened child permission/owner update in retry.",
+      "baseline_defect": "Upload-session verification reconstructs share destination policy and chooses an owner from root/child records.",
+      "criterion": "Obtain the effective editable destination owner through a coherent share policy before session agreement.",
+      "acceptance": "Keep root/child checks and session.UserID comparison, existing session/parent lookup order and errors. Session agreement may stay in transfer orchestration; no forced single service handling both domains. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_access.go",
+          "symbol": "resolvePublicUploadOwner",
+          "detail": "Upload-session verification reconstructs share destination policy and chooses an owner from root/child records.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "batch_access",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 expands batch access query; retry interleaves ordered expansion and common-owner reduction.",
+      "baseline_defect": "API owns share SQL deduplication, row interpretation and missing-versus-forbidden policy.",
+      "criterion": "Give batch authorization lookup and access-result interpretation coherent domain ownership.",
+      "acceptance": "Keep deduplicated SQL input, ordered duplicate outputs with shared Access pointers, lookup/row failures before owner mismatch, and no-Shares actor/catalog fallback. Common-owner validation can remain an operation-level consumer of ordered domain results; no required new batch DTO. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_parity.go",
+          "symbol": "resolveAuthenticatedFileAccessMany",
+          "detail": "API owns share SQL deduplication, row interpretation and missing-versus-forbidden policy.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "catalog_path",
+      "dimension": "extensibility",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R1 copies folder traversal; retry mutates actual ListInput.ParentID through each child.",
+      "baseline_defect": "Share listing owns catalog path syntax, active-child query and missing-folder interpretation.",
+      "criterion": "Give folder path resolution a coherent catalog policy while share listing supplies its authorized root.",
+      "acceptance": "Preserve trim/slash rules, invalid components/backslash rejection, root confinement and child lookup errors. Existing ResolveFolderPath is legal; no required mutable query object. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/shares/service.go",
+          "symbol": "ListPublicFiles",
+          "detail": "Share listing owns catalog path syntax, active-child query and missing-folder interpretation.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "catalog_cursor",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1 cursor formula is moved into successful entry conversion in retry.",
+      "baseline_defect": "HTTP entry loop independently implements catalog sort cursor representation for name/time/size/id.",
+      "criterion": "Give sort-dependent cursor value interpretation focused ownership independent of HTTP rendering.",
+      "acceptance": "Keep successful fileEntry gate, UTC RFC3339Nano, absent-size -1, valid ID and full nonempty page publication with scope/fingerprint/folder. A per-row or final-row existing FileCursorValue call after validation is valid. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_core.go",
+          "symbol": "ListFiles",
+          "detail": "HTTP entry loop independently implements catalog sort cursor representation for name/time/size/id.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "category_report",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 moves category statistics lookup into API; retry removes closure/DTO.",
+      "baseline_defect": "The HTTP method reaches through QueryStore and owns catalog owner/error interpretation for category statistics.",
+      "criterion": "Give category statistics retrieval and domain interpretation a cohesive reporting boundary.",
+      "acceptance": "Keep owner validation and diagnostic wrapping, ordered/empty output conventions and exact counters. A thin existing catalog operation is sufficient; no need for extra processing. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_parity.go",
+          "symbol": "GetFileCategoryStatistics",
+          "detail": "The HTTP method reaches through QueryStore and owns catalog owner/error interpretation for category statistics.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "drive_report",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 moves drive totals lookup into API; retry removes closure/DTO.",
+      "baseline_defect": "The HTTP method reaches through QueryStore and owns catalog owner/error interpretation for drive totals.",
+      "criterion": "Give drive totals retrieval and domain interpretation a cohesive reporting boundary.",
+      "acceptance": "Keep owner validation and diagnostic wrapping, ordered/empty output conventions and exact counters. A thin existing catalog operation is sufficient; no need for extra processing. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_parity.go",
+          "symbol": "GetDriveStatistics",
+          "detail": "The HTTP method reaches through QueryStore and owns catalog owner/error interpretation for drive totals.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dashboard_acquisition",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 copies complete dashboard gathering; stage two feeds raw records into HTTP.",
+      "baseline_defect": "HTTP orchestrates totals, cleanup, growth, channel, recent-activity and category queries plus activity limit.",
+      "criterion": "Give dashboard gathering and its query policy coherent reporting ownership.",
+      "acceptance": "Preserve owner validation, ordered queries/errors, activity limit8 and category service behavior. A single StorageDashboard call can satisfy this and record interpretation items; no prescribed aggregate DTO. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_storage.go",
+          "symbol": "GetStorageStats",
+          "detail": "HTTP orchestrates totals, cleanup, growth, channel, recent-activity and category queries plus activity limit.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dashboard_cleanup",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 duplicates cleanup aggregation in HTTP, retained directly in final.",
+      "baseline_defect": "HTTP derives reclaimable bytes from foreign cleanup fields.",
+      "criterion": "Place reclaimable-storage accounting with coherent report semantics.",
+      "acceptance": "Keep trash bytes plus stale-upload bytes and separate stale-upload count; API may project already interpreted values. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_storage.go",
+          "symbol": "GetStorageStats cleanup",
+          "detail": "HTTP derives reclaimable bytes from foreign cleanup fields.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dashboard_growth",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 adds growth record interpretation; final converts raw SQL timestamps in response loop.",
+      "baseline_defect": "Growth reporting date semantics depend on HTTP inspecting pgtype Day.",
+      "criterion": "Give storage growth record/date interpretation a focused reporting boundary.",
+      "acceptance": "Keep UTC day, row order and AddedBytes/LogicalBytes fields. No required separate growth object or method. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_storage.go",
+          "symbol": "GetStorageStats growthRows",
+          "detail": "Growth reporting date semantics depend on HTTP inspecting pgtype Day.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dashboard_channels",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 channel timestamp/default interpretation feeds HTTP directly in final.",
+      "baseline_defect": "API interprets raw LastCheckedAt validity and UTC conversion alongside channel counters.",
+      "criterion": "Give channel-report optional timestamp and record semantics coherent ownership.",
+      "acceptance": "Keep absent versus present timestamp and all health/selection/byte/part data; output optional wrapping can remain API code. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_storage.go",
+          "symbol": "GetStorageStats channelRows",
+          "detail": "API interprets raw LastCheckedAt validity and UTC conversion alongside channel counters.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dashboard_activity",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "R2 activity decoding is flattened into HTTP assembly.",
+      "baseline_defect": "HTTP parses raw payload JSON and selects name/event fallback while decoding nullable identity and time.",
+      "criterion": "Give storage activity label/identity/time interpretation cohesive report ownership.",
+      "acceptance": "Use nonempty string name only on valid JSON, else event type; keep absent/empty resource ID omission, UTC occurrence and order. One record interpreter may own these linked fields. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/api/handler_storage.go",
+          "symbol": "GetStorageStats activityRows",
+          "detail": "HTTP parses raw payload JSON and selects name/event fallback while decoding nullable identity and time.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "encrypted_upload_size",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1 replaces crypto formula; retry splits full-block calculation and tail addition around request assembly.",
+      "baseline_defect": "Transfer knows header/block/tag sizes and adds encrypted tail at submission independently of crypto layout.",
+      "criterion": "Use a coherent crypto-layout size contract for the complete upload request size.",
+      "acceptance": "Preserve plain upload size, cipher setup/error ordering, complete encrypted blocks and optional tail before submission, downstream stored-size checks. Reconnecting EncryptedSize is a complete short repair; no forced size-plan type. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/upload.go",
+          "symbol": "UploadPart",
+          "detail": "Transfer knows header/block/tag sizes and adds encrypted tail at submission independently of crypto layout.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "encrypted_download_size",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "R1 copies decryption size; retry defers tail completion to record mutation/backfill.",
+      "baseline_defect": "Downloader owns header/tail validity and complete plaintext calculation across multiple stages.",
+      "criterion": "Use the crypto size/validation contract through final part mutation and both backfill modes.",
+      "acceptance": "Keep short-header/bad-tail errors before record mutation and identical plaintext/stored values in batch and individual backfill. DecryptedSize can directly supply complete size without tail state. Existing domain helpers can be reconnected directly. Ownership is semantic, not a mandatory package or class location; a cohesive policy function/service may live in the same file. HTTP projection and operation-specific orchestration may remain with the caller. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving the code into a renamed HTTP helper that still independently reimplements the foreign policy is insufficient. Mere file relocation is neither necessary nor sufficient."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "internal/transfer/download.go",
+          "symbol": "resolveMissingPartSizes",
+          "detail": "Downloader owns header/tail validity and complete plaintext calculation across multiple stages.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "divyam234_teldrive_fe",
+    "rubric_status": "ready",
+    "aggregation": "equal weight per item; score earned items divided by 12",
+    "excluded_from_scoring": [
+      "post.diff is empty",
+      "Passing tests, compilation, behavior preservation and cosmetic renaming are controls rather than repair credit",
+      "QueryStore accessors are scaffolding; their removal alone does not satisfy a responsibility item"
+    ]
+  }
+}

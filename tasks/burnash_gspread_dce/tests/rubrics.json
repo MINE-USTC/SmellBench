@@ -1,0 +1,635 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "burnash_gspread_dce",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "R01_int",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "NumericToken clears text after successful parsing; the subsequent integer conversion in numericise can only fail for remaining non-underscore text.",
+      "criterion": "Eliminate the unreachable successful integer conversion continuation in numericise.",
+      "acceptance": "Keep the original-value fallback, rejected underscore behavior and blank/default handling. Failed calls may be removed together with their unreachable assignments if equivalent behavior remains. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "numericise",
+          "detail": "NumericToken clears text after successful parsing; the subsequent integer conversion in numericise can only fail for remaining non-underscore text.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "NumericToken",
+          "detail": "NumericToken clears text after successful parsing; the subsequent integer conversion in numericise can only fail for remaining non-underscore text.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R01_float",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "NumericToken clears text after successful parsing; the subsequent floating-point conversion in numericise can only fail for remaining non-underscore text.",
+      "criterion": "Eliminate the unreachable successful floating-point conversion continuation in numericise.",
+      "acceptance": "Keep the original-value fallback, rejected underscore behavior and blank/default handling. Failed calls may be removed together with their unreachable assignments if equivalent behavior remains. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "numericise",
+          "detail": "NumericToken clears text after successful parsing; the subsequent floating-point conversion in numericise can only fail for remaining non-underscore text.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "NumericToken",
+          "detail": "NumericToken clears text after successful parsing; the subsequent floating-point conversion in numericise can only fail for remaining non-underscore text.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R01_underscore",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "Allowed underscores were stripped upstream; if any remain, disallowed-underscore return precedes the replacement statement.",
+      "criterion": "Remove the unreachable downstream allowed-underscore replacement.",
+      "acceptance": "Underscore-enabled parsing and disallowed raw input behavior remain supported. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "numericise",
+          "detail": "Allowed underscores were stripped upstream; if any remain, disallowed-underscore return precedes the replacement statement.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "NumericToken",
+          "detail": "Allowed underscores were stripped upstream; if any remain, disallowed-underscore return precedes the replacement statement.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R02_ignored_slots",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "numeric_slots excludes ignored positions before the consumer repeats the ignored alternative.",
+      "criterion": "Eliminate the impossible ignored-slot alternative in numericise_all.",
+      "acceptance": "Ignored values and selected conversion remain live; either preselection or a single direct conditional traversal is valid. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "numericise_all",
+          "detail": "numeric_slots excludes ignored positions before the consumer repeats the ignored alternative.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "numeric_slots",
+          "detail": "numeric_slots excludes ignored positions before the consumer repeats the ignored alternative.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R03_coordinate_guard",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "positive_coordinates rejects invalid coordinates before the duplicate consumer raise.",
+      "criterion": "Remove redundant coordinate rejection on the A1 encoding path.",
+      "acceptance": "Nonpositive input still fails through a live validation path. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "rowcol_to_a1",
+          "detail": "positive_coordinates rejects invalid coordinates before the duplicate consumer raise.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_validation.py",
+          "symbol": "positive_coordinates",
+          "detail": "positive_coordinates rejects invalid coordinates before the duplicate consumer raise.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R04_column_digits",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "column_digits emits 1..26 after moving borrow into divmod(column-1,26), so consumer zero correction cannot execute.",
+      "criterion": "Remove the unreachable base-26 zero-remainder correction.",
+      "acceptance": "A coherent zero-based or bijective implementation is acceptable if it has no unreachable duplicate correction and preserves column labels. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "rowcol_to_a1",
+          "detail": "column_digits emits 1..26 after moving borrow into divmod(column-1,26), so consumer zero correction cannot execute.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_validation.py",
+          "symbol": "column_digits",
+          "detail": "column_digits emits 1..26 after moving borrow into divmod(column-1,26), so consumer zero correction cannot execute.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R05_bounded",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "a1_to_rowcol receives a match or exception from cell_match, leaving its failed-match branch unreachable.",
+      "criterion": "Remove the unreachable bounded A1 match rejection.",
+      "acceptance": "Invalid labels still fail; omitted axes remain supported in the unbounded decoder. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "a1_to_rowcol",
+          "detail": "a1_to_rowcol receives a match or exception from cell_match, leaving its failed-match branch unreachable.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_validation.py",
+          "symbol": "cell_match",
+          "detail": "a1_to_rowcol receives a match or exception from cell_match, leaving its failed-match branch unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R06_bounded",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "a1_to_rowcol reads m.column, exhausting m.letters before its old accumulation loop.",
+      "criterion": "Remove the exhausted-letter accumulation in bounded A1 decoding.",
+      "acceptance": "Matched column values remain correct. One-shot iteration is not mandatory; no unreachable duplicate fold may remain. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "a1_to_rowcol",
+          "detail": "a1_to_rowcol reads m.column, exhausting m.letters before its old accumulation loop.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_validation.py",
+          "symbol": "CellMatch.column",
+          "detail": "a1_to_rowcol reads m.column, exhausting m.letters before its old accumulation loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R05_unbounded",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "_a1_to_rowcol_unbounded receives a match or exception from cell_match, leaving its failed-match branch unreachable.",
+      "criterion": "Remove the unreachable unbounded A1 match rejection.",
+      "acceptance": "Invalid labels still fail; omitted axes remain supported in the unbounded decoder. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "_a1_to_rowcol_unbounded",
+          "detail": "_a1_to_rowcol_unbounded receives a match or exception from cell_match, leaving its failed-match branch unreachable.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_validation.py",
+          "symbol": "cell_match",
+          "detail": "_a1_to_rowcol_unbounded receives a match or exception from cell_match, leaving its failed-match branch unreachable.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R06_unbounded",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "_a1_to_rowcol_unbounded reads m.column, exhausting m.letters before its old accumulation loop.",
+      "criterion": "Remove the exhausted-letter accumulation in unbounded A1 decoding.",
+      "acceptance": "Matched column values remain correct. One-shot iteration is not mandatory; no unreachable duplicate fold may remain. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "_a1_to_rowcol_unbounded",
+          "detail": "_a1_to_rowcol_unbounded reads m.column, exhausting m.letters before its old accumulation loop.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_validation.py",
+          "symbol": "CellMatch.column",
+          "detail": "_a1_to_rowcol_unbounded reads m.column, exhausting m.letters before its old accumulation loop.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R07_row",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "ordered_axes orders row endpoints before the same consumer swap.",
+      "criterion": "Remove the unreachable repeated row endpoint swap.",
+      "acceptance": "Reversed and unbounded ranges remain supported; ordering may be placed in either layer. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "a1_range_to_grid_range",
+          "detail": "ordered_axes orders row endpoints before the same consumer swap.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_validation.py",
+          "symbol": "ordered_axes",
+          "detail": "ordered_axes orders row endpoints before the same consumer swap.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R07_column",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "ordered_axes orders column endpoints before the same consumer swap.",
+      "criterion": "Remove the unreachable repeated column endpoint swap.",
+      "acceptance": "Reversed and unbounded ranges remain supported; ordering may be placed in either layer. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "a1_range_to_grid_range",
+          "detail": "ordered_axes orders column endpoints before the same consumer swap.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_validation.py",
+          "symbol": "ordered_axes",
+          "detail": "ordered_axes orders column endpoints before the same consumer swap.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R08_matrix_lifecycle",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "fill_gaps exhausts MatrixRows before checking remaining and appending rows.",
+      "criterion": "Remove the impossible post-consumption row-extension path.",
+      "acceptance": "Width padding, row identity/alias semantics, smaller requested dimensions and empty-input fallback remain live. A direct matrix algorithm is a valid alternative. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "fill_gaps",
+          "detail": "fill_gaps exhausts MatrixRows before checking remaining and appending rows.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "MatrixRows",
+          "detail": "fill_gaps exhausts MatrixRows before checking remaining and appending rows.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R09_alpha",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "ColorToken produces six-character text before the consumer repeats eight-digit alpha trimming.",
+      "criterion": "Remove unreachable downstream eight-digit alpha trimming.",
+      "acceptance": "Supported input forms and invalid-format errors remain effective at a reachable boundary. Prefix lstrip is reachable idempotent work and receives no separate unreachable-code point. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "convert_hex_to_colors_dict",
+          "detail": "ColorToken produces six-character text before the consumer repeats eight-digit alpha trimming.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "ColorToken",
+          "detail": "ColorToken produces six-character text before the consumer repeats eight-digit alpha trimming.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R09_short",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "ColorToken produces six-character text before the consumer repeats three-digit shorthand expansion.",
+      "criterion": "Remove unreachable downstream three-digit shorthand expansion.",
+      "acceptance": "Supported input forms and invalid-format errors remain effective at a reachable boundary. Prefix lstrip is reachable idempotent work and receives no separate unreachable-code point. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "convert_hex_to_colors_dict",
+          "detail": "ColorToken produces six-character text before the consumer repeats three-digit shorthand expansion.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "ColorToken",
+          "detail": "ColorToken produces six-character text before the consumer repeats three-digit shorthand expansion.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R09_length",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "ColorToken produces six-character text before the consumer repeats invalid-length rejection.",
+      "criterion": "Remove unreachable downstream invalid-length rejection.",
+      "acceptance": "Supported input forms and invalid-format errors remain effective at a reachable boundary. Prefix lstrip is reachable idempotent work and receives no separate unreachable-code point. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "convert_hex_to_colors_dict",
+          "detail": "ColorToken produces six-character text before the consumer repeats invalid-length rejection.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "ColorToken",
+          "detail": "ColorToken produces six-character text before the consumer repeats invalid-length rejection.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R10_hex_frontier",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "pending is empty or starts at the first failing pair, so assignment following hex_channel cannot execute.",
+      "criterion": "Eliminate the unreachable pending-channel assignment.",
+      "acceptance": "The malformed-pair rejecting call and public error translation remain effective, or are replaced coherently. Deleting the current whole loop without equivalent rejection is insufficient; redesigning validation is allowed. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "convert_hex_to_colors_dict",
+          "detail": "pending is empty or starts at the first failing pair, so assignment following hex_channel cannot execute.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "ColorToken.pending",
+          "detail": "pending is empty or starts at the first failing pair, so assignment following hex_channel cannot execute.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R11_rgb_range",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "color_channels rejects invalid ranges before the same downstream error body.",
+      "criterion": "Eliminate the unreachable second RGB range rejection.",
+      "acceptance": "Either validation layer can remain. NaN and ordinary conversion behavior remain constraints. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/utils.py",
+          "symbol": "convert_colors_to_hex_value",
+          "detail": "color_channels rejects invalid ranges before the same downstream error body.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_values.py",
+          "symbol": "color_channels",
+          "detail": "color_channels rejects invalid ranges before the same downstream error body.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R12_actual_duplicates",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "record_headers rejects duplicate actual headers when no expected headers are supplied before get_all_records repeats the rejection.",
+      "criterion": "Eliminate unreachable worksheet rejection of duplicate actual headers when no expected headers are supplied.",
+      "acceptance": "Record construction still uses actual keys and preserves rightmost-present duplicate behavior for short rows. HeaderColumns may be replaced with an equivalent design. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "get_all_records",
+          "detail": "record_headers rejects duplicate actual headers when no expected headers are supplied before get_all_records repeats the rejection.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_records.py",
+          "symbol": "record_headers",
+          "detail": "record_headers rejects duplicate actual headers when no expected headers are supplied before get_all_records repeats the rejection.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R12_expected_duplicates",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "record_headers rejects duplicate explicit expected headers before get_all_records repeats the rejection.",
+      "criterion": "Eliminate unreachable worksheet rejection of duplicate explicit expected headers.",
+      "acceptance": "Record construction still uses actual keys and preserves rightmost-present duplicate behavior for short rows. HeaderColumns may be replaced with an equivalent design. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "get_all_records",
+          "detail": "record_headers rejects duplicate explicit expected headers before get_all_records repeats the rejection.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_records.py",
+          "symbol": "record_headers",
+          "detail": "record_headers rejects duplicate explicit expected headers before get_all_records repeats the rejection.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R12_unknown",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "record_headers rejects expected headers absent from actual keys before get_all_records repeats the rejection.",
+      "criterion": "Eliminate unreachable worksheet rejection of expected headers absent from actual keys.",
+      "acceptance": "Record construction still uses actual keys and preserves rightmost-present duplicate behavior for short rows. HeaderColumns may be replaced with an equivalent design. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/worksheet.py",
+          "symbol": "get_all_records",
+          "detail": "record_headers rejects expected headers absent from actual keys before get_all_records repeats the rejection.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_records.py",
+          "symbol": "record_headers",
+          "detail": "record_headers rejects expected headers absent from actual keys before get_all_records repeats the rejection.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "R13_request_body",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Full evidence.md expansion rounds and revised source_review.md causal deletion boundaries, verified in packaged final.",
+      "baseline_defect": "prepare_body serializes and clears JSON when both serializer/JSON exist; otherwise at least one remains absent, so the consumer serializer condition is always false.",
+      "criterion": "Eliminate the unreachable duplicate custom-serializer body.",
+      "acceptance": "Data/JSON/header semantics remain correct for custom and ordinary requests. A direct single serialization path is valid; no prepared triple or helper is mandatory. Remove the obsolete branch or coherently redesign the producer and consumer so this unreachable duplication disappears. Existing helper/classes, iterator representation and producer-side placement are not required. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Merely relocating the unreachable body or disabling required behavior is insufficient. Replacing the preparation layer with an equivalent live direct implementation is allowed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/http_client.py",
+          "symbol": "HTTPClient.request",
+          "detail": "prepare_body serializes and clears JSON when both serializer/JSON exist; otherwise at least one remains absent, so the consumer serializer condition is always false.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "gspread/_request.py",
+          "symbol": "prepare_body",
+          "detail": "prepare_body serializes and clears JSON when both serializer/JSON exist; otherwise at least one remains absent, so the consumer serializer condition is always false.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "burnash_gspread_dce",
+    "smell_type": "dead_code_elimination",
+    "rubric_status": "ready",
+    "aggregation": "Each criterion has equal weight; score one point only when its stated structural defect is removed at the actual consumer while its live path remains usable.",
+    "excluded_from_scoring": [
+      "Passing the existing test suite, compiling, and behavior restoration alone are controls rather than independent repair points.",
+      "The post.diff docstring changes are leakage cleanup only and add no dead-code obligation.",
+      "The live public to_records helper, HTTP retries, optional worksheet axes, and format errors must remain usable; their pre-existing behavior earns no separate point."
+    ]
+  }
+}

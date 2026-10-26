@@ -1,0 +1,436 @@
+diff --git a/packages/griffith-hls/src/utils/getMasterM3U8Blob.ts b/packages/griffith-hls/src/utils/getMasterM3U8Blob.ts
+index 15c8aeb..5b90b58 100644
+--- a/packages/griffith-hls/src/utils/getMasterM3U8Blob.ts
++++ b/packages/griffith-hls/src/utils/getMasterM3U8Blob.ts
+@@ -1,21 +1,18 @@
+ import {Source} from '../types'
++import createMasterM3U8 from './createMasterM3U8'
+ 
+ export default (sources: Source[]): Blob => {
++  const list = sources.map((item) => ({
++    source: item.source,
++    bandwidth: item.bitrate * 1024,
++
++    resolution: {
++      width: item.width,
++      height: item.height,
++    },
++  }))
++
++  return new Blob([createMasterM3U8(list)], {
+-  const lines = ['#EXTM3U']
+-  sources.forEach((item) => {
+-    const meta: Record<string, unknown> = {
+-      'PROGRAM-ID': '1',
+-      BANDWIDTH: String(item.bitrate * 1024),
+-      RESOLUTION: `${item.width}x${item.height}`,
+-    }
+-    lines.push(
+-      `#EXT-X-STREAM-INF:${Object.entries(meta)
+-        .map(([key, value]) => `${key}=${value as string}`)
+-        .join(',')}`
+-    )
+-    lines.push(item.source)
+-  })
+-  return new Blob([lines.join('\n')], {
+     type: 'application/vnd.apple.mpegURL',
+   })
+ }
+diff --git a/packages/griffith-mp4/src/mse/MSE.ts b/packages/griffith-mp4/src/mse/MSE.ts
+index 704f420..5c123fd 100644
+--- a/packages/griffith-mp4/src/mse/MSE.ts
++++ b/packages/griffith-mp4/src/mse/MSE.ts
+@@ -5,16 +5,7 @@ import MP4Probe from '../mp4/mp4Probe'
+ import FMP4 from '../fmp4/fmp4Generator'
+ import {concatTypedArray} from '../fmp4/utils'
+ import {abortPolyfill} from './polyfill'
++import {Mp4BoxTree} from '../mp4/types'
+-import {Mp4BoxTree, Sample} from '../mp4/types'
+-import {
+-  findBox,
+-  getBufferStart,
+-  getVideoSamplesInterval,
+-  getNextVideoSamplesInterval,
+-  getAudioSamplesInterval,
+-  getVideoSamples,
+-  getAudioSamples,
+-} from '../mp4/utils'
+ 
+ const MAGIC_NUMBER = 20000
+ 
+@@ -202,94 +193,40 @@ export default class MSE {
+   seek = (time: any) => {
+     FragmentFetch.clear()
+ 
++    const [start, end] = this.mp4Probe!.getFragmentPosition(time)
++    // 对于已经请求的数据不再重复请求
++    // No need to repeat request video data
+-    const probe = this.mp4Probe!
+-    const {videoTimescale, audioTimescale} = probe.mp4Data
+-    probe.videoInterval =
+-      typeof time === 'number'
+-        ? getVideoSamplesInterval(probe.mp4BoxTree, time * videoTimescale)
+-        : getNextVideoSamplesInterval(
+-            probe.mp4BoxTree,
+-            probe.videoInterval!.offsetInterVal[1]
+-          )
+-    probe.audioInterval = getAudioSamplesInterval(
+-      probe.mp4BoxTree,
+-      probe.videoInterval
+-    )
+-    const videoTimeRange = probe.videoInterval.timeInterVal.map(
+-      (value) => value / videoTimescale
+-    )
+-    const audioTimeRange = probe.audioInterval.timeInterVal.map(
+-      (value) => value / audioTimescale
+-    )
+-    probe.timeRange = [
+-      Math.min(videoTimeRange[0], audioTimeRange[0]),
+-      Math.max(videoTimeRange[1], audioTimeRange[1]),
+-    ]
+-    probe.bufferStart = getBufferStart(
+-      probe.mp4BoxTree,
+-      probe.videoInterval!.offsetInterVal[0],
+-      probe.audioInterval!.offsetInterVal[0]
+-    )
+-    // No need to repeat request video data.
+     if (this.hasBufferedCache(time) && !this.qualityChangeFlag) {
+       return
+     }
+ 
+-    const videoSamples = getVideoSamples(
+-      probe.mp4BoxTree,
+-      probe.bufferStart,
+-      probe.videoInterval.offsetInterVal
+-    )
+-    const audioSamples = getAudioSamples(
+-      probe.mp4BoxTree,
+-      probe.bufferStart,
+-      probe.audioInterval.offsetInterVal
+-    )
+-    const lastVideoSample = videoSamples[videoSamples.length - 1]
+-    const chunks = findBox(probe.mp4BoxTree, 'videoStco').samples
+-    const reachesLastChunk =
+-      (videoSamples.length ? lastVideoSample.start : 0) +
+-        lastVideoSample.bufferStart ===
+-      chunks[chunks.length - 1].chunkOffset
+-    const firstVideoByte = videoSamples.length ? videoSamples[0].start : 0
+-    const firstAudioByte = audioSamples.length
+-      ? audioSamples[0].start
+-      : Number.MAX_SAFE_INTEGER
+-    const start = Math.min(firstVideoByte, firstAudioByte) + probe.bufferStart
+-
+     this.handleReplayCase()
+ 
++    void this.loadData(start as number, end as number).then((mdatBuffer) => {
+-    void this.loadData(
+-      start as number,
+-      (reachesLastChunk
+-        ? ''
+-        : Math.max(
+-            lastVideoSample.end,
+-            audioSamples.length ? audioSamples[audioSamples.length - 1].end : 0
+-          ) + probe.bufferStart) as number
+-    ).then((mdatBuffer) => {
+       if (!mdatBuffer) {
+         return
+       }
++      const {videoTrackInfo, audioTrackInfo} =
++        this.mp4Probe!.getTrackInfo(mdatBuffer)
++      const {videoInterval, audioInterval} = this.mp4Probe!
++      const videoBaseMediaDecodeTime = videoInterval!.timeInterVal[0]
++      const audioBaseMediaDecodeTime = audioInterval!.timeInterVal[0]
++      const videoRawData = concatTypedArray(
++        FMP4.moof(videoTrackInfo, videoBaseMediaDecodeTime),
++        FMP4.mdat(videoTrackInfo)
+-      const activeProbe = this.mp4Probe!
+-      const videoSamples = getVideoSamples(
+-        activeProbe.mp4BoxTree,
+-        activeProbe.bufferStart,
+-        activeProbe.videoInterval!.offsetInterVal
+       )
++
++      // maybe the last GOP dont have audio track
++      // 最后一个 GOP 序列可能没有音频轨
++      if (audioTrackInfo.samples.length !== 0) {
++        const audioRawData = concatTypedArray(
++          FMP4.moof(audioTrackInfo, audioBaseMediaDecodeTime),
++          FMP4.mdat(audioTrackInfo)
++        )
++        this.handleAppendBuffer(audioRawData, 'audio')
+-      const audioSamples = getAudioSamples(
+-        activeProbe.mp4BoxTree,
+-        activeProbe.bufferStart,
+-        activeProbe.audioInterval!.offsetInterVal
+-      )
+-      const videoTrack = {
+-        trackId: 1,
+-        samples: videoSamples.map((sample) => ({
+-          ...sample,
+-          buffer: mdatBuffer.slice(sample.start, sample.end),
+-        })),
+       }
++
++      this.handleAppendBuffer(videoRawData, 'video')
+-      this.appendFragment(videoTrack, audioSamples, mdatBuffer)
+ 
+       if (time) {
+         this.needUpdateTime = true
+@@ -299,37 +236,6 @@ export default class MSE {
+     })
+   }
+ 
+-  appendFragment = (
+-    videoTrack: {trackId: number; samples: (Sample & {buffer: ArrayBuffer})[]},
+-    audioSamples: Sample[],
+-    mdatBuffer: ArrayBuffer
+-  ) => {
+-    const probe = this.mp4Probe!
+-    const audioTrack = {
+-      trackId: 2,
+-      samples: audioSamples.map((sample) => ({
+-        ...sample,
+-        buffer: mdatBuffer.slice(sample.start, sample.end),
+-      })),
+-    }
+-    const videoRawData = concatTypedArray(
+-      FMP4.moof(videoTrack, probe.videoInterval!.timeInterVal[0]),
+-      FMP4.mdat(videoTrack)
+-    )
+-
+-    // maybe the last GOP dont have audio track
+-    // 最后一个 GOP 序列可能没有音频轨
+-    if (audioTrack.samples.length !== 0) {
+-      const audioRawData = concatTypedArray(
+-        FMP4.moof(audioTrack, probe.audioInterval!.timeInterVal[0]),
+-        FMP4.mdat(audioTrack)
+-      )
+-      this.handleAppendBuffer(audioRawData, 'audio')
+-    }
+-
+-    this.handleAppendBuffer(videoRawData, 'video')
+-  }
+-
+   changeQuality(newSrc: string) {
+     this.src = newSrc
+     this.qualityChangeFlag = true
+@@ -412,8 +318,7 @@ export default class MSE {
+ 
+   shouldFetchNextSegment = () => {
+     this.handleReplayCase()
++    if (this.mp4Probe!.isDraining(this.video.currentTime)) {
+-    const [start, end] = this.mp4Probe!.timeRange
+-    if (this.video.currentTime > (end - start) / 4 + start) {
+       return true
+     }
+     return false
+diff --git a/packages/griffith/src/components/Player.tsx b/packages/griffith/src/components/Player.tsx
+index 6ca2efb..1916bf5 100644
+--- a/packages/griffith/src/components/Player.tsx
++++ b/packages/griffith/src/components/Player.tsx
+@@ -33,6 +33,7 @@ import {
+   VideoPlugin,
+ } from '../types'
+ import formatDuration from '../utils/formatDuration'
++import getBufferedTime from '../utils/getBufferedTime'
+ import Pip from '../utils/pip'
+ import storage from '../utils/storage'
+ import {
+@@ -194,14 +195,7 @@ const InnerPlayer: React.FC<InnerPlayerProps> = ({
+   }, [cover])
+ 
+   useMount(() => {
++    const historyVolume = storage.get('@griffith/history-volume')
+-    let historyVolume: unknown
+-    try {
+-      historyVolume = JSON.parse(
+-        storage.getStorage().getItem('@griffith/history-volume')!
+-      )
+-    } catch {
+-      historyVolume = null
+-    }
+     if (historyVolume) {
+       setVolume(historyVolume as number)
+     }
+@@ -270,18 +264,10 @@ const InnerPlayer: React.FC<InnerPlayerProps> = ({
+   useEffect(() => {
+     if (!disablePictureInPicture && videoRef.current!.root && !pipRef.current) {
+       pipRef.current = new Pip()
++      pipRef.current.init(
++        videoRef.current!.root,
++        () => emitEvent(EVENTS.ENTER_PIP),
++        () => emitEvent(EVENTS.EXIT_PIP)
+-      const pip = pipRef.current
+-      pip.inited = true
+-      pip.element = videoRef.current!.root
+-      pip.onEnter = () => emitEvent(EVENTS.ENTER_PIP)
+-      pip.onExit = () => emitEvent(EVENTS.EXIT_PIP)
+-      pip.element.addEventListener(
+-        'enterpictureinpicture',
+-        pip.handleEnter.bind(pip)
+-      )
+-      pip.element.addEventListener(
+-        'leavepictureinpicture',
+-        pip.handleExit.bind(pip)
+       )
+     }
+   }, [disablePictureInPicture, emitEvent])
+@@ -372,9 +358,7 @@ const InnerPlayer: React.FC<InnerPlayerProps> = ({
+   const handleVideoVolumeChange = useHandler((volume: number) => {
+     volume = Math.round(volume * 100) / 100
+     setVolume(volume)
++    storage.set('@griffith/history-volume', volume)
+-    storage
+-      .getStorage()
+-      .setItem('@griffith/history-volume', JSON.stringify(volume))
+   })
+ 
+   const handleSeek = useHandler((value: number) => {
+@@ -416,7 +400,7 @@ const InnerPlayer: React.FC<InnerPlayerProps> = ({
+     // 如果当前正在全屏就先关闭全屏
+     if (
+       Boolean(BigScreen.element) &&
++      !pipRef.current?.pictureInPictureElement
+-      !(pipRef.current && (document as any).pictureInPictureElement)
+     ) {
+       handleToggleFullScreen()
+     }
+@@ -434,14 +418,7 @@ const InnerPlayer: React.FC<InnerPlayerProps> = ({
+       isPageFullScreenSwitch.off()
+       emitEvent(EVENTS.EXIT_PAGE_FULLSCREEN)
+     }
++    pipRef.current?.toggle()
+-    const pip = pipRef.current
+-    if (pip) {
+-      if ((document as any).pictureInPictureElement) {
+-        ;(document as any).exitPictureInPicture()
+-      } else if (pip.element) {
+-        ;(pip.element as any).requestPictureInPicture()
+-      }
+-    }
+   })
+ 
+   const hideControllerTimerRef = useRef(
+@@ -540,18 +517,14 @@ const InnerPlayer: React.FC<InnerPlayerProps> = ({
+     }
+   }, [autoplay, handlePlay, handleSeek, handlePause, prevSources, sources])
+ 
++  const isPip = Boolean(pipRef.current?.pictureInPictureElement)
+-  const isPip = Boolean(
+-    pipRef.current && (document as any).pictureInPictureElement
+-  )
+ 
+   // Safari 会将 pip 状态视为全屏
+   const isFullScreen = Boolean(BigScreen.element) && !isPip
++  const bufferedTime = useMemo(
++    () => getBufferedTime(currentTime, buffered),
++    [buffered, currentTime]
++  )
+-  const bufferedTime = useMemo(() => {
+-    const range = buffered.find(
+-      (range) => range.start <= currentTime && currentTime <= range.end
+-    )
+-    return range ? range.end : 0
+-  }, [buffered, currentTime])
+   const videoDataLoaded = !isLoading || currentTime !== 0
+   const renderController = videoDataLoaded && isPlaybackStarted
+ 
+@@ -644,13 +617,7 @@ const InnerPlayer: React.FC<InnerPlayerProps> = ({
+             onProgressDotHover={handleProgressDotHover}
+             onProgressDotLeave={handleProgressDotLeave}
+             show={showController}
++            showPip={!disablePictureInPicture && pipRef.current?.supported}
+-            showPip={
+-              !disablePictureInPicture &&
+-              (pipRef.current
+-                ? pipRef.current.inited &&
+-                  (document as any).pictureInPictureEnabled
+-                : undefined)
+-            }
+             hiddenPlayButton={hiddenPlayButton}
+             hiddenTimeline={hiddenTimeline}
+             hiddenTime={hiddenTime}
+diff --git a/packages/griffith/src/contexts/VideoSourceProvider.tsx b/packages/griffith/src/contexts/VideoSourceProvider.tsx
+index 35f989e..f871dc5 100644
+--- a/packages/griffith/src/contexts/VideoSourceProvider.tsx
++++ b/packages/griffith/src/contexts/VideoSourceProvider.tsx
+@@ -5,9 +5,9 @@ import {
+   RealQuality,
+   Quality,
+   QualityOrder,
+-  FormattedPlaySource,
+ } from '../types'
+ import VideoSourceContext from './VideoSourceContext'
++import {getQualities, getSources} from './parsePlaylist'
+ import {EVENTS} from 'griffith-message'
+ import {ua} from 'griffith-utils'
+ import reverseArray from '../utils/reverseArray'
+@@ -38,44 +38,28 @@ const VideoSourceProvider: React.FC<VideoSourceProviderProps> = ({
+ }) => {
+   const {emitEvent} = useContext(InternalMessageContext)
+   const lastSourceMap = useChanged(sourceMap)
++  const {qualities, sources, format, isDescOrder} = useMemo(() => {
+-  const {availableQualities, sources, format, isDescOrder} = useMemo(() => {
+     // 其实视频源应当是必需参数
+     if (!lastSourceMap) {
++      return {qualities: [], sources: []}
+-      return {availableQualities: [], sources: []}
+     }
+     const {format} = Object.values(lastSourceMap)[0]!
+     const isDescOrder = defaultQualityOrder === 'desc'
++    const qualities = getQualities(lastSourceMap, isMobile, isDescOrder)
++    const sources = getSources(qualities, lastSourceMap)
+-    const order: Quality[] = ['auto', 'ld', 'sd', 'hd', 'fhd']
+-    const candidates = (Object.keys(lastSourceMap) as Quality[]).sort((a, b) =>
+-      isDescOrder
+-        ? order.indexOf(b) - order.indexOf(a)
+-        : order.indexOf(a) - order.indexOf(b)
+-    )
+-    const availableQualities: Quality[] = []
+-    const sources: FormattedPlaySource[] = []
+-    candidates.forEach((quality, index) => {
+-      if (candidates.length > 1) {
+-        if (isMobile ? index > 0 : quality === 'ld') return
+-      }
+-      const {play_url, ...rest} = lastSourceMap[quality as RealQuality]!
+-      availableQualities.push(quality)
+-      sources.push({...rest, source: play_url, quality})
+-    })
+-    return {availableQualities, sources, format, isDescOrder}
+-  }, [useAutoQuality, lastSourceMap, defaultQualityOrder])
+ 
++    // 目前只有直播流实现了手动拼接 auto 清晰度的功能
+-  const qualities = useMemo(() => {
+     if (
+-      lastSourceMap &&
+       useAutoQuality &&
+       !isMobile &&
+       format === 'm3u8' &&
++      !qualities.includes('auto')
+-      !availableQualities.includes('auto')
+     ) {
++      qualities.unshift('auto')
+-      return ['auto' as Quality, ...availableQualities]
+     }
++
++    return {qualities, sources, format, isDescOrder}
++  }, [useAutoQuality, lastSourceMap, defaultQualityOrder])
+-    return availableQualities
+-  }, [lastSourceMap, useAutoQuality, format, availableQualities])
+ 
+   const [currentQuality, setCurrentQualityRaw] = useState(
+     defaultQuality && (qualities as Quality[]).includes(defaultQuality)
+@@ -118,9 +102,10 @@ const VideoSourceProvider: React.FC<VideoSourceProviderProps> = ({
+       return
+     }
+ 
++    const source =
++      sources.find((item) => item.quality === currentQuality) || sources[0]
++    return source.source
++  }, [currentQuality, sources])
+-    const index = availableQualities.indexOf(currentQuality)
+-    return sources[index < 0 ? 0 : index].source
+-  }, [currentQuality, sources, availableQualities])
+ 
+   const contextValue = useMemo(
+     () => ({

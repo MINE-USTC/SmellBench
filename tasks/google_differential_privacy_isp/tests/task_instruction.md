@@ -1,0 +1,3 @@
+Refactor the internal capability dependencies of the Go differential privacy aggregations so clients depend on the operations they need. Preserve public APIs, custom noise implementations and dynamic replacement, privacy-budget allocation, errors, state consumption, result and quantile caches, and serialized compatibility. Preserve observable behavior when a child aggregation fails after earlier children have been consumed. Keep existing tests and build configuration unchanged.
+
+The broad dependency spans sampling, threshold/confidence operations, clamping and codecs for Count and bounded aggregations. Narrow each client's capability requirements while preserving dynamic custom-noise replacement and the state already consumed when a later child aggregation fails.

@@ -1,0 +1,505 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "cgdb_cgdb_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "parser_role_binding",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Parser callback registration and lazy built-in installation each require a parser callback and context, as shown by their existing public setter and obtain-state path.",
+      "baseline_defect": "Both parser registration and default installation snapshot and replace the whole VTermServices record, including unrelated screen, selection, and output storage.",
+      "criterion": "Parser binding uses a focused parser capability at both registration and lazy default installation while retaining callback and context pairing.",
+      "acceptance": "A parser change can be made without a parser client copying or depending on unrelated service and resource fields. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/parser.c",
+          "symbol": "vterm_parser_set_callbacks",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/parser.c:vterm_parser_set_callbacks"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "vterm_obtain_state",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/state.c:vterm_obtain_state"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/vterm_internal.h",
+          "symbol": "VTermServices",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/vterm_internal.h:VTermServices"
+        }
+      ]
+    },
+    {
+      "id": "state_callback_binding",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "The state callback setter and screen adapter install state callbacks, and initpen is invoked immediately after publication.",
+      "baseline_defect": "State registration replaces all services through a binder whose flags also handle selection allocation; ordinary glyph, cursor, erase, and pen events read the same broad record.",
+      "criterion": "State callback ownership covers state registration, immediate pen initialization, and state event dispatch through a coherent state boundary.",
+      "acceptance": "The state callback and context can be rebound without a state client handling parser, screen, selection, or output resources, and reentrant initpen sees the newly bound state callback. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "vterm_state_set_callbacks",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/state.c:vterm_state_set_callbacks"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/vterm.c",
+          "symbol": "vterm_bind_services",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/vterm.c:vterm_bind_services"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/pen.c",
+          "symbol": "setpenattr",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/pen.c:setpenattr"
+        }
+      ]
+    },
+    {
+      "id": "renderer_screen_boundary",
+      "dimension": "cross_file_coordination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The C++ renderer obtains a screen and registers its screen callbacks through the public screen API before resetting damage.",
+      "baseline_defect": "VTerminal includes the private internal header and copies the entire services record merely to install its screen callbacks and context.",
+      "criterion": "The renderer registers screen integration through a screen-focused boundary that cooperates with lib/vterm/screen.c without exposing parser, state, selection, or output internals.",
+      "acceptance": "The producer VTerminal supplies its screen callbacks and user data; the screen registration handoff delivers those to screen damage, scrolling, and other screen consumers without a broad private record in the renderer. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "cgdb/vterminal.cpp",
+          "symbol": "VTerminal::VTerminal",
+          "detail": null,
+          "raw": "expanded.diff:cgdb/vterminal.cpp:VTerminal::VTerminal"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "vterm_screen_set_callbacks",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/screen.c:vterm_screen_set_callbacks"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "vterm_screen_flush_damage",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/screen.c:vterm_screen_flush_damage"
+        }
+      ]
+    },
+    {
+      "id": "screen_callback_ownership",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Screen event functions and the screen callback setter use screen callbacks and their user context.",
+      "baseline_defect": "Screen movement, bell, resize, scrollback, and damage consumers repeatedly reach through VTerm to the comprehensive services record.",
+      "criterion": "Screen callback registration and screen event delivery use a screen-specific callback/context owner across the affected screen paths.",
+      "acceptance": "A change to screen callbacks is localized to the screen interface and its clients, without making each screen operation depend on the layout of all other capabilities. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "moverect_user",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/screen.c:moverect_user"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "bell",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/screen.c:bell"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "resize",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/screen.c:resize"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "vterm_screen_set_callbacks",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/screen.c:vterm_screen_set_callbacks"
+        }
+      ]
+    },
+    {
+      "id": "fallback_provider_boundary",
+      "dimension": "extensibility",
+      "source_stage": "expanded.diff",
+      "intent_basis": "The existing state fallback setter supports optional unrecognized-control, CSI, OSC, DCS, APC, PM, and SOS handlers with a separate user context.",
+      "baseline_defect": "Installing or removing that optional fallback provider copies the parser, screen, output, and selection roles as part of VTermServices.",
+      "criterion": "An existing fallback handler or context can be changed at the fallback registration boundary without editing unrelated callback or resource owners.",
+      "acceptance": "Fallback registration, removal, and context retrieval are focused on the supported fallback variation; consumers receive the corresponding context. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "vterm_state_set_unrecognised_fallbacks",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/state.c:vterm_state_set_unrecognised_fallbacks"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "vterm_state_get_unrecognised_fbdata",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/state.c:vterm_state_get_unrecognised_fbdata"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/vterm_internal.h",
+          "symbol": "VTermServices",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/vterm_internal.h:VTermServices"
+        }
+      ]
+    },
+    {
+      "id": "selection_resource_boundary",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Selection registration supports caller-provided or allocator-provided buffers, plus callback and user context; OSC 52 and send-selection use these resources.",
+      "baseline_defect": "Selection callback/data and borrowed-or-allocated buffer fields share the whole services record and its state-initpen binder, forcing selection operations to traverse unrelated roles.",
+      "criterion": "Selection callback registration, buffer provisioning, OSC decoding, and selection encoding share a coherent selection-specific resource owner.",
+      "acceptance": "A supplied buffer and an allocated buffer retain their intended ownership and length through both selection directions, without selection clients replacing the entire service registry. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "vterm_state_set_selection_callbacks",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/state.c:vterm_state_set_selection_callbacks"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "osc_selection",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/state.c:osc_selection"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "vterm_state_send_selection",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/state.c:vterm_state_send_selection"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/vterm.c",
+          "symbol": "vterm_bind_services",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/vterm.c:vterm_bind_services"
+        }
+      ]
+    },
+    {
+      "id": "output_storage_boundary",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Output has a callback mode and bounded buffer mode with allocation, read, size, and free operations in vterm.c.",
+      "baseline_defect": "Output callback/data and owned buffer length/current fields are placed in VTermServices and copied by registration paths for every unrelated capability.",
+      "criterion": "Output callback and owned-buffer lifecycle have a focused output owner that handles writes, reads, capacity, and free consistently.",
+      "acceptance": "Switching the supported callback-versus-buffered output mode changes the output boundary without requiring parser, state, screen, or fallback clients to know the output storage layout. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/vterm.c",
+          "symbol": "vterm_new_with_allocator",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/vterm.c:vterm_new_with_allocator"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/vterm.c",
+          "symbol": "vterm_output_set_callback",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/vterm.c:vterm_output_set_callback"
+        },
+        {
+          "patch": "expanded.diff",
+          "file": "lib/vterm/vterm.c",
+          "symbol": "vterm_output_read",
+          "detail": null,
+          "raw": "expanded.diff:lib/vterm/vterm.c:vterm_output_read"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/vterm_internal.h",
+          "symbol": "VTermServices",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/vterm_internal.h:VTermServices"
+        }
+      ]
+    },
+    {
+      "id": "scroll_owner",
+      "dimension": "smell_elimination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "State scroll updates line metadata, while the screen adapter handles damage merging and screen buffer movement; custom state callbacks have their own scroll hooks.",
+      "baseline_defect": "The final vterm_services_scroll in screen.c combines state lineinfo mutation, custom state dispatch, screen-default identity testing, and screen damage algorithm in one cross-role function.",
+      "criterion": "Separate the scroll client dependency on state metadata/custom hooks from screen-buffer and damage policy, using focused capabilities or an equivalent coordinated design.",
+      "acceptance": "Retain zero-scroll handling, clamping, full-line metadata updates and custom scrollrect-to-moverect/erase fallback, with screen damage policy behind its relevant capability. Code need not occupy particular files or separate classes. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "vterm_services_scroll",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/screen.c:vterm_services_scroll"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "scroll",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/state.c:scroll"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "vterm_services_scroll",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/screen.c:scrollrect"
+        }
+      ]
+    },
+    {
+      "id": "control_csi_fallback_dispatch",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Built-in state parsing can defer unrecognized controls and CSI commands to optional state fallbacks; custom parser callbacks are independently supported.",
+      "baseline_defect": "parser.c tests the built-in state callback pointer and directly invokes state fallback callbacks after parser callback dispatch, splitting ownership from state.c and binding the parser to state internals.",
+      "criterion": "Control and CSI parsing hands unrecognized built-in-state input to a focused fallback decision while preserving the distinction between built-in state parsing and a custom parser.",
+      "acceptance": "Parser input producer, state-default handoff, and fallback consumer cooperate without parser.c reaching through the comprehensive record for state fallback callbacks and data; custom parser rejection does not silently acquire a built-in fallback. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Dispatch-origin isolation under callback rebinding and DCS argument lifetime are preserved constraints, not separate credits. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/parser.c",
+          "symbol": "do_control",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/parser.c:do_control"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/parser.c",
+          "symbol": "do_csi",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/parser.c:do_csi"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "on_control",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/state.c:on_control"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "on_csi",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/state.c:on_csi"
+        }
+      ]
+    },
+    {
+      "id": "string_fragment_fallback_dispatch",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "OSC, DCS, APC, PM, and SOS fragments have supported optional fallback hooks and different return and diagnostic handling.",
+      "baseline_defect": "parser.c now branches over built-in state identity and directly orchestrates state fallbacks for all five string classes after state.c handlers were removed or shortened.",
+      "criterion": "String-fragment dispatch coordinates parser callbacks with the relevant optional fallback capability at a narrow state/parser boundary for each supported fragment class.",
+      "acceptance": "The existing OSC/DCS handled-result and APC/PM/SOS delivery differences remain represented without making the parser own the full state fallback table or unrelated services. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Dispatch-origin isolation under callback rebinding and DCS argument lifetime are preserved constraints, not separate credits. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/parser.c",
+          "symbol": "string_fragment",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/parser.c:string_fragment"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "on_osc",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/state.c:on_osc"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "on_dcs",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/state.c:on_dcs"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "parser_callbacks",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/state.c:parser_callbacks"
+        }
+      ]
+    },
+    {
+      "id": "terminal_property_acceptance",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "State mode changes require acceptance, while the screen adapter owns alternate-screen availability and screen effects, and a screen user callback can reject a property.",
+      "baseline_defect": "vterm_state_set_termprop tests screen-default callback identity, inspects screen alt-buffer availability through an accessor, then invokes both state and screen callback layers; screen.c has lost its local acceptance checks.",
+      "criterion": "Terminal property acceptance and screen-specific availability/effects have coherent owners connected through a focused handoff before state mode commits.",
+      "acceptance": "Supported alternate-screen and screen-user rejection paths remain coordinated without state.c depending on the screen adapter's private callback identity and buffer layout. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Preserve availability rejection before screen effects, screen effects before user acceptance, and state-mode storage only after acceptance; no newly invented transactional rollback requirement. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "vterm_state_set_termprop",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/state.c:vterm_state_set_termprop"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "settermprop",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/screen.c:settermprop"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/screen.c",
+          "symbol": "vterm_screen_has_altscreen",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/screen.c:vterm_screen_has_altscreen"
+        }
+      ]
+    },
+    {
+      "id": "selection_output_handoff",
+      "dimension": "cross_file_coordination",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Selection encoding emits complete base64 chunks through vterm's callback-or-buffered output transport.",
+      "baseline_defect": "vterm_state_send_selection duplicates callback invocation, capacity calculation, buffer memcpy, and cursor advance that belong to vterm.c's output transport.",
+      "criterion": "Selection emission depends on a focused output capability instead of interpreting callback-versus-buffer transport and its storage invariants.",
+      "acceptance": "The selection producer passes bytes to the output owner, which selects the existing callback or bounded-buffer mode and updates its own cursor; encoding and final padding remain selection concerns. A capability-specific projection or operation over shared backing storage is valid if callers no longer construct, preserve or interpret unrelated capability state. Shared internal storage, private implementation helpers and the original public callback types may remain. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Renaming or wrapping the wide protocol without narrowing the affected client dependency is insufficient. An implementation owner may internally manage shared storage or a whole-record update behind genuinely narrow client operations."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "vterm_state_send_selection",
+          "detail": null,
+          "raw": "interaction_delta.diff:lib/vterm/state.c:vterm_state_send_selection"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/vterm.c",
+          "symbol": "vterm_push_output_bytes",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/vterm.c:vterm_push_output_bytes"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/vterm_internal.h",
+          "symbol": "VTermServices",
+          "detail": null,
+          "raw": "environment/smell.diff:lib/vterm/vterm_internal.h:VTermServices"
+        }
+      ]
+    },
+    {
+      "id": "builtin_control_semantics",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Final packaged delta additionally moves BEL, BS and CR from state on_control into parser do_control; this extension is absent from the earlier author archive.",
+      "baseline_defect": "The parser identifies the built-in state table, casts parser_data to VTermState, edits cursor columns, invokes state bell and calls the state control epilogue.",
+      "criterion": "Remove the raw parser dependency on built-in terminal control state and its event/epilogue protocol.",
+      "acceptance": "A focused control capability or equivalent redesign owns BEL/BS/CR interpretation and cursor completion; custom parsers remain independently dispatched. Restoring the original callback route is sufficient. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only abstracting fallback dispatch leaves these recognized-control state mutations in the parser."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/parser.c",
+          "symbol": "do_control",
+          "detail": "The parser identifies the built-in state table, casts parser_data to VTermState, edits cursor columns, invokes state bell and calls the state control epilogue.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "on_control",
+          "detail": "The parser identifies the built-in state table, casts parser_data to VTermState, edits cursor columns, invokes state bell and calls the state control epilogue.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "lib/vterm/state.c",
+          "symbol": "vterm_state_control_end",
+          "detail": "The parser identifies the built-in state table, casts parser_data to VTermState, edits cursor columns, invokes state bell and calls the state control epilogue.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "schema_version": "smellbench.source_grounded.v5",
+    "task_id": "cgdb_cgdb_isp",
+    "case_id": "cgdb--cgdb--interface_segregation",
+    "aggregation": "equal_weight_per_item",
+    "non_scoring_controls": "Preserve public APIs, valid callback and buffer behavior, test results, and compilability; these are constraints, not separate structural credits. The empty post.diff creates no scoring item. Historical callback-rebinding and DCS argument-lifetime corrections are correctness controls, not independent smell obligations."
+  }
+}

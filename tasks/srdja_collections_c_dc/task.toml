@@ -1,0 +1,46 @@
+schema_version = "1.4"
+artifacts = ["/logs/artifacts"]
+
+[task]
+name = "smellbench/srdja_collections_c_dc"
+version = "1.0.0"
+description = "Refactor an injected data_clumps smell while preserving repository behavior."
+authors = [{ name = "SmellBench", email = "noreply@smellbench.local" }]
+keywords = ["smellbench", "refactoring", "interface_segregation", "c"]
+
+[metadata]
+repo_name = "Collections-C"
+repo_url = "https://github.com/srdja/Collections-C"
+git_commit = "dbedaf9599716c9aa16c6e955fdc3ef76d5c5cca"
+language = "C"
+smell_type = "data_clumps"
+prompt_mode = "natural"
+apt_packages = ["build-essential","cmake"]
+smell_checker_match_count = 7
+has_ground_truth = true
+score_mode = "llm_as_judge"
+unit_tests_contribute_to_reward = false
+
+judge_rubric_count = 8
+
+judge_call_count = 1
+
+assembly_only = true
+
+packaged_runtime_validated = false
+
+[verifier]
+timeout_sec = 7200.0
+user = "root"
+network_mode = "public"
+
+[agent]
+timeout_sec = 10800.0
+
+[environment]
+network_mode = "public"
+env = { CC_FORBIDDEN_REPO_FULL_URL = "https://github.com/srdja/Collections-C", CC_FORBIDDEN_REPO_URL = "Collections-C", CC_FORBIDDEN_REPO_NAME = "Collections-C" }
+cpus = 4
+memory_mb = 8192
+storage_mb = 20480
+build_timeout_sec = 1800.0

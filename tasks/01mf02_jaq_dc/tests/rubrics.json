@@ -1,0 +1,411 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "01mf02_jaq_dc",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "dc01",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "First-stage signature splitting and second-stage sparse value positions, verified in the frozen patches.",
+      "baseline_defect": "Native signatures store name, full arity, and value-parameter positions as parallel tuple members; matching and argument binding interpret them separately.",
+      "criterion": "Give each native signature a cohesive representation that keeps full arity and parameter modes associated with its name and supports both matching and argument binding.",
+      "acceptance": "Equivalent signature abstraction or owned operations serve registration, lookup, and argument conversion, including mixed and all-filter parameters. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A tuple rename, a helper that only compares arity, or treating the count of value positions as full arity."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::with_funs,call",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/compile.rs:Compiler::with_funs,call"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "binds,Compiler::with_funs,Compiler::call",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:binds,Compiler::with_funs,Compiler::call"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::with_funs,Compiler::call",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc02",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Definition signature is decomposed in expansion and its sparse mode metadata travels through open/close in the interaction delta.",
+      "baseline_defect": "Source definition name, arity, parameter positions, term ID, and tail metadata are passed and reconstructed across def, open_def, close_def, and module storage.",
+      "criterion": "Keep source-definition signature metadata together through declaration, sibling publication, closure, and module export.",
+      "acceptance": "The same coherent declaration identity reaches local sibling and exported module consumers without parallel unpacking or reconstructing modes at each boundary. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Moving open_def as a whole, only shortening its parameter list, or repairing native signatures alone."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Def,open_def,close_def,def",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/compile.rs:Def,open_def,close_def,def"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Fun::Sibling,Compiler::def",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Fun::Sibling,Compiler::def"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Def,Compiler::open_def,Compiler::close_def,Compiler::def",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc15",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "Expansion round 1 explicitly splits parsed definition name/parameters/body at top-level and nested declaration boundaries; final patch retains it.",
+      "baseline_defect": "module and term Def destructure parse::Def into name/args/body; open_def and def repeat that group even though the parser already supplies a cohesive declaration.",
+      "criterion": "Keep parsed declaration identity, parameter names, and body together through module and nested-definition compilation boundaries.",
+      "acceptance": "Module and nested-definition compilation keep declaration identity, parameters and body associated through their compilation flow. A record, closure, typed AST, owned operation or redesigned flow qualifies; open_def/def names and a particular parameter-list shape are not required. Compiled signature metadata alone is a separate repair. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Only repairing the exported Def tuple while retaining repeated name/params/body arguments in the declaration compilation path."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::module,Compiler::term,Compiler::open_def,Compiler::def",
+          "detail": null,
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::module,Compiler::term,Compiler::open_def,Compiler::def",
+          "detail": null,
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc03",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "MapVecLen is removed in expansion and second stage distributes depth maintenance among lifecycle consumers.",
+      "baseline_defect": "Lexical binding map and total depth are independent Locals fields, with push/pop arithmetic repeated for parameter, function, and label scopes.",
+      "criterion": "Own lexical membership and absolute depth together across single and batch admission, shadowed lookup, and reverse cleanup.",
+      "acceptance": "Variable batches, labels, parent parameters and filter arguments use a coherent lexical-state model so membership and depth cannot require independent caller synchronization. Owned operations, persistent environments, derived indices or a representation eliminating redundant depth state qualify. A caller may perform a local calculation when it does not recreate the split invariant. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A passive pair with caller-maintained depth, or consolidating single-binding operations while with_vars still computes and restores absolute batch offsets."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "MapVecLen,Locals",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/compile.rs:MapVecLen,Locals"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Locals::push_parent,pop_parent,push_arg,pop_arg,Compiler::with_label",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Locals::push_parent,pop_parent,push_arg,pop_arg,Compiler::with_label"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Locals,Compiler::with_vars,Compiler::with_label",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Compiler::with_vars",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/compile.rs:Compiler::with_vars"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Locals,Compiler::with_vars,Compiler::with_label",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc06",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The final runtime patch removes skip_vars and makes bind_vars crop target variables in each binding branch.",
+      "baseline_defect": "A pending target skip is separately passed from run, paths, and update and must be consumed exactly once across value, filter, and empty argument branches. Caller capture is coordinated manually with the target transformation in the same branches; correct capture and skip behavior already exists and alone earns no credit.",
+      "criterion": "Own the transition from caller scope to callee bindings cohesively, including one-time target cropping and caller capture for filter arguments.",
+      "acceptance": "An operation or cohesive frame representation owns target cropping once for empty, value, and filter argument cases while captures refer to the original caller. A pre-cropped target context or an owned pending transition is equally valid; branch-local skip resets and detached target components no longer encode the lifecycle. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Retaining separate vars/skip/data/labels and duplicated branch transitions while only ensuring correct outputs, or wrapping unchanged bind_vars in another function."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "bind_vars,Ctx::skip_vars",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/filter.rs:bind_vars,Ctx::skip_vars"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "bind_vars",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "bind_vars Arg::Fun branches",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/filter.rs:bind_vars Arg::Fun branches"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "bind_vars",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc08",
+      "dimension": "cross_file_coordination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Compiler emits CallDef argument modes and skip; runtime run, paths, and update each construct scalar target-frame inputs.",
+      "baseline_defect": "CallDef carries compiler-derived skip and Arg modes, while three runtime modes duplicate preparation of vars, data, labels, and projection before bind_vars.",
+      "criterion": "Coordinate compiled call metadata with a common runtime frame-preparation boundary used by run, paths, and update.",
+      "acceptance": "Run, paths and update share coherent preparation of compiler-derived target scope and argument-mode information, without independently assembling the same frame components. Equivalent representations may change or remove CallDef/Arg fields; their names and the current handoff are evidence anchors, not required interfaces. Native calls retain their empty-target-scope semantics. dc06 separately scores caller/callee binding transition ownership. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Changing only one execution mode, clearing label or data context for native calls, or merely extracting a helper with unrelated scalar parameters."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/compile.rs",
+          "symbol": "Locals::call,Compiler::call_mod_id",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/compile.rs:Locals::call,Compiler::call_mod_id"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/filter.rs:Id::run,Id::paths,Id::update"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/filter.rs",
+          "symbol": "Id::run,Id::paths,Id::update",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc09",
+      "dimension": "smell_elimination",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Import fields are split in expansion; the interaction patch separates raw request validation from effective relative search path.",
+      "baseline_defect": "Import::find and Import::read separately derive parent, validate raw path, set extension, and hand an effective relative path to resolve_import.",
+      "criterion": "Give an import request a cohesive preparation boundary that owns raw validation, parent origin, and extension-adjusted relative target.",
+      "acceptance": "Both find and read obtain the same prepared search inputs without repeating field-level transformations; absolute requests remain rejected. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A passive tuple of parent and path, or moving the entire resolver without unifying preparation."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "Import::find,Import::read,resolve_import",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/load/mod.rs:Import::find,Import::read,resolve_import"
+        },
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "Import::find,Import::read",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/load/mod.rs:Import::find,Import::read"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "Import::find,Import::read",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc10",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Final meta_paths expands and rebases metadata roots while resolver expands command roots.",
+      "baseline_defect": "Metadata search roots are parent-relative and already expanded, whereas -L command roots are raw; resolver receives both as PathBuf sequences and relies on caller knowledge of their origin.",
+      "criterion": "Represent search-root provenance at the import search boundary so changes to existing metadata-search or -L resolution affect the proper origin path only.",
+      "acceptance": "Metadata roots are rebased to the importing file once, command roots are expanded according to command rules, and search precedence is retained through a cohesive root abstraction or equivalent behavior owner. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Treating both path sequences as equally raw, rebasing metadata twice, or changing only a variable name."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "meta_paths,expand_search,resolve_import",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/load/mod.rs:meta_paths,expand_search,resolve_import"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "meta_paths,expand_search,resolve_import",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc11",
+      "dimension": "responsibility_allocation",
+      "source_stage": "expanded.diff",
+      "intent_basis": "First-stage Loader::find destructures the read File into code and resolved path and routes raw parent/path/meta separately on recursive calls.",
+      "baseline_defect": "Expansion replaces the Import parameter of Loader::find with parent/path/meta scalars and makes initial and recursive producers reconstruct that group; resolved-path cache and cycle handling remain correct.",
+      "criterion": "Carry each recursive import request cohesively from load and nested parse callbacks to the read hook instead of independently passing parent, requested path, and metadata.",
+      "acceptance": "Initial and recursive imports and the read-hook handoff keep request origin, target and metadata coherently associated, without consumers repeatedly reconstructing their relationship. A request value, closure, contextual operation or equivalent flow qualifies; an Import type is optional. Cache/cycle identity remains a constraint, not additional credit. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Keying the cache by raw directive path, or only changing the local name resolved while the request stays decomposed."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "Loader::load,Loader::find",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/load/mod.rs:Loader::load,Loader::find"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/load/mod.rs",
+          "symbol": "Loader::load,Loader::find",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc12",
+      "dimension": "smell_elimination",
+      "source_stage": "expanded.diff",
+      "intent_basis": "First-stage Part decomposition replaces owned selector variants with index/from/upto triples across read, trace, and update.",
+      "baseline_defect": "Part::Index and Part::Range semantics are dismantled into three optional components in Path::run, Path::paths, read_part, trace_part, and update_part.",
+      "criterion": "Restore a cohesive selector operation boundary for index, wildcard, and range behavior across read, trace, and update.",
+      "acceptance": "The selector variant controls its own interpretation or an equivalent cohesive operation carrier replaces recurring three-option dispatch; each path mode remains supported. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Replacing the triple with an unnamed tuple, moving an entire match block unchanged, or fixing only read dispatch."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "expanded.diff",
+          "file": "jaq-core/src/path.rs",
+          "symbol": "Part::components,read_part,trace_part,update_part",
+          "detail": null,
+          "raw": "expanded.diff:jaq-core/src/path.rs:Part::components,read_part,trace_part,update_part"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/path.rs",
+          "symbol": "Part::components,read_part,trace_part,update_part",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc13",
+      "dimension": "responsibility_allocation",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "Trace returns a value stream plus separate fixed key and Path::paths publishes provenance afterward.",
+      "baseline_defect": "Trace selection splits selected values from fixed index/range provenance, while wildcard selection supplies keys per result; Path::paths must recombine them after optional filtering.",
+      "criterion": "Make selected value and path provenance a coherent trace result, including fixed keys, dynamic wildcard keys, and successful range bounds.",
+      "acceptance": "The trace owner publishes keys only for successful results and retains raw range bounds as provenance while filtering optional errors at the proper boundary. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Attaching a range key before a failed read, using a single fixed key for wildcard results, or only renaming fixed_key."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/path.rs",
+          "symbol": "Path::paths,trace_part",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/path.rs:Path::paths,trace_part"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/path.rs",
+          "symbol": "Path::paths,trace_part",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "dc14",
+      "dimension": "extensibility",
+      "source_stage": "interaction_delta.diff",
+      "intent_basis": "The common run stopped handling optional filtering; read and trace now do it separately and update passes Opt to value adapters.",
+      "baseline_defect": "Optionality is interpreted in separate read and trace flows while update uses Opt in its value adapter, so changes to existing optional index/range behavior span scattered branches.",
+      "criterion": "Give the existing optional versus essential selector policy a clear boundary shared by read and trace without changing update's adapter semantics.",
+      "acceptance": "Optional failures are suppressed for reads and traces, essential failures propagate, and updates retain their own Opt behavior through a cohesive policy or selector operation. Equivalent callable, data-driven, type-based or unified-flow designs qualify when they remove this specific coupling or duplication. No separately named helper, class, file, or one-component-per-item decomposition is required; one coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "A global output filter that suppresses update errors, or separate copied conditionals with no policy owner."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "interaction_delta.diff",
+          "file": "jaq-core/src/path.rs",
+          "symbol": "run,read_part,Path::paths,update_part",
+          "detail": null,
+          "raw": "interaction_delta.diff:jaq-core/src/path.rs:run,read_part,Path::paths,update_part"
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "jaq-core/src/path.rs",
+          "symbol": "run,read_part,Path::paths",
+          "detail": "Named operation verified against final diff; replaces ambiguous numeric symbol reference.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "01mf02_jaq_dc",
+    "rubric_status": "ready"
+  }
+}

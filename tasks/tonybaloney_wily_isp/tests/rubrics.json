@@ -1,0 +1,445 @@
+{
+  "schema_version": "smellbench.source_grounded_rubrics.v1",
+  "task_id": "tonybaloney_wily_isp",
+  "rubric_status": "ready",
+  "aggregation": "equal_weight_per_item",
+  "rubrics": [
+    {
+      "id": "cache_readers",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion1/3/4 dependency bundle.",
+      "baseline_defect": "The cache_readers consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope cache readers dependencies and setup to the required capabilities.",
+      "acceptance": "Index/graph/report require storage/query only, not source resolution, file discovery or write setup. A larger concrete store may remain behind narrow view. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "RuntimeBindings",
+          "detail": "The cache_readers consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/index.py",
+          "symbol": "RuntimeBindings",
+          "detail": "The cache_readers consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/graph.py",
+          "symbol": "RuntimeBindings",
+          "detail": "The cache_readers consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "RuntimeBindings",
+          "detail": "The cache_readers consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "store_lifetime",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion mixed session lifecycle.",
+      "baseline_defect": "The store_lifetime consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope store lifetime dependencies and setup to the required capabilities.",
+      "acceptance": "Create backend with same path/operators; retain actual entered index separately from context owner; forward exception triple to owner exit and its suppression return. No source restoration obligation for readers. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "__enter__,__exit__",
+          "detail": "The store_lifetime consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "source_lifetime",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion2 checkout/default publication.",
+      "baseline_defect": "The source_lifetime consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope source lifetime dependencies and setup to the required capabilities.",
+      "acceptance": "Install active revision only after successful checkout; outer finally restores source after store/progress exit, no source finish introduced in read-only paths. Stateful source/publication capability allowed. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "checkout,finish",
+          "detail": "The source_lifetime consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/build.py",
+          "symbol": "checkout,finish",
+          "detail": "The source_lifetime consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "publication",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 active metadata and retry strict description.",
+      "baseline_defect": "The publication consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope publication dependencies and setup to the required capabilities.",
+      "acceptance": "Skip unchanged revision before checkout, then analyze added+modified under base root with successful revision key/date/author/message. Required fields remain required, explicit revision_key route preserves caller metadata. No mandatory explicit parameter if a focused transaction safely owns state. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "analyze_revision",
+          "detail": "The publication consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/build.py",
+          "symbol": "analyze_revision",
+          "detail": "The publication consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "backend_compatibility",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Direct WilyIndex helper routes retained.",
+      "baseline_defect": "The backend_compatibility consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope backend compatibility dependencies and setup to the required capabilities.",
+      "acceptance": "Existing direct backend helpers and scoped runtime clients both work; adapters/duck typing/direct owner operations valid. Concrete type checks are not categorically forbidden, but should not force query clients to know source/write implementation. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "analyze_revision,select",
+          "detail": "The backend_compatibility consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/build.py",
+          "symbol": "analyze_revision,select",
+          "detail": "The backend_compatibility consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/diff.py",
+          "symbol": "analyze_revision,select",
+          "detail": "The backend_compatibility consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "source_resolution",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 rank vs diff.",
+      "baseline_defect": "The source_resolution consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope source resolution dependencies and setup to the required capabilities.",
+      "acceptance": "Only explicit rank source lookup uses config.path and revision string; missing source fails before membership. Latest rank uses stable descending date with default0; diff uses literal cached ID and last physical row if unspecified. Never add Git lookup to diff. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "find,select",
+          "detail": "The source_resolution consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "find,select",
+          "detail": "The source_resolution consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "catalog",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion1/3 shared catalog.",
+      "baseline_defect": "The catalog consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope catalog dependencies and setup to the required capabilities.",
+      "acceptance": "First metadata for each required revision key wins, author Unknown/date0/messageempty defaults, stable sort indexdescending/graphascending. Query-only capability can share scan/describe. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "catalog,revisions",
+          "detail": "The catalog consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/index.py",
+          "symbol": "catalog,revisions",
+          "detail": "The catalog consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/graph.py",
+          "symbol": "catalog,revisions",
+          "detail": "The catalog consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "history",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 path granularity.",
+      "baseline_defect": "The history consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope history dependencies and setup to the required capabilities.",
+      "acceptance": "Colon path accepts all types; ordinary path only file; stable dateascending before slice[-(n or len(rows)):], including0/negative existing semantics. No unrelated source setup. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "history,path_rows",
+          "detail": "The history consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "history,path_rows",
+          "detail": "The history consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "graph_lookup",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry prefix helper.",
+      "baseline_defect": "The graph_lookup consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope graph lookup dependencies and setup to the required capabilities.",
+      "acceptance": "Exact path lookup first; only missing exact falls back to first insertion-order bidirectional prefix match. Preserve rows/order and duplicate overwrite rules; shared filtering helper acceptable. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "scan",
+          "detail": "The graph_lookup consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/graph.py",
+          "symbol": "scan",
+          "detail": "The graph_lookup consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metric_query",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion1/retry rank scan.",
+      "baseline_defect": "The metric_query consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope metric query dependencies and setup to the required capabilities.",
+      "acceptance": "Requested cached revision filters rows, non-None metric values only, duplicatepath last accepted wins. Query client needs no checkout/publication. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "metric_rows,scan",
+          "detail": "The metric_query consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "metric_rows,scan",
+          "detail": "The metric_query consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "diff_values",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Stage2 file/object cache selection.",
+      "baseline_defect": "The diff_values consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope diff values dependencies and setup to the required capabilities.",
+      "acceptance": "First matching literal revision, unspecified lastphysical; missing selection reports existing error; strip six metadata fields only and retain unknown metrics. Both file/object paths share appropriate query contract. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "select,values",
+          "detail": "The diff_values consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/diff.py",
+          "symbol": "select,values",
+          "detail": "The diff_values consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "current_analysis",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion3 working-tree analysis.",
+      "baseline_defect": "The current_analysis consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope current analysis dependencies and setup to the required capabilities.",
+      "acceptance": "Current analysis paths/detail and str(config.path) preserved, no cache append or source checkout added; diff may compose current analysis with query rather than share omnibus runtime. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "current,analyze_files",
+          "detail": "The current_analysis consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/diff.py",
+          "symbol": "current,analyze_files",
+          "detail": "The current_analysis consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "file_discovery",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Expansion1/3 source file scanning.",
+      "baseline_defect": "The file_discovery consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope file discovery dependencies and setup to the required capabilities.",
+      "acceptance": "Optional rank target expansion uses iterator and original relpath/backslash normalization; no lookup/archiver/store obligations for file enumeration provider. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "files",
+          "detail": "The file_discovery consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "files",
+          "detail": "The file_discovery consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    },
+    {
+      "id": "metadata_projection",
+      "dimension": "responsibility_allocation",
+      "source_stage": "integrated/mixed",
+      "intent_basis": "Retry cached/source/default variants.",
+      "baseline_defect": "The metadata_projection consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+      "criterion": "Scope metadata projection dependencies and setup to the required capabilities.",
+      "acceptance": "Cached names revision_* vs source author_name/date/message; catalog requires revision,report fills missing revision/author with empty,rank Unknown; build required fields throw rather than default. Cached projection must not acquire find dependency; shared pure adapter/parameterized policy legal. Shared data/implementation, cohesive stateful operations, selectors with parameters and general query helpers are valid when clients need no unrelated providers. Equivalent functions, policy data, composition or a redesigned flow qualify; no prescribed helper, class, file, return object or one-component-per-item design is required. One coherent redesign may satisfy multiple independent items.",
+      "insufficient_repairs": [
+        "Requiring unused revision_lookup/file_iterator/archiver placeholders at read-only construction retains the burden."
+      ],
+      "evidence_refs": [
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/session.py",
+          "symbol": "describe",
+          "detail": "The metadata_projection consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/report.py",
+          "symbol": "describe",
+          "detail": "The metadata_projection consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/rank.py",
+          "symbol": "describe",
+          "detail": "The metadata_projection consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        },
+        {
+          "patch": "environment/smell.diff",
+          "file": "src/wily/commands/build.py",
+          "symbol": "describe",
+          "detail": "The metadata_projection consumer depends on composite RuntimeBindings/CommandSession beyond the capabilities it uses.",
+          "raw": null
+        }
+      ]
+    }
+  ],
+  "legacy_metadata": {
+    "task_id": "tonybaloney_wily_isp",
+    "dimensions": [
+      "smell_elimination",
+      "responsibility_allocation",
+      "extensibility",
+      "cross_file_coordination"
+    ],
+    "weighting": "Each item has equal weight; score the stated structural repair only."
+  }
+}
