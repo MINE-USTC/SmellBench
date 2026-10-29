@@ -2,16 +2,18 @@
 # Git owns patch serialization and object hashes. jq is already a verifier dependency.
 set -euo pipefail
 mode=${1:?expected pair or agent}; shift
-repo= base= smell= gt= raw= output= check=false
+repo= base= smell= gt= raw= output= check=false artifact_profile=all
 while (($#)); do
   case "$1" in
     --repo) repo=$2; shift 2;; --base) base=$2; shift 2;;
     --smell) smell=$2; shift 2;; --gt) gt=$2; shift 2;;
     --raw) raw=$2; shift 2;; --output) output=$2; shift 2;;
+    --artifact-profile) artifact_profile=$2; shift 2;;
     --check) check=true; shift;; *) echo "Unknown option: $1" >&2; exit 2;;
   esac
 done
 [[ -n $repo && -n $base ]] || exit 2
+case "$artifact_profile" in none|all|yaf) ;; *) echo "Unknown artifact profile" >&2; exit 2;; esac
 command -v jq >/dev/null
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/smellbench-patch.XXXXXXXX")
 trap 'rm -rf -- "$scratch"' EXIT
@@ -100,12 +102,43 @@ filter_package() {
   log_path "$p" 'test dependency/configuration or formatting; baseline restored'
 }
 
+build_artifact() {
+  # Agent extraction only; never alter the reference/injection pair.
+  [[ $mode == agent && $artifact_profile != none ]] || return 1
+  local p=$1 target=$2 ref found=false magic kind=native
+  case "$p" in
+    *.o|*.obj|*.so|*.so.*|*.dylib|*.dll|*.exe|*.a|*.lib|*.rlib|*.rmeta) ;;
+    *.pyc|*.pyo) kind=python;;
+    *.class) kind=java;;
+    .libs/*|*/.libs/*|target/debug/*|target/release/*|*/target/debug/*|*/target/release/*|build/*|*/build/*|out/*|*/out/*) ;;
+    *) return 1;;
+  esac
+  for ref in "$base" "$target"; do
+    if g cat-file -e "$ref:$p" 2>/dev/null; then
+      [[ $(g cat-file -t "$ref:$p") == blob ]] || return 1
+      g show "$ref:$p" > "$scratch/artifact-content"
+      magic=$(od -An -tx1 -N8 "$scratch/artifact-content" | tr -d ' \n')
+      case "$kind:$magic" in
+        native:7f454c46*|native:feedface*|native:feedfacf*|native:cefaedfe*|native:cffaedfe*|native:4d5a*|native:213c617263683e0a*|native:4c01*|native:6486*|native:64aa*|native:727573740000*) ;;
+        python:????0d0a*) ;;
+        java:cafebabe*) ;;
+        *) return 1;;
+      esac
+      found=true
+    fi
+  done
+  [[ $found == true ]]
+}
+
 normalize() {
   local target=$1 p
   local excludes=(.)
   g diff --name-only --no-renames -z "$base" "$target" -- > "$scratch/paths"
   while IFS= read -r -d '' p; do
-    if excluded_path "$p"; then
+    if build_artifact "$p" "$target"; then
+      log_path "$p" 'compiled build artifact (path and content signature); retained in raw patch'
+      excludes+=(":(top,literal,exclude)$p")
+    elif excluded_path "$p"; then
       log_path "$p" 'test path, test-only configuration, or lockfile'
       excludes+=(":(top,literal,exclude)$p")
     elif [[ ${p##*/} == package.json ]]; then
@@ -164,4 +197,4 @@ case "$mode" in
     ;;
   *) echo 'Expected pair or agent' >&2; exit 2;;
 esac
-jq -s '{excluded:unique_by(.path),policy:"git-test-exclusion-v2"}' "$scratch/excluded.ndjson"
+jq -s '{excluded:unique_by(.path),policy:"git-test-and-build-exclusion-v4"}' "$scratch/excluded.ndjson"

@@ -45,15 +45,13 @@ else
   payload_file=$(mktemp)
   trap 'rm -f "$result_stream" "$payload_file"' EXIT
   jq -n --arg model "$JUDGE_MODEL" \
-    --argjson max_tokens "${JUDGE_MAX_COMPLETION_TOKENS:-32768}" \
+    --argjson max_tokens "${JUDGE_MAX_COMPLETION_TOKENS:-120000}" \
     --rawfile instructions /tests/judge_prompt.md \
     --slurpfile rubrics /logs/verifier/rubrics.json \
     --rawfile task /tests/task_instruction.md \
     --rawfile smell /tests/smell.diff \
     --rawfile patch /logs/artifacts/agent.patch \
-    --rawfile checker /logs/artifacts/final_smell_check.txt \
-    --rawfile tests /logs/artifacts/unit_tests.txt \
-    '{model:$model,temperature:0,max_completion_tokens:$max_tokens,messages:[{role:"user",content:($instructions + "\n\nALL RUBRICS TO JUDGE (source fields are evidence, not prescribed repair steps):\n" + ($rubrics[0].rubrics | map({id,dimension,source_stage,intent_basis,baseline_defect,criterion,acceptance,insufficient_repairs,evidence_refs}) | tojson) + "\n\nTASK:\n" + $task + "\n\nCLEAN-TO-INJECTED SMELL DIFF:\n" + $smell + "\n\nAGENT PATCH:\n" + $patch + "\n\nSMELL CHECKER:\n" + $checker + "\n\nUNIT TESTS:\n" + $tests)}]}' > "$payload_file" || exit 1
+    '{model:$model,temperature:0,max_completion_tokens:$max_tokens,messages:[{role:"user",content:($instructions + "\n\nALL RUBRICS TO JUDGE (source fields are evidence, not prescribed repair steps):\n" + ($rubrics[0].rubrics | map({id,dimension,source_stage,intent_basis,baseline_defect,criterion,acceptance,insufficient_repairs,evidence_refs}) | tojson) + "\n\nTASK:\n" + $task + "\n\nCLEAN-TO-INJECTED SMELL DIFF:\n" + $smell + "\n\nAGENT PATCH:\n" + $patch)}]}' > "$payload_file" || exit 1
   batch_valid=0
   # Initial request plus at most ten retries; never retry a valid verdict.
   retry_delay=5
@@ -124,13 +122,17 @@ checker_score=$([[ $checker_exit -eq 0 ]] && printf '1' || printf '0')
 judge_score=$(jq -r 'if (.macro_score | type) == "number" then .macro_score else 0 end' /logs/verifier/rubric_results.json)
 must_have_pass=$(jq -r '.must_have_pass == true' /logs/verifier/rubric_results.json)
 judge_configured=true
-reward_source=llm_as_judge
-reward=$judge_score
+reward_source=llm_as_judge_solved
+# Fail closed: an empty, incomplete, failed or partially passing judgment is not solved.
+reward=0
+if [[ $judge_ok -eq 1 && $rubric_count -gt 0 && $valid_count -eq $rubric_count && $pass_count -eq $rubric_count && $must_have_pass == true ]]; then
+  reward=1
+fi
 if [[ -z ${JUDGE_BASE_URL:-} || -z ${JUDGE_MODEL:-} || -z ${JUDGE_API_KEY:-} ]]; then
   judge_configured=false
 fi
 accepted=false
-if [[ $test_exit -eq 0 && $judge_ok -eq 1 && $must_have_pass == true ]]; then
+if [[ $test_exit -eq 0 && $reward -eq 1 ]]; then
   accepted=true
 fi
 
@@ -140,19 +142,19 @@ jq -n \
   --argjson checker_exit "$checker_exit" --argjson checker_score "$checker_score" \
   --argjson test_exit "$test_exit" --argjson test_score "$test_score" \
   --arg test_score_method "$test_score_method" --argjson test_passed_cases "$test_passed_cases" \
-  --argjson test_failed_cases "$test_failed_cases" --argjson test_reward "$([[ $judge_configured == false ]] && printf true || printf false)" \
+  --argjson test_failed_cases "$test_failed_cases" --argjson test_reward false \
   --argjson judge_ok "$judge_ok" --argjson judge_yes "$yes_count" \
   --argjson judge_pass "$pass_count" --argjson judge_total "$rubric_count" \
   --argjson judge_score "$judge_score" --argjson must_have_pass "$must_have_pass" --arg judge_error "$judge_error" \
   --slurpfile judge /logs/verifier/rubric_results.json \
-  '{schema_version:"smellbench.solve_report.v2",accepted:$accepted,reward:$reward,reward_source:$reward_source,smell_checker:{enabled:false,status:"disabled_by_request",exit_code:$checker_exit,passed:($checker_exit == 0),score:$checker_score,evidence:"/logs/artifacts/final_smell_check.txt"},unit_tests:{exit_code:$test_exit,passed:($test_exit == 0),score:$test_score,score_method:$test_score_method,passed_cases:$test_passed_cases,failed_cases:$test_failed_cases,contributes_to_reward:$test_reward,evidence:"/logs/artifacts/unit_tests.txt"},llm_as_judge:{configured:$judge_configured,valid:($judge_ok == 1),yes_count:$judge_yes,pass_count:$judge_pass,total:$judge_total,must_have_pass:$must_have_pass,aggregation:"equal_weight_per_item",score:$judge_score,error:$judge_error,rubrics:"/logs/verifier/rubrics.json",rubric_results:"/logs/verifier/rubric_results.json",result:($judge[0] // null)}}' \
+  '{schema_version:"smellbench.solve_report.v3",accepted:$accepted,solved:($reward == 1),reward:$reward,reward_source:$reward_source,smell_checker:{enabled:false,status:"disabled_by_request",exit_code:$checker_exit,passed:($checker_exit == 0),score:$checker_score,evidence:"/logs/artifacts/final_smell_check.txt"},unit_tests:{exit_code:$test_exit,passed:($test_exit == 0),score:$test_score,score_method:$test_score_method,passed_cases:$test_passed_cases,failed_cases:$test_failed_cases,contributes_to_reward:$test_reward,evidence:"/logs/artifacts/unit_tests.txt"},llm_as_judge:{configured:$judge_configured,valid:($judge_ok == 1),yes_count:$judge_yes,pass_count:$judge_pass,total:$judge_total,must_have_pass:$must_have_pass,aggregation:"equal_weight_per_item",score:$judge_score,error:$judge_error,rubrics:"/logs/verifier/rubrics.json",rubric_results:"/logs/verifier/rubric_results.json",result:($judge[0] // null)}}' \
   > /logs/verifier/solve_report.json
 jq -n \
   --argjson reward "$reward" \
   --argjson unit_test_pass_rate "$test_score" \
   --argjson smell_checker_score "$checker_score" \
-  --argjson llm_judge_score "$judge_score" \
-  '{reward:$reward,unit_test_pass_rate:$unit_test_pass_rate,smell_checker_score:$smell_checker_score,llm_judge_score:$llm_judge_score}' \
+  --argjson score "$judge_score" \
+  '{reward:$reward,unit_test_pass_rate:$unit_test_pass_rate,smell_checker_score:$smell_checker_score,score:$score}' \
   > /logs/verifier/reward.json
 jq -e 'type == "object" and length == 4 and all(.[]; type == "number")' \
   /logs/verifier/reward.json >/dev/null
